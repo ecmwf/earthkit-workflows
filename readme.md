@@ -11,6 +11,6 @@ Cascade is designed to work on well-profiled task graphs, where:
 
 There are three components to Cascade:
 
-* the graph distributor
+* the graph partioner
 * the graph executor
 * the transport abstraction layer
