@@ -28,5 +28,14 @@
     * Responsible for opening a send for each dependent subgraph
     * If direct send not possible, responsible for storage
     * Transport layer uses UCX-py
+    * Workers could be long-lived of ephemeral
 
 * Main manager responsible for spinning up workers and distributing subgraphs to them
+
+* Each task defines a set of inputs, a function to execute, and a set of outputs
+
+# Graphs
+
+* Cascade should take, as input, a computational graph which describes tasks and data dependencies.
+    * task, dependency on task_X, output_1
+* It should split this graph into optimal subgraphs to be scheduled as single processes
