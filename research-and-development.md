@@ -121,3 +121,7 @@
 * Take inspiration from multi-grid solvers:
     * on very coarse level we could do a direct solve
     * move between contexts to optimise
+
+* I think this could work on VERY large graphs
+
+* note: remember communications can be overlapped on output. only blocked if memory needs freeing.

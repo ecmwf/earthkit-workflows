@@ -1,0 +1,4 @@
+{
+    "python.linting.enabled": false,
+    "cornflakes.linter.run": "off"
+}
