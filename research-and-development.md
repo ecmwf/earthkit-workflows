@@ -125,3 +125,19 @@
 * I think this could work on VERY large graphs
 
 * note: remember communications can be overlapped on output. only blocked if memory needs freeing.
+
+# Simulated Annealing Optimization
+
+* Create a partition using a time sweep and depth-first search similar to Dask
+* Run a simulated annealing optimization to improve the partitioning and ordering
+    * Generate a neighbour, using temperature as a guide for the number/size of changes
+        * Consider movement of subgraph to another node
+        * Consider reordering of process subgraphs
+        * Consider swapping of processing contexts for entire graphs
+        * Consider duplicate computation of subgraphs
+        * Reduce subgraph size as temperature decreases
+        * Can be guided - i.e. move subgraph to a context with less work
+    * Evaluate the neighbour, calculate the probably of accepting the neighbour
+        * If the new partition is better, keep it
+        * If the new partition is worse, keep it with probability e^(-delta/T)
+    * Repeat until T is small
