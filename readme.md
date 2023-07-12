@@ -12,8 +12,14 @@ There are two main components to Cascade:
 
 ## The Executor
 
-The executor is responsible for executing the plan created by the scheduler on the target hardware. Each executor should be capable of simulating its execution plan, so that schedulers can estimate the cost of a plan before executing it.
+The executor is responsible for executing the plan created by the scheduler on the target hardware. Each executor should be capable of simulating its execution plan.
 
 ## The Scheduler
 
-The scheduler is responsible for creating an execution plan for the DAG. For schedulers based on optimization, the scheduler is likely to use a simulated execution
+The scheduler is responsible for creating an execution plan for the DAG. For schedulers based on optimization, the scheduler is likely to use a simulated execution as a fitness function for the optimization.
+
+# Quick Start
+
+```
+ python3 ./tests/test_depth_first_scheduler.py
+```
