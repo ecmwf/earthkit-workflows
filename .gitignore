@@ -1,0 +1,9 @@
+*.py[cod]
+*.swp
+**/__pycache__
+.vscode
+polytope.egg-info
+.pytest_cache
+*.prof
+*.idx
+.mypy_cache
