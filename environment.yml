@@ -4,15 +4,11 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.11
+  - python=3.10
   - pip
   - pytest            # for testing
   - pytest-cov        # for testing
-  - numpy
   - pyyaml
-  - scipy             
-  - jupyter           # for notebooks
   - jax
-  - matplotlib
   - pip:
     - colored>=2.2    # for colored printing in terminal 
