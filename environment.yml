@@ -1,3 +1,5 @@
+# mamba env update --file environment.yml --prune
+
 name: cascade
 channels:
   - conda-forge
@@ -10,5 +12,6 @@ dependencies:
   - pytest-cov        # for testing
   - pyyaml
   - jax
+  - jupyter
   - pip:
     - colored>=2.2    # for colored printing in terminal 

@@ -5,6 +5,3 @@ def slow_f(x):
 
 x = jax.numpy.ones((5000, 5000))
 fast_f = jax.jit(slow_f)
-
-fast_f(x) 
-slow_f(x) 
