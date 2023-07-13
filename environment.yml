@@ -13,5 +13,7 @@ dependencies:
   - pyyaml
   - jax
   - jupyter
+  - numba
+  - numpy
   - pip:
     - colored>=2.2    # for colored printing in terminal 
