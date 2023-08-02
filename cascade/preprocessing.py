@@ -34,7 +34,7 @@ def dedensify(graph: TaskGraph, threshold: int) -> Tuple[TaskGraph, List[Task]]:
             dedensified_graph[in_node][compressed_node]["obj"] = Communication(
                 in_node, compressed_node, comm_size
             )
-            memory += in_node.memory
+            memory += in_node.out_memory
             in_comm_size += comm_size
 
         for _, out_node in dedensified_graph.out_edges(compressed_node):
@@ -43,7 +43,8 @@ def dedensify(graph: TaskGraph, threshold: int) -> Tuple[TaskGraph, List[Task]]:
             )
             cost = max(cost, out_node.cost)
 
-        new_node = Task(cost, memory, f"compressed{index}")
+        # Compressed nodes are simply a concatenation of inputs so out_memory same as in_memory
+        new_node = Task(cost, memory, memory, name=f"compressed{index}")
         relabellings[compressed_node] = new_node
         dedensified_graph.node_dict[new_node.name] = new_node
 
@@ -64,7 +65,6 @@ def chunk(graph: TaskGraph, memory_constraint: int) -> nx.DiGraph:
         # TODO:
         # - raise error in the case when operation can not be chunked and memory exceeds constraint
         # - implement a load balancing algorithm for assigning tasks to chunks
-        # - chunking should know axis along which mean, min, sum etc operation is applied
         if node.memory > memory_constraint:
             print(f"Chunking node {node} memory {node.memory}")
 
@@ -82,7 +82,7 @@ def chunk(graph: TaskGraph, memory_constraint: int) -> nx.DiGraph:
 
                 if (
                     edge_index == len(in_edges)
-                ) or memory + next_node.memory > memory_constraint:
+                ) or memory + next_node.out_memory > memory_constraint:
                     new_task_name = f"{node.name}_chunk{i_chunk}"
                     assert (
                         len(chunk_in_nodes) > 0
@@ -90,17 +90,12 @@ def chunk(graph: TaskGraph, memory_constraint: int) -> nx.DiGraph:
                     assert (
                         memory <= memory_constraint
                     ), f"Created chunk {new_task_name} with memory {memory} above constraint {memory_constraint}"
-                    chunked_graph.add_task(node.cost, memory, new_task_name)
+                    # TODO: New out_memory should be deduced from node operation on inputs
+                    chunked_graph.add_task(node.cost, in_memory=memory, out_memory=node.out_memory, name=new_task_name)
                     print(f"Adding new task {new_task_name}")
                     for x, size in chunk_in_nodes:
                         chunked_graph.add_comm_edge(x.name, new_task_name, size)
-                    if "compressed" in node.name:
-                        for _, out_node in chunked_graph.out_edges(node):
-                            chunked_graph.add_comm_edge(
-                                new_task_name, out_node.name, comm_size
-                            )
-                    else:
-                        chunked_graph.add_comm_edge(new_task_name, node.name, comm_size)
+                    chunked_graph.add_comm_edge(new_task_name, node.name, comm_size)
 
                     if edge_index == len(in_edges):
                         break
@@ -109,16 +104,14 @@ def chunk(graph: TaskGraph, memory_constraint: int) -> nx.DiGraph:
                     chunk_in_nodes = []
                     i_chunk += 1
 
-                memory += next_node.memory
+                memory += next_node.out_memory
                 comm_size += comm.size
                 chunk_in_nodes.append((next_node, comm.size))
 
             chunked_graph.remove_edges_from(in_edges)
 
-            if "compressed" in node.name:
-                chunked_graph.remove_node(chunked_graph.node_dict.pop(node.name))
-            else:
-                # TODO: Recompute node memory from new chunked tasks
-                node.memory = memory_constraint
+            # Recompute node memory from new chunked tasks
+            node.in_memory = sum([x.out_memory for x, _ in chunked_graph.in_edges(node)])
+            print(f"Node {node} post-chunking memory {node.memory}")
 
     return chunked_graph

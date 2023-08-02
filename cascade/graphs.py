@@ -7,10 +7,11 @@ import randomname
 
 
 class Task:
-    def __init__(self, cost, memory, name=None):
+    def __init__(self, cost, in_memory, out_memory, name=None):
         self.name = name or randomname.get_name()
         self.cost = cost
-        self.memory = memory
+        self.in_memory = in_memory
+        self.out_memory = out_memory
         self.state = None
 
     def __hash__(self) -> int:
@@ -25,6 +26,10 @@ class Task:
     def __lt__(self, other) -> bool:
         assert isinstance(other, Task)
         return self.name < other.name
+
+    @property
+    def memory(self):
+        return max(self.in_memory, self.out_memory)
 
 class Communication:
     def __init__(self, source, target, size, name=None):
@@ -50,8 +55,8 @@ class TaskGraph(nx.DiGraph):
         self.node_dict = {}
         super().__init__(**attr)
 
-    def add_task(self, cost, memory, name=None):
-        t = Task(cost, memory, name)
+    def add_task(self, cost, in_memory, out_memory, name=None):
+        t = Task(cost, in_memory, out_memory, name)
         self.node_dict[t.name] = t
         super().add_node(t)
 
