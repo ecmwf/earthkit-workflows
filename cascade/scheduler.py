@@ -1,68 +1,34 @@
 import copy
-from dataclasses import dataclass, field
 import randomname
 import datetime
 
-from .graphs import Task, Communication, Processor, Communicator
 from .utility import EventLoop
 
 
-####################################################################################################
-
-
-@dataclass
-class TaskState:
-    processor: Processor = None
-    finished: bool = False
-    start_time: float = 0
-    end_time: float = 0
-
-
-@dataclass
-class CommunicationState:
-    communicator: Communicator = None
-    finished: bool = False
-    start_time: float = 0
-    end_time: float = 0
-
-
-@dataclass
-class ProcessorState:
-    tasks: list[Task] = field(default_factory=list)
-    next_task_index: int = 0
-    current_task: Task = None
-    end_time: float = 0
-    idle_time: float = 0
-
-
-@dataclass
-class CommunicatorState:
-    tasks: list[Communication] = field(default_factory=list)
-    next_task_index: int = 0
-    current_task: Communication = None
-    end_time: float = 0
-    idle_time: float = 0
-
-
-####################################################################################################
-
 
 class Schedule:
-    def __init__(self, task_graph, context_graph):
+    def __init__(self, task_graph, context_graph, task_allocation):
         self.task_graph = task_graph
         self.context_graph = context_graph
+        self.task_allocation = task_allocation
         self.name = randomname.get_name()
         self.created_at = datetime.datetime.utcnow()
     
     def __repr__(self) -> str:
         str = f"============= Schedule: {self.name} =============\n"
         str += f"Created at: {self.created_at} UTC\n"
-        for processor in self.context_graph:
-            str += f"Processor {processor.name} completes at {processor.state.end_time:.2f} ({processor.state.idle_time:.2f} idle):\n"
-            str += " → ".join(task.name for task in processor.state.tasks) + "\n"
+        for name, tasks in self.task_allocation.items():
+            str += f"Processor {name}:\n"
+            str += " → ".join(task for task in tasks) + "\n"
         str += "================================================\n"
 
         return str
+    
+    def get_processor(self, task_name) -> str:
+        for processor, tasks in self.task_allocation.items():
+            if task_name in tasks:
+                return processor
+        raise RuntimeError(f"Task {task_name} not in schedule {self.task_allocation}")
 
 
 ####################################################################################################
@@ -70,18 +36,9 @@ class Schedule:
 
 class Scheduler:
     def __init__(self, task_graph, context_graph):
-        self.task_graph = task_graph  # copy.deepcopy(task_graph)
-        self.context_graph = context_graph  # copy.deepcopy(context_graph)
+        self.task_graph = task_graph 
+        self.context_graph = context_graph  
 
-    def reset_state(self):
-        for ctx in self.task_graph:
-            ctx.state = TaskState()
-        for _,_,ctx in self.task_graph.edges(data=True):
-            ctx["obj"].state = CommunicationState()
-        for ctx in self.context_graph:
-            ctx.state = ProcessorState()
-        for _,_,ctx in self.context_graph.edges(data=True):
-            ctx["obj"].state = CommunicatorState()
 
     def create_schedule(self) -> Schedule:
         raise NotImplementedError()
@@ -93,28 +50,21 @@ class Scheduler:
 class DepthFirstScheduler(Scheduler):
     def __init__(self, task_graph, context_graph):
         super().__init__(task_graph, context_graph)
+        self.task_allocation = {p.name: [] for p in context_graph}
+        self.completed_tasks = set()
 
     def assign_task_to_processor(self, task, processor, start_time):
         # print(f"Task {task.name} assigned to processor {processor.name} at time {start_time}")
-        processor.state.idle_time += processor.state.end_time - start_time
-        processor.state.tasks.append(task)
-        processor.state.current_task = task
-        task.state.processor = processor
-        task.state.start_time = start_time
-        task.state.end_time = start_time + task.cost / processor.speed
-        processor.state.end_time = task.state.end_time
-        self.sim.add_event(task.state.end_time, self.on_task_complete, task)
+        self.task_allocation[processor.name].append(task.name)
+        end_time = start_time + task.cost / processor.speed
+        self.sim.add_event(end_time, self.on_task_complete, task)
 
     def on_task_complete(self, time, task):
-        # print(f"Task {task.name} completed at time {time} by processor {task.state.processor.name}")
-        task.state.finished = True
-        self.ntasks_complete += 1
+        # print(f"Task {task.name} completed at time {time} by processor {processor.name}")
+        self.completed_tasks.add(task.name)
         for dependent in self.task_graph.successors(task):
-            if all(t.state.finished for t in self.task_graph.predecessors(dependent)):
+            if all(t.name in self.completed_tasks for t in self.task_graph.predecessors(dependent)):
                 self.eligible.append(dependent)
-
-        processor = task.state.processor
-        processor.state.current_task = None
 
         self.assign_idle_processors(time)
 
@@ -124,21 +74,21 @@ class DepthFirstScheduler(Scheduler):
 
         # Assign idle processors
         for processor in self.context_graph:
-            if processor.state.current_task is None:
+            if len(self.task_allocation[processor.name]) == 0 or self.task_allocation[processor.name][-1] in self.completed_tasks:
                 if len(self.eligible) > 0:
                     self.assign_task_to_processor(self.eligible.pop(), processor, time)
 
     def create_schedule(self):
-        self.reset_state()
+        self.completed_tasks = set()
+        self.task_allocation = {p.name: [] for p in self.context_graph}
         self.eligible = self.task_graph.get_roots()
-        self.ntasks_complete = 0
         self.sim = EventLoop()
         self.assign_idle_processors(time=0)
         self.sim.run()
         # print(f"Finished {self.ntasks_complete} tasks out of {len(self.task_graph)}")
-        assert self.ntasks_complete == len(self.task_graph)
+        assert len(self.completed_tasks) == len(self.task_graph)
 
-        s = Schedule(self.task_graph, self.context_graph)
+        s = Schedule(self.task_graph, self.context_graph, self.task_allocation)
         return s
 
 

@@ -63,7 +63,7 @@ class TaskGraph(nx.DiGraph):
     def add_comm_edge(self, u_of_edge, v_of_edge, size):
         u_of_edge = self.node_dict[u_of_edge]
         v_of_edge = self.node_dict[v_of_edge]
-        super().add_edge(u_of_edge, v_of_edge, obj=Communication(source=u_of_edge, target=v_of_edge, size=size))
+        super().add_edge(u_of_edge, v_of_edge, obj=Communication(source=u_of_edge, target=v_of_edge, size=size, name=f"{u_of_edge}-{v_of_edge}"))
 
     def get_roots(self):
         return [n for n in self if self.in_degree(n) == 0]
