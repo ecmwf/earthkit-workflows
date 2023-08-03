@@ -4,7 +4,6 @@ import datetime
 import random
 import numpy as np
 import networkx as nx
-import math
 
 from .utility import EventLoop
 from .executor import BasicExecutor
@@ -117,39 +116,46 @@ class AnnealingScheduler(Scheduler):
     def __init__(self, task_graph, context_graph):
         super().__init__(task_graph, context_graph)
 
-    def create_schedule(self):
-        # will use a dumb scheduler internally as a start point
+    def create_schedule(
+        self,
+        num_temp_levels: int = 100,
+        num_tries: int = 100,
+        num_success_cutoff: int = 10,
+        init_temp: float = 0.5,
+        temp_factor: float = 0.9,
+    ) -> Schedule:
+        """
+        Create schedule using simulated annealing to minimise execution cost, determined by simulating the
+        schedule using BasicExecutor. Uses depth first schedule as initial starting point. Moves currently
+        consist only of randomly picking two processors and one task in each and swapping them. Uses the
+        normalised exponential form for the acceptance function.
+
+        :param num_temp_levels: number of temperature levels to iterate over
+        :param num_tries: number of iterations to perform per temperature level
+        :param num_success_cutoff: number of successful iterations at each level after which
+        to proceed onto the next temperature level
+        :param init_temp: initial temperature between 0 and 1
+        :param temp_factor: factor for determining temperature of next level in the formula
+            T_{i+1} = T_{i} * temp_factor, where i is the iteration index
+        :return: schedule output from annealing algorithm
+        """
+
+        # Determine initial conditions
         schedule = DepthFirstScheduler(
             self.task_graph, self.context_graph
         ).create_schedule()
-        assert schedule.valid_allocations()
-
-        # will use an executor internally as a cost function
-        return self.anneal(schedule)
-
-    def update_temperature(
-        iteration: int, n_tries: int, init_temp: float, geometric_factor: float
-    ):
-        return init_temp * geometric_factor * math.floor(iteration / n_tries)
-
-    def anneal(self, schedule):
-        n_temp = 100
-        n_tries = 100
-        n_cont = 10
-        temp_factor = 0.9
-        temp = 0.5
-
         executor = BasicExecutor(schedule)
         report = executor.simulate()
         print("Initial Report\n", report)
         initial_cost = report.cost()
         previous_cost = report.cost()
 
+        temp = init_temp
         num_processes = len(self.context_graph)
         processors = list(schedule.task_allocation.keys())
-        for i_temp in range(n_temp):
-            n_success = 0
-            for _ in range(n_tries):
+        for i_temp in range(num_temp_levels):
+            num_success = 0
+            for _ in range(num_tries):
                 valid_schedule = False
                 while not valid_schedule:
                     new_task_allocations = copy.deepcopy(schedule.task_allocation)
@@ -190,13 +196,14 @@ class AnnealingScheduler(Scheduler):
                     previous_cost = new_cost
                     schedule = new_schedule
                     report = new_report
-                    n_success += 1
+                    num_success += 1
 
-                if n_success > n_cont:
+                if num_success > num_success_cutoff:
                     break
 
+            print(f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}")
             temp = temp * temp_factor
-            if n_success == 0:
+            if num_success == 0:
                 break
 
         print("Annealed Report\n", report)
