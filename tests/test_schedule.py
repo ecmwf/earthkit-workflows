@@ -33,5 +33,4 @@ def test_valid_allocations(allocations, exp):
 
     assert not nx.dag.has_cycle(task_graph)
 
-    schedule = Schedule(task_graph, ContextGraph(), allocations)
-    assert schedule.valid_allocations() == exp
+    assert Schedule.valid_allocations(task_graph, allocations) == exp

@@ -4,9 +4,11 @@ import datetime
 import random
 import numpy as np
 import networkx as nx
+from typing import List, Dict
 
 from .utility import EventLoop
 from .executor import BasicExecutor
+from .graphs import TaskGraph
 
 
 class Schedule:
@@ -16,6 +18,8 @@ class Schedule:
         self.task_allocation = task_allocation
         self.name = randomname.get_name()
         self.created_at = datetime.datetime.utcnow()
+
+        assert self.valid_allocations(self.task_graph, self.task_allocation)
 
     def __repr__(self) -> str:
         str = f"============= Schedule: {self.name} =============\n"
@@ -33,14 +37,17 @@ class Schedule:
                 return processor
         raise RuntimeError(f"Task {task_name} not in schedule {self.task_allocation}")
 
-    def valid_allocations(self) -> bool:
-        dependency_graph = copy.deepcopy(self.task_graph)
+    @classmethod
+    def valid_allocations(
+        cls, task_graph: TaskGraph, task_allocation: Dict[str, List]
+    ) -> bool:
+        dependency_graph = copy.deepcopy(task_graph)
 
-        for _, p_tasks in self.task_allocation.items():
+        for _, p_tasks in task_allocation.items():
             for i_task, task in enumerate(p_tasks):
                 if i_task < len(p_tasks) - 1:
-                    current_task = self.task_graph.node_dict[task]
-                    next_task = self.task_graph.node_dict[p_tasks[i_task + 1]]
+                    current_task = task_graph.node_dict[task]
+                    next_task = task_graph.node_dict[p_tasks[i_task + 1]]
                     dependency_graph.add_edge(current_task, next_task)
 
         return not nx.dag.has_cycle(dependency_graph)
@@ -173,10 +180,9 @@ class AnnealingScheduler(Scheduler):
                     ]
                     new_task_allocations[i_p2][i_task2] = task1
 
-                    new_schedule = Schedule(
-                        self.task_graph, self.context_graph, new_task_allocations
+                    valid_schedule = Schedule.valid_allocations(
+                        self.task_graph, new_task_allocations
                     )
-                    valid_schedule = new_schedule.valid_allocations()
 
                 all_allocated_tasks = set()
                 for allocations in new_task_allocations.values():
@@ -184,6 +190,9 @@ class AnnealingScheduler(Scheduler):
                 assert len(self.task_graph) == len(all_allocated_tasks)
 
                 # Check to see if new schedule is improvement
+                new_schedule = Schedule(
+                    self.task_graph, self.context_graph, new_task_allocations
+                )
                 executor = BasicExecutor(new_schedule)
                 new_report = executor.simulate()
                 new_cost = new_report.cost()
@@ -201,7 +210,9 @@ class AnnealingScheduler(Scheduler):
                 if num_success > num_success_cutoff:
                     break
 
-            print(f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}")
+            print(
+                f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}"
+            )
             temp = temp * temp_factor
             if num_success == 0:
                 break
