@@ -64,19 +64,21 @@ class ExecutionReport:
             str += f"Processor {processor.name} completes at {processor.state.end_time:.2f} ({processor.state.idle_time:.2f} idle):\n"
             str += " → ".join(f'{task} (end: {self.task_graph.node_dict[task].state.end_time})' for task in self.schedule.task_allocation[processor.name]) + "\n"
         str += "================================================\n"
+        str += "Note: Idle times currently incorrect.\n"
 
         return str
     
     def cost(self) -> float:
-        return sum([state.idle_time for state in self.schedule.processor_states.values()])
+        return sum([processor.state.idle_time for processor in self.context_graph])
     
 
 class Executor:
-    def __init__(self, schedule):
+    def __init__(self, schedule, with_communication: bool = True):
         self.schedule = schedule
 
         self.task_graph = copy.deepcopy(schedule.task_graph)
         self.context_graph = copy.deepcopy(schedule.context_graph)
+        self.with_communication = with_communication
 
     def reset_state(self):
         for task in self.task_graph:
@@ -162,7 +164,7 @@ class BasicExecutor(Executor):
         for start, end, edge in list(self.task_graph.edges(data=True)):
             start_processor = self.context_graph.node_dict[self.schedule.get_processor(start.name)]
             end_processor = self.context_graph.node_dict[self.schedule.get_processor(end.name)]
-            if start_processor == end_processor:
+            if not self.with_communication or start_processor == end_processor:
                 self.task_graph[start][end]["obj"].state.finished = True
             else:
                 t = self.task_graph._make_communication_task(start, end, edge["obj"])

@@ -1,5 +1,6 @@
 from cascade.cascade import Cascade
 from cascade.graphs import ContextGraph, TaskGraph
+from cascade.scheduler import AnnealingScheduler
 
 
 class TestDepthFirstScheduler:
@@ -53,8 +54,13 @@ class TestDepthFirstScheduler:
         execution = Cascade.simulate(schedule)
         print(execution)
 
+    def test_annealing_scheduler(self):
+        schedule = AnnealingScheduler(self.G, self.contexts).create_schedule()
+        execution = Cascade.simulate(schedule)
+        print(f"With Communications:", execution)
 
 if __name__ == "__main__":
     t = TestDepthFirstScheduler()
     t.setup_method(None)
     t.test_depth_first_scheduler()
+    t.test_annealing_scheduler()
