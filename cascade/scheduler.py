@@ -8,7 +8,7 @@ from typing import List, Dict
 
 from .utility import EventLoop
 from .executor import BasicExecutor
-from .graphs import TaskGraph
+from .graphs import TaskGraph, Task
 
 
 class Schedule:
@@ -56,6 +56,31 @@ class Schedule:
 ####################################################################################################
 
 
+class MemoryUsage:
+    def __init__(self):
+        self.tasks_in_memory: List[Task] = []
+
+    @property
+    def memory(self) -> float:
+        return np.sum([t.memory for t in self.tasks_in_memory])
+
+    def remove_task(self, task: Task):
+        self.tasks_in_memory.remove(task)
+
+    def add_task(self, task: Task):
+        if task not in self.tasks_in_memory:
+            self.tasks_in_memory.append(task)
+
+    def current_tasks(self) -> List[Task]:
+        return self.tasks_in_memory[:]
+
+    def __repr__(self) -> str:
+        return f"Memory:{self.memory},Tasks:{self.tasks_in_memory}"
+
+
+####################################################################################################
+
+
 class Scheduler:
     def __init__(self, task_graph, context_graph):
         self.task_graph = task_graph
@@ -72,12 +97,14 @@ class DepthFirstScheduler(Scheduler):
     def __init__(self, task_graph, context_graph):
         super().__init__(task_graph, context_graph)
         self.task_allocation = {p.name: [] for p in context_graph}
+        self.memory_usage = {p.name: MemoryUsage() for p in self.context_graph}
         self.completed_tasks = set()
 
     def assign_task_to_processor(self, task, processor, start_time):
         # print(f"Task {task.name} assigned to processor {processor.name} at time {start_time}")
         self.task_allocation[processor.name].append(task.name)
         end_time = start_time + task.cost / processor.speed
+        self.memory_usage[processor.name].add_task(task)
         self.sim.add_event(end_time, self.on_task_complete, task)
 
     def on_task_complete(self, time, task):
@@ -92,17 +119,31 @@ class DepthFirstScheduler(Scheduler):
 
         self.assign_idle_processors(time)
 
+    def update_memory_usage(self, processor) -> float:
+        for task in self.memory_usage[processor.name].current_tasks():
+            sucessors = self.task_graph.successors(task)
+            if all(
+                [x in self.completed_tasks or x in self.eligible for x in sucessors]
+            ):
+                self.memory_usage[processor.name].remove_task(task)
+
+        return self.memory_usage[processor.name].memory
+
     def assign_idle_processors(self, time):
         # Sort next tasks
         self.eligible.sort(key=lambda x: (x.cost, self.task_graph.out_degree[x]))
 
         # Assign idle processors
         for processor in self.context_graph:
+            new_mem_usage = self.update_memory_usage(processor)
             if (
                 len(self.task_allocation[processor.name]) == 0
                 or self.task_allocation[processor.name][-1] in self.completed_tasks
             ):
-                if len(self.eligible) > 0:
+                if (
+                    len(self.eligible) > 0
+                    and (new_mem_usage + self.eligible[0].memory) < processor.memory
+                ):
                     self.assign_task_to_processor(self.eligible.pop(), processor, time)
 
     def create_schedule(self):
