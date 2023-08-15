@@ -1,260 +1,230 @@
 import randomname
+import functools
 from ppgraph import Node, Graph
-from typing import List
+from typing import List, Dict
 from ppgraph import pyvis
-from itertools import product
+import numpy as np
+import itertools
+import xarray as xr
+from collections import OrderedDict
 
-def _mean(x):
-    count = 0
-    sum = 0
-    for m in x:
-        sum += m
-        count += 1
-    return sum/count
 
-def _sum(x):
-    sum = 0
-    for m in x:
-        sum += m
-    return sum
+def read(request: Dict):
+    print(request)
 
-def _read(x):
-    # actually read the data one by one
-    pass
 
-def spectral_transform(x):
-    return x
+class Cascade:
+    def read(self, request: Dict):
+        # Need to carry data about the request to know which node corresponds to
+        # what meta data
+        dims = OrderedDict()
+        for key, values in request.items():
+            if hasattr(values, "__iter__") and not isinstance(values, str):
+                dims[key] = len(values)
 
-def _expand_request(req):
-    metadata = {}
-    for r in req.split(","):
-        lhs, rhs = r.split("=")
-        if "to" in rhs:
-            rhs += "/by/1" # add default values
-            frm,_,to,_,by,*_ = rhs.split("/")
-            metadata[lhs] = [i for i in range(int(frm), int(to), int(by))]
+        if len(dims) == 0:
+            return SingleAction(functools.partial(read, request), None)
+
+        nodes = np.empty(tuple(dims.values()), dtype=object)
+        for params in itertools.product(*[request[x] for x in dims.keys()]):
+            new_request = request.copy()
+            indices = []
+            for index, expand_param in enumerate(dims.keys()):
+                try:
+                    new_request[expand_param] = params[index]
+                except:
+                    print(params, index)
+                    raise
+                indices.append(list(request[expand_param]).index(params[index]))
+            read_with_request = functools.partial(read, new_request)
+            try:
+                nodes[tuple(indices)] = Node(
+                    randomname.generate(), payload=read_with_request
+                )
+            except:
+                print(indices, dims, nodes.shape)
+                print(nodes)
+                raise
+        # Currently using xarray for keeping track of dimensions but these should
+        # belong in node attributes on the graph?
+        return MultiAction(
+            None,
+            xr.DataArray(
+                nodes,
+                dims=dims.keys(),
+                coords={key: list(request[key]) for key in dims.keys()},
+            ),
+        )
+
+
+class SingleAction:
+    def __init__(self, func, previous):
+        self.previous = previous
+        if self.previous is None:
+            self.nodes = xr.DataArray([Node(randomname.generate(), payload=func)])
         else:
-            metadata[lhs] = [rhs]
+            self.nodes = xr.DataArray(
+                [
+                    Node(
+                        randomname.generate(),
+                        payload=func,
+                        **{
+                            f"input{x}": node
+                            for x, node in enumerate(self.previous.nodes.data.flatten())
+                        },
+                    )
+                ]
+            )
 
-    prod = list(product(*metadata.values()))
-    product_with_keys = [{k: v for k, v in zip(metadata.keys(), values)} for values in prod]
-    return product_with_keys
-    
-def _combine_dicts(dict_list):
-    combined = defaultdict(list)
-    for d in dict_list:
-        for key, value in d.items():
-            if isinstance(value, list):
-                combined[key].extend(value)
-            else:
-                combined[key].append(value)
-    return dict(combined)
-
-
-class Action:
-    def __init__(self, func, root=None, count=1):
-        self.func = func
-        self.next = None
-        self.root = root or self
-        self.count = count
-
-    # -- Generators
-
-    def mean(self, key=""):
-        self.next = MultiToSingleAction(_mean, self.root )
-        return self.next
-    
-    def sum(self):
-        self.next = MultiToSingleAction(_mean, self.root )
-        return self.next
-    
     def then(self, func):
-        self.next = SingleToSingleAction(func, self.root)
-        return self.next
-    
-    def foreach(self, func):
-        self.next = MultiToMultiAction(func, self.root)
-        return self.next
-    
-    def groupby(self, key):
-        self.next = GroupingAction(key, self.root)
-        return self.next
-    
-    def constant(self, value):
-        self.next = SingleToSingleAction(lambda x: value, self.root)
-        return self.next
-    
-    def repeat(self, count):
-        self.next = MultiToMultiAction(lambda x: x, self.root, self.count * count)
-        return self.next
-    
+        return SingleAction(func, self)
+
     def write(self):
-        self.next = SingleToSingleAction(lambda x: print(x), self.root)
-        return self.next
-    
-    def threshold(self, threshold):
-        self.next = MultiToMultiAction(lambda x: 1 if x > threshold else 0, self.root)
-        return self.next
-    
-    # -- Graph Generation
-    
-    def graph(self) -> List[Node]:
-        return Graph(self.root._graph(None))
+        return SingleAction(lambda x: print(x), self)
 
-    def _graph(self, previous: List[Node]) -> List[Node]:
-        # root node does nothing, just returns the next node
-        return self.next._graph(None)
-
-class Cascade(Action):
-    def __init__(self):
-        super().__init__(None)
-
-    def read(self, request):
-        fields = _expand_request(request)
-        self.next = SingleToMultiAction(lambda x: _read(x), self.root, len(fields))
-        return self.next
+    def graph(self):
+        return Graph(self.nodes.data)
 
 
-class SingleToSingleAction(Action):
-    
-    def _graph(self, previous):
+class MultiAction:
+    def __init__(self, previous, nodes, internal_dims=0):
+        self.previous = previous
+        self.nodes = nodes
+        self.internal_dims = internal_dims
 
-        node = Node(randomname.generate(), payload=self.func)
+    def map(self, func):
+        # Applies operation to every node, keeping node array structure
+        new_nodes = np.empty(self.nodes.shape, dtype=object)
+        it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
+        for node in it:
+            new_nodes[it.multi_index] = Node(
+                randomname.generate(), payload=func, input=node[()]
+            )
+        return MultiAction(
+            self,
+            xr.DataArray(new_nodes, coords=self.nodes.coords, dims=self.nodes.dims),
+            self.internal_dims,
+        )
 
-        if previous is not None:
-            assert len(previous) == 1
-            node.inputs[randomname.generate()] = previous[0].get_output()
+    def groupby(self, key):
+        grouped_nodes = self.nodes.groupby(key)
+        new_nodes = np.empty(len(grouped_nodes), dtype=object)
+        for index, group in enumerate(grouped_nodes):
+            group_name, nodes = group
+            inputs = {f"input{x}": node.data[()] for x, node in enumerate(nodes)}
+            new_nodes[index] = Node(
+                f"{key}:{group_name}", payload=np.concatenate, **inputs
+            )
+        new_nodes = xr.DataArray(
+            new_nodes, dims=key, coords={key: self.nodes.coords[key]}
+        )
+        return MultiAction(self, new_nodes, self.internal_dims + 1)
 
-        if self.next is None:
-            return [node]
-        return self.next._graph([node])
+    def reduce(self, func, key: str = ""):
+        if self.nodes.size == 1 and self.internal_dims == 1:
+            return SingleAction(func, self)
 
-class MultiToMultiAction(Action):
-    
-    def _graph(self, previous):
+        # If reduction operation acts on internal array, then need to reduce internal dimensions
+        if self.nodes.ndim == 1:
+            new_dims = self.internal_dims
+            if self.nodes.size == 1:
+                new_dims -= 1
+            assert new_dims >= 0
+            new_nodes = np.array(
+                [
+                    Node(
+                        randomname.generate(),
+                        payload=func,
+                        **{f"input{x}": node for x, node in enumerate(self.nodes.data)},
+                    )
+                ]
+            )
+            return MultiAction(self, xr.DataArray(new_nodes), new_dims)
 
-        assert previous is not None
+        if len(key) == 0:
+            key = self.nodes.dims[0]
 
-        nodes = []
-        for p in previous:
-            node = Node(randomname.generate(), payload=self.func, input=p)
-            nodes.append(node)
+        new_dims = [x for x in self.nodes.dims if x != key]
+        self.nodes.transpose(key, *new_dims)
+        new_nodes = np.empty(self.nodes.shape[1:], dtype=object)
+        it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
+        for _ in it:
+            inputs = {
+                f"input{x}": node
+                for x, node in enumerate(
+                    self.nodes[(slice(None, None, 1), *it.multi_index)].data
+                )
+            }
+            new_nodes[it.multi_index] = Node(
+                randomname.generate(), payload=func, **inputs
+            )
+        return MultiAction(
+            self,
+            xr.DataArray(
+                new_nodes,
+                coords={key: self.nodes.coords[key] for key in new_dims},
+                dims=new_dims,
+            ),
+            self.internal_dims,
+        )
 
-        if self.next is None:
-            return nodes
-        return self.next._graph(nodes)
-        
-    
-class SingleToMultiAction(Action):
+    def join(self, other_action: "MultiAction", dim_name: str = ""):
+        if len(dim_name) == 0:
+            dim_name = randomname.generate()
+        return MultiAction(
+            self,
+            xr.concat([self.nodes, other_action.nodes], dim_name),
+            self.internal_dims,
+        )
 
-    def _graph(self, previous):
-
-        # create nodes in the graph
-        nodes = []
-        for c in range(self.count):
-            nodes.append( Node(randomname.generate(), payload=self.func) )
-            if previous is not None:
-                assert len(previous) == 1
-                nodes[c].inputs[randomname.generate()] = previous[0].get_output()
-        
-
-        if self.next is None:
-            return nodes
-
-        return self.next._graph(nodes)        
-    
-class MultiToSingleAction(Action):
-    def _graph(self, previous):
-
-        node = Node(randomname.generate(), payload=self.func)
-
-        if previous is not None:
-            for i,p in enumerate(previous):
-                node.inputs[randomname.generate()] = p.get_output()
-
-        if self.next is None:
-            return [node]
-        
-        return self.next._graph([node])
-
-class GroupingAction(Action):
-
-    def __init__(self, key, root):
-        super().__init__(None, root)
-        if key == "step":
-            self.count = 50 # hacky until we track metadata we can actually group on
-
-    def _graph(self, previous):
-        
-        assert previous is not None
-
-        nodes = []
-        n = 0
-        for p in previous:
-            if n % self.count == 0:
-                node = Node(randomname.generate(), payload=self.func)
-                nodes.append(node)
-            else:
-                node = nodes[-1]
-            node.inputs[str(n % self.count)] = p.get_output()
-            n += 1
-        
-        if self.next is None:
-            return nodes
-        return self.next._graph(nodes)
-
-# -------------------------------------------------------------------------------------
-
-Cascade().read("stream=efhs,levtype=pl,level=850,step=0-240/by/12").foreach(spectral_transform).mean().write()
-
-# Cascade().constant(1).repeat(50).sum().write()
+    def graph(self):
+        return Graph(self.nodes.data)
 
 
-
-# -------------------------------------------------------------------------------------
-
-# windows = [[0, 20], [10, 30], [20, 40], [30, 50], [40, 60], [50, 70], [60, 80]]
-window_ranges = [[120, 240], [168, 240]]
+window_ranges = [[120, 144], [168, 240]]
 window_cascades = []
 total_graph = Graph([])
 
 for window in window_ranges:
-
     start = window[0]
     end = window[1]
 
-    climatology = Cascade().read(f"stream=efhs,levtype=pl,level=850,step={start}-{end}")\
-                    .foreach(spectral_transform)
-    
-    t850 = Cascade().read(f"date=...,levtype=pl,level=850,number=1/to/50,step={start}/to/{end}/by/12")\
-                    .foreach(spectral_transform)\
-                    .groupby("step")\
-                    .foreach(lambda x: x - 2)\
-                    .mean("step")\
-                    .threshold("< -2")\
-                    .mean("number")\
-                    .write()
-    
-    # Join not yet supported
-    if False:
-        t850 = Cascade().read(f"date=...,levtype=pl,level=850,number=1/to/50,step={start}/to/{end}/by/12")\
-                        .foreach(spectral_transform)\
-                        .groupby("step")\
-                        .join(climatology)\
-                        .foreach(lambda x, y: x - y)\
-                        .mean("step")\
-                        .threshold("< -2")\
-                        .mean("number")\
-                        .write()
-    
-    if False:
-        t850 = Cascade().join(t850, climatology).foreach(lambda x, y: x - y).mean("step").threshold("< -2").mean("number").write()
+    climatology = Cascade().read(
+        {
+            "stream": "efhs",
+            "levtype": "pl",
+            "level": 850,
+            "step": range(start, end + 1, 12),
+        }
+    )
+
+    t850 = (
+        Cascade()
+        .read(
+            {
+                "stream": "enfo",
+                "levtype": "pl",
+                "level": 850,
+                "number": range(1, 5),
+                "step": range(start, end + 1, 12),
+            }
+        )
+        .groupby("step")
+        .join(climatology)
+        .reduce(np.subtract)
+        .reduce(np.mean)
+        .map(lambda x: 1 if x > -2 else 0)
+        .reduce(np.mean)
+        .write()
+    )
 
     window_cascades.append(t850)
 
-    # draw graph    
+    # draw graph
     g = t850.graph()
-    pyvis.to_pyvis(g, notebook=True, cdn_resources="remote").show(f"graph_{window}.html")
+    pyvis.to_pyvis(g, notebook=True, cdn_resources="remote").show(
+        f"graph_{window}.html"
+    )
     total_graph += g
 
 if False:
@@ -271,7 +241,6 @@ if False:
     take10.mean().join(other).sum().write()
 
 
-
 # orderby
 # groupby
 # take
@@ -282,16 +251,12 @@ if False:
 # Cascade::read().joinread()
 
 
-
-
-
-
 pyvis.to_pyvis(g, notebook=True, cdn_resources="remote").show("index.html")
 
 
 # # -----------------------
 
-# Dask notes: 
+# Dask notes:
 
 # cant go into nested functions
 # cant do foreach, we have to code it explicitly
