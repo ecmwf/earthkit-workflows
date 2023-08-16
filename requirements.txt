@@ -3,3 +3,4 @@ cupy-cuda12x
 numpy
 randomname
 jax
+xarray
