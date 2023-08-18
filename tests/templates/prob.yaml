@@ -1,0 +1,484 @@
+members: 5
+parameters:
+  rain:
+    windows:
+      - window_operation: 'diff'
+        include_start_step: True
+        periods:
+          - range: [0, 24, 24]
+          - range: [12, 36, 24]
+          - range: [24, 48, 24]
+          - range: [36, 60, 24]
+          - range: [48, 72, 24]
+          - range: [60, 84, 24]
+          - range: [72, 96, 24]
+          - range: [84, 108, 24]
+          - range: [96, 120, 24]
+          - range: [108, 132, 24]
+          - range: [120, 144, 24]
+          - range: [132, 156, 24]
+          - range: [144, 168, 24]
+          - range: [156, 180, 24]
+          - range: [168, 192, 24]
+          - range: [180, 204, 24]
+          - range: [192, 216, 24]
+          - range: [204, 228, 24]
+          - range: [216, 240, 24]
+        thresholds:
+          - out_paramid: 131060
+            comparison: ">="
+            value: 0.001
+            localDecimalScaleFactor: 3
+          - out_paramid: 131061
+            comparison: ">="
+            value: 0.005
+            localDecimalScaleFactor: 3
+          - out_paramid: 131062
+            comparison: ">="
+            value: 0.01
+            localDecimalScaleFactor: 3
+          - out_paramid: 131063
+            comparison: ">="
+            value: 0.02
+            localDecimalScaleFactor: 3
+        grib_set:
+          timeRangeIndicator: 5
+          stepType: diff 
+      - window_operation: 'diff'
+        include_start_step: True
+        periods:
+          - range: [0, 24, 24]
+          - range: [12, 36, 24]
+          - range: [24, 48, 24]
+          - range: [36, 60, 24]
+          - range: [48, 72, 24]
+          - range: [60, 84, 24]
+          - range: [72, 96, 24]
+          - range: [84, 108, 24]
+          - range: [96, 120, 24]
+          - range: [108, 132, 24]
+          - range: [120, 144, 24]
+          - range: [132, 156, 24]
+          - range: [144, 168, 24]
+          - range: [156, 180, 24]
+          - range: [168, 192, 24]
+          - range: [180, 204, 24]
+          - range: [192, 216, 24]
+          - range: [204, 228, 24]
+          - range: [216, 240, 24]
+        thresholds:
+          - out_paramid: 131098 
+            comparison: ">="
+            value: 0.025
+          - out_paramid: 131099
+            comparison: ">="
+            value: 0.05
+          - out_paramid: 131085
+            comparison: ">="
+            value: 0.1
+        grib_set:
+          stepType: 'accum'
+          stepRange: '0-0' # Placeholder so that it is set before edition, it will be filled in with correct values when run
+          edition: 2
+          scaleFactorOfLowerLimit: 0
+          probabilityType: 3
+          typeOfGeneratingProcess: 5
+          indicatorOfUnitForTimeIncrement: 1
+          timeIncrement: 12
+          packingType: "grid_ccsds"
+          scaleFactorOfUpperLimit: 'MISSING'
+          scaledValueOfUpperLimit: 'MISSING'
+      - window_operation: 'diff'
+        include_start_step: True
+        periods: 
+          - range: [120, 240, 120]
+          - range: [120, 168, 48]
+          - range: [168, 240, 72]
+        thresholds:
+          - out_paramid: 131064
+            comparison: '<'
+            value: 0.0001
+            localDecimalScaleFactor: 4
+        grib_set:
+          timeRangeIndicator: 5
+          stepType: diff 
+      - window_operation: 'diffdailyrate'
+        include_start_step: True
+        periods: 
+          - range: [120, 240, 120]
+          - range: [120, 168, 48]
+          - range: [168, 240, 72]
+        thresholds:
+          - out_paramid: 131065
+            comparison: '<'
+            value: 0.001
+            localDecimalScaleFactor: 4
+          - out_paramid: 131066
+            comparison: '>='
+            value: 0.003
+            localDecimalScaleFactor: 4
+          - out_paramid: 131067
+            comparison: '>='
+            value: 0.005
+            localDecimalScaleFactor: 4
+        grib_set:
+          timeRangeIndicator: 5
+          stepType: diff 
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 228
+      date: 20230817
+      time: 00
+  ff:
+    input_combine_operation: 'norm'
+    windows:
+      - periods:
+          - range: [12, 12]
+          - range: [24, 24]
+          - range: [36, 36]
+          - range: [48, 48]
+          - range: [60, 60]
+          - range: [72, 72]
+          - range: [84, 84]
+          - range: [96, 96]
+          - range: [108, 108]
+          - range: [120, 120]
+          - range: [132, 132]
+          - range: [144, 144]
+          - range: [156, 156]
+          - range: [168, 168]
+          - range: [180, 180]
+          - range: [192, 192]
+          - range: [204, 204]
+          - range: [216, 216]
+          - range: [228, 228]
+          - range: [240, 240]
+        thresholds:
+          - out_paramid: 131068
+            comparison: ">="
+            value: 10
+          - out_paramid: 131069
+            comparison: ">="
+            value: 15
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: [165, 166]
+      date: 20230817
+      time: 00
+  10fg:
+    steps:
+      - interval: 6
+        start_step: 6
+        end_step: 240
+    windows:
+      - window_operation: "maximum"
+        periods:
+          - range: [0, 24]
+          - range: [12, 36]
+          - range: [24, 48]
+          - range: [36, 60]
+          - range: [48, 72]
+          - range: [60, 84]
+          - range: [72, 96]
+          - range: [84, 108]
+          - range: [96, 120]
+          - range: [108, 132]
+          - range: [120, 144]
+          - range: [132, 156]
+          - range: [144, 168]
+          - range: [156, 180]
+          - range: [168, 192]
+          - range: [180, 204]
+          - range: [192, 216]
+          - range: [204, 228]
+          - range: [216, 240]
+          - range: [120, 168]
+          - range: [120, 240]
+          - range: [168, 240]
+        thresholds:
+          - out_paramid: 131070
+            comparison: ">="
+            value: 15
+          - out_paramid: 131071
+            comparison: ">="
+            value: 20
+          - out_paramid: 131072
+            comparison: ">="
+            value: 25
+      - window_operation: "maximum"
+        periods:
+          - range: [0, 24]
+          - range: [12, 36]
+          - range: [24, 48]
+          - range: [36, 60]
+          - range: [48, 72]
+          - range: [60, 84]
+          - range: [72, 96]
+          - range: [84, 108]
+          - range: [96, 120]
+          - range: [108, 132]
+          - range: [120, 144]
+          - range: [132, 156]
+          - range: [144, 168]
+          - range: [156, 180]
+          - range: [168, 192]
+          - range: [180, 204]
+          - range: [192, 216]
+          - range: [204, 228]
+          - range: [216, 240]
+          - range: [120, 168]
+          - range: [120, 240]
+          - range: [168, 240]
+        thresholds:
+          - out_paramid: 131100
+            comparison: ">="
+            value: 10
+        grib_set:
+          edition: 2
+          productDefinitionTemplateNumber: 9
+          typeOfGeneratingProcess: 5
+          indicatorOfUnitForTimeIncrement: 1
+          timeIncrement: 12
+          typeOfTimeIncrement: 2 # Not set in job script but needed?
+          packingType: "grid_ccsds"
+          scaleFactorOfUpperLimit: 'MISSING'
+          scaledValueOfUpperLimit: 'MISSING'
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 123
+      date: 20230817
+      time: 00
+  swh:
+    steps:
+      - interval: 12
+        start_step: 12
+        end_step: 240
+      - interval: 3
+        start_step: 123
+        end_step: 144
+      - interval: 6
+        start_step: 150
+        end_step: 240
+    windows:
+      - periods:
+          - range: [12, 12]
+          - range: [24, 24]
+          - range: [36, 36]
+          - range: [48, 48]
+          - range: [60, 60]
+          - range: [72, 72]
+          - range: [84, 84]
+          - range: [96, 96]
+          - range: [108, 108]
+          - range: [120, 120]
+          - range: [132, 132]
+          - range: [144, 144]
+          - range: [156, 156]
+          - range: [168, 168]
+          - range: [180, 180]
+          - range: [192, 192]
+          - range: [204, 204]
+          - range: [216, 216]
+          - range: [228, 228]
+          - range: [240, 240]
+        thresholds:
+          - out_paramid: 131074
+            comparison: ">="
+            value: 2
+          - out_paramid: 131075
+            comparison: ">="
+            value: 4
+          - out_paramid: 131076
+            comparison: ">="
+            value: 6
+          - out_paramid: 131077
+            comparison: ">="
+            value: 8
+        grib_set:
+          timeRangeIndicator: 0
+      - window_operation: "maximum"
+        periods:
+          - range: [120, 168]
+          - range: [120, 240]
+          - range: [168, 240]
+        thresholds:
+          - out_paramid: 131074
+            comparison: ">="
+            value: 2
+          - out_paramid: 131075
+            comparison: ">="
+            value: 4
+          - out_paramid: 131076
+            comparison: ">="
+            value: 6
+          - out_paramid: 131077
+            comparison: ">="
+            value: 8
+    forecast:
+      class: od
+      stream: waef
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 140229
+      date: 20230817
+      time: 00
+  mwp:
+    steps:
+      - interval: 12
+        start_step: 12
+        end_step: 240
+      - interval: 3
+        start_step: 123
+        end_step: 144
+      - interval: 6
+        start_step: 150
+        end_step: 240
+    windows:
+      - periods:
+          - range: [12, 12]
+          - range: [24, 24]
+          - range: [36, 36]
+          - range: [48, 48]
+          - range: [60, 60]
+          - range: [72, 72]
+          - range: [84, 84]
+          - range: [96, 96]
+          - range: [108, 108]
+          - range: [120, 120]
+          - range: [132, 132]
+          - range: [144, 144]
+          - range: [156, 156]
+          - range: [168, 168]
+          - range: [180, 180]
+          - range: [192, 192]
+          - range: [204, 204]
+          - range: [216, 216]
+          - range: [228, 228]
+          - range: [240, 240]
+        thresholds:
+          - out_paramid: 131078
+            comparison: ">="
+            value: 8
+          - out_paramid: 131079
+            comparison: ">="
+            value: 10
+          - out_paramid: 131080
+            comparison: ">="
+            value: 12
+          - out_paramid: 131081
+            comparison: ">="
+            value: 15
+        grib_set:
+          timeRangeIndicator: 0
+      - window_operation: "maximum"
+        periods:
+          - range: [120, 168]
+          - range: [120, 240]
+          - range: [168, 240]
+        thresholds:
+          - out_paramid: 131078
+            comparison: ">="
+            value: 8
+          - out_paramid: 131079
+            comparison: ">="
+            value: 10
+          - out_paramid: 131080
+            comparison: ">="
+            value: 12
+          - out_paramid: 131081
+            comparison: ">="
+            value: 15
+    forecast:
+      class: od
+      stream: waef
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 140232
+      date: 20230817
+      time: 00
+  2t:
+    steps:
+      - interval: 12
+        start_step: 12
+        end_step: 240
+      - interval: 3
+        start_step: 123
+        end_step: 144
+      - interval: 6
+        start_step: 150
+        end_step: 240
+    windows:
+      - periods:
+          - range: [12, 12]
+          - range: [24, 24]
+          - range: [36, 36]
+          - range: [48, 48]
+          - range: [60, 60]
+          - range: [72, 72]
+          - range: [84, 84]
+          - range: [96, 96]
+          - range: [108, 108]
+          - range: [120, 120]
+          - range: [132, 132]
+          - range: [144, 144]
+          - range: [156, 156]
+          - range: [168, 168]
+          - range: [180, 180]
+          - range: [192, 192]
+          - range: [204, 204]
+          - range: [216, 216]
+          - range: [228, 228]
+          - range: [240, 240]
+        thresholds:
+          - out_paramid: 131073
+            comparison: "<="
+            value: 273.15
+            localDecimalScaleFactor: 2
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 167
+      date: 20230817
+      time: 00
+  mn2t6:
+    steps:
+      - interval: 6
+        start_step: 126
+        end_step: 240
+    windows:
+      - window_operation: minimum
+        periods:
+          - range: [120, 168]
+          - range: [120, 240]
+          - range: [168, 240]
+        thresholds:
+        - out_paramid: 131073
+          comparison: "<="
+          value: 273.15
+          localDecimalScaleFactor: 2
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 122
+      date: 20230817
+      time: 00

@@ -1,0 +1,169 @@
+members: 5
+parameters:
+  t850:
+    steps:
+      - interval: 12
+        start_step: 0
+        end_step: 240
+    windows:
+      - periods:
+          - range: [0, 0]
+          - range: [12, 12]
+          - range: [24, 24]
+          - range: [36, 36]
+          - range: [48, 48]
+          - range: [60, 60]
+          - range: [72, 72]
+          - range: [84, 84]
+          - range: [96, 96]
+          - range: [108, 108]
+          - range: [120, 120]
+          - range: [132, 132]
+          - range: [144, 144]
+          - range: [156, 156]
+          - range: [168, 168]
+          - range: [180, 180]
+          - range: [192, 192]
+          - range: [204, 204]
+          - range: [216, 216]
+          - range: [228, 228]
+          - range: [240, 240]
+        thresholds:
+          - out_paramid: 131022
+            comparison: "<"
+            value: -8
+          - out_paramid: 131023
+            comparison: "<"
+            value: -4
+          - out_paramid: 131024
+            comparison: ">"
+            value: 4
+          - out_paramid: 131025
+            comparison: ">"
+            value: 8
+        grib_set:
+          bitsPerValue: 24
+      - periods:
+          - range: [120, 240]
+          - range: [168, 240]
+          - range: [120, 168]
+        window_operation: 'mean'
+        include_start_step: true
+        thresholds:
+          - out_paramid: 131020
+            comparison: "<"
+            value: -2
+          - out_paramid: 131021
+            comparison: ">="
+            value: 2
+        grib_set:
+          bitsPerValue: 24
+      - std_anomaly: True
+        periods:
+          - range: [0, 0]
+          - range: [12, 12]
+          - range: [24, 24]
+          - range: [36, 36]
+          - range: [48, 48]
+          - range: [60, 60]
+          - range: [72, 72]
+          - range: [84, 84]
+          - range: [96, 96]
+          - range: [108, 108]
+          - range: [120, 120]
+          - range: [132, 132]
+          - range: [144, 144]
+          - range: [156, 156]
+          - range: [168, 168]
+          - range: [180, 180]
+          - range: [192, 192]
+          - range: [204, 204]
+          - range: [216, 216]
+          - range: [228, 228]
+          - range: [240, 240]
+        thresholds:
+          - out_paramid: 133093
+            comparison: '>'
+            value: 1
+          - out_paramid: 133094
+            comparison: '>'
+            value: 1.5
+          - out_paramid: 133095
+            comparison: '>'
+            value: 2
+          - out_paramid: 133096
+            comparison: '<'
+            value: -1
+          - out_paramid: 133097
+            comparison: '<'
+            value: -1.5
+          - out_paramid: 133098
+            comparison: '<'
+            value: -2
+        grib_set:
+          localDefinitionNumber: 30
+          bitsPerValue: 24
+          edition: 2
+          typeOfGeneratingProcess: 5
+          paramId: 0
+          timeIncrement: 12
+          indicatorOfUnitForTimeIncrement: 1
+          typeOfStatisticalProcessing: 10
+          packingType: "grid_ccsds"
+          scaleFactorOfUpperLimit: 'MISSING'
+          scaledValueOfUpperLimit: 'MISSING'
+    defs:
+      base_keys: &base_keys
+        class: 'od'
+        levelist: 850
+        levtype: 'pl'  
+        domain: g 
+        param: 130
+      base_interp: &base_interp
+        grid: 'O1280'
+        intgrid: none
+        legendre-loader: shmem
+        matrix-loader: file-io
+    forecast:
+      - <<: *base_keys
+        stream: 'enfo'
+        type: cf
+        date: 20230818
+        time: 12
+        interpolate: *base_interp
+      - <<: *base_keys
+        stream: 'enfo'
+        type: pf 
+        date: 20230818
+        time: 12
+        interpolate: *base_interp
+    climatology:
+      clim_keys:
+        <<: *base_keys
+        stream: 'efhs'
+        type: [em, es]
+        date: 20230817
+        time: 00
+        interpolate: *base_interp
+      steps:
+        0: 12
+        12: 24
+        24: 36
+        36: 48
+        48: 60
+        60: 72
+        72: 84
+        84: 96
+        96: 108
+        108: 120
+        120: 132
+        132: 144
+        144: 156
+        156: 168
+        168: 180
+        180: 192
+        192: 204
+        204: 216
+        216: 228
+        228: 240
+        240: 252

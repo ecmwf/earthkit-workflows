@@ -83,7 +83,6 @@ class MultiAction(Action):
         new_nodes = xr.DataArray(
             new_nodes, dims=key, coords={key: self.nodes.coords[key]}
         )
-        print("groupby", key, new_nodes)
         return MultiAction(self, new_nodes, self.internal_dims + 1)
 
     def reduce(self, func, key: str = ""):
@@ -114,7 +113,6 @@ class MultiAction(Action):
 
         new_dims = [x for x in self.nodes.dims if x != key]
         transposed_nodes = self.nodes.transpose(key, *new_dims)
-        print(func, key, new_dims, transposed_nodes)
         new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
         it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
         for _ in it:
@@ -147,10 +145,8 @@ class MultiAction(Action):
         )
 
     def select(self, coord: str, value):
-        print(self.nodes)
         if coord in self.nodes.dims:
             selected_nodes = self.nodes.sel(**{coord: value})
-            print(selected_nodes)
             if selected_nodes.size == 1:
                 return SingleAction(None, self, selected_nodes.expand_dims("dim_0"))
             return MultiAction(self, selected_nodes, self.internal_dims)
