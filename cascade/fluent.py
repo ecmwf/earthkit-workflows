@@ -37,17 +37,21 @@ class SingleAction(Action):
     def then(self, func):
         return SingleAction(func, self)
 
-    def join(self, other_action: "Action", dim_name: str = "", 
-             match_coord_values: bool = False):
+    def join(
+        self,
+        other_action: "Action",
+        dim_name: str = "",
+        match_coord_values: bool = False,
+    ):
         if len(dim_name) == 0:
             dim_name = randomname.generate()
         if match_coord_values:
             for coord, values in self.nodes.coords.items():
                 if coord in other_action.nodes.coords:
-                    other_action.nodes = other_action.nodes.assign_coords({coord: values})
-        return MultiAction(
-            self, xr.concat([self.nodes, other_action.nodes], dim_name)
-        )
+                    other_action.nodes = other_action.nodes.assign_coords(
+                        {coord: values}
+                    )
+        return MultiAction(self, xr.concat([self.nodes, other_action.nodes], dim_name))
 
     def write(self):
         return SingleAction(lambda x: print(x), self)
@@ -140,14 +144,20 @@ class MultiAction(Action):
             self.internal_dims,
         )
 
-    def join(self, other_action: "Action", dim_name: str = "", 
-            match_coord_values: bool = False):
+    def join(
+        self,
+        other_action: "Action",
+        dim_name: str = "",
+        match_coord_values: bool = False,
+    ):
         if len(dim_name) == 0:
             dim_name = randomname.generate()
         if match_coord_values:
             for coord, values in self.nodes.coords.items():
                 if coord in other_action.nodes.coords:
-                    other_action.nodes = other_action.nodes.assign_coords(**{coord: values})
+                    other_action.nodes = other_action.nodes.assign_coords(
+                        **{coord: values}
+                    )
         return MultiAction(
             self,
             xr.concat([self.nodes, other_action.nodes], dim_name),
