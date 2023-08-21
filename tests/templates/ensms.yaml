@@ -1,0 +1,86 @@
+members: 5
+parameters:
+  T:
+    defs:
+      base_keys: &base_keys_T
+        class: od
+        domain: g
+        expver: '0001'
+        levelist: [250, 500, 850]
+        levtype: pl
+        stream: enfo
+        param: 130
+        date: 20230815
+        time: 00
+      base_interp: &base_interp
+        grid: O1280
+        intgrid: none
+        legendre-loader: shmem
+        matrix-loader: file-io
+    forecast:
+      - <<: *base_keys_T
+        type: pf
+        interpolate: *base_interp
+      - <<: *base_keys_T
+        type: cf
+        interpolate: *base_interp
+    windows:
+    - include_start_step: True
+      periods:
+        - range: [0, 6, 3]
+  mn2t6:
+    defs:
+      base_keys: &base_keys_mn2t6
+        class: od
+        domain: g
+        expver: '0001'
+        levtype: sfc
+        stream: enfo
+        param: '122.128'
+        date: 20230815
+        time: 00
+    forecast:
+      - <<: *base_keys_mn2t6
+        type: pf
+      - <<: *base_keys_mn2t6
+        type: cf
+    windows:
+    - periods:
+      - range:
+        - 0
+        - 0
+        - 6
+      - range:
+        - 0
+        - 6
+        - 6
+      - range:
+        - 6
+        - 12
+        - 6
+  tp:
+    defs:
+      base_keys: &base_keys_tp
+        class: od
+        domain: g
+        expver: '0001'
+        levtype: sfc
+        stream: enfo
+        param: 228
+        date: 20230815
+        time: 00
+    forecast:
+      - <<: *base_keys_tp
+        type: cf
+      - <<: *base_keys_tp
+        type: pf
+    windows:
+    - grib_set:
+        paramId: 200228
+        stepType: diff
+      periods:
+        - range: [0, 6, 6]
+        - range: [3, 9, 6]
+        - range: [6, 12, 6]
+      window_operation: diff
+      include_start_step: True

@@ -7,12 +7,14 @@ import pytest
 import numexpr
 import yaml
 import bisect
+import os
 
 from ppgraph import Node, Graph
 from ppgraph import pyvis
 
 from cascade.fluent import SingleAction, MultiAction
 
+ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
 
 def read(request: dict):
     print(request)
@@ -110,12 +112,14 @@ class Config:
 
 class ParamConfig:
     def __init__(self, members, param_config):
-        self.steps = self._generate_steps(param_config.get("steps", []))
-        self.base_request = param_config["forecast"]
+        param_options = param_config.copy()
+        self.steps = self._generate_steps(param_options.pop("steps", []))
+        self.base_request = param_options.pop("forecast")
         self.members = members
-        self.climatology = param_config.get("climatology", None)
-        self.windows = self._generate_windows(param_config["windows"])
-        self.param_operation = self._generate_param_operation(param_config)
+        self.climatology = param_options.pop("climatology", None)
+        self.windows = self._generate_windows(param_options.pop("windows"))
+        self.param_operation = self._generate_param_operation(param_options)
+        self.options = param_options
 
     @classmethod
     def _generate_steps(cls, steps_config):
@@ -139,8 +143,7 @@ class ParamConfig:
     @classmethod
     def _generate_windows(cls, windows_config):
         windows = []
-        for window_type in windows_config:
-            window_options = window_type.copy()
+        for window_options in windows_config:
             include_init = window_options.pop("include_start_step", False)
             operation = window_options.pop("window_operation", None)
             for window in window_options.pop("periods"):
@@ -150,7 +153,7 @@ class ParamConfig:
     @classmethod
     def _generate_param_operation(cls, param_config):
         if "input_filter_operation" in param_config:
-            filter_configs = param_config["input_filter_operation"]
+            filter_configs = param_config.pop("input_filter_operation")
             return (
                 lambda x, y, filter_configs=filter_configs: x
                 if numexpr.evaluate(
@@ -161,7 +164,7 @@ class ParamConfig:
                 )
                 else filter_configs["replacement"]
             )
-        return param_config.get("input_combine_operation", None)
+        return param_config.pop("input_combine_operation", None)
 
     def _request_steps(self, window):
         if len(self.steps) == 0:
@@ -246,7 +249,6 @@ class Cascade:
     def graph(cls, product: str, config: Config):
         total_graph = Graph([])
         for param, param_config in config.parameters.items():
-            print(param)
             total_graph += getattr(cls, product)(param_config)
 
         return total_graph
@@ -264,12 +266,12 @@ class Cascade:
             anomaly = (
                 cls.read(param_config.forecast_request(window), "number")
                 .groupby("step") # TODO: Fix for when steps don't align
-                .join(clim_em)
+                .join(clim_em, match_coord_values=True)
                 .reduce(np.subtract)
             )
 
             if window.is_std_anomaly:
-                anomaly.join(clim_es).reduce(np.division)
+                anomaly = anomaly.join(clim_es, match_coord_values=True).reduce(np.divide)
             if window.operation is not None:
                 anomaly = anomaly.reduce(window.operation)
             for threshold in window.thresholds():
@@ -322,6 +324,8 @@ class Cascade:
         total_graph = Graph([])
         for window in param_config.windows:
             ensms = cls.read(param_config.forecast_request(window), "number")
+            if window.operation is not None:
+                ensms = ensms.reduce(window.operation, "step")
             mean = ensms.reduce(np.mean, "number").write()
             std = ensms.reduce(np.std, "number").write()
             total_graph += mean.graph() + std.graph()
@@ -354,7 +358,7 @@ class Cascade:
             )
             total_graph += efi_sot.reduce("efi").write().graph()
 
-            for perc in param_config.sot:
+            for perc in param_config.options["sot"]:
                 total_graph += efi_sot.reduce(f"sot_{perc}").write().graph()
 
         return total_graph
@@ -362,8 +366,11 @@ class Cascade:
 
 @pytest.mark.parametrize("product, config", 
 [
-    ["prob", "/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/tests/templates/prob.yaml"], 
-    ["anomaly_prob", "/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/tests/templates/t850.yaml"]
+    ["prob", f"{ROOT_DIR}/templates/prob.yaml"], 
+    ["anomaly_prob", f"{ROOT_DIR}/templates/t850.yaml"],
+    ["wind", f"{ROOT_DIR}/templates/wind.yaml"],
+    ["ensms", f"{ROOT_DIR}/templates/ensms.yaml"],
+    ["extreme", f"{ROOT_DIR}/templates/extreme.yaml"]
 ])
 def test_graph_construction(product, config):
     cfg = Config(config)

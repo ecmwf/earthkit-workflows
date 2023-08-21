@@ -37,9 +37,14 @@ class SingleAction(Action):
     def then(self, func):
         return SingleAction(func, self)
 
-    def join(self, other_action: "Action", dim_name: str = ""):
+    def join(self, other_action: "Action", dim_name: str = "", 
+             match_coord_values: bool = False):
         if len(dim_name) == 0:
             dim_name = randomname.generate()
+        if match_coord_values:
+            for coord, values in self.nodes.coords.items():
+                if coord in other_action.nodes.coords:
+                    other_action.nodes = other_action.nodes.assign_coords({coord: values})
         return MultiAction(
             self, xr.concat([self.nodes, other_action.nodes], dim_name)
         )
@@ -75,10 +80,10 @@ class MultiAction(Action):
             )
         new_nodes = np.empty(len(grouped_nodes), dtype=object)
         for index, group in enumerate(grouped_nodes):
-            group_name, nodes = group
+            _, nodes = group
             inputs = {f"input{x}": node for x, node in enumerate(nodes.data.flatten())}
             new_nodes[index] = Node(
-                f"{key}:{group_name}", payload=np.concatenate, **inputs
+                randomname.generate(), payload=np.concatenate, **inputs
             )
         new_nodes = xr.DataArray(
             new_nodes, dims=key, coords={key: self.nodes.coords[key]}
@@ -135,9 +140,14 @@ class MultiAction(Action):
             self.internal_dims,
         )
 
-    def join(self, other_action: "Action", dim_name: str = ""):
+    def join(self, other_action: "Action", dim_name: str = "", 
+            match_coord_values: bool = False):
         if len(dim_name) == 0:
             dim_name = randomname.generate()
+        if match_coord_values:
+            for coord, values in self.nodes.coords.items():
+                if coord in other_action.nodes.coords:
+                    other_action.nodes = other_action.nodes.assign_coords(**{coord: values})
         return MultiAction(
             self,
             xr.concat([self.nodes, other_action.nodes], dim_name),
