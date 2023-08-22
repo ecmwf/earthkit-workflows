@@ -3,7 +3,7 @@ from .graphs import ContextGraph, TaskGraph
 from .executor import ExecutionReport, BasicExecutor
 from .graph_config import Config
 
-from ppgraph import Graph
+from ppgraph import Graph, deduplicate_nodes
 from . import graph_templates
 
 
@@ -23,7 +23,7 @@ class Cascade:
         for _, param_config in config.parameters.items():
             total_graph += getattr(graph_templates, product)(param_config)
 
-        return total_graph
+        return deduplicate_nodes(total_graph)
 
 
 

@@ -28,4 +28,4 @@ def test_graph_construction(product, config, expected_num_nodes):
         pyvis_graph.show(f"/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/{product}_graph.html")
     print([x for x in graph.nodes()])
     assert len(pyvis_graph.nodes) == expected_num_nodes
-    #assert len([x for x in graph.nodes()]) == expected_num_nodes
+    assert len([x for x in graph.nodes()]) == expected_num_nodes

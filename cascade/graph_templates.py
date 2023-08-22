@@ -2,7 +2,7 @@ import numpy as np
 import functools
 import xarray as xr
 
-from ppgraph import Graph, Node
+from ppgraph import Graph, Node, deduplicate_nodes
 
 from .fluent import SingleAction, MultiAction
 
@@ -91,7 +91,7 @@ def prob(param_config):
             .graph()
         )
 
-    return total_graph
+    return deduplicate_nodes(total_graph)
 
 
 def wind(param_config):
@@ -104,7 +104,7 @@ def wind(param_config):
             .write()
             .graph()
         )
-    return total_graph
+    return deduplicate_nodes(total_graph)
 
 
 def ensms(param_config):
@@ -117,7 +117,7 @@ def ensms(param_config):
             .write()
             .graph()
         )
-    return total_graph
+    return deduplicate_nodes(total_graph)
 
 
 def extreme(param_config):
@@ -154,4 +154,4 @@ def extreme(param_config):
             .graph()
         )
 
-    return total_graph
+    return deduplicate_nodes(total_graph)
