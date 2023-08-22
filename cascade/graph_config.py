@@ -191,5 +191,4 @@ class ParamConfig:
             clim_request["step"] = list(
                 map(self.climatology.get("steps", {}).get, window_steps, window_steps)
             )
-        print(f"Climatology Request {clim_request}")
         return [clim_request]

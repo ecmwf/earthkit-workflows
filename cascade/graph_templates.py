@@ -49,40 +49,47 @@ def anomaly_prob(param_config):
         climatology = read(
             param_config.clim_request(window)
         )  # Will contain type em and es
-        clim_em = climatology.select("type", "em")
-        clim_es = climatology.select("type", "es")
 
-        anomaly = (
+        total_graph += (
             read(param_config.forecast_request(window), "number")
             .groupby("step")
-            .join(clim_em, match_coord_values=True)
+            .join(climatology.select("type", "em"), match_coord_values=True)
             .reduce(np.subtract)
+            .applyif(
+                window.options.get("std_anomaly", False),
+                "join",
+                climatology.select("type", "es"),
+                match_coord_values=True,
+            )
+            .applyif(window.options.get("std_anomaly", False), "reduce", np.divide)
+            .applyif(window.operation is not None, "reduce", window.operation)
+            .fork("map", [(threshold,) for threshold in window.thresholds()])
+            .reduce(np.mean)
+            .write()
+            .graph()
         )
 
-        if window.options.get("std_anomaly", False):
-            anomaly = anomaly.join(clim_es, match_coord_values=True).reduce(np.divide)
-        if window.operation is not None:
-            anomaly = anomaly.reduce(window.operation)
-        for threshold in window.thresholds():
-            total_graph += anomaly.map(threshold).reduce(np.mean).write().graph()
-
-        return total_graph
+    return total_graph
 
 
 def prob(param_config):
     total_graph = Graph([])
     for window in param_config.windows:
-        prob = read(param_config.forecast_request(window))
-
-        # Multi-parameter processing operation
-        if param_config.param_operation is not None:
-            prob = prob.reduce(param_config.param_operation, "param")
-
-        prob = prob.groupby("step")
-        if window.operation is not None:
-            prob = prob.reduce(window.operation)
-        for threshold in window.thresholds():
-            total_graph += prob.map(threshold).reduce(np.mean).write().graph()
+        total_graph += (
+            read(param_config.forecast_request(window))
+            .applyif(
+                param_config.param_operation is not None,
+                "reduce",
+                param_config.param_operation,
+                "param",
+            )
+            .groupby("step")
+            .applyif(window.operation is not None, "reduce", window.operation)
+            .fork("map", [(threshold,) for threshold in window.thresholds()])
+            .reduce(np.mean)
+            .write()
+            .graph()
+        )
 
     return total_graph
 
@@ -90,24 +97,26 @@ def prob(param_config):
 def wind(param_config):
     total_graph = Graph([])
     for window in param_config.windows:
-        wind_speed = read(param_config.forecast_request(window), "number").reduce(
-            lambda x, y: np.sqrt(x**2 + y**2), "param"
+        total_graph += (
+            read(param_config.forecast_request(window), "number")
+            .reduce(lambda x, y: np.sqrt(x**2 + y**2), "param")
+            .fork("reduce", [(np.mean, "number"), (np.std, "number")])
+            .write()
+            .graph()
         )
-        mean = wind_speed.reduce(np.mean, "number").write()
-        std = wind_speed.reduce(np.std, "number").write()
-        total_graph += mean.graph() + std.graph()
     return total_graph
 
 
 def ensms(param_config):
     total_graph = Graph([])
     for window in param_config.windows:
-        ensms = read(param_config.forecast_request(window), "number")
-        if window.operation is not None:
-            ensms = ensms.reduce(window.operation, "step")
-        mean = ensms.reduce(np.mean, "number").write()
-        std = ensms.reduce(np.std, "number").write()
-        total_graph += mean.graph() + std.graph()
+        total_graph += (
+            read(param_config.forecast_request(window), "number")
+            .applyif(window.operation is not None, "reduce", window.operation, "step")
+            .fork("reduce", [(np.mean, "number"), (np.std, "number")])
+            .write()
+            .graph()
+        )
     return total_graph
 
 
@@ -115,29 +124,34 @@ def extreme(param_config):
     total_graph = Graph([])
     for window in param_config.windows:
         climatology = read(param_config.clim_request(window, True))
-        parameter = read(param_config.forecast_request(window), "number")
-
-        # Multi-parameter processing operation
-        if param_config.param_operation is not None:
-            parameter = parameter.reduce(param_config.param_operation, "param")
-
-        total_graph += (
-            parameter.select("number", 0)
-            .reduce(window.operation, "step")
-            .join(climatology, "data_type")
-            .reduce("efi")
-            .write()
-            .graph()
+        parameter = read(param_config.forecast_request(window), "number").applyif(
+            param_config.param_operation is not None,
+            "reduce",
+            param_config.param_operation,
+            "param",
         )
 
-        efi_sot = (
+        # EFI Control
+        if param_config.options.get("efi_control", False):
+            total_graph += (
+                parameter.select("number", 0)
+                .reduce(window.operation, "step")
+                .join(climatology, "data_type")
+                .reduce("efi")
+                .write()
+                .graph()
+            )
+
+        total_graph += (
             parameter.groupby("step")
             .reduce(window.operation)
             .join(climatology, "data_type")
+            .fork(
+                "reduce",
+                [("efi",), *[(f"sot_{perc}",) for perc in param_config.options["sot"]]],
+            )
+            .write()
+            .graph()
         )
-        total_graph += efi_sot.reduce("efi").write().graph()
-
-        for perc in param_config.options["sot"]:
-            total_graph += efi_sot.reduce(f"sot_{perc}").write().graph()
 
     return total_graph

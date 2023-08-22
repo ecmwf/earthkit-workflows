@@ -5,12 +5,41 @@ import xarray as xr
 
 
 class Action:
-    def __init__(self, previous: "Action", nodes: xr.DataArray):
+    def __init__(self, previous: "Action", nodes: xr.DataArray, internal_dims: int = 0):
         self.previous = previous
         self.nodes = nodes
+        self.internal_dims = internal_dims
 
     def graph(self) -> Graph:
         return Graph(list(self.nodes.data.flatten()))
+
+    def join(
+        self,
+        other_action: "Action",
+        dim_name: str = "",
+        match_coord_values: bool = False,
+    ) -> "MultiAction":
+        if len(dim_name) == 0:
+            dim_name = randomname.generate()
+        if match_coord_values:
+            for coord, values in self.nodes.coords.items():
+                if coord in other_action.nodes.coords:
+                    other_action.nodes = other_action.nodes.assign_coords(
+                        **{coord: values}
+                    )
+        return MultiAction(
+            self,
+            xr.concat([self.nodes, other_action.nodes], dim_name),
+            self.internal_dims,
+        )
+
+    def applyif(self, condition: bool, method: str, *args, **kwargs) -> "Action":
+        if condition:
+            return getattr(self, method)(*args, **kwargs)
+        return self
+
+    def fork(self, method: str, fork_params: list) -> "Action":
+        return ForkedActions([getattr(self, method)(*args) for args in fork_params])
 
 
 class SingleAction(Action):
@@ -37,30 +66,13 @@ class SingleAction(Action):
     def then(self, func):
         return SingleAction(func, self)
 
-    def join(
-        self,
-        other_action: "Action",
-        dim_name: str = "",
-        match_coord_values: bool = False,
-    ):
-        if len(dim_name) == 0:
-            dim_name = randomname.generate()
-        if match_coord_values:
-            for coord, values in self.nodes.coords.items():
-                if coord in other_action.nodes.coords:
-                    other_action.nodes = other_action.nodes.assign_coords(
-                        {coord: values}
-                    )
-        return MultiAction(self, xr.concat([self.nodes, other_action.nodes], dim_name))
-
     def write(self):
         return SingleAction(lambda x: print(x), self)
 
 
 class MultiAction(Action):
-    def __init__(self, previous, nodes, internal_dims=0):
-        super().__init__(previous, nodes)
-        self.internal_dims = internal_dims
+    def __init__(self, previous, nodes, internal_dims: int = 0):
+        super().__init__(previous, nodes, internal_dims)
 
     def map(self, func):
         # Applies operation to every node, keeping node array structure
@@ -144,26 +156,6 @@ class MultiAction(Action):
             self.internal_dims,
         )
 
-    def join(
-        self,
-        other_action: "Action",
-        dim_name: str = "",
-        match_coord_values: bool = False,
-    ):
-        if len(dim_name) == 0:
-            dim_name = randomname.generate()
-        if match_coord_values:
-            for coord, values in self.nodes.coords.items():
-                if coord in other_action.nodes.coords:
-                    other_action.nodes = other_action.nodes.assign_coords(
-                        **{coord: values}
-                    )
-        return MultiAction(
-            self,
-            xr.concat([self.nodes, other_action.nodes], dim_name),
-            self.internal_dims,
-        )
-
     def select(self, coord: str, value):
         if coord in self.nodes.dims:
             selected_nodes = self.nodes.sel(**{coord: value})
@@ -175,3 +167,22 @@ class MultiAction(Action):
 
     def write(self):
         return self.map(lambda x: print(x))
+
+
+class ForkedActions:
+    def __init__(self, forks: list):
+        self.forks = forks
+
+    def reduce(self, func, key: str = "") -> "ForkedActions":
+        self.forks = [fork.reduce(func, key) for fork in self.forks]
+        return self
+
+    def write(self) -> "ForkedActions":
+        self.forks = [fork.write() for fork in self.forks]
+        return self
+
+    def graph(self) -> Graph:
+        graph = Graph([])
+        for fork in self.forks:
+            graph += fork.graph()
+        return graph
