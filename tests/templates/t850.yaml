@@ -3,20 +3,10 @@ parameters:
   t850:
     steps:
       - interval: 12
-        start_step: 0
+        start_step: 120
         end_step: 240
     windows:
       - periods:
-          - range: [0, 0]
-          - range: [12, 12]
-          - range: [24, 24]
-          - range: [36, 36]
-          - range: [48, 48]
-          - range: [60, 60]
-          - range: [72, 72]
-          - range: [84, 84]
-          - range: [96, 96]
-          - range: [108, 108]
           - range: [120, 120]
           - range: [132, 132]
           - range: [144, 144]
@@ -35,12 +25,6 @@ parameters:
           - out_paramid: 131023
             comparison: "<"
             value: -4
-          - out_paramid: 131024
-            comparison: ">"
-            value: 4
-          - out_paramid: 131025
-            comparison: ">"
-            value: 8
         grib_set:
           bitsPerValue: 24
       - periods:
@@ -60,16 +44,6 @@ parameters:
           bitsPerValue: 24
       - std_anomaly: True
         periods:
-          - range: [0, 0]
-          - range: [12, 12]
-          - range: [24, 24]
-          - range: [36, 36]
-          - range: [48, 48]
-          - range: [60, 60]
-          - range: [72, 72]
-          - range: [84, 84]
-          - range: [96, 96]
-          - range: [108, 108]
           - range: [120, 120]
           - range: [132, 132]
           - range: [144, 144]
@@ -88,18 +62,6 @@ parameters:
           - out_paramid: 133094
             comparison: '>'
             value: 1.5
-          - out_paramid: 133095
-            comparison: '>'
-            value: 2
-          - out_paramid: 133096
-            comparison: '<'
-            value: -1
-          - out_paramid: 133097
-            comparison: '<'
-            value: -1.5
-          - out_paramid: 133098
-            comparison: '<'
-            value: -2
         grib_set:
           localDefinitionNumber: 30
           bitsPerValue: 24
@@ -146,16 +108,6 @@ parameters:
         time: 00
         interpolate: *base_interp
       steps:
-        0: 12
-        12: 24
-        24: 36
-        36: 48
-        48: 60
-        60: 72
-        72: 84
-        84: 96
-        96: 108
-        108: 120
         120: 132
         132: 144
         144: 156

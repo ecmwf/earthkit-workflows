@@ -3,6 +3,7 @@ members:
   start: 1
 parameters:
   tp:
+    efi_control: True
     defs:
       base_keys: &base_keys_tp
         class: od

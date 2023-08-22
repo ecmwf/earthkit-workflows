@@ -32,7 +32,4 @@ parameters:
     windows:
       - include_start_step: true
         periods:
-          - range: [0, 48, 3]
-          - range: [51, 96, 3]
-          - range: [99, 144, 3]
-          - range: [150, 240, 6]
+          - range: [0, 6, 3]
