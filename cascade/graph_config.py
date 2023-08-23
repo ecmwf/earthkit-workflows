@@ -1,6 +1,5 @@
 import itertools
 from collections import OrderedDict
-import numexpr
 import yaml
 import bisect
 
@@ -24,15 +23,6 @@ class Window:
 
         self.operation = operation
         self.options = window_options
-
-    def thresholds(self):
-        for threshold_options in self.options["thresholds"]:
-            yield lambda x: numexpr.evaluate(
-                "data "
-                + threshold_options["comparison"]
-                + str(threshold_options["threshold"]),
-                local_dict={"data": x},
-            )
 
 
 class Request(dict):

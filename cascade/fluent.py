@@ -5,10 +5,9 @@ import xarray as xr
 
 
 class Action:
-    def __init__(self, previous: "Action", nodes: xr.DataArray, internal_dims: int = 0):
+    def __init__(self, previous: "Action", nodes: xr.DataArray):
         self.previous = previous
         self.nodes = nodes
-        self.internal_dims = internal_dims
 
     def graph(self) -> Graph:
         return Graph(list(self.nodes.data.flatten()))
@@ -16,10 +15,10 @@ class Action:
     def join(
         self,
         other_action: "Action",
-        dim_name: str = "",
+        dim_name: str | xr.DataArray = None,
         match_coord_values: bool = False,
     ) -> "MultiAction":
-        if len(dim_name) == 0:
+        if dim_name is None:
             dim_name = randomname.generate()
         if match_coord_values:
             for coord, values in self.nodes.coords.items():
@@ -27,19 +26,10 @@ class Action:
                     other_action.nodes = other_action.nodes.assign_coords(
                         **{coord: values}
                     )
-        return MultiAction(
-            self,
-            xr.concat([self.nodes, other_action.nodes], dim_name),
-            self.internal_dims,
-        )
-
-    def applyif(self, condition: bool, method: str, *args, **kwargs) -> "Action":
-        if condition:
-            return getattr(self, method)(*args, **kwargs)
-        return self
-
-    def fork(self, method: str, fork_params: list) -> "Action":
-        return ForkedActions([getattr(self, method)(*args) for args in fork_params])
+        new_nodes = xr.concat([self.nodes, other_action.nodes], dim_name)
+        if hasattr(self, "to_multi"):
+            return self.to_multi(new_nodes)
+        return type(self)(self, new_nodes)
 
 
 class SingleAction(Action):
@@ -63,18 +53,24 @@ class SingleAction(Action):
         assert nodes.size == 1
         super().__init__(previous, nodes)
 
+    def to_multi(self, nodes):
+        return MultiAction(self, nodes)
+
     def then(self, func):
-        return SingleAction(func, self)
+        return type(self)(func, self)
 
     def write(self):
-        return SingleAction(lambda x: print(x), self)
+        return type(self)(lambda x: print(x), self)
 
 
 class MultiAction(Action):
-    def __init__(self, previous, nodes, internal_dims: int = 0):
-        super().__init__(previous, nodes, internal_dims)
+    def __init__(self, previous, nodes):
+        super().__init__(previous, nodes)
 
-    def map(self, func):
+    def to_single(self, func, nodes=None):
+        return SingleAction(func, self, nodes)
+
+    def foreach(self, func):
         # Applies operation to every node, keeping node array structure
         new_nodes = np.empty(self.nodes.shape, dtype=object)
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
@@ -82,52 +78,23 @@ class MultiAction(Action):
             new_nodes[it.multi_index] = Node(
                 randomname.generate(), payload=func, input=node[()]
             )
-        return MultiAction(
+        return type(self)(
             self,
             xr.DataArray(new_nodes, coords=self.nodes.coords, dims=self.nodes.dims),
-            self.internal_dims,
         )
 
     def groupby(self, key):
-        grouped_nodes = self.nodes.groupby(key)
-        if len(self.nodes.dims) > 2:
-            print(
-                f"Warning: groupby along {key} flattens across remaining dimensions {grouped_nodes.dims}"
-            )
-        new_nodes = np.empty(len(grouped_nodes), dtype=object)
-        for index, group in enumerate(grouped_nodes):
-            _, nodes = group
-            inputs = {f"input{x}": node for x, node in enumerate(nodes.data.flatten())}
-            new_nodes[index] = Node(
-                randomname.generate(), payload=np.concatenate, **inputs
-            )
+        assert key in self.nodes.dims
+        new_dims = [key] + [x for x in self.nodes.dims if x != key]
+        transposed_nodes = self.nodes.transpose(*new_dims)
         new_nodes = xr.DataArray(
-            new_nodes, dims=key, coords={key: self.nodes.coords[key]}
+            transposed_nodes, dims=new_dims, coords=self.nodes.coords
         )
-        return MultiAction(self, new_nodes, self.internal_dims + 1)
+        return type(self)(self, new_nodes)
 
     def reduce(self, func, key: str = ""):
-        if (self.nodes.size == 1 and self.internal_dims == 1) or (
-            self.internal_dims == 0 and self.nodes.ndim == 1
-        ):
-            return SingleAction(func, self)
-
-        # If reduction operation acts on internal array, then need to reduce internal dimensions
         if self.nodes.ndim == 1:
-            new_dims = self.internal_dims
-            if self.nodes.size == 1:
-                new_dims -= 1
-            assert new_dims >= 0
-            new_nodes = np.array(
-                [
-                    Node(
-                        randomname.generate(),
-                        payload=func,
-                        **{f"input{x}": node for x, node in enumerate(self.nodes.data)},
-                    )
-                ]
-            )
-            return MultiAction(self, xr.DataArray(new_nodes), new_dims)
+            return self.to_single(func)
 
         if len(key) == 0:
             key = self.nodes.dims[0]
@@ -146,43 +113,44 @@ class MultiAction(Action):
             new_nodes[it.multi_index] = Node(
                 randomname.generate(), payload=func, **inputs
             )
-        return MultiAction(
+        return type(self)(
             self,
             xr.DataArray(
                 new_nodes,
                 coords={key: self.nodes.coords[key] for key in new_dims},
                 dims=new_dims,
             ),
-            self.internal_dims,
         )
 
     def select(self, coord: str, value):
-        if coord in self.nodes.dims:
-            selected_nodes = self.nodes.sel(**{coord: value})
-            if selected_nodes.size == 1:
-                return SingleAction(None, self, selected_nodes.expand_dims("dim_0"))
-            return MultiAction(self, selected_nodes, self.internal_dims)
+        if coord not in self.nodes.dims:
+            raise NotImplementedError(
+                f"Unknown coordinate {coord}. Existing dimensions {self.nodes.dims}"
+            )
 
-        raise NotImplementedError("Selecting on internal dimensions")
+        selected_nodes = self.nodes.sel(**{coord: value})
+        if selected_nodes.size == 1:
+            return self.to_single(None, selected_nodes.expand_dims({coord: [value]}))
+        return type(self)(self, selected_nodes)
+
+    def _concatenate(self, key):
+        assert self.nodes.size == len(self.nodes.coords[key])
+
+        return type(self)(
+            self,
+            xr.DataArray(
+                [
+                    Node(
+                        randomname.generate(),
+                        payload=np.concatenate,
+                        **{
+                            f"input{x}": node
+                            for x, node in enumerate(self.nodes.data.flatten())
+                        },
+                    )
+                ]
+            ),
+        )
 
     def write(self):
-        return self.map(lambda x: print(x))
-
-
-class ForkedActions:
-    def __init__(self, forks: list):
-        self.forks = forks
-
-    def reduce(self, func, key: str = "") -> "ForkedActions":
-        self.forks = [fork.reduce(func, key) for fork in self.forks]
-        return self
-
-    def write(self) -> "ForkedActions":
-        self.forks = [fork.write() for fork in self.forks]
-        return self
-
-    def graph(self) -> Graph:
-        graph = Graph([])
-        for fork in self.forks:
-            graph += fork.graph()
-        return graph
+        return self.foreach(lambda x: print(x))
