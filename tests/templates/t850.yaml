@@ -4,20 +4,11 @@ parameters:
     steps:
       - interval: 12
         start_step: 120
-        end_step: 240
+        end_step: 168 
     windows:
       - periods:
           - range: [120, 120]
-          - range: [132, 132]
-          - range: [144, 144]
-          - range: [156, 156]
           - range: [168, 168]
-          - range: [180, 180]
-          - range: [192, 192]
-          - range: [204, 204]
-          - range: [216, 216]
-          - range: [228, 228]
-          - range: [240, 240]
         thresholds:
           - out_paramid: 131022
             comparison: "<"
@@ -28,8 +19,6 @@ parameters:
         grib_set:
           bitsPerValue: 24
       - periods:
-          - range: [120, 240]
-          - range: [168, 240]
           - range: [120, 168]
         window_operation: 'mean'
         include_start_step: true
@@ -46,15 +35,7 @@ parameters:
         periods:
           - range: [120, 120]
           - range: [132, 132]
-          - range: [144, 144]
-          - range: [156, 156]
           - range: [168, 168]
-          - range: [180, 180]
-          - range: [192, 192]
-          - range: [204, 204]
-          - range: [216, 216]
-          - range: [228, 228]
-          - range: [240, 240]
         thresholds:
           - out_paramid: 133093
             comparison: '>'

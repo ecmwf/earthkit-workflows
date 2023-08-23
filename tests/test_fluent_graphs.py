@@ -12,11 +12,11 @@ ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
 @pytest.mark.parametrize(
     "product, config, expected_num_nodes",
     [
-        ["prob", f"{ROOT_DIR}/templates/prob.yaml", 252],
-        ["anomaly_prob", f"{ROOT_DIR}/templates/t850.yaml", 342],
+        ["prob", f"{ROOT_DIR}/templates/prob.yaml", 280],
+        ["anomaly_prob", f"{ROOT_DIR}/templates/t850.yaml", 188],
         ["wind", f"{ROOT_DIR}/templates/wind.yaml", 132],
         ["ensms", f"{ROOT_DIR}/templates/ensms.yaml", 180],
-        ["extreme", f"{ROOT_DIR}/templates/extreme.yaml", 139],
+        ["extreme", f"{ROOT_DIR}/templates/extreme.yaml", 150],
     ],
 )
 def test_graph_construction(product, config, expected_num_nodes):

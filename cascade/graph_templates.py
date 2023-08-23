@@ -13,7 +13,7 @@ class SingleAction(BaseSingleAction):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def extreme(self, climatology, sot):
+    def extreme(self, climatology: Action, sot: list):
         # Join with climatology and reduce efi/sot
         with_clim = self.join(climatology, "datatype")
 
@@ -33,7 +33,7 @@ class MultiAction(BaseMultiAction):
     def to_single(self, func, nodes=None):
         return SingleAction(func, self, nodes)
 
-    def extreme(self, climatology, sot):
+    def extreme(self, climatology: Action, sot: list):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
         with_clim = self._concatenate("number").join(climatology, "datatype")
@@ -55,7 +55,7 @@ class MultiAction(BaseMultiAction):
         res = mean.join(std, xr.DataArray(["em", "es"], name="type"))
         return res
 
-    def threshold_prob(self, thresholds):
+    def threshold_prob(self, thresholds: list):
         res = None
         for threshold in thresholds:
             threshold_func = lambda x: numexpr.evaluate(
