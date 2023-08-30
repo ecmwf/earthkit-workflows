@@ -25,37 +25,45 @@ class Window:
         self.options = window_options
 
 
-class Request(dict):
+class Request:
     def __init__(self, request: dict):
-        super().__init__()
-        self.update(request)
+        self.request = request
         self.fake_dims = []
 
     @property
     def dims(self):
         dimensions = OrderedDict()
-        for key, values in self.items():
+        for key, values in self.request.items():
             if key == "interpolate":
                 continue
             if hasattr(values, "__iter__") and not isinstance(values, str):
                 dimensions[key] = len(values)
         return dimensions
 
+    def __setitem__(self, key, value):
+        self.request[key] = value
+
+    def __getitem__(self, key):
+        return self.request[key]
+
+    def __contains__(self, key):
+        return key in self.request
+
     def make_dim(self, key, value=None):
         if key in self:
-            assert type(self[key], (str, int, float))
-            self[key] = [self[key]]
+            assert type(self.request[key], (str, int, float))
+            self.request[key] = [self.request[key]]
         else:
-            self[key] = [value]
+            self.request[key] = [value]
             self.fake_dims.append(key)
 
     def expand(self):
-        for params in itertools.product(*[self[x] for x in self.dims.keys()]):
-            new_request = super().copy()
+        for params in itertools.product(*[self.request[x] for x in self.dims.keys()]):
+            new_request = self.request.copy()
             indices = []
             for index, expand_param in enumerate(self.dims.keys()):
                 new_request[expand_param] = params[index]
-                indices.append(list(self[expand_param]).index(params[index]))
+                indices.append(list(self.request[expand_param]).index(params[index]))
 
             # Remove fake dims from request
             for dim in self.fake_dims:
