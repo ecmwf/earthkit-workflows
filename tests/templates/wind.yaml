@@ -1,0 +1,35 @@
+members: 5
+parameters:
+  wind:
+    grib_set:
+      gribTablesVersionNo: 128
+      indicatorOfParameter: 10
+      mars.expver: '9078'
+    defs:
+      base_keys: &base_keys
+        class: od
+        domain: g
+        expver: '0001'
+        levtype: pl
+        param: [138, 155]
+        stream: enfo
+        levelist: [250, 850]
+        date: 20230818
+        time: 12
+      base_interp: &base_interp
+        grid: O1280
+        intgrid: none
+        legendre-loader: shmem
+        matrix-loader: file-io
+        vod2uv: true
+    forecast:
+      - <<: *base_keys
+        type: pf
+        interpolate: *base_interp
+      - <<: *base_keys
+        type: cf
+        interpolate: *base_interp
+    windows:
+      - include_start_step: true
+        periods:
+          - range: [0, 6, 3]

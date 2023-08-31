@@ -1,0 +1,89 @@
+members: 5
+parameters:
+  rain:
+    windows:
+      - window_operation: 'diff'
+        include_start_step: True
+        periods:
+          - range: [0, 24, 24]
+          - range: [12, 36, 24]
+        thresholds:
+          - out_paramid: 131060
+            comparison: ">="
+            value: 0.001
+            localDecimalScaleFactor: 3
+          - out_paramid: 131061
+            comparison: ">="
+            value: 0.005
+            localDecimalScaleFactor: 3
+        grib_set:
+          timeRangeIndicator: 5
+          stepType: diff 
+      - window_operation: 'diff'
+        include_start_step: True
+        periods:
+          - range: [0, 24, 24]
+          - range: [12, 36, 24]
+        thresholds:
+          - out_paramid: 131098 
+            comparison: ">="
+            value: 0.025
+          - out_paramid: 131099
+            comparison: ">="
+            value: 0.05
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 228
+      date: 20230817
+      time: 00
+  ff:
+    input_combine_operation: 'norm'
+    windows:
+      - periods:
+          - range: [12, 12]
+          - range: [24, 24]
+        thresholds:
+          - out_paramid: 131068
+            comparison: ">="
+            value: 10
+          - out_paramid: 131069
+            comparison: ">="
+            value: 15
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: [165, 166]
+      date: 20230817
+      time: 00
+  mn2t6:
+    steps:
+      - interval: 6
+        start_step: 126
+        end_step: 240
+    windows:
+      - window_operation: minimum
+        periods:
+          - range: [120, 168]
+          - range: [120, 240]
+          - range: [168, 240]
+        thresholds:
+        - out_paramid: 131073
+          comparison: "<="
+          value: 273.15
+          localDecimalScaleFactor: 2
+    forecast:
+      class: od
+      stream: enfo
+      type: pf
+      levtype: sfc
+      domain: g
+      param: 122
+      date: 20230817
+      time: 00
