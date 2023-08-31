@@ -28,12 +28,12 @@ def threshold_config(threshold: dict):
     return threshold_func, threshold_attrs
 
 
-def efi_config(number):
+def extreme_config(number):
     if number == 0:
-        func = "efi"
+        extreme_type = "efi"
         efi_order = 0
     else:
-        func = "sot"
+        extreme_type = "sot"
         if number == 90:
             efi_order = 99
         elif number == 10:
@@ -42,7 +42,7 @@ def efi_config(number):
             raise Exception(
                 "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
             )
-    return func, {"marsType": func, "efiOrder": efi_order}
+    return extreme_type, {"marsType": extreme_type, "efiOrder": efi_order}
 
 
 class Window:
@@ -138,6 +138,7 @@ class ParamConfig:
         self.climatology = param_options.pop("climatology", None)
         self.windows = self._generate_windows(param_options.pop("windows"))
         self.param_operation = self._generate_param_operation(param_options)
+        self.target = param_options.pop("target", "fdb:")
         self.options = param_options
 
     @classmethod

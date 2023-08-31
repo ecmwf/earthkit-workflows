@@ -7,16 +7,18 @@ from ppgraph import Graph, Node, deduplicate_nodes
 from .fluent import Action
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
-from .graph_config import threshold_config, efi_config
+from .graph_config import threshold_config, extreme_config
 
 
 class SingleAction(BaseSingleAction):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def extreme(self, climatology: Action):
+    def extreme(self, climatology: Action, eps: float):
         # Join with climatology and compute efi control
-        ret = self.join(climatology, "datatype").reduce("efi")
+        ret = self.join(climatology, "datatype").reduce(
+            ("meteokit.extreme.efi", "input1", "input0", eps)
+        )
         ret.add_attributes(
             {"marsType": "efic", "efiOrder": 0, "totalNumber": 1, "number": 0}
         )
@@ -27,12 +29,19 @@ class MultiAction(BaseMultiAction):
     def to_single(self, func, node=None):
         return SingleAction(func, self, node)
 
-    def extreme(self, climatology: Action, sot: list):
+    def extreme(self, climatology: Action, sot: list, eps: float):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
         def _extreme(action, number):
-            efi_func, efi_attrs = efi_config(number)
-            new_extreme = action.reduce(efi_func)
+            extreme_type, efi_attrs = extreme_config(number)
+            if extreme_type == "efi":
+                new_extreme = action.reduce(
+                    ("meteokit.extreme.efi", "input1", "input0", eps)
+                )
+            else:
+                new_extreme = action.reduce(
+                    ("meteokit.extreme.sot", "input1", "input0", number, eps)
+                )
             new_extreme.add_node_attributes(efi_attrs)
             new_extreme._add_dimension("number", number)
             return new_extreme
@@ -55,9 +64,7 @@ class MultiAction(BaseMultiAction):
         def _threshold_prob(action, threshold):
             threshold_func, threshold_attrs = threshold_config(threshold)
             new_threshold_action = (
-                action.foreach(threshold_func)
-                .foreach(lambda x: x * 100)
-                .mean("number")
+                action.foreach(threshold_func).foreach(lambda x: x * 100).mean("number")
             )
             new_threshold_action.add_node_attributes(threshold_attrs)
             new_threshold_action._add_dimension("paramId", threshold["out_paramid"])
@@ -77,16 +84,14 @@ class MultiAction(BaseMultiAction):
         return anomaly
 
     def quantiles(self, n: int = 100):
-        all_ens = self.concatenate("number")
-        res = None
-        for index in range(n):
-            new_quantile = all_ens.foreach(f"quantiles{index}")
-            new_quantile._add_dimension("pertubationNumber", index)
-            if res is None:
-                res = new_quantile
-            else:
-                res = res.join(new_quantile, "pertubationNumber")
-        return res
+        def _quantiles(action, quantile):
+            new_quantile = action.then(("meteokit.stats.quantiles", "input0", quantile))
+            new_quantile._add_dimension("pertubationNumber", quantile)
+            return new_quantile
+
+        return self.concatenate("number").transform(
+            _quantiles, range(n), "perturbationNumber"
+        )
 
     def param_operation(self, operation: str):
         if operation is None:
@@ -112,7 +117,11 @@ def read(requests: list, join_key: str = "number"):
             for indices, new_request in request.expand():
                 nodes[indices] = Node(
                     f"{new_request}",
-                    payload=f"read:{new_request}",
+                    payload=(
+                        "pproc.common.io.fdb_retrieve",
+                        "pproc.common.io.fdb",
+                        new_request,
+                    ),
                 )
             new_action = MultiAction(
                 None,
@@ -143,7 +152,7 @@ def anomaly_prob(param_config):
             .anomaly(climatology, window.options.get("std_anomaly", False))
             .window_operation(window.name, window.operation)
             .threshold_prob(window.options.get("thresholds", []))
-            .write()
+            .write(param_config.targets)
             .graph()
         )
 
@@ -158,7 +167,7 @@ def prob(param_config):
             .param_operation(param_config.param_operation)
             .window_operation(window.name, window.operation)
             .threshold_prob(window.options.get("thresholds", []))
-            .write()
+            .write(param_config.targets)
             .graph()
         )
 
@@ -172,7 +181,7 @@ def wind(param_config):
             read(param_config.forecast_request(window))
             .param_operation(lambda x, y: np.sqrt(x**2 + y**2))
             .ensms()
-            .write()
+            .write(param_config.targets)
             .graph()
         )
     return deduplicate_nodes(total_graph)
@@ -185,7 +194,7 @@ def ensms(param_config):
             read(param_config.forecast_request(window))
             .window_operation(window.name, window.operation)
             .ensms()
-            .write()
+            .write(param_config.targets)
             .graph()
         )
     return deduplicate_nodes(total_graph)
@@ -198,21 +207,22 @@ def extreme(param_config):
         parameter = read(param_config.forecast_request(window)).param_operation(
             param_config.param_operation
         )
+        eps = float(param_config.options["eps"])
 
         # EFI Control
         if param_config.options.get("efi_control", False):
             total_graph += (
                 parameter.select({"number": 0})
                 .window_operation(window.name, window.operation)
-                .extreme(climatology)
-                .write()
+                .extreme(climatology, eps)
+                .write(param_config.targets)
                 .graph()
             )
 
         total_graph += (
             parameter.window_operation(window.name, window.operation)
-            .extreme(climatology, param_config.options["sot"])
-            .write()
+            .extreme(climatology, list(map(int, param_config.options["sot"])), eps)
+            .write(param_config.targets)
             .graph()
         )
 
@@ -227,7 +237,7 @@ def quantiles(param_config):
             .param_operation(param_config.param_operation)
             .window_operation(window.name, window.operation)
             .quantiles()
-            .write()
+            .write(param_config.targets)
             .graph()
         )
     return deduplicate_nodes(total_graph)

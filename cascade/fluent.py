@@ -95,13 +95,14 @@ class SingleAction(Action):
     def then(self, func):
         return type(self)(func, self)
 
-    def write(self):
+    def write(self, target):
         grib_sets = self.nodes.attrs.copy()
         grib_sets.update(self.node().attributes)
+        payload = ("pproc.common.io.write", target, "input0", grib_sets)
         return type(self)(
-            f"write_{grib_sets}",
+            payload,
             self,
-            node=xr.DataArray(Node(f"write_{grib_sets}", self.node())),
+            node=xr.DataArray(Node(payload, self.node())),
         )
 
     def node(self):
@@ -183,7 +184,7 @@ class MultiAction(Action):
         res._squeeze_dimension(key)
         return res
 
-    def write(self):
+    def write(self, target):
         coords = list(self.nodes.coords.keys())
         new_nodes = []
         for node_attrs in itertools.product(
@@ -194,7 +195,9 @@ class MultiAction(Action):
             grib_sets = self.nodes.attrs.copy()
             grib_sets.update(node.attributes)
             grib_sets.update(node_coords)
-            new_nodes.append(Node(f"write_{grib_sets}", [node]))
+            new_nodes.append(
+                Node(("pproc.common.io.write", target, "input0", grib_sets), [node])
+            )
         return type(self)(
             self,
             xr.DataArray(new_nodes),
