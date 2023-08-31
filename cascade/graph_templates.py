@@ -7,6 +7,7 @@ from ppgraph import Graph, Node, deduplicate_nodes
 from .fluent import Action
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
+from .graph_config import threshold_config, efi_config
 
 
 class SingleAction(BaseSingleAction):
@@ -29,90 +30,54 @@ class MultiAction(BaseMultiAction):
     def extreme(self, climatology: Action, sot: list):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
-        with_clim = self.reduce(np.concatenate, "number").join(climatology, "datatype")
-        res = None
-        for number in [0] + sot:
-            if number == 0:
-                func = "efi"
-                efi_order = 0
-            else:
-                func = "sot"
-                if number == 90:
-                    efi_order = 99
-                elif number == 10:
-                    efi_order == 1
-                else:
-                    raise Exception(
-                        "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
-                    )
-            new_extreme = with_clim.reduce(func)
-            new_extreme.add_node_attributes({"marsType": func, "efiOrder": efi_order})
+        def _extreme(action, number):
+            efi_func, efi_attrs = efi_config(number)
+            new_extreme = action.reduce(efi_func)
+            new_extreme.add_node_attributes(efi_attrs)
             new_extreme._add_dimension("number", number)
-            if res is None:
-                res = new_extreme
-            else:
-                res = res.join(new_extreme, "number")
-        return res
+            return new_extreme
+
+        return (
+            self.concatenate("number")
+            .join(climatology, "datatype")
+            .transform(_extreme, [0] + sot, "number")
+        )
 
     def ensms(self):
-        mean = self.reduce(np.mean, "number")
+        mean = self.mean("number")
         mean._add_dimension("type", "em")
-        std = self.reduce(np.std, "number")
+        std = self.std("number")
         std._add_dimension("type", "es")
         res = mean.join(std, "type")
         return res
 
     def threshold_prob(self, thresholds: list):
-        res = None
-        for threshold in thresholds:
-            threshold_attrs = {}
-            threshold_value = threshold["value"]
-            if "localDecimalScaleFactor" in threshold:
-                scale_factor = threshold["localDecimalScaleFactor"]
-                threshold_attrs["localDecimalScaleFactor"] = scale_factor
-                threshold_value = round(threshold["value"] * 10**scale_factor, 0)
-
-            comparison = threshold["comparison"]
-            if "<" in comparison:
-                threshold_attrs["thresholdIndicator"] = 2
-                threshold_attrs["upperThreshold"] = threshold_value
-            else:
-                threshold_attrs["thresholdIndicator"] = 1
-                threshold_attrs["lowerThreshold"] = threshold_value
-
-            threshold_func = lambda x: numexpr.evaluate(
-                "data " + comparison + str(threshold["value"]),
-                local_dict={"data": x},
+        def _threshold_prob(action, threshold):
+            threshold_func, threshold_attrs = threshold_config(threshold)
+            new_threshold_action = (
+                action.foreach(threshold_func)
+                .foreach(lambda x: x * 100)
+                .mean("number")
             )
-            # Also need to multiply by 100
-            new_threshold_action = self.foreach(threshold_func).reduce(
-                np.mean, "number"
-            )
-
             new_threshold_action.add_node_attributes(threshold_attrs)
             new_threshold_action._add_dimension("paramId", threshold["out_paramid"])
-            if res is None:
-                res = new_threshold_action
-            else:
-                res = res.join(new_threshold_action, "paramId")
+            return new_threshold_action
 
-        # Remove expanded dimension if only a single threshold in list
-        res._squeeze_dimension("paramId")
-        return res
+        return self.transform(_threshold_prob, thresholds, "paramId")
 
     def anomaly(self, climatology: Action, standardised: bool):
         anomaly = self.join(
             climatology.select({"type": "em"}), match_coord_values=True
-        ).reduce(np.subtract)
+        ).subtract()
 
         if standardised:
             anomaly = anomaly.join(
                 climatology.select({"type": "es"}), match_coord_values=True
-            ).reduce(np.divide)
+            ).divide()
         return anomaly
 
     def quantiles(self, n: int = 100):
-        all_ens = self.reduce(np.concatenate, "number")
+        all_ens = self.concatenate("number")
         res = None
         for index in range(n):
             new_quantile = all_ens.foreach(f"quantiles{index}")

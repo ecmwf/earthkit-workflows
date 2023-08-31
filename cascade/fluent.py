@@ -171,6 +171,18 @@ class MultiAction(Action):
             return self.to_single(None, selected_nodes)
         return type(self)(self, selected_nodes)
 
+    def transform(self, func, params: list, key: str):
+        res = None
+        for param in params:
+            new_res = func(self, param)
+            if res is None:
+                res = new_res
+            else:
+                res = res.join(new_res, key)
+        # Remove expanded dimension if only a single threshold in list
+        res._squeeze_dimension(key)
+        return res
+
     def write(self):
         coords = list(self.nodes.coords.keys())
         new_nodes = []
@@ -190,3 +202,24 @@ class MultiAction(Action):
 
     def node(self, criteria: dict):
         return self.nodes.sel(**criteria, drop=True).data[()]
+
+    def concatenate(self, key: str):
+        return self.reduce(np.concatenate, key)
+
+    def mean(self, key: str = ""):
+        return self.reduce(np.mean, key)
+
+    def std(self, key: str = ""):
+        return self.reduce(np.std, key)
+
+    def subtract(self, key: str = ""):
+        return self.reduce(np.subtract, key)
+
+    def add(self, key: str = ""):
+        return self.reduce(np.add, key)
+
+    def divide(self, key: str = ""):
+        return self.reduce(np.divide, key)
+
+    def multiply(self, key: str = ""):
+        return self.reduce(np.multiply, key)

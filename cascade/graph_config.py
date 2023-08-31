@@ -2,6 +2,47 @@ import itertools
 from collections import OrderedDict
 import yaml
 import bisect
+import numexpr
+
+
+def threshold_config(threshold: dict):
+    threshold_attrs = {}
+    threshold_value = threshold["value"]
+    if "localDecimalScaleFactor" in threshold:
+        scale_factor = threshold["localDecimalScaleFactor"]
+        threshold_attrs["localDecimalScaleFactor"] = scale_factor
+        threshold_value = round(threshold["value"] * 10**scale_factor, 0)
+
+    comparison = threshold["comparison"]
+    if "<" in comparison:
+        threshold_attrs["thresholdIndicator"] = 2
+        threshold_attrs["upperThreshold"] = threshold_value
+    else:
+        threshold_attrs["thresholdIndicator"] = 1
+        threshold_attrs["lowerThreshold"] = threshold_value
+
+    threshold_func = lambda x: numexpr.evaluate(
+        "data " + comparison + str(threshold["value"]),
+        local_dict={"data": x},
+    )
+    return threshold_func, threshold_attrs
+
+
+def efi_config(number):
+    if number == 0:
+        func = "efi"
+        efi_order = 0
+    else:
+        func = "sot"
+        if number == 90:
+            efi_order = 99
+        elif number == 10:
+            efi_order == 1
+        else:
+            raise Exception(
+                "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
+            )
+    return func, {"marsType": func, "efiOrder": efi_order}
 
 
 class Window:
@@ -73,7 +114,6 @@ class Request:
 
 class Config:
     def __init__(self, config):
-        print(config)
         with open(config, "r") as f:
             self.options = yaml.safe_load(f)
 
