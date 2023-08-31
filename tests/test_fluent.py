@@ -80,8 +80,8 @@ def test_single_action_from_node(previous, nodes):
             (2, 3),
             0,
         ],
-        [(3, 4), "select", ["dim_0", 1], MultiAction, (4,), 0],
-        [(3,), "select", ["dim_0", 1], SingleAction, (), 0],
+        [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0],
+        [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0],
         [(3, 4), "write", [], MultiAction, (12,), 1],
     ],
 )
@@ -111,3 +111,28 @@ def test_multi_action(
     assert type(output_action) == output_type
     assert output_action.nodes.shape == output_nodes_shape
     assert len(output_action.nodes.data.item(0).inputs) == node_inputs
+
+
+def test_attributes():
+    action = MultiAction(
+        None,
+        xr.DataArray(
+            [Node("1"), Node("2"), Node("3")],
+            coords={"dim_0": list(range(3))},
+            dims=["dim_0"],
+        ),
+    )
+
+    # Set attributes global to all nodes
+    action.add_attributes({"expver": "0001"})
+    assert action.nodes.attrs["expver"] == "0001"
+
+    # Set attribute for specific node
+    action.add_node_attributes({"number": 1}, {"dim_0": 0})
+    assert action.node({"dim_0": 0}).attributes == {"number": 1}
+
+    # Set attributes on node in SingleAction
+    single = action.select({"dim_0": 0})
+    single_attributes = {"number": 2, "type": "em"}
+    single.add_node_attributes(single_attributes)
+    assert single.node().attributes == single_attributes

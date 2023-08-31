@@ -16,7 +16,9 @@ class SingleAction(BaseSingleAction):
     def extreme(self, climatology: Action):
         # Join with climatology and compute efi control
         ret = self.join(climatology, "datatype").reduce("efi")
-        ret.add_attributes({"marsType": "efic"})
+        ret.add_attributes(
+            {"marsType": "efic", "efiOrder": 0, "totalNumber": 1, "number": 0}
+        )
         return ret
 
 
@@ -28,16 +30,28 @@ class MultiAction(BaseMultiAction):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
         with_clim = self.reduce(np.concatenate, "number").join(climatology, "datatype")
-
-        efi_functions = ["efi"] + [f"sot_{perc}" for perc in sot]
         res = None
-        for func in efi_functions:
+        for number in [0] + sot:
+            if number == 0:
+                func = "efi"
+                efi_order = 0
+            else:
+                func = "sot"
+                if number == 90:
+                    efi_order = 99
+                elif number == 10:
+                    efi_order == 1
+                else:
+                    raise Exception(
+                        "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
+                    )
             new_extreme = with_clim.reduce(func)
-            new_extreme._add_dimension("marsType", func)
+            new_extreme.add_node_attributes({"marsType": func, "efiOrder": efi_order})
+            new_extreme._add_dimension("number", number)
             if res is None:
                 res = new_extreme
             else:
-                res = res.join(new_extreme, "marsType")
+                res = res.join(new_extreme, "number")
         return res
 
     def ensms(self):
@@ -88,12 +102,12 @@ class MultiAction(BaseMultiAction):
 
     def anomaly(self, climatology: Action, standardised: bool):
         anomaly = self.join(
-            climatology.select("type", "em"), match_coord_values=True
+            climatology.select({"type": "em"}), match_coord_values=True
         ).reduce(np.subtract)
 
         if standardised:
             anomaly = anomaly.join(
-                climatology.select("type", "es"), match_coord_values=True
+                climatology.select({"type": "es"}), match_coord_values=True
             ).reduce(np.divide)
         return anomaly
 
@@ -149,8 +163,6 @@ def read(requests: list, join_key: str = "number"):
         else:
             assert len(join_key) != 0
             all_actions = all_actions.join(new_action, join_key)
-    # Currently using xarray for keeping track of dimensions but these should
-    # belong in node attributes on the graph?
     return all_actions
 
 
@@ -225,7 +237,7 @@ def extreme(param_config):
         # EFI Control
         if param_config.options.get("efi_control", False):
             total_graph += (
-                parameter.select("number", 0)
+                parameter.select({"number": 0})
                 .window_operation(window.name, window.operation)
                 .extreme(climatology)
                 .write()
