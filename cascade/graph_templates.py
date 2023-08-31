@@ -1,6 +1,5 @@
 import numpy as np
 import xarray as xr
-import numexpr
 
 from ppgraph import Graph, Node, deduplicate_nodes
 

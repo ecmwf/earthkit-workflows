@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import networkx as nx
 import randomname
 
@@ -5,15 +7,29 @@ import randomname
 
 
 class Task:
-    def __init__(self, cost, memory, name=None):
+    def __init__(self, cost, in_memory, out_memory, name=None):
         self.name = name or randomname.get_name()
         self.cost = cost
-        self.memory = memory
+        self.in_memory = in_memory
+        self.out_memory = out_memory
         self.state = None
 
     def __hash__(self) -> int:
         return hash(self.name)
+    
+    def __eq__(self, other: Task) -> bool:
+        return isinstance(other, Task) and hash(self) == hash(other)
+    
+    def __repr__(self) -> str:
+        return self.name
 
+    def __lt__(self, other) -> bool:
+        assert isinstance(other, Task)
+        return self.name < other.name
+
+    @property
+    def memory(self):
+        return max(self.in_memory, self.out_memory)
 
 class Communication:
     def __init__(self, source, target, size, name=None):
@@ -25,6 +41,12 @@ class Communication:
 
     def __hash__(self) -> int:
         return hash(self.name)
+    
+    def __eq__(self, other: Communication) -> bool:
+        return isinstance(other, Communication) and hash(self) == hash(other)
+    
+    def __repr__(self) -> str:
+        return self.name
 
 
 class TaskGraph(nx.DiGraph):
@@ -33,24 +55,25 @@ class TaskGraph(nx.DiGraph):
         self.node_dict = {}
         super().__init__(**attr)
 
-    def add_node(self, cost, memory, name=None):
-        t = Task(cost, memory, name)
+    def add_task(self, cost, in_memory, out_memory, name=None):
+        t = Task(cost, in_memory, out_memory, name)
         self.node_dict[t.name] = t
         super().add_node(t)
 
-    def add_edge(self, u_of_edge, v_of_edge, size):
+    def add_comm_edge(self, u_of_edge, v_of_edge, size):
         u_of_edge = self.node_dict[u_of_edge]
         v_of_edge = self.node_dict[v_of_edge]
-        super().add_edge(u_of_edge, v_of_edge, obj=Communication(source=u_of_edge, target=v_of_edge, size=size))
+        super().add_edge(u_of_edge, v_of_edge, obj=Communication(source=u_of_edge, target=v_of_edge, size=size, name=f"{u_of_edge}-{v_of_edge}"))
 
     def get_roots(self):
         return [n for n in self if self.in_degree(n) == 0]
     
     def draw(self, filename):
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt 
         pos = nx.drawing.nx_agraph.graphviz_layout(self, prog='dot', args='-Nshape=box')
         nx.draw_networkx(self, pos=pos, with_labels=False)
         plt.savefig(filename)
+        plt.clf()
 
     def _make_communication_task(self, source, target, edge):
         t = Communication(source, target, edge.size, edge.name)

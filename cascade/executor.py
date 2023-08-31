@@ -1,16 +1,57 @@
+import copy
+from dataclasses import dataclass, field
 import randomname
 import datetime
 
-from .graphs import Task
-from .scheduler import CommunicationState
+from .graphs import Task, Communication, Communicator
 from .utility import EventLoop
 
 
+####################################################################################################
+
+
+@dataclass
+class TaskState:
+    finished: bool = False
+    start_time: float = 0
+    end_time: float = 0
+
+    def duration(self) -> float:
+        return self.end_time - self.start_time
+
+
+@dataclass
+class CommunicationState:
+    communicator: Communicator = None
+    finished: bool = False
+    start_time: float = 0
+    end_time: float = 0
+
+
+@dataclass
+class ProcessorState:
+    next_task_index: int = 0
+    current_task: Task = None
+    end_time: float = 0
+    idle_time: float = 0
+
+
+@dataclass
+class CommunicatorState:
+    tasks: list[Communication] = field(default_factory=list)
+    next_task_index: int = 0
+    current_task: Communication = None
+    end_time: float = 0
+    idle_time: float = 0
+
+
+####################################################################################################
+
 class ExecutionReport:
-    def __init__(self, schedule):
+    def __init__(self, schedule, task_graph, context_graph):
         self.schedule = schedule
-        self.task_graph = schedule.task_graph
-        self.context_graph = schedule.context_graph
+        self.task_graph = task_graph
+        self.context_graph = context_graph
         self.name = randomname.get_name()
         self.created_at = datetime.datetime.utcnow()
     
@@ -20,40 +61,33 @@ class ExecutionReport:
         str += f"Created at: {self.created_at} UTC\n"
         for processor in self.context_graph:
             str += f"Processor {processor.name} completes at {processor.state.end_time:.2f} ({processor.state.idle_time:.2f} idle):\n"
-            str += " → ".join(task.name for task in processor.state.tasks) + "\n"
+            str += " → ".join(f'{task} (end: {self.task_graph.node_dict[task].state.end_time})' for task in self.schedule.task_allocation[processor.name]) + "\n"
         str += "================================================\n"
         str += "Note: Idle times currently incorrect.\n"
 
         return str
-
+    
+    def cost(self) -> float:
+        return sum([processor.state.idle_time for processor in self.context_graph])
+    
 
 class Executor:
-    def __init__(self, schedule):
+    def __init__(self, schedule, with_communication: bool = True):
         self.schedule = schedule
 
-        # TODO: need to do a deepcopy here but keeping task assignments to processors
-        #       the links break if we try this at the moment
-        #       schedule should be const
-        self.task_graph = schedule.task_graph
-        self.context_graph = schedule.context_graph
+        self.task_graph = copy.deepcopy(schedule.task_graph)
+        self.context_graph = copy.deepcopy(schedule.context_graph)
+        self.with_communication = with_communication
 
     def reset_state(self):
         for task in self.task_graph:
-            task.state.finished = False
-            task.state.start_time = 0
-            task.state.end_time = 0
-        for _,_,communication in self.task_graph.edges(data=True):
-            communication["obj"].state.finished = False
-            communication["obj"].state.start_time = 0
-            communication["obj"].state.end_time = 0
-        for processor in self.context_graph:
-            processor.state.idle_time = 0
-            processor.state.current_task = None
-            processor.state.next_task_index = 0
-        for _,_,communicator in self.context_graph.edges(data=True):
-            communicator["obj"].state.idle_time = 0
-            communicator["obj"].state.current_task = None
-            communicator["obj"].state.next_task_index = 0
+            task.state = TaskState()
+        for _,_,ctx in self.task_graph.edges(data=True):
+            ctx["obj"].state = CommunicationState()
+        for ctx in self.context_graph:
+            ctx.state = ProcessorState()
+        for _,_,ctx in self.context_graph.edges(data=True):
+            ctx["obj"].state = CommunicatorState()
         
     def execute(self) -> ExecutionReport:
         raise NotImplementedError()
@@ -69,9 +103,8 @@ class BasicExecutor(Executor):
 
     def assign_task_to_processor(self, task, processor, start_time):
         # print(f"Task {task.name} assigned to processor {processor.name} at time {start_time}")
-        processor.state.idle_time += processor.state.end_time - start_time
+        processor.state.idle_time += start_time - processor.state.end_time
         processor.state.current_task = task
-        task.state.processor = processor
         task.state.start_time = start_time
         if isinstance(task, Task):
             task.state.end_time = start_time + task.cost / processor.speed
@@ -83,26 +116,29 @@ class BasicExecutor(Executor):
         # print(f"Task {task.name} will finish at time {task.state.end_time}")
 
     def on_task_complete(self, time, task):
-        # print(f"Task {task.name} completed at time {time} by processor {task.state.processor.name}")
+        # print(f"Task {task.name} completed at time {time}")
         task.state.finished = True
         self.ntasks_complete += 1
 
-        processor = task.state.processor
-        processor.state.current_task = None
+        if isinstance(task, Task):
+            processor = self.schedule.get_processor(task.name)
+            self.context_graph.node_dict[processor].state.current_task = None
+        else:
+            communicator = task.state.communicator
+            communicator.state.current_task = None
 
         self.assign_idle_processors_and_communicators(time)
 
     def is_task_eligible(self, task):
-        if all(t.state.finished for t in self.task_graph.predecessors(task)):
-            return True
-        return False
-
+        return all(t.state.finished for t in self.task_graph.predecessors(task))
+    
     def assign_idle_processors_and_communicators(self, time):
         for processor in self.context_graph:
             if processor.state.current_task is None:
-                if processor.state.next_task_index >= len(processor.state.tasks):
+                if processor.state.next_task_index >= len(self.schedule.task_allocation[processor.name]):
                     continue
-                next_task = processor.state.tasks[processor.state.next_task_index]
+                next_task_name = self.schedule.task_allocation[processor.name][processor.state.next_task_index]
+                next_task = self.task_graph.node_dict[next_task_name]
                 if self.is_task_eligible(next_task):
                     self.assign_task_to_processor(next_task, processor, time)
         
@@ -125,13 +161,15 @@ class BasicExecutor(Executor):
         self.total_tasks = len(self.task_graph)
 
         for start, end, edge in list(self.task_graph.edges(data=True)):
-            if start.state.processor == end.state.processor:
-                continue
+            start_processor = self.context_graph.node_dict[self.schedule.get_processor(start.name)]
+            end_processor = self.context_graph.node_dict[self.schedule.get_processor(end.name)]
+            if not self.with_communication or start_processor == end_processor:
+                self.task_graph[start][end]["obj"].state.finished = True
             else:
                 t = self.task_graph._make_communication_task(start, end, edge["obj"])
                 t.state = CommunicationState()
                 # find the communicator which can handle this communication
-                ctx = self.context_graph.get_edge_data(start.state.processor, end.state.processor)["obj"]
+                ctx = self.context_graph.get_edge_data(start_processor, end_processor)["obj"]
                 t.state.communicator = ctx
                 ctx.state.tasks.append(t)
                 self.total_tasks += 1
@@ -150,7 +188,7 @@ class BasicExecutor(Executor):
         # print(f"Finished {self.ntasks_complete} tasks out of {self.total_tasks}")
         assert self.ntasks_complete == self.total_tasks
 
-        return ExecutionReport(self.schedule)
+        return ExecutionReport(self.schedule, self.task_graph, self.context_graph)
         
     def execute(self) -> ExecutionReport:
         raise NotImplementedError()
