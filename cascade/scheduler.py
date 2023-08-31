@@ -4,7 +4,6 @@ import datetime
 import random
 import numpy as np
 import networkx as nx
-from typing import List, Dict
 
 from .utility import EventLoop
 from .executor import BasicExecutor
@@ -39,7 +38,7 @@ class Schedule:
 
     @classmethod
     def valid_allocations(
-        cls, task_graph: TaskGraph, task_allocation: Dict[str, List]
+        cls, task_graph: TaskGraph, task_allocation: dict[str, list]
     ) -> bool:
         dependency_graph = copy.deepcopy(task_graph)
 
@@ -58,7 +57,7 @@ class Schedule:
 
 class MemoryUsage:
     def __init__(self):
-        self.tasks_in_memory: List[Task] = []
+        self.tasks_in_memory: list[Task] = []
 
     @property
     def memory(self) -> float:
@@ -71,7 +70,7 @@ class MemoryUsage:
         if task not in self.tasks_in_memory:
             self.tasks_in_memory.append(task)
 
-    def current_tasks(self) -> List[Task]:
+    def current_tasks(self) -> list[Task]:
         return self.tasks_in_memory[:]
 
     def __repr__(self) -> str:

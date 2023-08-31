@@ -1,5 +1,4 @@
 import copy
-from typing import List
 from dataclasses import dataclass, field
 import randomname
 import datetime
@@ -39,7 +38,7 @@ class ProcessorState:
 
 @dataclass
 class CommunicatorState:
-    tasks: List[Communication] = field(default_factory=list)
+    tasks: list[Communication] = field(default_factory=list)
     next_task_index: int = 0
     current_task: Communication = None
     end_time: float = 0
