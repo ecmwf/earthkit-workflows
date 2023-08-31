@@ -1,6 +1,10 @@
 from .scheduler import Schedule, DepthFirstScheduler
 from .graphs import ContextGraph, TaskGraph
 from .executor import ExecutionReport, BasicExecutor
+from .graph_config import Config
+
+from ppgraph import Graph, deduplicate_nodes
+from . import graph_templates
 
 
 class Cascade:
@@ -13,8 +17,13 @@ class Cascade:
     
     def simulate(schedule: Schedule, with_communication: bool = True) -> ExecutionReport:
         return BasicExecutor(schedule, with_communication).simulate()
-    
-    # TODO: maybe add an API that allows constructing the graphs here.
+
+    def graph(product: str, config: Config):
+        total_graph = Graph([])
+        for _, param_config in config.parameters.items():
+            total_graph += getattr(graph_templates, product)(param_config)
+
+        return deduplicate_nodes(total_graph)
 
 
 

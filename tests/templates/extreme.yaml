@@ -1,0 +1,114 @@
+members:
+  end: 5
+  start: 1
+parameters:
+  tp:
+    efi_control: True
+    defs:
+      base_keys: &base_keys_tp
+        class: od
+        domain: g
+        expver: '0001'
+        levtype: sfc
+        param: 228
+    forecast:
+      - <<: *base_keys_tp
+        date: 20230820
+        time: 12
+        stream: enfo
+        type: cf
+      - <<: *base_keys_tp
+        date: 20230820
+        time: 12
+        stream: enfo
+        type: pf
+    climatology:
+      clim_keys:
+        <<: *base_keys_tp
+        date: '20230817'
+        time: 00
+        stream: efhs
+        type: cd
+      steps:
+        12-36: 0-24
+        12-84: 0-72
+        36-60: 24-48
+    eps: 1e-4
+    sot:
+    - 90
+    windows:
+    - grib_set:
+        edition: 1
+        gribTablesVersionNo: 132
+        indicatorOfParameter: 228
+        localDefinitionNumber: 19
+        mars.expver: '9078'
+        timeRangeIndicator: 5
+      periods:
+      - range:
+        - 12
+        - 36
+        - 24
+      - range:
+        - 36
+        - 60
+        - 24
+      - range:
+        - 12
+        - 84
+        - 72
+      window_operation: diff
+      include_start_step: True
+  capeshear:
+    defs:
+      base_keys: &base_keys_capeshear
+        class: od
+        domain: g
+        expver: '0001'
+        levtype: sfc
+    forecast:
+      - <<: *base_keys_capeshear
+        stream: enfo
+        type: cf
+        date: 20230820
+        time: 12
+        param: [228036, 228035]
+      - <<: *base_keys_capeshear
+        stream: enfo
+        type: pf
+        date: 20230820
+        time: 12
+        param: [228036, 228035]
+    climatology:
+      clim_keys:
+        <<: *base_keys_capeshear
+        date: '20230817'
+        time: 00
+        param: 228044
+        stream: efhs
+        type: cd
+      steps:
+        12-36: 0-24
+    eps: 1e-4
+    input_filter_operation:
+      comparison: <=
+      threshold: 10
+    sot:
+    - 90
+    windows:
+    - grib_set:
+        edition: 1
+        gribTablesVersionNo: 132
+        indicatorOfParameter: 44
+        indicatorOfTypeOfLevel: 1
+        localDefinitionNumber: 19
+        mars.expver: '9078'
+        param: 228035
+        timeRangeIndicator: 2
+        typeOfStatisticalProcessing: 1
+      periods:
+      - range:
+        - 12
+        - 36
+        - 6
+      window_operation: maximum
