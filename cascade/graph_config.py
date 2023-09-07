@@ -6,26 +6,26 @@ import numexpr
 
 
 def threshold_config(threshold: dict):
-    threshold_attrs = {}
+    threshold_keys = {}
     threshold_value = threshold["value"]
     if "localDecimalScaleFactor" in threshold:
         scale_factor = threshold["localDecimalScaleFactor"]
-        threshold_attrs["localDecimalScaleFactor"] = scale_factor
+        threshold_keys["localDecimalScaleFactor"] = scale_factor
         threshold_value = round(threshold["value"] * 10**scale_factor, 0)
 
     comparison = threshold["comparison"]
     if "<" in comparison:
-        threshold_attrs["thresholdIndicator"] = 2
-        threshold_attrs["upperThreshold"] = threshold_value
+        threshold_keys["thresholdIndicator"] = 2
+        threshold_keys["upperThreshold"] = threshold_value
     else:
-        threshold_attrs["thresholdIndicator"] = 1
-        threshold_attrs["lowerThreshold"] = threshold_value
+        threshold_keys["thresholdIndicator"] = 1
+        threshold_keys["lowerThreshold"] = threshold_value
 
     threshold_func = lambda x: numexpr.evaluate(
         "data " + comparison + str(threshold["value"]),
         local_dict={"data": x},
     )
-    return threshold_func, threshold_attrs
+    return threshold_func, threshold_keys
 
 
 def extreme_config(number):

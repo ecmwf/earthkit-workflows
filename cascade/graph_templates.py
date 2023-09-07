@@ -1,9 +1,9 @@
 import numpy as np
 import xarray as xr
 
-from ppgraph import Graph, Node, deduplicate_nodes
+from ppgraph import Graph, deduplicate_nodes
 
-from .fluent import Action
+from .fluent import Action, Node
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
 from .graph_config import threshold_config, extreme_config
@@ -32,7 +32,7 @@ class MultiAction(BaseMultiAction):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
         def _extreme(action, number):
-            extreme_type, efi_attrs = extreme_config(number)
+            extreme_type, efi_keys = extreme_config(number)
             if extreme_type == "efi":
                 new_extreme = action.reduce(
                     ("meteokit.extreme.efi", "input1", "input0", eps)
@@ -41,7 +41,7 @@ class MultiAction(BaseMultiAction):
                 new_extreme = action.reduce(
                     ("meteokit.extreme.sot", "input1", "input0", number, eps)
                 )
-            new_extreme.add_node_attributes(efi_attrs)
+            new_extreme.add_node_attributes(Node.Attributes.GRIB_KEYS, efi_keys)
             new_extreme._add_dimension("number", number)
             return new_extreme
 
@@ -61,11 +61,13 @@ class MultiAction(BaseMultiAction):
 
     def threshold_prob(self, thresholds: list):
         def _threshold_prob(action, threshold):
-            threshold_func, threshold_attrs = threshold_config(threshold)
+            threshold_func, threshold_keys = threshold_config(threshold)
             new_threshold_action = (
                 action.foreach(threshold_func).foreach(lambda x: x * 100).mean("number")
             )
-            new_threshold_action.add_node_attributes(threshold_attrs)
+            new_threshold_action.add_node_attributes(
+                Node.Attributes.GRIB_KEYS, threshold_keys
+            )
             new_threshold_action._add_dimension("paramId", threshold["out_paramid"])
             return new_threshold_action
 
@@ -115,12 +117,12 @@ def read(requests: list, join_key: str = "number"):
             nodes = np.empty(tuple(request.dims.values()), dtype=object)
             for indices, new_request in request.expand():
                 nodes[indices] = Node(
-                    f"{new_request}",
                     payload=(
                         "pproc.common.io.fdb_retrieve",
                         "pproc.common.io.fdb",
                         new_request,
                     ),
+                    name=f"{new_request}",
                 )
             new_action = MultiAction(
                 None,

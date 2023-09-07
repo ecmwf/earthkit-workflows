@@ -2,12 +2,16 @@ import randomname
 import numpy as np
 import xarray as xr
 import itertools
+from enum import Enum, auto
 
-from ppgraph import Node as PPNode
 from ppgraph import Graph
+from ppgraph import Node as PPNode
 
 
 class Node(PPNode):
+    class Attributes(Enum):
+        GRIB_KEYS = auto()
+
     def __init__(self, payload, inputs=(), name=None):
         if name is None:
             name = randomname.generate()
@@ -21,8 +25,17 @@ class Node(PPNode):
             )
         self.attributes = {}
 
-    def add_attributes(self, attrs: dict):
-        self.attributes.update(attrs)
+    def add_attribute(self, key: Attributes, value):
+        assert key in Node.Attributes, f"Unknown attribute {key}"
+        if key == Node.Attributes.GRIB_KEYS:
+            self.attributes.setdefault(key, {}).update(value)
+        else:
+            self.attributes[key] = value
+
+    def get_attribute(self, key):
+        if key == Node.Attributes.GRIB_KEYS:
+            return self.attributes.get(key, {})
+        return self.attributes.get(key, 0)
 
 
 class Action:
@@ -87,9 +100,9 @@ class SingleAction(Action):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def add_node_attributes(self, attrs: dict):
+    def add_node_attributes(self, key: Node.Attributes, value):
         node = self.node()
-        node.add_attributes(attrs)
+        node.add_attribute(key, value)
         self.nodes = xr.DataArray(node, attrs=self.nodes.attrs)
 
     def then(self, func):
@@ -116,9 +129,9 @@ class MultiAction(Action):
     def to_single(self, func, node=None):
         return SingleAction(func, self, node)
 
-    def add_node_attributes(self, attrs: dict, criteria: dict):
+    def add_node_attributes(self, key: Node.Attributes, value, criteria: dict):
         node = self.node(criteria)
-        node.add_attributes(attrs)
+        node.add_attribute(key, value)
         self.nodes.loc[criteria] = node
 
     def foreach(self, func):

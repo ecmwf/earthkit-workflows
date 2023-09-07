@@ -1,90 +1,86 @@
-from __future__ import annotations
-
-import networkx as nx
 import randomname
+import networkx as nx
+
+from ppgraph import Graph, Transformer, Sink
+from ppgraph import Node
 
 ####################################################################################################
 
 
-class Task:
-    def __init__(self, cost, in_memory, out_memory, name=None):
-        self.name = name or randomname.get_name()
-        self.cost = cost
-        self.in_memory = in_memory
-        self.out_memory = out_memory
+class Task(Node):
+    def __init__(self, name, payload):
+        super().__init__(name, payload=payload)
+        self.cost = 0
+        self.in_memory = 0
+        self.out_memory = 0
         self.state = None
-
-    def __hash__(self) -> int:
-        return hash(self.name)
-    
-    def __eq__(self, other: Task) -> bool:
-        return isinstance(other, Task) and hash(self) == hash(other)
-    
-    def __repr__(self) -> str:
-        return self.name
-
-    def __lt__(self, other) -> bool:
-        assert isinstance(other, Task)
-        return self.name < other.name
 
     @property
     def memory(self):
         return max(self.in_memory, self.out_memory)
 
-class Communication:
-    def __init__(self, source, target, size, name=None):
-        self.source = source
-        self.target = target
-        self.name = name or randomname.get_name()
+
+class Communication(Node):
+    def __init__(self, name, source, size):
+        super().__init__(name, payload=None, input=source)
         self.size = size
         self.state = None
 
-    def __hash__(self) -> int:
-        return hash(self.name)
-    
-    def __eq__(self, other: Communication) -> bool:
-        return isinstance(other, Communication) and hash(self) == hash(other)
-    
-    def __repr__(self) -> str:
-        return self.name
+
+class TaskGraph(Graph):
+    def predecessors(self, task) -> list[Task]:
+        return [
+            x if isinstance(x, Task) else x[0]
+            for x in self.get_predecessors(task).values()
+        ]
+
+    def successors(self, task) -> list[Task]:
+        return [x[0] for x in sum(self.get_successors(task).values(), [])]
 
 
-class TaskGraph(nx.DiGraph):
+class ExecutionGraph(TaskGraph):
+    def _make_communication_task(self, source, target):
+        t = Communication(f"{source.name}-{target.name}", source, source.out_memory)
 
-    def __init__(self, **attr):
-        self.node_dict = {}
-        super().__init__(**attr)
-
-    def add_task(self, cost, in_memory, out_memory, name=None):
-        t = Task(cost, in_memory, out_memory, name)
-        self.node_dict[t.name] = t
-        super().add_node(t)
-
-    def add_comm_edge(self, u_of_edge, v_of_edge, size):
-        u_of_edge = self.node_dict[u_of_edge]
-        v_of_edge = self.node_dict[v_of_edge]
-        super().add_edge(u_of_edge, v_of_edge, obj=Communication(source=u_of_edge, target=v_of_edge, size=size, name=f"{u_of_edge}-{v_of_edge}"))
-
-    def get_roots(self):
-        return [n for n in self if self.in_degree(n) == 0]
-    
-    def draw(self, filename):
-        import matplotlib.pyplot as plt 
-        pos = nx.drawing.nx_agraph.graphviz_layout(self, prog='dot', args='-Nshape=box')
-        nx.draw_networkx(self, pos=pos, with_labels=False)
-        plt.savefig(filename)
-        plt.clf()
-
-    def _make_communication_task(self, source, target, edge):
-        t = Communication(source, target, edge.size, edge.name)
-        self.node_dict[t.name] = t
-        super().add_node(t)
-
-        self.remove_edge(source, target)
-        super().add_edge(source, t)
-        super().add_edge(t, target)
+        for iname, input in target.inputs.items():
+            if input.name == source:
+                target.inputs[iname] = t.get_output()
+                break
         return t
-        
+
+    def edges(self):
+        for node in self.nodes():
+            for input in node.inputs.values():
+                yield input.parent, node
+
+
+class _ToTaskGraph(Transformer):
+    def node(self, node: Node, **inputs: Node.Output) -> Task:
+        newnode = Task(node.name, node.payload)
+        newnode.inputs = inputs
+        return newnode
+
+    def graph(self, graph: Graph, sinks: list[Sink]) -> TaskGraph:
+        return TaskGraph(sinks)
+
+
+def to_task_graph(graph: Graph) -> TaskGraph:
+    return _ToTaskGraph().transform(graph)
+
+
+class _ToExecutionGraph(Transformer):
+    def node(self, node: Node, **inputs: Node.Output) -> Task:
+        newnode = Task(node.name, node.payload)
+        newnode.inputs = inputs
+        return newnode
+
+    def graph(self, graph: Graph, sinks: list[Sink]) -> ExecutionGraph:
+        return ExecutionGraph(sinks)
+
+
+def to_execution_graph(graph: Graph) -> ExecutionGraph:
+    return _ToExecutionGraph().transform(graph)
+
 
 ####################################################################################################
 
@@ -99,7 +95,7 @@ class Processor:
 
     def __hash__(self) -> int:
         return hash(self.name)
-    
+
 
 class Communicator:
     def __init__(self, source, target, bandwidth, latency):
@@ -111,10 +107,9 @@ class Communicator:
 
     def __hash__(self) -> int:
         return hash(self.source + self.target + str(self.bandwidth) + str(self.latency))
-    
+
 
 class ContextGraph(nx.Graph):
-
     def __init__(self, **attr):
         self.node_dict = {}
         super().__init__(**attr)
@@ -123,7 +118,7 @@ class ContextGraph(nx.Graph):
         ex = Processor(name, type, speed, memory)
         self.node_dict[ex.name] = ex
         return super().add_node(ex)
-    
+
     def add_edge(self, u_of_edge, v_of_edge, bandwidth, latency):
         u_of_edge = self.node_dict[u_of_edge]
         v_of_edge = self.node_dict[v_of_edge]

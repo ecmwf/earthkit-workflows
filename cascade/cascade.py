@@ -1,5 +1,5 @@
 from .scheduler import Schedule, DepthFirstScheduler
-from .graphs import ContextGraph, TaskGraph
+from .graphs import ContextGraph
 from .executor import ExecutionReport, BasicExecutor
 from .graph_config import Config
 
@@ -8,14 +8,15 @@ from . import graph_templates
 
 
 class Cascade:
-
-    def create_schedule(taskgraph: TaskGraph, contextgraph: ContextGraph) -> Schedule:
+    def create_schedule(taskgraph: Graph, contextgraph: ContextGraph) -> Schedule:
         return DepthFirstScheduler(taskgraph, contextgraph).create_schedule()
-    
+
     def execute(schedule: Schedule) -> ExecutionReport:
         return BasicExecutor(schedule).execute()
-    
-    def simulate(schedule: Schedule, with_communication: bool = True) -> ExecutionReport:
+
+    def simulate(
+        schedule: Schedule, with_communication: bool = True
+    ) -> ExecutionReport:
         return BasicExecutor(schedule, with_communication).simulate()
 
     def graph(product: str, config: Config):
@@ -24,10 +25,3 @@ class Cascade:
             total_graph += getattr(graph_templates, product)(param_config)
 
         return deduplicate_nodes(total_graph)
-
-
-
-            
-
-
-

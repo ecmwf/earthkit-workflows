@@ -128,11 +128,13 @@ def test_attributes():
     assert action.nodes.attrs["expver"] == "0001"
 
     # Set attribute for specific node
-    action.add_node_attributes({"number": 1}, {"dim_0": 0})
-    assert action.node({"dim_0": 0}).attributes == {"number": 1}
+    action.add_node_attributes(Node.Attributes.GRIB_KEYS, {"number": 1}, {"dim_0": 0})
+    assert action.node({"dim_0": 0}).get_attribute(Node.Attributes.GRIB_KEYS) == {
+        "number": 1
+    }
 
     # Set attributes on node in SingleAction
     single = action.select({"dim_0": 0})
     single_attributes = {"number": 2, "type": "em"}
-    single.add_node_attributes(single_attributes)
-    assert single.node().attributes == single_attributes
+    single.add_node_attributes(Node.Attributes.GRIB_KEYS, single_attributes)
+    assert single.node().get_attribute(Node.Attributes.GRIB_KEYS) == single_attributes

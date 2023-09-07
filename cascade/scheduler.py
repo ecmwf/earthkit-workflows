@@ -5,13 +5,19 @@ import random
 import numpy as np
 import networkx as nx
 
+from ppgraph import Graph
+from ppgraph.copy import copy_graph
+from ppgraph.networkx import to_networkx
+
 from .utility import EventLoop
 from .executor import BasicExecutor
-from .graphs import TaskGraph, Task
+from .graphs import ContextGraph, to_task_graph, Task
 
 
 class Schedule:
-    def __init__(self, task_graph, context_graph, task_allocation):
+    def __init__(
+        self, task_graph: Graph, context_graph: ContextGraph, task_allocation: dict
+    ):
         self.task_graph = task_graph
         self.context_graph = context_graph
         self.task_allocation = task_allocation
@@ -38,18 +44,20 @@ class Schedule:
 
     @classmethod
     def valid_allocations(
-        cls, task_graph: TaskGraph, task_allocation: dict[str, list]
+        cls, task_graph: Graph, task_allocation: dict[str, list]
     ) -> bool:
-        dependency_graph = copy.deepcopy(task_graph)
+        dependency_graph = copy_graph(task_graph)
 
         for _, p_tasks in task_allocation.items():
             for i_task, task in enumerate(p_tasks):
                 if i_task < len(p_tasks) - 1:
-                    current_task = task_graph.node_dict[task]
-                    next_task = task_graph.node_dict[p_tasks[i_task + 1]]
-                    dependency_graph.add_edge(current_task, next_task)
+                    current_task = dependency_graph.get_node(task)
+                    next_task = dependency_graph.get_node(p_tasks[i_task + 1])
+                    key = f"inputs{len(next_task.inputs)}"
+                    assert key not in next_task.inputs
+                    next_task.inputs[key] = current_task.get_output()
 
-        return not nx.dag.has_cycle(dependency_graph)
+        return not nx.dag.has_cycle(to_networkx(dependency_graph))
 
 
 ####################################################################################################
@@ -82,7 +90,7 @@ class MemoryUsage:
 
 class Scheduler:
     def __init__(self, task_graph, context_graph):
-        self.task_graph = task_graph
+        self.task_graph = to_task_graph(task_graph)
         self.context_graph = context_graph
 
     def create_schedule(self) -> Schedule:
@@ -109,20 +117,20 @@ class DepthFirstScheduler(Scheduler):
     def on_task_complete(self, time, task):
         # print(f"Task {task.name} completed at time {time} by processor {processor.name}")
         self.completed_tasks.add(task.name)
-        for dependent in self.task_graph.successors(task):
-            if all(
-                t.name in self.completed_tasks
-                for t in self.task_graph.predecessors(dependent)
-            ):
+        successors = self.task_graph.successors(task)
+
+        for dependent in successors:
+            predecessors = self.task_graph.predecessors(dependent)
+            if all(t.name in self.completed_tasks for t in predecessors):
                 self.eligible.append(dependent)
 
         self.assign_idle_processors(time)
 
     def update_memory_usage(self, processor) -> float:
         for task in self.memory_usage[processor.name].current_tasks():
-            sucessors = self.task_graph.successors(task)
+            successors = self.task_graph.successors(task)
             if all(
-                [x in self.completed_tasks or x in self.eligible for x in sucessors]
+                [x in self.completed_tasks or x in self.eligible for x in successors]
             ):
                 self.memory_usage[processor.name].remove_task(task)
 
@@ -130,7 +138,7 @@ class DepthFirstScheduler(Scheduler):
 
     def assign_idle_processors(self, time):
         # Sort next tasks
-        self.eligible.sort(key=lambda x: (x.cost, self.task_graph.out_degree[x]))
+        self.eligible.sort(key=lambda x: (x.cost, len(x.inputs)))
 
         # Assign idle processors
         for processor in self.context_graph:
@@ -148,12 +156,12 @@ class DepthFirstScheduler(Scheduler):
     def create_schedule(self):
         self.completed_tasks = set()
         self.task_allocation = {p.name: [] for p in self.context_graph}
-        self.eligible = self.task_graph.get_roots()
+        self.eligible = list(self.task_graph.sources())
         self.sim = EventLoop()
         self.assign_idle_processors(time=0)
         self.sim.run()
         # print(f"Finished {self.ntasks_complete} tasks out of {len(self.task_graph)}")
-        assert len(self.completed_tasks) == len(self.task_graph)
+        assert len(self.completed_tasks) == len(list(self.task_graph.nodes()))
 
         s = Schedule(self.task_graph, self.context_graph, self.task_allocation)
         return s
@@ -227,7 +235,7 @@ class AnnealingScheduler(Scheduler):
                 all_allocated_tasks = set()
                 for allocations in new_task_allocations.values():
                     all_allocated_tasks.update(allocations)
-                assert len(self.task_graph) == len(all_allocated_tasks)
+                assert len(list(self.task_graph.nodes())) == len(all_allocated_tasks)
 
                 # Check to see if new schedule is improvement
                 new_schedule = Schedule(
