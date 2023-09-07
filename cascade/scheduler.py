@@ -11,7 +11,7 @@ from ppgraph.networkx import to_networkx
 
 from .utility import EventLoop
 from .executor import BasicExecutor
-from .graphs import ContextGraph, to_task_graph, Task
+from .graphs import ContextGraph, Task
 
 
 class Schedule:
@@ -90,7 +90,7 @@ class MemoryUsage:
 
 class Scheduler:
     def __init__(self, task_graph, context_graph):
-        self.task_graph = to_task_graph(task_graph)
+        self.task_graph = task_graph
         self.context_graph = context_graph
 
     def create_schedule(self) -> Schedule:
@@ -160,7 +160,7 @@ class DepthFirstScheduler(Scheduler):
         self.sim = EventLoop()
         self.assign_idle_processors(time=0)
         self.sim.run()
-        # print(f"Finished {self.ntasks_complete} tasks out of {len(self.task_graph)}")
+        # print(f"Finished {len(self.completed_tasks)} tasks out of {len(list(self.task_graph.nodes()))}")
         assert len(self.completed_tasks) == len(list(self.task_graph.nodes()))
 
         s = Schedule(self.task_graph, self.context_graph, self.task_allocation)

@@ -1,3 +1,5 @@
+from typing import Any
+
 import randomname
 import networkx as nx
 
@@ -8,8 +10,14 @@ from ppgraph import Node
 
 
 class Task(Node):
-    def __init__(self, name, payload):
-        super().__init__(name, payload=payload)
+    def __init__(
+        self,
+        name: str,
+        outputs: list[str] | None = None,
+        payload: Any = None,
+        **kwargs: "Node | Node.Output",
+    ):
+        super().__init__(name, outputs, payload, **kwargs)
         self.cost = 0
         self.in_memory = 0
         self.out_memory = 0
@@ -18,6 +26,13 @@ class Task(Node):
     @property
     def memory(self):
         return max(self.in_memory, self.out_memory)
+
+    def copy(self) -> "Task":
+        newnode = Task(self.name, self.outputs.copy(), self.payload, **self.inputs)
+        newnode.cost = self.cost
+        newnode.in_memory = self.in_memory
+        newnode.out_memory = self.out_memory
+        return newnode
 
 
 class Communication(Node):
@@ -37,6 +52,11 @@ class TaskGraph(Graph):
     def successors(self, task) -> list[Task]:
         return [x[0] for x in sum(self.get_successors(task).values(), [])]
 
+    def edges(self):
+        for node in self.nodes():
+            for input in node.inputs.values():
+                yield input.parent, node
+
 
 class ExecutionGraph(TaskGraph):
     def _make_communication_task(self, source, target):
@@ -48,15 +68,10 @@ class ExecutionGraph(TaskGraph):
                 break
         return t
 
-    def edges(self):
-        for node in self.nodes():
-            for input in node.inputs.values():
-                yield input.parent, node
-
 
 class _ToTaskGraph(Transformer):
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        newnode = Task(node.name, node.payload)
+        newnode = Task(node.name, node.outputs.copy(), node.payload)
         newnode.inputs = inputs
         return newnode
 
@@ -70,7 +85,7 @@ def to_task_graph(graph: Graph) -> TaskGraph:
 
 class _ToExecutionGraph(Transformer):
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        newnode = Task(node.name, node.payload)
+        newnode = node.copy()
         newnode.inputs = inputs
         return newnode
 

@@ -64,7 +64,7 @@ class ExecutionReport:
             str += f"Processor {processor.name} completes at {processor.state.end_time:.2f} ({processor.state.idle_time:.2f} idle):\n"
             str += (
                 " → ".join(
-                    f"{task} (end: {self.task_graph.get_node(task).state.end_time})"
+                    f"{task} (end: {self.task_graph.get_node(task).state.end_time:.2f})"
                     for task in self.schedule.task_allocation[processor.name]
                 )
                 + "\n"

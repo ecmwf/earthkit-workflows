@@ -1,7 +1,10 @@
 import os
+import random
+
+from ppgraph import Node, Sink, Graph, Transformer
 
 from cascade.cascade import Cascade
-from cascade.graphs import ContextGraph
+from cascade.graphs import Task, TaskGraph, ContextGraph
 from cascade.graph_config import Config
 from cascade.scheduler import AnnealingScheduler
 
@@ -24,19 +27,37 @@ def setup_context():
     return context
 
 
+class _AssignRandomResources(Transformer):
+    def node(self, node: Node, **inputs: Node.Output) -> Task:
+        newnode = Task(node.name, node.outputs.copy(), node.payload)
+        newnode.inputs = inputs
+        newnode.cost = random.randrange(100)
+        newnode.in_memory = random.randrange(2)
+        newnode.out_memory = random.randrange(2)
+        return newnode
+
+    def graph(self, graph: Graph, sinks: list[Sink]) -> TaskGraph:
+        return TaskGraph(sinks)
+
+
+def add_resources(graph: Graph) -> TaskGraph:
+    return _AssignRandomResources().transform(graph)
+
+
 def test_depth_first_scheduler():
     context = setup_context()
     graph = Cascade.graph("anomaly_prob", Config(f"{ROOT_DIR}/templates/t850.yaml"))
-    schedule = Cascade.create_schedule(graph, context)
+    schedule = Cascade.create_schedule(add_resources(graph), context)
     print(schedule)
 
     execution = Cascade.simulate(schedule)
     print(execution)
 
 
-# def test_annealing_scheduler(self):
-#     context = setup_context()
-#     graph = Cascade.graph("anomaly_prob", Config(f"{ROOT_DIR}/templates/t850.yaml"))
-#     schedule = AnnealingScheduler(graph, context).create_schedule()
-#     execution = Cascade.simulate(schedule)
-#     print(f"With Communications:", execution)
+def test_annealing_scheduler():
+    context = setup_context()
+    graph = Cascade.graph("anomaly_prob", Config(f"{ROOT_DIR}/templates/t850.yaml"))
+    scheduler = AnnealingScheduler(add_resources(graph), context)
+    schedule = scheduler.create_schedule(num_temp_levels=10, num_tries=10)
+    execution = Cascade.simulate(schedule)
+    print(f"With Communications:", execution)
