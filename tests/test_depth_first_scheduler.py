@@ -31,9 +31,9 @@ class _AssignRandomResources(Transformer):
     def node(self, node: Node, **inputs: Node.Output) -> Task:
         newnode = Task(node.name, node.outputs.copy(), node.payload)
         newnode.inputs = inputs
-        newnode.cost = random.randrange(100)
-        newnode.in_memory = random.randrange(2)
-        newnode.out_memory = random.randrange(2)
+        newnode.cost = random.randrange(1, 100)
+        newnode.in_memory = random.randrange(1, 2)
+        newnode.out_memory = random.randrange(1, 2)
         return newnode
 
     def graph(self, graph: Graph, sinks: list[Sink]) -> TaskGraph:

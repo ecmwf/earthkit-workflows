@@ -3,6 +3,7 @@ members:
   start: 1
 parameters:
   tp:
+    target: file:extreme_test_tp.grib
     efi_control: True
     defs:
       base_keys: &base_keys_tp
@@ -11,24 +12,33 @@ parameters:
         expver: '0001'
         levtype: sfc
         param: 228
+      base_interp: &base_interp_tp
+        grid: 'O640'
+        intgrid: none
+        legendre-loader: shmem
+        matrix-loader: file-io
     forecast:
       - <<: *base_keys_tp
-        date: 20230820
+        date: 20230907
         time: 12
         stream: enfo
         type: cf
+        interpolate: *base_interp_tp
       - <<: *base_keys_tp
-        date: 20230820
+        date: 20230907
         time: 12
         stream: enfo
         type: pf
+        interpolate: *base_interp_tp
     climatology:
       clim_keys:
         <<: *base_keys_tp
-        date: '20230817'
-        time: 00
+        date: '20230904'
+        time: '00'
         stream: efhs
         type: cd
+        quantile: 100
+        interpolate: *base_interp_tp
       steps:
         12-36: 0-24
         12-84: 0-72
@@ -60,33 +70,43 @@ parameters:
       window_operation: diff
       include_start_step: True
   capeshear:
+    target: file:extreme_test_capeshear.grib
     defs:
       base_keys: &base_keys_capeshear
         class: od
         domain: g
         expver: '0001'
         levtype: sfc
+      base_interp: &base_interp_capeshear
+        grid: 'O640'
+        intgrid: none
+        legendre-loader: shmem
+        matrix-loader: file-io
     forecast:
       - <<: *base_keys_capeshear
         stream: enfo
         type: cf
-        date: 20230820
+        date: 20230907
         time: 12
         param: [228036, 228035]
+        interpolate: *base_interp_capeshear
       - <<: *base_keys_capeshear
         stream: enfo
         type: pf
-        date: 20230820
+        date: 20230907
         time: 12
         param: [228036, 228035]
+        interpolate: *base_interp_capeshear
     climatology:
       clim_keys:
         <<: *base_keys_capeshear
-        date: '20230817'
-        time: 00
+        date: '20230904'
+        time: '00'
         param: 228044
         stream: efhs
         type: cd
+        quantile: 100
+        interpolate: *base_interp_capeshear
       steps:
         12-36: 0-24
     eps: 1e-4

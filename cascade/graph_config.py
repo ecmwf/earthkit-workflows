@@ -4,23 +4,26 @@ import yaml
 import bisect
 import numexpr
 import xarray as xr
+import numpy as np
+
+from .functions import efi_xr2np, sot_xr2np
 
 
 def threshold_config(threshold: dict):
     threshold_keys = {}
-    # threshold_value = threshold["value"]
-    # if "localDecimalScaleFactor" in threshold:
-    #     scale_factor = threshold["localDecimalScaleFactor"]
-    #     threshold_keys["localDecimalScaleFactor"] = scale_factor
-    #     threshold_value = round(threshold["value"] * 10**scale_factor, 0)
+    threshold_value = threshold["value"]
+    if "localDecimalScaleFactor" in threshold:
+        scale_factor = threshold["localDecimalScaleFactor"]
+        threshold_keys["localDecimalScaleFactor"] = scale_factor
+        threshold_value = round(threshold["value"] * 10**scale_factor, 0)
 
     comparison = threshold["comparison"]
-    # if "<" in comparison:
-    #     threshold_keys["thresholdIndicator"] = 2
-    #     threshold_keys["upperThreshold"] = threshold_value
-    # else:
-    #     threshold_keys["thresholdIndicator"] = 1
-    #     threshold_keys["lowerThreshold"] = threshold_value
+    if "<" in comparison:
+        threshold_keys["thresholdIndicator"] = 2
+        threshold_keys["upperThreshold"] = threshold_value
+    else:
+        threshold_keys["thresholdIndicator"] = 1
+        threshold_keys["lowerThreshold"] = threshold_value
 
     threshold_func = lambda x: xr.DataArray(
         numexpr.evaluate(
@@ -33,12 +36,14 @@ def threshold_config(threshold: dict):
     return threshold_func, threshold_keys
 
 
-def extreme_config(number):
+def extreme_config(eps, number: int = 0, control: bool = False):
     if number == 0:
-        extreme_type = "efi"
-        efi_order = 0
+        payload = (efi_xr2np, "input1", "input0", eps)
+        efi_keys = {"marsType": "efi", "efiOrder": 0}
+        if control:
+            efi_keys.update({"marsType": "efic", "totalNumber": 1, "number": 0})
     else:
-        extreme_type = "sot"
+        payload = (sot_xr2np, "input1", "input0", number, eps)
         if number == 90:
             efi_order = 99
         elif number == 10:
@@ -47,7 +52,8 @@ def extreme_config(number):
             raise Exception(
                 "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
             )
-    return extreme_type, {"marsType": extreme_type, "efiOrder": efi_order}
+        efi_keys = {"marsType": "sot", "efiOrder": efi_order}
+    return payload, efi_keys
 
 
 class Window:
@@ -72,15 +78,16 @@ class Window:
 
 
 class Request:
-    def __init__(self, request: dict):
+    def __init__(self, request: dict, no_expand: tuple[str] = ()):
         self.request = request
         self.fake_dims = []
+        self.no_expand = no_expand
 
     @property
     def dims(self):
         dimensions = OrderedDict()
         for key, values in self.request.items():
-            if key == "interpolate":
+            if key == "interpolate" or key in self.no_expand:
                 continue
             if hasattr(values, "__iter__") and not isinstance(values, str):
                 dimensions[key] = len(values)
@@ -181,15 +188,18 @@ class ParamConfig:
     def _generate_param_operation(cls, param_config):
         if "input_filter_operation" in param_config:
             filter_configs = param_config.pop("input_filter_operation")
-            return (
-                lambda x, y, filter_configs=filter_configs: x
-                if numexpr.evaluate(
-                    "data "
-                    + filter_configs["comparison"]
-                    + str(filter_configs["threshold"]),
-                    local_dict={"data": y},
-                )
-                else filter_configs["replacement"]
+            return lambda x, y, filter_configs=filter_configs: xr.DataArray(
+                np.where(
+                    numexpr.evaluate(
+                        "data "
+                        + filter_configs["comparison"]
+                        + str(filter_configs["threshold"]),
+                        local_dict={"data": y},
+                    ),
+                    filter_configs.get("replacement", 0),
+                    x,
+                ),
+                attrs=x.attrs,
             )
         return param_config.pop("input_combine_operation", None)
 
@@ -203,14 +213,14 @@ class ParamConfig:
             start_index = bisect.bisect_right(self.steps, window.start)
         return self.steps[start_index : self.steps.index(window.end) + 1]
 
-    def forecast_request(self, window):
+    def forecast_request(self, window, no_expand: tuple[str] = ()):
         requests = self.base_request
         if isinstance(self.base_request, dict):
             requests = [self.base_request]
 
         window_requests = []
         for request in requests:
-            req = Request(request.copy())
+            req = Request(request.copy(), no_expand)
             req["step"] = self._request_steps(window)
             if request["type"] == "pf":
                 req["number"] = self.members
@@ -219,20 +229,22 @@ class ParamConfig:
             window_requests.append(req)
         return window_requests
 
-    def clim_request(self, window, accumulated: bool = False):
-        clim_request = Request(self.climatology["clim_keys"].copy())
-        if "quantile" in clim_request:
-            num_quantiles = clim_request["quantile"]
-            clim_request["quantile"] = [
-                "{}:100".format(i) for i in range(num_quantiles)
+    def clim_request(
+        self, window, accumulated: bool = False, no_expand: tuple[str] = ()
+    ):
+        clim_req = Request(self.climatology["clim_keys"].copy(), no_expand)
+        if "quantile" in clim_req:
+            num_quantiles = clim_req["quantile"]
+            clim_req["quantile"] = [
+                "{}:100".format(i) for i in range(num_quantiles + 1)
             ]
         if accumulated:
-            clim_request["step"] = self.climatology.get("steps", {}).get(
+            clim_req["step"] = self.climatology.get("steps", {}).get(
                 window.name, window.name
             )
         else:
             window_steps = self._request_steps(window)
-            clim_request["step"] = list(
+            clim_req["step"] = list(
                 map(self.climatology.get("steps", {}).get, window_steps, window_steps)
             )
-        return [clim_request]
+        return [clim_req]

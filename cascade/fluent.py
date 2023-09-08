@@ -23,7 +23,7 @@ class Node(PPNode):
             super().__init__(
                 name,
                 payload=payload,
-                **{f"inputs{x}": node for x, node in enumerate(inputs)},
+                **{f"input{x}": node for x, node in enumerate(inputs)},
             )
         self.attributes = {}
 
@@ -213,7 +213,7 @@ class MultiAction(Action):
             grib_sets.update(self.nodes.attrs)
             grib_sets.update(node_coords)
             grib_sets.update(node.get_attribute(Node.Attributes.GRIB_KEYS))
-            new_nodes.append(Node((write_grib, target, "inputs0", grib_sets), [node]))
+            new_nodes.append(Node((write_grib, target, "input0", grib_sets), [node]))
         return type(self)(
             self,
             xr.DataArray(new_nodes),
@@ -259,7 +259,9 @@ class MultiAction(Action):
         return self.reduce((np.subtract, "input1", "input0"), key)
 
     def norm(self, key: str = ""):
-        return self.reduce(lambda x, y: np.sqrt(x**2 + y**2), key)
+        return self.reduce(
+            lambda x, y: xr.DataArray(np.sqrt(x**2 + y**2), attrs=x.attrs), key
+        )
 
     def subtract(self, key: str = ""):
         return self.reduce(np.subtract, key)

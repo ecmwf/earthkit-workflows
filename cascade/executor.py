@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import randomname
 import datetime
 
-from pproc.common.resources  import ResourceMeter
+from pproc.common.resources import ResourceMeter
 
 from .graphs import Task, Communication, Communicator, to_execution_graph
 from .utility import EventLoop
@@ -184,9 +184,9 @@ class BasicExecutor(Executor):
                     t = self.task_graph._make_communication_task(start, end)
                     t.state = CommunicationState()
                     # find the communicator which can handle this communication
-                    ctx = self.context_graph.get_edge_data(start_processor, end_processor)[
-                        "obj"
-                    ]
+                    ctx = self.context_graph.get_edge_data(
+                        start_processor, end_processor
+                    )["obj"]
                     t.state.communicator = ctx
                     ctx.state.tasks.append(t)
                     self.total_tasks += 1
@@ -210,23 +210,30 @@ class BasicExecutor(Executor):
             payload = task.payload
             with ResourceMeter() as rm:
                 arguments = payload[1:]
-            #print("NODE", task_name, "PAYLOAD", payload, "ARGS", len(arguments))
+            print("NODE", task_name, "PAYLOAD", payload, "ARGS", len(arguments))
             schedule_task.in_memory = rm.mem
             with ResourceMeter() as rm:
                 output = payload[0](*arguments)
 
-            #print("OUTPUT", output)
+            print("OUTPUT", output)
             schedule_task.cost = rm.elapsed_cpu
             schedule_task.out_memory = rm.mem
 
             # Pass output to arguments in payloads requiring it
             successors = self.task_graph.successors(task)
             for successor in successors:
-                assert not isinstance(successor.payload, str), f"Payload can not be str. Got {successor.payload}"
+                assert not isinstance(
+                    successor.payload, str
+                ), f"Payload can not be str. Got {successor.payload}"
                 if not hasattr(successor.payload, "__iter__"):
-                    successor.payload = tuple([successor.payload] + list(successor.inputs.keys()))
+                    successor.payload = tuple(
+                        [successor.payload] + list(successor.inputs.keys())
+                    )
                 for iname, input in successor.inputs.items():
-                        if input.parent == task:
-                            successor.payload = tuple(output if (isinstance(x, str) and x == iname) else x for x in successor.payload)
-                            break
+                    if input.parent == task:
+                        successor.payload = tuple(
+                            output if (isinstance(x, str) and x == iname) else x
+                            for x in successor.payload
+                        )
+                        break
             task.payload = None

@@ -1,6 +1,7 @@
 members: 5
 parameters:
   rain:
+    target: "file:prob_test_rain.grib"
     windows:
       - window_operation: 'diff'
         include_start_step: True
@@ -31,6 +32,18 @@ parameters:
           - out_paramid: 131099
             comparison: ">="
             value: 0.05
+        grib_set:
+          edition: 2
+          indicatorOfUnitForTimeIncrement: 1
+          packingType: grid_ccsds
+          # probabilityType: 3
+          # scaleFactorOfLowerLimit: 0
+          # scaleFactorOfUpperLimit: MISSING
+          # scaledValueOfUpperLimit: MISSING
+          stepRange: 0-0
+          stepType: accum
+          timeIncrement: 12
+          typeOfGeneratingProcess: 5
     forecast:
       class: od
       stream: enfo
@@ -38,9 +51,11 @@ parameters:
       levtype: sfc
       domain: g
       param: 228
-      date: 20230817
+      date: 20230908
       time: 00
+      expver: "0001"
   ff:
+    target: "file:prob_test_ff.grib"
     input_combine_operation: 'norm'
     windows:
       - periods:
@@ -60,9 +75,11 @@ parameters:
       levtype: sfc
       domain: g
       param: [165, 166]
-      date: 20230817
+      date: 20230908
       time: 00
+      expver: "0001"
   mn2t6:
+    target: "file:prob_test_mn2t6.grib"
     steps:
       - interval: 6
         start_step: 126
@@ -85,5 +102,6 @@ parameters:
       levtype: sfc
       domain: g
       param: 122
-      date: 20230817
+      date: 20230908
       time: 00
+      expver: "0001"

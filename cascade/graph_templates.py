@@ -2,6 +2,7 @@ import numpy as np
 import xarray as xr
 
 from ppgraph import Graph, deduplicate_nodes
+from meteokit import extreme as metext
 
 from .fluent import Action, Node
 from .fluent import SingleAction as BaseSingleAction
@@ -16,12 +17,9 @@ class SingleAction(BaseSingleAction):
 
     def extreme(self, climatology: Action, eps: float):
         # Join with climatology and compute efi control
-        ret = self.join(climatology, "datatype").reduce(
-            ("meteokit.extreme.efi", "input1", "input0", eps)
-        )
-        ret.add_attributes(
-            {"marsType": "efic", "efiOrder": 0, "totalNumber": 1, "number": 0}
-        )
+        payload, efi_keys = extreme_config(eps, control=True)
+        ret = self.join(climatology, "datatype").reduce(payload)
+        ret.add_attributes(efi_keys)
         return ret
 
 
@@ -33,15 +31,8 @@ class MultiAction(BaseMultiAction):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
         def _extreme(action, number):
-            extreme_type, efi_keys = extreme_config(number)
-            if extreme_type == "efi":
-                new_extreme = action.reduce(
-                    ("meteokit.extreme.efi", "input1", "input0", eps)
-                )
-            else:
-                new_extreme = action.reduce(
-                    ("meteokit.extreme.sot", "input1", "input0", number, eps)
-                )
+            payload, efi_keys = extreme_config(eps, number)
+            new_extreme = action.reduce(payload)
             new_extreme.add_node_attributes(Node.Attributes.GRIB_KEYS, efi_keys)
             new_extreme._add_dimension("number", number)
             return new_extreme
@@ -117,7 +108,13 @@ def read(requests: list, join_key: str = "number"):
     all_actions = None
     for request in requests:
         if len(request.dims) == 0:
-            new_action = SingleAction(f"read:{request}", None)
+            new_action = SingleAction(
+                func=(
+                    retrieve,
+                    request.request,
+                ),
+                previous=None,
+            )
         else:
             nodes = np.empty(tuple(request.dims.values()), dtype=object)
             for indices, new_request in request.expand():
@@ -208,7 +205,9 @@ def ensms(param_config):
 def extreme(param_config):
     total_graph = Graph([])
     for window in param_config.windows:
-        climatology = read(param_config.clim_request(window, True))
+        climatology = read(
+            param_config.clim_request(window, True, no_expand="quantile")
+        )
         parameter = read(param_config.forecast_request(window)).param_operation(
             param_config.param_operation
         )
