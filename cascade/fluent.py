@@ -7,6 +7,8 @@ from enum import Enum, auto
 from ppgraph import Graph
 from ppgraph import Node as PPNode
 
+from .io import write as write_grib
+
 
 class Node(PPNode):
     class Attributes(Enum):
@@ -108,10 +110,11 @@ class SingleAction(Action):
     def then(self, func):
         return type(self)(func, self)
 
-    def write(self, target):
-        grib_sets = self.nodes.attrs.copy()
-        grib_sets.update(self.node().attributes)
-        payload = ("pproc.common.io.write", target, "input0", grib_sets)
+    def write(self, target, config_grib_sets: dict):
+        grib_sets = config_grib_sets.copy()
+        grib_sets.update(self.nodes.attrs)
+        grib_sets.update(self.node().get_attribute(Node.Attributes.GRIB_KEYS))
+        payload = (write_grib, target, "input", grib_sets)
         return type(self)(
             payload,
             self,
@@ -197,7 +200,7 @@ class MultiAction(Action):
         res._squeeze_dimension(key)
         return res
 
-    def write(self, target):
+    def write(self, target, config_grib_sets: dict):
         coords = list(self.nodes.coords.keys())
         new_nodes = []
         for node_attrs in itertools.product(
@@ -205,12 +208,12 @@ class MultiAction(Action):
         ):
             node_coords = {key: node_attrs[index] for index, key in enumerate(coords)}
             node = self.node(node_coords)
-            grib_sets = self.nodes.attrs.copy()
-            grib_sets.update(node.attributes)
+
+            grib_sets = config_grib_sets.copy()
+            grib_sets.update(self.nodes.attrs)
             grib_sets.update(node_coords)
-            new_nodes.append(
-                Node(("pproc.common.io.write", target, "input0", grib_sets), [node])
-            )
+            grib_sets.update(node.get_attribute(Node.Attributes.GRIB_KEYS))
+            new_nodes.append(Node((write_grib, target, "inputs0", grib_sets), [node]))
         return type(self)(
             self,
             xr.DataArray(new_nodes),
@@ -220,13 +223,43 @@ class MultiAction(Action):
         return self.nodes.sel(**criteria, drop=True).data[()]
 
     def concatenate(self, key: str):
-        return self.reduce(np.concatenate, key)
+        return self.reduce(_concatenate, key)
 
     def mean(self, key: str = ""):
-        return self.reduce(np.mean, key)
+        def _mean(*arrays):
+            concat = _concatenate(*arrays)
+            return concat.mean(dim=concat.dims[0], keep_attrs=True)
+
+        return self.reduce(_mean, key)
 
     def std(self, key: str = ""):
-        return self.reduce(np.std, key)
+        def _std(*arrays):
+            concat = _concatenate(*arrays)
+            return concat.std(dim=concat.dims[0], keep_attrs=True)
+
+        return self.reduce(_std, key)
+
+    def maximum(self, key: str = ""):
+        def _maximum(*arrays):
+            concat = _concatenate(*arrays)
+            return concat.max(dim=concat.dims[0], keep_attrs=True)
+
+        return self.reduce(_maximum, key)
+
+    def minimum(self, key: str = ""):
+        def _minimum(*arrays):
+            concat = _concatenate(*arrays)
+            return concat.min(dim=concat.dims[0], keep_attrs=True)
+
+        return self.reduce(_minimum, key)
+
+    # Should perform dimension check for these as they only expect two arguments
+
+    def diff(self, key: str = ""):
+        return self.reduce((np.subtract, "input1", "input0"), key)
+
+    def norm(self, key: str = ""):
+        return self.reduce(lambda x, y: np.sqrt(x**2 + y**2), key)
 
     def subtract(self, key: str = ""):
         return self.reduce(np.subtract, key)
@@ -239,3 +272,8 @@ class MultiAction(Action):
 
     def multiply(self, key: str = ""):
         return self.reduce(np.multiply, key)
+
+
+def _concatenate(*arrays):
+    newdim = arrays[0].ndim + 1
+    return xr.concat(tuple(arr for arr in arrays), dim=f"dim{newdim}")

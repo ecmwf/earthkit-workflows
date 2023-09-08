@@ -7,6 +7,7 @@ from .fluent import Action, Node
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
 from .graph_config import threshold_config, extreme_config
+from .io import retrieve
 
 
 class SingleAction(BaseSingleAction):
@@ -63,7 +64,9 @@ class MultiAction(BaseMultiAction):
         def _threshold_prob(action, threshold):
             threshold_func, threshold_keys = threshold_config(threshold)
             new_threshold_action = (
-                action.foreach(threshold_func).foreach(lambda x: x * 100).mean("number")
+                action.foreach(threshold_func)
+                .foreach(lambda x: xr.DataArray(x * 100, attrs=x.attrs))
+                .mean("number")
             )
             new_threshold_action.add_node_attributes(
                 Node.Attributes.GRIB_KEYS, threshold_keys
@@ -97,14 +100,16 @@ class MultiAction(BaseMultiAction):
     def param_operation(self, operation: str):
         if operation is None:
             return self
+        if isinstance(operation, str):
+            return getattr(self, operation)("param")
         return self.reduce(operation, "param")
 
-    def window_operation(self, window_name: str, operation: str):
-        if operation is None:
+    def window_operation(self, window):
+        if window.operation is None:
             self._squeeze_dimension("step")
             return self
-        ret = self.reduce(operation, "step")
-        ret.add_attributes({"step": window_name})
+        ret = getattr(self, window.operation)("step")
+        ret.add_attributes({"stepRange": window.name})
         return ret
 
 
@@ -118,8 +123,7 @@ def read(requests: list, join_key: str = "number"):
             for indices, new_request in request.expand():
                 nodes[indices] = Node(
                     payload=(
-                        "pproc.common.io.fdb_retrieve",
-                        "pproc.common.io.fdb",
+                        retrieve,
                         new_request,
                     ),
                     name=f"{new_request}",
@@ -151,13 +155,13 @@ def anomaly_prob(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .anomaly(climatology, window.options.get("std_anomaly", False))
-            .window_operation(window.name, window.operation)
+            .window_operation(window)
             .threshold_prob(window.options.get("thresholds", []))
-            .write(param_config.target)
+            .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
         )
 
-    return total_graph
+    return deduplicate_nodes(total_graph)
 
 
 def prob(param_config):
@@ -166,9 +170,9 @@ def prob(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .param_operation(param_config.param_operation)
-            .window_operation(window.name, window.operation)
+            .window_operation(window)
             .threshold_prob(window.options.get("thresholds", []))
-            .write(param_config.target)
+            .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
         )
 
@@ -180,9 +184,9 @@ def wind(param_config):
     for window in param_config.windows:
         total_graph += (
             read(param_config.forecast_request(window))
-            .param_operation(lambda x, y: np.sqrt(x**2 + y**2))
+            .param_operation("norm")
             .ensms()
-            .write(param_config.target)
+            .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
         )
     return deduplicate_nodes(total_graph)
@@ -193,9 +197,9 @@ def ensms(param_config):
     for window in param_config.windows:
         total_graph += (
             read(param_config.forecast_request(window))
-            .window_operation(window.name, window.operation)
+            .window_operation(window)
             .ensms()
-            .write(param_config.target)
+            .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
         )
     return deduplicate_nodes(total_graph)
@@ -209,21 +213,22 @@ def extreme(param_config):
             param_config.param_operation
         )
         eps = float(param_config.options["eps"])
+        grib_sets = window.options.get("grib_set", {})
 
         # EFI Control
         if param_config.options.get("efi_control", False):
             total_graph += (
                 parameter.select({"number": 0})
-                .window_operation(window.name, window.operation)
+                .window_operation(window)
                 .extreme(climatology, eps)
-                .write(param_config.target)
+                .write(param_config.target, grib_sets)
                 .graph()
             )
 
         total_graph += (
-            parameter.window_operation(window.name, window.operation)
+            parameter.window_operation(window)
             .extreme(climatology, list(map(int, param_config.options["sot"])), eps)
-            .write(param_config.target)
+            .write(param_config.target, grib_sets)
             .graph()
         )
 
@@ -236,9 +241,9 @@ def quantiles(param_config):
         total_graph += (
             read(param_config.forecast_request(window), "number")
             .param_operation(param_config.param_operation)
-            .window_operation(window.name, window.operation)
+            .window_operation(window)
             .quantiles()
-            .write(param_config.target)
+            .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
         )
     return deduplicate_nodes(total_graph)

@@ -1,6 +1,7 @@
 members: 5
 parameters:
   t850:
+    target: "fileset:t850_test_{paramId}.grib"
     steps:
       - interval: 12
         start_step: 120
@@ -53,8 +54,8 @@ parameters:
           indicatorOfUnitForTimeIncrement: 1
           typeOfStatisticalProcessing: 10
           packingType: "grid_ccsds"
-          scaleFactorOfUpperLimit: 'MISSING'
-          scaledValueOfUpperLimit: 'MISSING'
+          #scaleFactorOfUpperLimit: 'MISSING'
+          #scaledValueOfUpperLimit: 'MISSING'
     defs:
       base_keys: &base_keys
         class: 'od'
@@ -62,6 +63,7 @@ parameters:
         levtype: 'pl'  
         domain: g 
         param: 130
+        expver: '0001'
       base_interp: &base_interp
         grid: 'O1280'
         intgrid: none
@@ -71,13 +73,13 @@ parameters:
       - <<: *base_keys
         stream: 'enfo'
         type: cf
-        date: 20230818
+        date: 20230907
         time: 12
         interpolate: *base_interp
       - <<: *base_keys
         stream: 'enfo'
         type: pf 
-        date: 20230818
+        date: 20230907
         time: 12
         interpolate: *base_interp
     climatology:
@@ -85,7 +87,7 @@ parameters:
         <<: *base_keys
         stream: 'efhs'
         type: [em, es]
-        date: 20230817
+        date: 20230907
         time: 00
         interpolate: *base_interp
       steps:

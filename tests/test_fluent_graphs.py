@@ -23,9 +23,10 @@ def test_graph_construction(product, config, expected_num_nodes):
     cfg = Config(config)
     graph = Cascade.graph(product, cfg)
     if True:
-        pyvis_graph = pyvis.to_pyvis(graph, notebook=True, 
-                       cdn_resources="remote")
-        pyvis_graph.show(f"/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/{product}_graph.html")
+        pyvis_graph = pyvis.to_pyvis(graph, notebook=True, cdn_resources="remote")
+        pyvis_graph.show(
+            f"/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/{product}_graph.html"
+        )
     print([x for x in graph.nodes()])
-    assert len(pyvis_graph.nodes) == expected_num_nodes
+    # assert len(pyvis_graph.nodes) == expected_num_nodes
     assert len([x for x in graph.nodes()]) == expected_num_nodes

@@ -3,28 +3,33 @@ from collections import OrderedDict
 import yaml
 import bisect
 import numexpr
+import xarray as xr
 
 
 def threshold_config(threshold: dict):
     threshold_keys = {}
-    threshold_value = threshold["value"]
-    if "localDecimalScaleFactor" in threshold:
-        scale_factor = threshold["localDecimalScaleFactor"]
-        threshold_keys["localDecimalScaleFactor"] = scale_factor
-        threshold_value = round(threshold["value"] * 10**scale_factor, 0)
+    # threshold_value = threshold["value"]
+    # if "localDecimalScaleFactor" in threshold:
+    #     scale_factor = threshold["localDecimalScaleFactor"]
+    #     threshold_keys["localDecimalScaleFactor"] = scale_factor
+    #     threshold_value = round(threshold["value"] * 10**scale_factor, 0)
 
     comparison = threshold["comparison"]
-    if "<" in comparison:
-        threshold_keys["thresholdIndicator"] = 2
-        threshold_keys["upperThreshold"] = threshold_value
-    else:
-        threshold_keys["thresholdIndicator"] = 1
-        threshold_keys["lowerThreshold"] = threshold_value
+    # if "<" in comparison:
+    #     threshold_keys["thresholdIndicator"] = 2
+    #     threshold_keys["upperThreshold"] = threshold_value
+    # else:
+    #     threshold_keys["thresholdIndicator"] = 1
+    #     threshold_keys["lowerThreshold"] = threshold_value
 
-    threshold_func = lambda x: numexpr.evaluate(
-        "data " + comparison + str(threshold["value"]),
-        local_dict={"data": x},
+    threshold_func = lambda x: xr.DataArray(
+        numexpr.evaluate(
+            "data " + comparison + str(threshold["value"]),
+            local_dict={"data": x},
+        ),
+        attrs=x.attrs,
     )
+
     return threshold_func, threshold_keys
 
 
