@@ -3,15 +3,13 @@ import randomname
 import datetime
 import random
 import numpy as np
-import networkx as nx
 
 from ppgraph import Graph
 from ppgraph.copy import copy_graph
-from ppgraph.networkx import to_networkx
 
 from .utility import EventLoop
 from .executor import BasicExecutor
-from .graphs import ContextGraph, Task
+from .graphs import Task, ContextGraph, TaskGraph
 
 
 class Schedule:
@@ -57,7 +55,7 @@ class Schedule:
                     assert key not in next_task.inputs
                     next_task.inputs[key] = current_task.get_output()
 
-        return not nx.dag.has_cycle(to_networkx(dependency_graph))
+        return not TaskGraph.has_cycle(dependency_graph)
 
 
 ####################################################################################################

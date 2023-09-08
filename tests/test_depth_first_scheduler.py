@@ -47,7 +47,7 @@ def add_resources(graph: Graph) -> TaskGraph:
 def test_depth_first_scheduler():
     context = setup_context()
     graph = Cascade.graph("anomaly_prob", Config(f"{ROOT_DIR}/templates/t850.yaml"))
-    schedule = Cascade.create_schedule(add_resources(graph), context)
+    schedule = Cascade.schedule(add_resources(graph), context)
     print(schedule)
 
     execution = Cascade.simulate(schedule)

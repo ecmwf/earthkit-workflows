@@ -1,5 +1,5 @@
 from .scheduler import Schedule, DepthFirstScheduler
-from .graphs import ContextGraph
+from .graphs import ContextGraph, TaskGraph, to_task_graph
 from .executor import ExecutionReport, BasicExecutor
 from .graph_config import Config
 
@@ -8,7 +8,24 @@ from . import graph_templates
 
 
 class Cascade:
-    def create_schedule(taskgraph: Graph, contextgraph: ContextGraph) -> Schedule:
+
+    def graph(product: str, config: Config):
+        total_graph = Graph([])
+        for _, param_config in config.parameters.items():
+            total_graph += getattr(graph_templates, product)(param_config)
+
+        return deduplicate_nodes(total_graph)
+
+    def schedule(taskgraph: Graph, contextgraph: ContextGraph) -> Schedule:
+        if not isinstance(taskgraph, TaskGraph):
+            taskgraph = to_task_graph(taskgraph)
+            # Need to execute and assign resources 
+            test_context = ContextGraph()
+            test_context.add_node("cpu1", "cpu", 100, 100)
+            test_schedule = DepthFirstScheduler(taskgraph, test_context).create_schedule()
+            BasicExecutor(test_schedule).determine_resources()
+            taskgraph = test_schedule.task_graph
+        
         return DepthFirstScheduler(taskgraph, contextgraph).create_schedule()
 
     def execute(schedule: Schedule) -> ExecutionReport:
@@ -18,10 +35,3 @@ class Cascade:
         schedule: Schedule, with_communication: bool = True
     ) -> ExecutionReport:
         return BasicExecutor(schedule, with_communication).simulate()
-
-    def graph(product: str, config: Config):
-        total_graph = Graph([])
-        for _, param_config in config.parameters.items():
-            total_graph += getattr(graph_templates, product)(param_config)
-
-        return deduplicate_nodes(total_graph)
