@@ -23,7 +23,13 @@ def test_graph_construction(product, config, expected_num_nodes):
     cfg = Config(config)
     graph = Cascade.graph(product, cfg)
     if True:
-        pyvis_graph = pyvis.to_pyvis(graph, notebook=True, cdn_resources="remote")
+        pyvis_graph = pyvis.to_pyvis(
+            graph,
+            notebook=True,
+            cdn_resources="remote",
+            height="1500px",
+            hierarchical_layout=False,
+        )
         pyvis_graph.show(
             f"/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/{product}_graph.html"
         )
