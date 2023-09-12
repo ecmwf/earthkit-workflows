@@ -47,7 +47,7 @@ def extreme_config(eps, number: int = 0, control: bool = False):
         if number == 90:
             efi_order = 99
         elif number == 10:
-            efi_order == 1
+            efi_order = 1
         else:
             raise Exception(
                 "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
