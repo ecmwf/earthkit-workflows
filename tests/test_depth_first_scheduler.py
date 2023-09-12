@@ -16,7 +16,7 @@ def setup_context():
     context = ContextGraph()
     context.add_node("gpu_1", type="GPU", speed=10, memory=40)
     context.add_node("gpu_2", type="GPU", speed=10, memory=20)
-    context.add_node("gpu_3", type="GPU", speed=5, memory=20)
+    context.add_node("gpu_3", type="GPU", speed=5, memory=40)
     context.add_node("gpu_4", type="GPU", speed=5, memory=20)
     context.add_edge("gpu_1", "gpu_2", bandwidth=0.1, latency=1)
     context.add_edge("gpu_1", "gpu_3", bandwidth=0.02, latency=3)

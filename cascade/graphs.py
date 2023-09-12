@@ -5,7 +5,6 @@ import networkx as nx
 
 from ppgraph import Graph, Transformer, Sink
 from ppgraph import Node
-from ppgraph.networkx import to_networkx
 
 ####################################################################################################
 
@@ -57,10 +56,6 @@ class TaskGraph(Graph):
         for node in self.nodes():
             for input in node.inputs.values():
                 yield input.parent, node
-
-    @classmethod
-    def has_cycle(cls, graph) -> bool:
-        return nx.dag.has_cycle(to_networkx(graph))
 
 
 class ExecutionGraph(TaskGraph):

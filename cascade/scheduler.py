@@ -4,7 +4,6 @@ import datetime
 import random
 import numpy as np
 
-from ppgraph import Graph
 from ppgraph.copy import copy_graph
 
 from .utility import EventLoop
@@ -14,7 +13,7 @@ from .graphs import Task, ContextGraph, TaskGraph
 
 class Schedule:
     def __init__(
-        self, task_graph: Graph, context_graph: ContextGraph, task_allocation: dict
+        self, task_graph: TaskGraph, context_graph: ContextGraph, task_allocation: dict
     ):
         self.task_graph = task_graph
         self.context_graph = context_graph
@@ -42,7 +41,7 @@ class Schedule:
 
     @classmethod
     def valid_allocations(
-        cls, task_graph: Graph, task_allocation: dict[str, list]
+        cls, task_graph: TaskGraph, task_allocation: dict[str, list]
     ) -> bool:
         dependency_graph = copy_graph(task_graph)
 
@@ -54,8 +53,12 @@ class Schedule:
                     key = f"inputs{len(next_task.inputs)}"
                     assert key not in next_task.inputs
                     next_task.inputs[key] = current_task.get_output()
-
-        return not TaskGraph.has_cycle(dependency_graph)
+                    if current_task in dependency_graph.sinks:
+                        dependency_graph.sinks.remove(current_task)
+                    # Check number of nodes as disconnected components may have been introduced
+                    if dependency_graph.has_cycle() or len(list(dependency_graph.nodes())) != len(list(task_graph.nodes())):
+                        return False
+        return True
 
 
 ####################################################################################################

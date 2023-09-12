@@ -2,7 +2,6 @@ import pytest
 import networkx as nx
 
 from ppgraph import Graph
-from ppgraph.networkx import to_networkx
 
 from cascade.scheduler import Schedule
 from cascade.graphs import Task
@@ -34,6 +33,6 @@ def test_valid_allocations(allocations, exp):
         mean.inputs[f"inputs{index}"] = sh2gp.get_output()
 
     task_graph = Graph([mean])
-    assert not nx.dag.has_cycle(to_networkx(task_graph))
+    assert not task_graph.has_cycle()
 
     assert Schedule.valid_allocations(task_graph, allocations) == exp
