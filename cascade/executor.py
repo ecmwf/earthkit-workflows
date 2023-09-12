@@ -5,8 +5,9 @@ import datetime
 
 from pproc.common.resources import ResourceMeter
 
-from .graphs import Task, Communication, Communicator, to_execution_graph
+from .graphs import Task, Communication, Communicator
 from .utility import EventLoop
+from .transformers import to_execution_graph
 
 
 ####################################################################################################

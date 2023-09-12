@@ -1,7 +1,8 @@
 from .scheduler import Schedule, DepthFirstScheduler
-from .graphs import ContextGraph, TaskGraph, to_task_graph
+from .graphs import ContextGraph, TaskGraph
 from .executor import ExecutionReport, BasicExecutor
 from .graph_config import Config
+from .transformers import to_task_graph
 
 from ppgraph import Graph, deduplicate_nodes
 from . import graph_templates
