@@ -9,7 +9,6 @@ from . import graph_templates
 
 
 class Cascade:
-
     def graph(product: str, config: Config):
         total_graph = Graph([])
         for _, param_config in config.parameters.items():
@@ -17,16 +16,21 @@ class Cascade:
 
         return deduplicate_nodes(total_graph)
 
-    def schedule(taskgraph: Graph, contextgraph: ContextGraph) -> Schedule:
+    def schedule(
+        taskgraph: Graph, contextgraph: ContextGraph, determine_resources: bool = True
+    ) -> Schedule:
         if not isinstance(taskgraph, TaskGraph):
             taskgraph = to_task_graph(taskgraph)
-            # Need to execute and assign resources 
-            test_context = ContextGraph()
-            test_context.add_node("cpu1", "cpu", 100, 100)
-            test_schedule = DepthFirstScheduler(taskgraph, test_context).create_schedule()
-            BasicExecutor(test_schedule).determine_resources()
-            taskgraph = test_schedule.task_graph
-        
+            if determine_resources:
+                # Need to execute and assign resources
+                test_context = ContextGraph()
+                test_context.add_node("cpu1", "cpu", 100, 100)
+                test_schedule = DepthFirstScheduler(
+                    taskgraph, test_context
+                ).create_schedule()
+                BasicExecutor(test_schedule).determine_resources()
+                taskgraph = test_schedule.task_graph
+
         return DepthFirstScheduler(taskgraph, contextgraph).create_schedule()
 
     def execute(schedule: Schedule) -> ExecutionReport:

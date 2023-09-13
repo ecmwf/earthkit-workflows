@@ -17,14 +17,20 @@ class Node(PPNode):
     def __init__(self, payload, inputs=(), name=None):
         if name is None:
             name = randomname.generate()
+
         if isinstance(inputs, PPNode):
-            super().__init__(name, payload=payload, input=inputs)
+            super().__init__(name, payload=payload, input0=inputs)
         else:
             super().__init__(
                 name,
                 payload=payload,
                 **{f"input{x}": node for x, node in enumerate(inputs)},
             )
+
+        # If payload is just a function, assume inputs to the function are the inputs
+        # to the node, in the order provided
+        if not isinstance(payload, tuple):
+            self.payload = tuple([payload] + list(self.inputs.keys()))
         self.attributes = {}
 
     def add_attribute(self, key: Attributes, value):
@@ -114,7 +120,7 @@ class SingleAction(Action):
         grib_sets = config_grib_sets.copy()
         grib_sets.update(self.nodes.attrs)
         grib_sets.update(self.node().get_attribute(Node.Attributes.GRIB_KEYS))
-        payload = (write_grib, target, "input", grib_sets)
+        payload = (write_grib, target, "input0", grib_sets)
         return type(self)(
             payload,
             self,

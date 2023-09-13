@@ -56,7 +56,9 @@ class Schedule:
                     if current_task in dependency_graph.sinks:
                         dependency_graph.sinks.remove(current_task)
                     # Check number of nodes as disconnected components may have been introduced
-                    if dependency_graph.has_cycle() or len(list(dependency_graph.nodes())) != len(list(task_graph.nodes())):
+                    if dependency_graph.has_cycle() or len(
+                        list(dependency_graph.nodes())
+                    ) != len(list(task_graph.nodes())):
                         return False
         return True
 
@@ -161,7 +163,9 @@ class DepthFirstScheduler(Scheduler):
         self.sim = EventLoop()
         self.assign_idle_processors(time=0)
         self.sim.run()
-        # print(f"Finished {len(self.completed_tasks)} tasks out of {len(list(self.task_graph.nodes()))}")
+        print(
+            f"Finished {len(self.completed_tasks)} tasks out of {len(list(self.task_graph.nodes()))}"
+        )
         assert len(self.completed_tasks) == len(list(self.task_graph.nodes()))
 
         s = Schedule(self.task_graph, self.context_graph, self.task_allocation)

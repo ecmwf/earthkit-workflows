@@ -2,12 +2,14 @@ import copy
 from dataclasses import dataclass, field
 import randomname
 import datetime
+import dask
+from dask.delayed import Delayed
 
 from pproc.common.resources import ResourceMeter
 
 from .graphs import Task, Communication, Communicator
 from .utility import EventLoop
-from .transformers import to_execution_graph
+from .transformers import to_execution_graph, to_dask_graph
 
 
 ####################################################################################################
@@ -226,10 +228,7 @@ class BasicExecutor(Executor):
                 assert not isinstance(
                     successor.payload, str
                 ), f"Payload can not be str. Got {successor.payload}"
-                if not hasattr(successor.payload, "__iter__"):
-                    successor.payload = tuple(
-                        [successor.payload] + list(successor.inputs.keys())
-                    )
+
                 for iname, input in successor.inputs.items():
                     if input.parent == task:
                         successor.payload = tuple(
@@ -238,3 +237,40 @@ class BasicExecutor(Executor):
                         )
                         break
             task.payload = None
+
+
+class DaskExecutor(Executor):
+    def __init__(self, schedule):
+        self.schedule = schedule
+        self.dask_graph = to_dask_graph(schedule.task_graph)
+        self.outputs = [
+            Delayed(x.name, self.dask_graph) for x in schedule.task_graph.sinks
+        ]
+
+    def execute_with_dask_schedule(self):
+        from dask.distributed import Client, as_completed
+
+        # Set up distributed client
+        dask.config.set(
+            {"distributed.scheduler.worker-saturation": 1.0}
+        )  # Important to prevent root task overloading
+        client = Client(
+            memory_limit="24GB", processes=True, n_workers=1, threads_per_worker=1
+        )
+        future = client.compute(self.outputs)
+
+        seq = as_completed(future)
+        del future
+        # Trigger gargage collection on completed end tasks so scheduler doesn't
+        # try to repeat them
+        errored_tasks = 0
+        for fut in seq:
+            if fut.status != "finished":
+                print(f"Task failed with exception: {fut.exception()}")
+                errored_tasks += 1
+            pass
+
+        client.close()
+
+        if errored_tasks != 0:
+            raise RuntimeError(f"{errored_tasks} task failed. Re-run required.")

@@ -29,3 +29,30 @@ class _ToExecutionGraph(Transformer):
 
 def to_execution_graph(graph: Graph) -> ExecutionGraph:
     return _ToExecutionGraph().transform(graph)
+
+
+class _ToDaskGraph(Transformer):
+    def node(self, node: Node, **inputs: Node.Output) -> Node:
+        new_payload = list(node.payload)
+        for input_name, input in inputs.items():
+            if input_name in new_payload:
+                new_payload[new_payload.index(input_name)] = input.parent.name
+        newnode = node.copy()
+        newnode.payload = tuple(new_payload)
+        newnode.inputs = inputs
+
+        return newnode
+
+    def graph(self, graph: Graph, sinks: list[Sink]) -> dict:
+        new_graph = Graph(sinks)
+        ret = {}
+        for node in new_graph.nodes(forwards=True):
+            ret[node.name] = node.payload
+        assert list(ret.keys()) == [
+            node.name for node in new_graph.nodes(forwards=True)
+        ]
+        return ret
+
+
+def to_dask_graph(graph: Graph) -> dict:
+    return _ToDaskGraph().transform(graph)
