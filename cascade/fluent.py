@@ -13,7 +13,7 @@ class Node(PPNode):
     class Attributes(Enum):
         GRIB_KEYS = auto()
 
-    def __init__(self, payload, inputs=(), name=None):
+    def __init__(self, payload, inputs: PPNode | tuple[PPNode] = (), name=None):
     
         if isinstance(inputs, PPNode):
             inputs = [inputs]
@@ -24,7 +24,10 @@ class Node(PPNode):
             payload = tuple([payload] + [f"input{x}" for x in range(len(inputs))])
 
         if name is None:
-            name = str(hash(f"{[payload] + [x.name for x in inputs]}"))
+            name = ""
+            if hasattr(payload[0], "__name__"):
+                name += payload[0].__name__
+            name += str(hash(f"{[payload] + [x.name for x in inputs]}"))
 
         super().__init__(
             name,
