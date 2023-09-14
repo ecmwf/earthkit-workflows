@@ -1,4 +1,3 @@
-import randomname
 import numpy as np
 import xarray as xr
 import itertools
@@ -15,22 +14,23 @@ class Node(PPNode):
         GRIB_KEYS = auto()
 
     def __init__(self, payload, inputs=(), name=None):
-        if name is None:
-            name = randomname.generate()
-
+    
         if isinstance(inputs, PPNode):
-            super().__init__(name, payload=payload, input0=inputs)
-        else:
-            super().__init__(
-                name,
-                payload=payload,
-                **{f"input{x}": node for x, node in enumerate(inputs)},
-            )
-
+            inputs = [inputs]
+            
         # If payload is just a function, assume inputs to the function are the inputs
         # to the node, in the order provided
         if not isinstance(payload, tuple):
-            self.payload = tuple([payload] + list(self.inputs.keys()))
+            payload = tuple([payload] + [f"input{x}" for x in range(len(inputs))])
+
+        if name is None:
+            name = str(hash(f"{[payload] + [x.name for x in inputs]}"))
+
+        super().__init__(
+            name,
+            payload=payload,
+            **{f"input{x}": node for x, node in enumerate(inputs)},
+        )
         self.attributes = {}
 
     def add_attribute(self, key: Attributes, value):
@@ -57,11 +57,9 @@ class Action:
     def join(
         self,
         other_action: "Action",
-        dim_name: str | xr.DataArray = None,
+        dim_name: str | xr.DataArray,
         match_coord_values: bool = False,
     ) -> "MultiAction":
-        if dim_name is None:
-            dim_name = randomname.generate()
         if match_coord_values:
             for coord, values in self.nodes.coords.items():
                 if coord in other_action.nodes.coords:

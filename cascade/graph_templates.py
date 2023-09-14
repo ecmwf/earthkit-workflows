@@ -69,12 +69,12 @@ class MultiAction(BaseMultiAction):
 
     def anomaly(self, climatology: Action, standardised: bool):
         anomaly = self.join(
-            climatology.select({"type": "em"}), match_coord_values=True
+            climatology.select({"type": "em"}), "datatype", match_coord_values=True
         ).subtract()
 
         if standardised:
             anomaly = anomaly.join(
-                climatology.select({"type": "es"}), match_coord_values=True
+                climatology.select({"type": "es"}), "datatype", match_coord_values=True
             ).divide()
         return anomaly
 

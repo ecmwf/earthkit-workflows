@@ -3,7 +3,7 @@ from typing import Any
 import randomname
 import networkx as nx
 
-from ppgraph import Graph, Transformer, Sink
+from ppgraph import Graph
 from ppgraph import Node
 
 ####################################################################################################

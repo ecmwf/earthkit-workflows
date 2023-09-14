@@ -46,11 +46,12 @@ class _ToDaskGraph(Transformer):
     def graph(self, graph: Graph, sinks: list[Sink]) -> dict:
         new_graph = Graph(sinks)
         ret = {}
-        for node in new_graph.nodes(forwards=True):
+        new_nodes = list(new_graph.nodes(forwards=True))
+        for node in new_nodes:
             ret[node.name] = node.payload
         assert list(ret.keys()) == [
-            node.name for node in new_graph.nodes(forwards=True)
-        ]
+            node.name for node in new_nodes
+        ], f"Expected {len(new_nodes)} for {len(ret.keys())}"
         return ret
 
 

@@ -12,12 +12,13 @@ ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
 
 def node_info_ext(sinks, node):
     info = pyvis.node_info(node)
+    info["color"] = "#648FFF"
     if not node.inputs:
         info["shape"] = "diamond"
-        info["color"] = "red"
+        info["color"] = "#DC267F"
     elif node in sinks:
         info["shape"] = "triangle"
-        info["color"] = "green"
+        info["color"] = "#FFB000"
     if node.payload is not None:
         t = []
         if "title" in info:

@@ -21,5 +21,5 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
         # Allows file to be appended on each write call
         target.enable_recovery()
     template = data.attrs["grib_template"].copy()
-    # template.set(grib_sets)
+    template.set(grib_sets)
     write_grib(target, template, data.data)
