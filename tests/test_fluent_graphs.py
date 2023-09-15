@@ -37,7 +37,7 @@ def node_info_ext(sinks, node):
     [
         ["prob", f"{ROOT_DIR}/templates/prob.yaml", 355],
         ["anomaly_prob", f"{ROOT_DIR}/templates/t850.yaml", 260],
-        ["wind", f"{ROOT_DIR}/templates/wind.yaml", 132],
+        ["wind", f"{ROOT_DIR}/templates/wind.yaml", 96],
         ["ensms", f"{ROOT_DIR}/templates/ensms.yaml", 180],
         ["extreme", f"{ROOT_DIR}/templates/extreme.yaml", 150],
     ],

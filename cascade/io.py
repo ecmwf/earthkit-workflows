@@ -4,14 +4,19 @@ from pproc.common.io import (
     target_from_location,
     write_grib,
     fdb_read,
+    fdb_read_to_file,
     fdb,
     FileTarget,
     FileSetTarget,
 )
 
 
-def retrieve(request: dict):
+def retrieve(request: dict, filename: str = ""):
     interpolation_keys = request.pop("interpolate", None)
+    if len(filename) != 0:
+        cached_file = filename.format_map(request)
+        fdb_read_to_file(fdb(), request, cached_file, interpolation_keys)
+        return request
     return fdb_read(fdb(), request, interpolation_keys)
 
 

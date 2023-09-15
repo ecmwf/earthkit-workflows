@@ -91,14 +91,14 @@ class Action:
 
 
 class SingleAction(Action):
-    def __init__(self, func, previous, node=None):
+    def __init__(self, payload, previous, node=None):
         if node is None:
             if previous is None:
-                node = xr.DataArray(Node(func))
+                node = xr.DataArray(Node(payload))
             else:
                 node = xr.DataArray(
                     Node(
-                        func,
+                        payload,
                         previous.nodes.data.flatten(),
                     ),
                     attrs=previous.nodes.attrs,
@@ -114,8 +114,8 @@ class SingleAction(Action):
         node.add_attribute(key, value)
         self.nodes = xr.DataArray(node, attrs=self.nodes.attrs)
 
-    def then(self, func):
-        return type(self)(func, self)
+    def then(self, payload):
+        return type(self)(payload, self)
 
     def write(self, target, config_grib_sets: dict):
         grib_sets = config_grib_sets.copy()
@@ -136,20 +136,20 @@ class MultiAction(Action):
     def __init__(self, previous, nodes):
         super().__init__(previous, nodes)
 
-    def to_single(self, func, node=None):
-        return SingleAction(func, self, node)
+    def to_single(self, payload, node=None):
+        return SingleAction(payload, self, node)
 
     def add_node_attributes(self, key: Node.Attributes, value, criteria: dict):
         node = self.node(criteria)
         node.add_attribute(key, value)
         self.nodes.loc[criteria] = node
 
-    def foreach(self, func):
+    def foreach(self, payload):
         # Applies operation to every node, keeping node array structure
         new_nodes = np.empty(self.nodes.shape, dtype=object)
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
         for node in it:
-            new_nodes[it.multi_index] = Node(func, node[()])
+            new_nodes[it.multi_index] = Node(payload, node[()])
         return type(self)(
             self,
             xr.DataArray(
@@ -160,9 +160,9 @@ class MultiAction(Action):
             ),
         )
 
-    def reduce(self, func, key: str = ""):
+    def reduce(self, payload, key: str = ""):
         if self.nodes.ndim == 1:
-            return self.to_single(func)
+            return self.to_single(payload)
 
         if len(key) == 0:
             key = self.nodes.dims[0]
@@ -173,7 +173,7 @@ class MultiAction(Action):
         it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
         for _ in it:
             inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
-            new_nodes[it.multi_index] = Node(func, inputs)
+            new_nodes[it.multi_index] = Node(payload, inputs)
         return type(self)(
             self,
             xr.DataArray(

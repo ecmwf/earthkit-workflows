@@ -9,6 +9,7 @@ from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
 from .graph_config import threshold_config, extreme_config
 from .io import retrieve
+from .functions import mir_wind
 
 
 class SingleAction(BaseSingleAction):
@@ -24,8 +25,8 @@ class SingleAction(BaseSingleAction):
 
 
 class MultiAction(BaseMultiAction):
-    def to_single(self, func, node=None):
-        return SingleAction(func, self, node)
+    def to_single(self, payload, node=None):
+        return SingleAction(payload, self, node)
 
     def extreme(self, climatology: Action, sot: list, eps: float):
         # First concatenate across ensemble, and then join
@@ -88,6 +89,13 @@ class MultiAction(BaseMultiAction):
             _quantiles, range(n), "perturbationNumber"
         )
 
+    def wind_speed(self, vod2uv: dict, filename: str):
+        if vod2uv is None:
+            return self.param_operation("norm")
+        return self.foreach(
+            (mir_wind, "input0", filename, vod2uv.get("interpolate", None))
+        )
+
     def param_operation(self, operation: str):
         if operation is None:
             return self
@@ -104,14 +112,15 @@ class MultiAction(BaseMultiAction):
         return ret
 
 
-def read(requests: list, join_key: str = "number"):
+def read(requests: list, join_key: str = "number", filename: str = ""):
     all_actions = None
     for request in requests:
         if len(request.dims) == 0:
             new_action = SingleAction(
-                func=(
+                payload=(
                     retrieve,
                     request.request,
+                    filename,
                 ),
                 previous=None,
             )
@@ -122,6 +131,7 @@ def read(requests: list, join_key: str = "number"):
                     payload=(
                         retrieve,
                         new_request,
+                        filename,
                     ),
                     name=f"{new_request}",
                 )
@@ -177,11 +187,17 @@ def prob(param_config):
 
 
 def wind(param_config):
+    convert_vod2uv = param_config.options.get("vod2uv", None)
+    filename = (
+        "" if convert_vod2uv is None else "wind_{type}_{levelist}_{param}_{step}.grb"
+    )
+    no_expand = () if convert_vod2uv is None else ("param")
+
     total_graph = Graph([])
     for window in param_config.windows:
         total_graph += (
-            read(param_config.forecast_request(window))
-            .param_operation("norm")
+            read(param_config.forecast_request(window, no_expand), filename=filename)
+            .wind_speed(convert_vod2uv, filename)
             .ensms()
             .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
@@ -206,7 +222,7 @@ def extreme(param_config):
     total_graph = Graph([])
     for window in param_config.windows:
         climatology = read(
-            param_config.clim_request(window, True, no_expand="quantile")
+            param_config.clim_request(window, True, no_expand=("quantile"))
         )
         parameter = read(param_config.forecast_request(window)).param_operation(
             param_config.param_operation
