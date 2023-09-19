@@ -3,7 +3,7 @@ members:
   start: 1
 parameters:
   tp:
-    target: file:extreme_test_tp.grib
+    target: "fileset:cascade_extreme_{param}.grib"
     efi_control: True
     defs:
       base_keys: &base_keys_tp
@@ -17,32 +17,35 @@ parameters:
         intgrid: none
         legendre-loader: shmem
         matrix-loader: file-io
-    forecast:
-      - <<: *base_keys_tp
-        date: 20230907
-        time: 12
-        stream: enfo
-        type: cf
-        interpolate: *base_interp_tp
-      - <<: *base_keys_tp
-        date: 20230907
-        time: 12
-        stream: enfo
-        type: pf
-        interpolate: *base_interp_tp
-    climatology:
-      clim_keys:
+    sources:
+      ens:
+        - <<: *base_keys_tp
+          date: 20230914
+          time: 12
+          stream: enfo
+          type: cf
+          interpolate: *base_interp_tp
+          source: fdb
+        - <<: *base_keys_tp
+          date: 20230914
+          time: 12
+          stream: enfo
+          type: pf
+          interpolate: *base_interp_tp
+          source: fdb
+      clim:
         <<: *base_keys_tp
-        date: '20230904'
+        date: '20230911'
         time: '00'
         stream: efhs
         type: cd
         quantile: 100
         interpolate: *base_interp_tp
-      steps:
-        12-36: 0-24
-        12-84: 0-72
-        36-60: 24-48
+        step:
+          12-36: 0-24
+          12-84: 0-72
+          36-60: 24-48
+        source: fdb
     eps: 1e-4
     sot:
     - 90
@@ -70,7 +73,7 @@ parameters:
       window_operation: diff
       include_start_step: True
   capeshear:
-    target: file:extreme_test_capeshear.grib
+    target: "fileset:cascade_extreme_{param}.grib"
     defs:
       base_keys: &base_keys_capeshear
         class: od
@@ -82,33 +85,36 @@ parameters:
         intgrid: none
         legendre-loader: shmem
         matrix-loader: file-io
-    forecast:
-      - <<: *base_keys_capeshear
-        stream: enfo
-        type: cf
-        date: 20230907
-        time: 12
-        param: [228036, 228035]
-        interpolate: *base_interp_capeshear
-      - <<: *base_keys_capeshear
-        stream: enfo
-        type: pf
-        date: 20230907
-        time: 12
-        param: [228036, 228035]
-        interpolate: *base_interp_capeshear
-    climatology:
-      clim_keys:
+    sources:
+      ens:
+        - <<: *base_keys_capeshear
+          stream: enfo
+          type: cf
+          date: 20230913
+          time: 12
+          param: [228036, 228035]
+          interpolate: *base_interp_capeshear
+          source: fdb
+        - <<: *base_keys_capeshear
+          stream: enfo
+          type: pf
+          date: 20230913
+          time: 12
+          param: [228036, 228035]
+          interpolate: *base_interp_capeshear
+          source: fdb
+      clim:
         <<: *base_keys_capeshear
-        date: '20230904'
+        date: '20230911'
         time: '00'
         param: 228044
         stream: efhs
         type: cd
         quantile: 100
         interpolate: *base_interp_capeshear
-      steps:
-        12-36: 0-24
+        source: fdb
+        step:
+          12-36: 0-24
     eps: 1e-4
     input_filter_operation:
       comparison: <=

@@ -4,7 +4,7 @@ import functools
 
 from ppgraph import pyvis, Sink
 
-from cascade.graph_config import Config
+from cascade.graph_config import Config, WindConfig
 from cascade.cascade import Cascade
 
 ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
@@ -43,7 +43,10 @@ def node_info_ext(sinks, node):
     ],
 )
 def test_graph_construction(product, config, expected_num_nodes):
-    cfg = Config(config)
+    if product == "wind":
+        cfg = Config(config, WindConfig)
+    else:
+        cfg = Config(config)
     graph = Cascade.graph(product, cfg)
     if True:
         pyvis_graph = pyvis.to_pyvis(

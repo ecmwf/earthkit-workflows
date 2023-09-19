@@ -1,7 +1,7 @@
 members: 5
 parameters:
   rain:
-    target: "file:prob_test_rain.grib"
+    target: "fileset:cascade_prob_{param}.grib"
     windows:
       - window_operation: 'diff'
         include_start_step: True
@@ -17,9 +17,9 @@ parameters:
             comparison: ">="
             value: 0.005
             localDecimalScaleFactor: 3
-        grib_set:
-          timeRangeIndicator: 5
-          stepType: diff 
+        # grib_set:
+        #   timeRangeIndicator: 5
+        #   stepType: diff 
       - window_operation: 'diff'
         include_start_step: True
         periods:
@@ -32,30 +32,32 @@ parameters:
           - out_paramid: 131099
             comparison: ">="
             value: 0.05
-        grib_set:
-          edition: 2
-          indicatorOfUnitForTimeIncrement: 1
-          packingType: grid_ccsds
-          # probabilityType: 3
-          # scaleFactorOfLowerLimit: 0
-          # scaleFactorOfUpperLimit: MISSING
-          # scaledValueOfUpperLimit: MISSING
-          stepRange: 0-0
-          stepType: accum
-          timeIncrement: 12
-          typeOfGeneratingProcess: 5
-    forecast:
-      class: od
-      stream: enfo
-      type: pf
-      levtype: sfc
-      domain: g
-      param: 228
-      date: 20230908
-      time: 00
-      expver: "0001"
+        # grib_set:
+        #   edition: 2
+        #   indicatorOfUnitForTimeIncrement: 1
+        #   packingType: grid_ccsds
+        #   probabilityType: 3
+        #   scaleFactorOfLowerLimit: 0
+        #   scaleFactorOfUpperLimit: MISSING
+        #   scaledValueOfUpperLimit: MISSING
+        #   stepRange: 0-0
+        #   stepType: accum
+        #   timeIncrement: 12
+        #   typeOfGeneratingProcess: 5
+    sources:
+      ens:
+        class: od
+        stream: enfo
+        type: pf
+        levtype: sfc
+        domain: g
+        param: 228
+        date: 20230912
+        time: 12
+        expver: "0001"
+        source: fdb
   ff:
-    target: "file:prob_test_ff.grib"
+    target: "fileset:cascade_prob_{param}.grib"
     input_combine_operation: 'norm'
     windows:
       - periods:
@@ -68,16 +70,18 @@ parameters:
           - out_paramid: 131069
             comparison: ">="
             value: 15
-    forecast:
-      class: od
-      stream: enfo
-      type: pf
-      levtype: sfc
-      domain: g
-      param: [165, 166]
-      date: 20230908
-      time: 00
-      expver: "0001"
+    sources:
+      ens:
+        class: od
+        stream: enfo
+        type: pf
+        levtype: sfc
+        domain: g
+        param: [165, 166]
+        date: 20230912
+        time: 12
+        expver: "0001"
+        source: fdb
   mn2t6:
     target: "file:prob_test_mn2t6.grib"
     steps:
@@ -95,13 +99,15 @@ parameters:
           comparison: "<="
           value: 273.15
           localDecimalScaleFactor: 2
-    forecast:
-      class: od
-      stream: enfo
-      type: pf
-      levtype: sfc
-      domain: g
-      param: 122
-      date: 20230908
-      time: 00
-      expver: "0001"
+    sources:
+      ens:
+        class: od
+        stream: enfo
+        type: pf
+        levtype: sfc
+        domain: g
+        param: 122
+        date: 20230912
+        time: 12
+        expver: "0001"
+        source: fdb

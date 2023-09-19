@@ -9,7 +9,7 @@ from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
 from .graph_config import threshold_config, extreme_config
 from .io import retrieve
-from .functions import mir_wind
+from .graph_config import WindConfig
 
 
 class SingleAction(BaseSingleAction):
@@ -89,12 +89,20 @@ class MultiAction(BaseMultiAction):
             _quantiles, range(n), "perturbationNumber"
         )
 
-    def wind_speed(self, vod2uv: dict, filename: str):
-        if vod2uv is None:
-            return self.param_operation("norm")
-        return self.foreach(
-            (mir_wind, "input0", filename, vod2uv.get("interpolate", None))
-        )
+    def wind_speed(self, vod2uv: bool):
+        if vod2uv:
+
+            def _wind_speed(fields):
+                return xr.apply_ufunc(
+                    np.linalg.norm,
+                    fields,
+                    input_core_dims=[["param"]],
+                    kwargs={"axis": -1},
+                    keep_attrs=True,
+                )
+
+            return self.foreach((_wind_speed, "input0"))
+        return self.param_operation("norm")
 
     def param_operation(self, operation: str):
         if operation is None:
@@ -112,15 +120,16 @@ class MultiAction(BaseMultiAction):
         return ret
 
 
-def read(requests: list, join_key: str = "number", filename: str = ""):
+def read(requests: list, join_key: str = "number", **kwargs):
     all_actions = None
     for request in requests:
         if len(request.dims) == 0:
             new_action = SingleAction(
                 payload=(
                     retrieve,
+                    request.pop("source"),
                     request.request,
-                    filename,
+                    kwargs,
                 ),
                 previous=None,
             )
@@ -130,8 +139,9 @@ def read(requests: list, join_key: str = "number", filename: str = ""):
                 nodes[indices] = Node(
                     payload=(
                         retrieve,
+                        new_request.pop("source"),
                         new_request,
-                        filename,
+                        kwargs,
                     ),
                     name=f"{new_request}",
                 )
@@ -186,22 +196,31 @@ def prob(param_config):
     return deduplicate_nodes(total_graph)
 
 
-def wind(param_config):
-    convert_vod2uv = param_config.options.get("vod2uv", None)
-    filename = (
-        "" if convert_vod2uv is None else "wind_{type}_{levelist}_{param}_{step}.grb"
-    )
-    no_expand = () if convert_vod2uv is None else ("param")
-
+def wind(param_config: WindConfig):
     total_graph = Graph([])
     for window in param_config.windows:
+        # For ensemble forecasts
+        ens_vod2uv = param_config.vod2uv("ens")
         total_graph += (
-            read(param_config.forecast_request(window, no_expand), filename=filename)
-            .wind_speed(convert_vod2uv, filename)
+            read(param_config.forecast_request(window, "ens"), stream=(not ens_vod2uv))
+            .wind_speed(ens_vod2uv)
             .ensms()
             .write(param_config.target, window.options.get("grib_set", {}))
             .graph()
         )
+
+        # deterministic forecast
+        if "det" in param_config.sources:
+            det_vod2uv = param_config.vod2uv("det")
+            total_graph += (
+                read(
+                    param_config.forecast_request(window, "det"),
+                    stream=(not det_vod2uv),
+                )
+                .wind_speed(det_vod2uv)
+                .write(param_config.target, window.options.get("grib_set", {}))
+                .graph()
+            )
     return deduplicate_nodes(total_graph)
 
 

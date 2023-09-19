@@ -1,7 +1,7 @@
 members: 5
 parameters:
   t850:
-    target: "fileset:t850_test_{paramId}.grib"
+    target: "fileset:cascade_anom_prob_{param}.grib"
     steps:
       - interval: 12
         start_step: 120
@@ -54,8 +54,8 @@ parameters:
           indicatorOfUnitForTimeIncrement: 1
           typeOfStatisticalProcessing: 10
           packingType: "grid_ccsds"
-          #scaleFactorOfUpperLimit: 'MISSING'
-          #scaledValueOfUpperLimit: 'MISSING'
+          scaleFactorOfUpperLimit: 'MISSING'
+          scaledValueOfUpperLimit: 'MISSING'
     defs:
       base_keys: &base_keys
         class: 'od'
@@ -65,40 +65,43 @@ parameters:
         param: 130
         expver: '0001'
       base_interp: &base_interp
-        grid: 'O1280'
+        grid: 'O640'
         intgrid: none
         legendre-loader: shmem
         matrix-loader: file-io
-    forecast:
-      - <<: *base_keys
-        stream: 'enfo'
-        type: cf
-        date: 20230907
-        time: 12
-        interpolate: *base_interp
-      - <<: *base_keys
-        stream: 'enfo'
-        type: pf 
-        date: 20230907
-        time: 12
-        interpolate: *base_interp
-    climatology:
-      clim_keys:
+    sources:
+      ens:
+        - <<: *base_keys
+          stream: 'enfo'
+          type: cf
+          date: 20230912
+          time: 12
+          interpolate: *base_interp
+          source: fdb
+        - <<: *base_keys
+          stream: 'enfo'
+          type: pf 
+          date: 20230912
+          time: 12
+          interpolate: *base_interp
+          source: fdb
+      clim:
         <<: *base_keys
         stream: 'efhs'
         type: [em, es]
-        date: 20230907
+        date: 20230911
         time: 00
         interpolate: *base_interp
-      steps:
-        120: 132
-        132: 144
-        144: 156
-        156: 168
-        168: 180
-        180: 192
-        192: 204
-        204: 216
-        216: 228
-        228: 240
-        240: 252
+        source: fdb
+        step:
+          120: 132
+          132: 144
+          144: 156
+          156: 168
+          168: 180
+          180: 192
+          192: 204
+          204: 216
+          216: 228
+          228: 240
+          240: 252

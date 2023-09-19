@@ -1,7 +1,11 @@
+grib_set:
+  mars.expver: '9078'
+  numberOfForecastsInEnsemble: 51
+  perturbationNumber: 0
 members: 5
 parameters:
   T:
-    target: file:ensms_test_T.grib
+    target: fileset:cascade_ensms_{param}.grib
     defs:
       base_keys: &base_keys_T
         class: od
@@ -11,26 +15,29 @@ parameters:
         levtype: pl
         stream: enfo
         param: 130
-        date: 20230907
-        time: 00
+        date: 20230912
+        time: 12
       base_interp: &base_interp
         grid: O1280
         intgrid: none
         legendre-loader: shmem
         matrix-loader: file-io
-    forecast:
-      - <<: *base_keys_T
-        type: pf
-        interpolate: *base_interp
-      - <<: *base_keys_T
-        type: cf
-        interpolate: *base_interp
+    sources:
+      ens:
+        - <<: *base_keys_T
+          type: pf
+          interpolate: *base_interp
+          source: fdb
+        - <<: *base_keys_T
+          type: cf
+          interpolate: *base_interp
+          source: fdb
     windows:
     - include_start_step: True
       periods:
         - range: [0, 6, 3]
   mn2t6:
-    target: file:ensms_test_mn2t6.grib
+    target: fileset:cascade_ensms_{param}.grib
     defs:
       base_keys: &base_keys_mn2t6
         class: od
@@ -39,13 +46,16 @@ parameters:
         levtype: sfc
         stream: enfo
         param: '122.128'
-        date: 20230907
-        time: 00
-    forecast:
-      - <<: *base_keys_mn2t6
-        type: pf
-      - <<: *base_keys_mn2t6
-        type: cf
+        date: 20230912
+        time: 12
+    sources:
+      ens:
+        - <<: *base_keys_mn2t6
+          type: pf
+          source: fdb
+        - <<: *base_keys_mn2t6
+          type: cf
+          source: fdb
     windows:
     - periods:
       - range:
@@ -61,7 +71,7 @@ parameters:
         - 12
         - 6
   tp:
-    target: file:ensms_test_tp.grib
+    target: fileset:cascade_ensms_{param}.grib
     defs:
       base_keys: &base_keys_tp
         class: od
@@ -70,13 +80,16 @@ parameters:
         levtype: sfc
         stream: enfo
         param: 228
-        date: 20230907
-        time: 00
-    forecast:
-      - <<: *base_keys_tp
-        type: cf
-      - <<: *base_keys_tp
-        type: pf
+        date: 20230912
+        time: 12
+    sources:
+      ens:
+        - <<: *base_keys_tp
+          type: cf
+          source: fdb
+        - <<: *base_keys_tp
+          type: pf
+          source: fdb
     windows:
     - grib_set:
         paramId: 200228

@@ -79,7 +79,7 @@ class Window:
 
 class Request:
     def __init__(self, request: dict, no_expand: tuple[str] = ()):
-        self.request = request
+        self.request = request.copy()
         self.fake_dims = []
         self.no_expand = no_expand
 
@@ -101,6 +101,11 @@ class Request:
 
     def __contains__(self, key):
         return key in self.request
+
+    def pop(self, key, default=None):
+        if default is None:
+            return self.request.pop(key)
+        return self.request.pop(key, default)
 
     def make_dim(self, key, value=None):
         if key in self:
@@ -125,7 +130,7 @@ class Request:
 
 
 class Config:
-    def __init__(self, config):
+    def __init__(self, config, param_config_type=None):
         with open(config, "r") as f:
             self.options = yaml.safe_load(f)
 
@@ -137,6 +142,8 @@ class Config:
             members = range(1, int(self.options["members"]) + 1)
         self.parameters = {
             param: ParamConfig(members, cfg)
+            if param_config_type is None
+            else param_config_type(members, cfg)
             for param, cfg in self.options["parameters"].items()
         }
 
@@ -145,9 +152,8 @@ class ParamConfig:
     def __init__(self, members, param_config):
         param_options = param_config.copy()
         self.steps = self._generate_steps(param_options.pop("steps", []))
-        self.base_request = param_options.pop("forecast")
+        self.sources = param_options.pop("sources")
         self.members = members
-        self.climatology = param_options.pop("climatology", None)
         self.windows = self._generate_windows(param_options.pop("windows"))
         self.param_operation = self._generate_param_operation(param_options)
         self.target = param_options.pop("target", "fdb:")
@@ -213,14 +219,14 @@ class ParamConfig:
             start_index = bisect.bisect_right(self.steps, window.start)
         return self.steps[start_index : self.steps.index(window.end) + 1]
 
-    def forecast_request(self, window, no_expand: tuple[str] = ()):
-        requests = self.base_request
-        if isinstance(self.base_request, dict):
-            requests = [self.base_request]
+    def forecast_request(self, window, source: str = "ens", no_expand: tuple[str] = ()):
+        requests = self.sources[source]
+        if isinstance(requests, dict):
+            requests = [requests]
 
         window_requests = []
         for request in requests:
-            req = Request(request.copy(), no_expand)
+            req = Request(request, no_expand)
             req["step"] = self._request_steps(window)
             if request["type"] == "pf":
                 req["number"] = self.members
@@ -232,19 +238,31 @@ class ParamConfig:
     def clim_request(
         self, window, accumulated: bool = False, no_expand: tuple[str] = ()
     ):
-        clim_req = Request(self.climatology["clim_keys"].copy(), no_expand)
+        clim_req = Request(self.sources["clim"], no_expand)
+        steps = clim_req.pop("step", {})
         if "quantile" in clim_req:
             num_quantiles = clim_req["quantile"]
             clim_req["quantile"] = [
                 "{}:100".format(i) for i in range(num_quantiles + 1)
             ]
         if accumulated:
-            clim_req["step"] = self.climatology.get("steps", {}).get(
-                window.name, window.name
-            )
+            clim_req["step"] = steps.get(window.name, window.name)
         else:
             window_steps = self._request_steps(window)
-            clim_req["step"] = list(
-                map(self.climatology.get("steps", {}).get, window_steps, window_steps)
-            )
+            clim_req["step"] = list(map(steps.get, window_steps, window_steps))
         return [clim_req]
+
+
+class WindConfig(ParamConfig):
+    def __init__(self, members, param_config):
+        super().__init__(members, param_config)
+
+    def vod2uv(self, source: str) -> bool:
+        req = self.sources[source]
+        if isinstance(req, list):
+            req = req[0]
+        return req.get("interpolate", {}).get("vod2uv", "0") == "1"
+
+    def forecast_request(self, window: Window, source: str):
+        no_expand = ("param") if self.vod2uv(source) else ()
+        return super().forecast_request(window, source, no_expand)
