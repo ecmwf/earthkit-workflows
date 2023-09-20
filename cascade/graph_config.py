@@ -5,8 +5,9 @@ import bisect
 import numexpr
 import xarray as xr
 import numpy as np
+import functools
 
-from .functions import efi_xr2np, sot_xr2np
+from . import functions
 
 
 def threshold_config(threshold: dict):
@@ -25,25 +26,22 @@ def threshold_config(threshold: dict):
         threshold_keys["thresholdIndicator"] = 1
         threshold_keys["lowerThreshold"] = threshold_value
 
-    threshold_func = lambda x: xr.DataArray(
-        numexpr.evaluate(
-            "data " + comparison + str(threshold["value"]),
-            local_dict={"data": x},
-        ),
-        attrs=x.attrs,
-    )
-
-    return threshold_func, threshold_keys
+    return (
+        functions.threshold,
+        comparison,
+        threshold["value"],
+        "input0",
+    ), threshold_keys
 
 
 def extreme_config(eps, number: int = 0, control: bool = False):
     if number == 0:
-        payload = (efi_xr2np, "input1", "input0", eps)
+        payload = (functions.efi, "input1", "input0", eps)
         efi_keys = {"marsType": "efi", "efiOrder": 0}
         if control:
             efi_keys.update({"marsType": "efic", "totalNumber": 1, "number": 0})
     else:
-        payload = (sot_xr2np, "input1", "input0", number, eps)
+        payload = (functions.sot, "input1", "input0", number, eps)
         if number == 90:
             efi_order = 99
         elif number == 10:
@@ -201,18 +199,13 @@ class ParamConfig:
     def _generate_param_operation(cls, param_config):
         if "input_filter_operation" in param_config:
             filter_configs = param_config.pop("input_filter_operation")
-            return lambda x, y, filter_configs=filter_configs: xr.DataArray(
-                np.where(
-                    numexpr.evaluate(
-                        "data "
-                        + filter_configs["comparison"]
-                        + str(filter_configs["threshold"]),
-                        local_dict={"data": y},
-                    ),
-                    filter_configs.get("replacement", 0),
-                    x,
-                ),
-                attrs=x.attrs,
+            return (
+                functions.filter,
+                filter_configs["comparison"],
+                float(filter_configs["threshold"]),
+                "input0",
+                "input1",
+                float(filter_configs.get("replacement", 0)),
             )
         return param_config.pop("input_combine_operation", None)
 
@@ -270,7 +263,7 @@ class WindConfig(ParamConfig):
         return super().forecast_request(window, source, no_expand)
 
 
-class QuantileConfig(param_config):
+class QuantileConfig(ParamConfig):
     def clim_request(
         self, window, accumulated: bool = False, no_expand: tuple[str] = ()
     ):

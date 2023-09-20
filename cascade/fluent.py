@@ -2,11 +2,13 @@ import numpy as np
 import xarray as xr
 import itertools
 from enum import Enum, auto
+import functools
 
 from ppgraph import Graph
 from ppgraph import Node as PPNode
 
 from .io import write as write_grib
+from . import functions
 
 
 class Node(PPNode):
@@ -14,10 +16,9 @@ class Node(PPNode):
         GRIB_KEYS = auto()
 
     def __init__(self, payload, inputs: PPNode | tuple[PPNode] = (), name=None):
-    
         if isinstance(inputs, PPNode):
             inputs = [inputs]
-            
+
         # If payload is just a function, assume inputs to the function are the inputs
         # to the node, in the order provided
         if not isinstance(payload, tuple):
@@ -230,59 +231,34 @@ class MultiAction(Action):
         return self.nodes.sel(**criteria, drop=True).data[()]
 
     def concatenate(self, key: str):
-        return self.reduce(_concatenate, key)
+        return self.reduce(functions._concatenate, key)
 
     def mean(self, key: str = ""):
-        def _mean(*arrays):
-            concat = _concatenate(*arrays)
-            return concat.mean(dim=concat.dims[0], keep_attrs=True)
-
-        return self.reduce(_mean, key)
+        return self.reduce(functions._mean, key)
 
     def std(self, key: str = ""):
-        def _std(*arrays):
-            concat = _concatenate(*arrays)
-            return concat.std(dim=concat.dims[0], keep_attrs=True)
-
-        return self.reduce(_std, key)
+        return self.reduce(functions._std, key)
 
     def maximum(self, key: str = ""):
-        def _maximum(*arrays):
-            concat = _concatenate(*arrays)
-            return concat.max(dim=concat.dims[0], keep_attrs=True)
-
-        return self.reduce(_maximum, key)
+        return self.reduce(functions._maximum, key)
 
     def minimum(self, key: str = ""):
-        def _minimum(*arrays):
-            concat = _concatenate(*arrays)
-            return concat.min(dim=concat.dims[0], keep_attrs=True)
-
-        return self.reduce(_minimum, key)
-
-    # Should perform dimension check for these as they only expect two arguments
-
-    def diff(self, key: str = ""):
-        return self.reduce((np.subtract, "input1", "input0"), key)
+        return self.reduce(functions._minimum, key)
 
     def norm(self, key: str = ""):
-        return self.reduce(
-            lambda x, y: xr.DataArray(np.sqrt(x**2 + y**2), attrs=x.attrs), key
-        )
+        return self.reduce(functions._norm, key)
+
+    def diff(self, key: str = ""):
+        return self.reduce((functions._subtract, "input1", "input0"), key)
 
     def subtract(self, key: str = ""):
-        return self.reduce(np.subtract, key)
+        return self.reduce(functions._subtract, key)
 
     def add(self, key: str = ""):
-        return self.reduce(np.add, key)
+        return self.reduce(functions._add, key)
 
     def divide(self, key: str = ""):
-        return self.reduce(np.divide, key)
+        return self.reduce(functions._divide, key)
 
     def multiply(self, key: str = ""):
-        return self.reduce(np.multiply, key)
-
-
-def _concatenate(*arrays):
-    newdim = arrays[0].ndim + 1
-    return xr.concat(tuple(arr for arr in arrays), dim=f"dim{newdim}")
+        return self.reduce(functions._multiply, key)

@@ -2,7 +2,7 @@ import numpy as np
 import xarray as xr
 
 from ppgraph import Graph, deduplicate_nodes
-from meteokit import extreme as metext
+from earthkit.data import FieldList
 
 from .fluent import Action, Node
 from .fluent import SingleAction as BaseSingleAction
@@ -10,6 +10,7 @@ from .fluent import MultiAction as BaseMultiAction
 from .graph_config import threshold_config, extreme_config
 from .io import retrieve
 from .graph_config import WindConfig
+from . import functions
 
 
 class SingleAction(BaseSingleAction):
@@ -57,7 +58,7 @@ class MultiAction(BaseMultiAction):
             threshold_func, threshold_keys = threshold_config(threshold)
             new_threshold_action = (
                 action.foreach(threshold_func)
-                .foreach(lambda x: xr.DataArray(x * 100, attrs=x.attrs))
+                .foreach(lambda x: FieldList.from_numpy(x.values * 100, x.metadata()))
                 .mean("number")
             )
             new_threshold_action.add_node_attributes(
@@ -91,17 +92,7 @@ class MultiAction(BaseMultiAction):
 
     def wind_speed(self, vod2uv: bool):
         if vod2uv:
-
-            def _wind_speed(fields):
-                return xr.apply_ufunc(
-                    np.linalg.norm,
-                    fields,
-                    input_core_dims=[["param"]],
-                    kwargs={"axis": -1},
-                    keep_attrs=True,
-                )
-
-            return self.foreach((_wind_speed, "input0"))
+            return self.foreach((functions.wind_speed, "input0"))
         return self.param_operation("norm")
 
     def param_operation(self, operation: str):
