@@ -132,6 +132,8 @@ class Request:
 def param_config(product: str, members: int, cfg: dict):
     if product == "wind":
         return WindConfig(members, cfg)
+    if product == "quantile":
+        return QuantileConfig(members, cfg)
     return ParamConfig(members, cfg)
 
 
@@ -245,11 +247,6 @@ class ParamConfig:
     ):
         clim_req = Request(self.sources["clim"], no_expand)
         steps = clim_req.pop("step", {})
-        if "quantile" in clim_req:
-            num_quantiles = clim_req["quantile"]
-            clim_req["quantile"] = [
-                "{}:100".format(i) for i in range(num_quantiles + 1)
-            ]
         if accumulated:
             clim_req["step"] = steps.get(window.name, window.name)
         else:
@@ -271,3 +268,14 @@ class WindConfig(ParamConfig):
     def forecast_request(self, window: Window, source: str):
         no_expand = ("param") if self.vod2uv(source) else ()
         return super().forecast_request(window, source, no_expand)
+
+
+class QuantileConfig(param_config):
+    def clim_request(
+        self, window, accumulated: bool = False, no_expand: tuple[str] = ()
+    ):
+        clim_reqs = super().clim_request(window, accumulated, no_expand)
+        for req in clim_reqs:
+            num_quantiles = int(req["quantile"])
+            req["quantile"] = ["{}:100".format(i) for i in range(num_quantiles + 1)]
+        return clim_reqs
