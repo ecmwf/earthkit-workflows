@@ -21,8 +21,8 @@ ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
     ],
 )
 def test_dask_transform(product, config):
-    cfg = Config(config)
-    graph = Cascade.graph(product, cfg)
+    cfg = Config(product, config)
+    graph = Cascade.graph(cfg)
 
     dask_graph = to_dask_graph(graph)
     assert all([isinstance(x, tuple) for x in dask_graph.items()])

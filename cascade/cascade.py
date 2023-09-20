@@ -9,10 +9,10 @@ from . import graph_templates
 
 
 class Cascade:
-    def graph(product: str, config: Config):
+    def graph(config: Config):
         total_graph = Graph([])
         for _, param_config in config.parameters.items():
-            total_graph += getattr(graph_templates, product)(param_config)
+            total_graph += getattr(graph_templates, config.product)(param_config)
 
         return deduplicate_nodes(total_graph)
 

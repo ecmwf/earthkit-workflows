@@ -46,7 +46,7 @@ def add_resources(graph: Graph) -> TaskGraph:
 
 def test_depth_first_scheduler():
     context = setup_context()
-    graph = Cascade.graph("anomaly_prob", Config(f"{ROOT_DIR}/templates/t850.yaml"))
+    graph = Cascade.graph(Config("anomaly_prob", f"{ROOT_DIR}/templates/t850.yaml"))
     schedule = Cascade.schedule(add_resources(graph), context)
     print(schedule)
 
@@ -56,7 +56,7 @@ def test_depth_first_scheduler():
 
 def test_annealing_scheduler():
     context = setup_context()
-    graph = Cascade.graph("anomaly_prob", Config(f"{ROOT_DIR}/templates/t850.yaml"))
+    graph = Cascade.graph(Config("anomaly_prob", f"{ROOT_DIR}/templates/t850.yaml"))
     scheduler = AnnealingScheduler(add_resources(graph), context)
     schedule = scheduler.create_schedule(num_temp_levels=10, num_tries=10)
     execution = Cascade.simulate(schedule)

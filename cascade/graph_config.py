@@ -129,8 +129,15 @@ class Request:
             yield tuple(indices), new_request
 
 
+def param_config(product: str, members: int, cfg: dict):
+    if product == "wind":
+        return WindConfig(members, cfg)
+    return ParamConfig(members, cfg)
+
+
 class Config:
-    def __init__(self, config, param_config_type=None):
+    def __init__(self, product, config):
+        self.product = product
         with open(config, "r") as f:
             self.options = yaml.safe_load(f)
 
@@ -141,9 +148,7 @@ class Config:
         else:
             members = range(1, int(self.options["members"]) + 1)
         self.parameters = {
-            param: ParamConfig(members, cfg)
-            if param_config_type is None
-            else param_config_type(members, cfg)
+            param: param_config(product, members, cfg)
             for param, cfg in self.options["parameters"].items()
         }
 
