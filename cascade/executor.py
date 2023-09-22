@@ -211,12 +211,15 @@ class BasicExecutor(Executor):
             task = self.task_graph.get_node(task_name)
             schedule_task = self.schedule.task_graph.get_node(task.name)
             payload = task.payload
+            assert len(payload) == 3
             with ResourceMeter() as rm:
-                arguments = payload[1:]
-            print("NODE", task_name, "PAYLOAD", payload, "ARGS", len(arguments))
+                args = payload[1]
+                kwargs = payload[2]
+
+            print("NODE", task_name, "PAYLOAD", payload, "ARGS", args, "KWARGS", kwargs)
             schedule_task.in_memory = rm.mem
             with ResourceMeter() as rm:
-                output = payload[0](*arguments)
+                output = payload[0](*args, **kwargs)
 
             print("OUTPUT", output)
             schedule_task.cost = rm.elapsed_cpu
@@ -231,9 +234,13 @@ class BasicExecutor(Executor):
 
                 for iname, input in successor.inputs.items():
                     if input.parent == task:
-                        successor.payload = tuple(
-                            output if (isinstance(x, str) and x == iname) else x
-                            for x in successor.payload
+                        successor.payload = (
+                            successor.payload[0],
+                            [
+                                output if (isinstance(x, str) and x == iname) else x
+                                for x in successor.payload[1]
+                            ],
+                            successor.payload[2],
                         )
                         break
             task.payload = None

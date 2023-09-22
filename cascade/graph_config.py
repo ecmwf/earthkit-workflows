@@ -28,9 +28,7 @@ def threshold_config(threshold: dict):
 
     return (
         functions.threshold,
-        comparison,
-        threshold["value"],
-        "input0",
+        (comparison, threshold["value"], "input0"),
     ), threshold_keys
 
 
@@ -41,7 +39,7 @@ def extreme_config(eps, number: int = 0, control: bool = False):
         if control:
             efi_keys.update({"marsType": "efic", "totalNumber": 1, "number": 0})
     else:
-        payload = (functions.sot, "input1", "input0", number, eps)
+        payload = (functions.sot, ("input1", "input0", number, eps))
         if number == 90:
             efi_order = 99
         elif number == 10:

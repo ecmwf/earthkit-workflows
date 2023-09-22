@@ -22,7 +22,7 @@ class Node(PPNode):
         # If payload is just a function, assume inputs to the function are the inputs
         # to the node, in the order provided
         if not isinstance(payload, tuple):
-            payload = tuple([payload] + [f"input{x}" for x in range(len(inputs))])
+            payload = tuple([payload, [f"input{x}" for x in range(len(inputs))]])
 
         if name is None:
             name = ""
@@ -122,7 +122,7 @@ class SingleAction(Action):
         grib_sets = config_grib_sets.copy()
         grib_sets.update(self.nodes.attrs)
         grib_sets.update(self.node().get_attribute(Node.Attributes.GRIB_KEYS))
-        payload = (write_grib, target, "input0", grib_sets)
+        payload = (write_grib, (target, "input0", grib_sets))
         return type(self)(
             payload,
             self,
@@ -221,7 +221,7 @@ class MultiAction(Action):
             grib_sets.update(self.nodes.attrs)
             grib_sets.update(node_coords)
             grib_sets.update(node.get_attribute(Node.Attributes.GRIB_KEYS))
-            new_nodes.append(Node((write_grib, target, "input0", grib_sets), [node]))
+            new_nodes.append(Node((write_grib, (target, "input0", grib_sets)), [node]))
         return type(self)(
             self,
             xr.DataArray(new_nodes),
@@ -249,7 +249,7 @@ class MultiAction(Action):
         return self.reduce(functions._norm, key)
 
     def diff(self, key: str = ""):
-        return self.reduce((functions._subtract, "input1", "input0"), key)
+        return self.reduce((functions._subtract, ("input1", "input0")), key)
 
     def subtract(self, key: str = ""):
         return self.reduce(functions._subtract, key)

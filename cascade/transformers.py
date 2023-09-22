@@ -1,3 +1,5 @@
+from dask.utils import apply
+
 from ppgraph import Sink, Node, Graph, Transformer
 
 from .graphs import Task, TaskGraph, ExecutionGraph
@@ -35,10 +37,10 @@ class _ToDaskGraph(Transformer):
     def node(self, node: Node, **inputs: Node.Output) -> Node:
         new_payload = list(node.payload)
         for input_name, input in inputs.items():
-            if input_name in new_payload:
-                new_payload[new_payload.index(input_name)] = input.parent.name
+            if input_name in new_payload[1]:
+                new_payload[1][new_payload[1].index(input_name)] = input.parent.name
         newnode = node.copy()
-        newnode.payload = tuple(new_payload)
+        newnode.payload = tuple([apply] + new_payload)  # Need apply for kwargs
         newnode.inputs = inputs
 
         return newnode

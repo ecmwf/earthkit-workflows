@@ -92,7 +92,7 @@ class MultiAction(BaseMultiAction):
 
     def wind_speed(self, vod2uv: bool):
         if vod2uv:
-            return self.foreach((functions.wind_speed, "input0"))
+            return self.foreach((functions.wind_speed, ("input0")))
         return self.param_operation("norm")
 
     def param_operation(self, operation: str):
@@ -118,8 +118,7 @@ def read(requests: list, join_key: str = "number", **kwargs):
             new_action = SingleAction(
                 payload=(
                     retrieve,
-                    request.pop("source"),
-                    request.request,
+                    (request.pop("source"), request.request),
                     kwargs,
                 ),
                 previous=None,
@@ -130,8 +129,7 @@ def read(requests: list, join_key: str = "number", **kwargs):
                 nodes[indices] = Node(
                     payload=(
                         retrieve,
-                        new_request.pop("source"),
-                        new_request,
+                        (new_request.pop("source"), new_request),
                         kwargs,
                     ),
                     name=f"{new_request}",
