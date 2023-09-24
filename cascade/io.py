@@ -12,6 +12,7 @@ import pyfdb
 import mir
 import earthkit.data
 from earthkit.data.sources.stream import StreamSource
+from earthkit.data import FieldList
 
 
 def mir_job(input, mir_options):
@@ -61,13 +62,18 @@ def file_retrieve(path: str, request):
 def retrieve(source: str, request: dict, **kwargs):
     req = request.copy()
     if source == "fdb":
-        return fdb_retrieve(req, **kwargs)
-    if source == "mars":
-        return mars_retrieve(req)
-    if source == "fileset":
+        ret_sources = fdb_retrieve(req, **kwargs)
+    elif source == "mars":
+        ret_sources = mars_retrieve(req)
+    elif source == "fileset":
         path = req.pop("location")
-        return file_retrieve(path, req)
-    raise NotImplementedError("Source {source} not supported.")
+        ret_sources = file_retrieve(path, req)
+    else:
+        raise NotImplementedError("Source {source} not supported.")
+    ret = FieldList()
+    for source in ret_sources:
+        ret += FieldList.from_numpy(source.values, source.metadata())
+    return ret
 
 
 def write(loc: str, data: xr.DataArray, grib_sets: dict):

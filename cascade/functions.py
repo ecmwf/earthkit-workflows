@@ -20,7 +20,7 @@ def _multi_arg_function(func, *arrays):
 
 
 def _norm(arr1, arr2):
-    norm = jnp.linalg.norm(_concatenate([arr1, arr2]).values, axis=0)
+    norm = jnp.linalg.norm(_concatenate(arr1, arr2).values, axis=0)
     return FieldList.from_numpy(np.asarray(norm), arr1.metadata())
 
 
@@ -31,8 +31,8 @@ def _two_arg_function(func, arr1, arr2):
 
 _mean = functools.partial(_multi_arg_function, "mean")
 _std = functools.partial(_multi_arg_function, "std")
-_maximum = functools.partial(_multi_arg_function, "maximum")
-_minimum = functools.partial(_multi_arg_function, "minimum")
+_maximum = functools.partial(_multi_arg_function, "max")
+_minimum = functools.partial(_multi_arg_function, "min")
 _subtract = functools.partial(_two_arg_function, "subtract")
 _add = functools.partial(_two_arg_function, "add")
 _multiply = functools.partial(_two_arg_function, "multiply")
@@ -56,12 +56,12 @@ def threshold(comparison: str, threshold: float, arr):
 
 def efi(clim, ens, eps: float):
     res = extreme.efi(clim.values, ens.values, eps)
-    return FieldList.from_numpy(res, ens.metadata())
+    return FieldList.from_numpy(res, ens[0].metadata())
 
 
 def sot(clim, ens, number: int, eps: float):
     res = extreme.sot(clim.values, ens.values, number, eps)
-    return FieldList.from_numpy(res, ens.metadata())
+    return FieldList.from_numpy(res, ens[0].metadata())
 
 
 def wind_speed(arr):

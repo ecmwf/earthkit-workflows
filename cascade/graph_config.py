@@ -34,7 +34,7 @@ def threshold_config(threshold: dict):
 
 def extreme_config(eps, number: int = 0, control: bool = False):
     if number == 0:
-        payload = (functions.efi, "input1", "input0", eps)
+        payload = (functions.efi, ("input1", "input0", eps))
         efi_keys = {"marsType": "efi", "efiOrder": 0}
         if control:
             efi_keys.update({"marsType": "efic", "totalNumber": 1, "number": 0})
@@ -128,8 +128,8 @@ class Request:
 def param_config(product: str, members: int, cfg: dict):
     if product == "wind":
         return WindConfig(members, cfg)
-    if product == "quantile":
-        return QuantileConfig(members, cfg)
+    if product == "extreme":
+        return ExtremeConfig(members, cfg)
     return ParamConfig(members, cfg)
 
 
@@ -199,11 +199,13 @@ class ParamConfig:
             filter_configs = param_config.pop("input_filter_operation")
             return (
                 functions.filter,
-                filter_configs["comparison"],
-                float(filter_configs["threshold"]),
-                "input0",
-                "input1",
-                float(filter_configs.get("replacement", 0)),
+                (
+                    filter_configs["comparison"],
+                    float(filter_configs["threshold"]),
+                    "input0",
+                    "input1",
+                    float(filter_configs.get("replacement", 0)),
+                ),
             )
         return param_config.pop("input_combine_operation", None)
 
@@ -261,7 +263,7 @@ class WindConfig(ParamConfig):
         return super().forecast_request(window, source, no_expand)
 
 
-class QuantileConfig(ParamConfig):
+class ExtremeConfig(ParamConfig):
     def clim_request(
         self, window, accumulated: bool = False, no_expand: tuple[str] = ()
     ):
