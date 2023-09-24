@@ -231,6 +231,9 @@ class BasicExecutor(Executor):
                 assert not isinstance(
                     successor.payload, str
                 ), f"Payload can not be str. Got {successor.payload}"
+                assert (
+                    len(successor.payload) == 3
+                ), f"Payload should contain 3 elements. Got {successor.payload} length {len(successor.payload)}"
 
                 for iname, input in successor.inputs.items():
                     if input.parent == task:

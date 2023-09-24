@@ -92,7 +92,7 @@ class MultiAction(BaseMultiAction):
 
     def wind_speed(self, vod2uv: bool):
         if vod2uv:
-            return self.foreach((functions.wind_speed, ("input0")))
+            return self.foreach((functions.wind_speed, ("input0",)))
         return self.param_operation("norm")
 
     def param_operation(self, operation: str):

@@ -75,6 +75,7 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
     if isinstance(target, (FileTarget, FileSetTarget)):
         # Allows file to be appended on each write call
         target.enable_recovery()
-    template = data.metadata()._handle.copy()
-    template.set(grib_sets)
-    write_grib(target, template, data.values)
+    assert len(data) == 1
+    template = data.metadata()[0]._handle.copy()
+    # template.set(grib_sets)
+    write_grib(target, template, data[0].values)

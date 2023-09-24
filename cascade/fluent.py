@@ -11,6 +11,10 @@ from .io import write as write_grib
 from . import functions
 
 
+def create_payload(func, args: list | tuple, kwargs: dict = {}):
+    return (func, args, kwargs)
+
+
 class Node(PPNode):
     class Attributes(Enum):
         GRIB_KEYS = auto()
@@ -18,11 +22,13 @@ class Node(PPNode):
     def __init__(self, payload, inputs: PPNode | tuple[PPNode] = (), name=None):
         if isinstance(inputs, PPNode):
             inputs = [inputs]
-
         # If payload is just a function, assume inputs to the function are the inputs
         # to the node, in the order provided
-        if not isinstance(payload, tuple):
-            payload = tuple([payload, [f"input{x}" for x in range(len(inputs))]])
+        if not isinstance(payload, tuple) or len(payload) == 1:
+            payload = create_payload(payload, [f"input{x}" for x in range(len(inputs))])
+        else:
+            payload = create_payload(*payload)
+        assert len(payload) == 3
 
         if name is None:
             name = ""
