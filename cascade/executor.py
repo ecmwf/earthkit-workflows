@@ -257,7 +257,12 @@ class DaskExecutor(Executor):
             Delayed(x.name, self.dask_graph) for x in schedule.task_graph.sinks
         ]
 
-    def execute_with_dask_schedule(self):
+    def execute_with_dask_schedule(
+        self,
+        memory_limit: str = "24GB",
+        n_workers: int = 1,
+        threads_per_worker: int = 1,
+    ):
         from dask.distributed import Client, as_completed
 
         # Set up distributed client
@@ -265,7 +270,10 @@ class DaskExecutor(Executor):
             {"distributed.scheduler.worker-saturation": 1.0}
         )  # Important to prevent root task overloading
         client = Client(
-            memory_limit="24GB", processes=True, n_workers=1, threads_per_worker=1
+            memory_limit=memory_limit,
+            processes=True,
+            n_workers=n_workers,
+            threads_per_worker=threads_per_worker,
         )
         future = client.compute(self.outputs)
 

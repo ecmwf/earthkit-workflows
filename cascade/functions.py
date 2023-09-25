@@ -12,21 +12,31 @@ def _concatenate(*arrays):
     return sum(arrays[1:], arrays[0])
 
 
+def standardise_output(data):
+    # Need to convert to numpy array as jax array is not yet supported
+    # Also, nest the data to avoid problems with not finding geography attribute
+    ret = np.asarray(data)
+    if len(ret.shape) == 1:
+        ret = np.asarray([ret])
+    assert len(ret.shape) == 2
+    return ret
+
+
 def _multi_arg_function(func, *arrays):
     concat = _concatenate(*arrays).values
     assert len(concat) == len(arrays)
     res = getattr(jnp, func)(concat, axis=0)
-    return FieldList.from_numpy(np.asarray(res), arrays[0][0].metadata())
+    return FieldList.from_numpy(standardise_output(res), arrays[0][0].metadata())
 
 
 def _norm(arr1, arr2):
     norm = jnp.linalg.norm(_concatenate(arr1, arr2).values, axis=0)
-    return FieldList.from_numpy(np.asarray(norm), arr1.metadata())
+    return FieldList.from_numpy(standardise_output(norm), arr1.metadata())
 
 
 def _two_arg_function(func, arr1, arr2):
     res = getattr(jnp, func)(arr1.values, arr2.values)
-    return FieldList.from_numpy(np.asarray(res), arr1.metadata())
+    return FieldList.from_numpy(standardise_output(res), arr1.metadata())
 
 
 _mean = functools.partial(_multi_arg_function, "mean")
@@ -51,26 +61,26 @@ def comp_str2func(comparison: str):
 
 def threshold(comparison: str, threshold: float, arr):
     res = comp_str2func(comparison)(arr.values, threshold)
-    return FieldList.from_numpy(np.asarray(res), arr.metadata())
+    return FieldList.from_numpy(standardise_output(res), arr.metadata())
 
 
 def efi(clim, ens, eps: float):
     res = extreme.efi(clim.values, ens.values, eps)
-    return FieldList.from_numpy(res, ens[0].metadata())
+    return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
 
 
 def sot(clim, ens, number: int, eps: float):
     res = extreme.sot(clim.values, ens.values, number, eps)
-    return FieldList.from_numpy(res, ens[0].metadata())
+    return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
 
 
 def wind_speed(arr):
     assert len(arr.values) == 2
     res = jnp.linalg.norm(arr.values, axis=0)
-    return FieldList.from_numpy(np.asarray(res), arr[0].metadata())
+    return FieldList.from_numpy(standardise_output(res), arr[0].metadata())
 
 
 def filter(comparison, threshold, arr1, arr2, replacement=0):
     condition = comp_str2func(comparison)(arr2.values, threshold)
     res = jnp.where(condition, replacement, arr1.values)
-    return FieldList.from_numpy(np.asarray(res), arr1.metadata())
+    return FieldList.from_numpy(standardise_output(res), arr1.metadata())

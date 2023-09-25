@@ -13,6 +13,10 @@ import mir
 import earthkit.data
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data import FieldList
+from earthkit.data.core.metadata import RawMetadata
+from earthkit.data.readers.grib.metadata import GribMetadata
+from earthkit.data.readers.grib.memory import GribMessageMemoryReader
+from earthkit.data.readers.grib.codes import GribCodesHandle
 
 
 def mir_job(input, mir_options):
@@ -70,9 +74,19 @@ def retrieve(source: str, request: dict, **kwargs):
         ret_sources = file_retrieve(path, req)
     else:
         raise NotImplementedError("Source {source} not supported.")
-    ret = FieldList()
+    ret = None
     for source in ret_sources:
-        ret += FieldList.from_numpy(source.values, source.metadata())
+        grib_metadata = source.metadata()._handle.clone()
+        grib_metadata.set_values(np.zeros(source.values.shape))
+        field_list = FieldList.from_numpy(
+            np.asarray([source.values]),
+            RawMetadata({"buffer": grib_metadata.get_buffer()}),
+        )
+        if ret is None:
+            ret = field_list
+        else:
+            ret += field_list
+    assert ret is not None, f"No data retrieved from {source} for request {request}"
     return ret
 
 
@@ -82,6 +96,9 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
         # Allows file to be appended on each write call
         target.enable_recovery()
     assert len(data) == 1
-    template = data.metadata()[0]._handle.copy()
+    buffer = data.metadata()[0]._d.copy().pop("buffer")
+    template = GribMetadata(
+        GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
+    )
     # template.set(grib_sets)
-    write_grib(target, template, data[0].values)
+    write_grib(target, template._handle, data[0].values)

@@ -36,6 +36,7 @@ def to_execution_graph(graph: Graph) -> ExecutionGraph:
 class _ToDaskGraph(Transformer):
     def node(self, node: Node, **inputs: Node.Output) -> Node:
         new_payload = list(node.payload)
+        new_payload[1] = list(new_payload[1])
         for input_name, input in inputs.items():
             if input_name in new_payload[1]:
                 new_payload[1][new_payload[1].index(input_name)] = input.parent.name
