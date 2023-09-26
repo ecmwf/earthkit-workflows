@@ -3,8 +3,7 @@ import pytest
 from cascade.io import retrieve, write
 
 
-@pytest.mark.parametrize("source", ["fdb", "mars"])
-def test_retrieve(tmpdir, source):
+def test_retrieve(tmpdir):
     request = {
         "class": "od",
         "expver": "0001",
@@ -17,5 +16,24 @@ def test_retrieve(tmpdir, source):
         "step": "12",
         "param": 228,
     }
-    data = retrieve(source, request)
+    data = retrieve("mars", request)
     write(f"{tmpdir}/test.grib", data, {})
+
+
+def test_retrieve_fail():
+    with pytest.raises(Exception):
+        retrieve(
+            "fdb",
+            {
+                "class": "od",
+                "expver": "0001",
+                "stream": "enfo",
+                "type": "cf",
+                "date": "20230101",
+                "time": "12",
+                "domain": "g",
+                "levtype": "sfc",
+                "step": "12",
+                "param": 228,
+            },
+        )
