@@ -10,46 +10,26 @@ import functools
 from . import functions
 
 
-def threshold_config(threshold: dict):
-    threshold_keys = {}
-    threshold_value = threshold["value"]
-    if "localDecimalScaleFactor" in threshold:
-        scale_factor = threshold["localDecimalScaleFactor"]
-        threshold_keys["localDecimalScaleFactor"] = scale_factor
-        threshold_value = round(threshold["value"] * 10**scale_factor, 0)
-
-    comparison = threshold["comparison"]
-    if "<" in comparison:
-        threshold_keys["thresholdIndicator"] = 2
-        threshold_keys["upperThreshold"] = threshold_value
-    else:
-        threshold_keys["thresholdIndicator"] = 1
-        threshold_keys["lowerThreshold"] = threshold_value
-
-    return (
-        functions.threshold,
-        (comparison, threshold["value"], "input0"),
-    ), threshold_keys
-
-
-def extreme_config(eps, number: int = 0, control: bool = False):
-    if number == 0:
-        payload = (functions.efi, ("input1", "input0", eps))
-        efi_keys = {"marsType": "efi", "efiOrder": 0}
-        if control:
-            efi_keys.update({"marsType": "efic", "totalNumber": 1, "number": 0})
-    else:
-        payload = (functions.sot, ("input1", "input0", number, eps))
-        if number == 90:
-            efi_order = 99
-        elif number == 10:
-            efi_order = 1
+class ThresholdConfig:
+    def __init__(self, threshold: dict):
+        self.threshold = threshold["value"]
+        self.comparison = threshold["comparison"]
+        self.grib_keys = {"paramId": threshold["out_paramid"]}
+        if "localDecimalScaleFactor" in threshold:
+            scale_factor = threshold["localDecimalScaleFactor"]
+            self.grib_keys["localDecimalScaleFactor"] = scale_factor
+            threshold_value = round(self.threshold * 10**scale_factor, 0)
         else:
-            raise Exception(
-                "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
+            threshold_value = self.threshold
+
+        if "<" in self.comparison:
+            self.grib_keys.update(
+                {"thresholdIndicator": 2, "upperThreshold": threshold_value}
             )
-        efi_keys = {"marsType": "sot", "efiOrder": efi_order}
-    return payload, efi_keys
+        elif ">" in self.comparison:
+            self.grib_keys.update(
+                {"thresholdIndicator": 1, "lowerThreshold": threshold_value}
+            )
 
 
 class Window:

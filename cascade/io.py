@@ -96,9 +96,13 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
         # Allows file to be appended on each write call
         target.enable_recovery()
     assert len(data) == 1
-    buffer = data.metadata()[0]._d.copy().pop("buffer")
-    template = GribMetadata(
-        GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
+    metadata = data.metadata()[0]._d.copy()
+    buffer = metadata.pop("buffer")
+    template = (
+        GribMetadata(
+            GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
+        )
+        # .override(grib_sets)
+        # .override(metadata)
     )
-    # template.set(grib_sets)
     write_grib(target, template._handle, data[0].values)

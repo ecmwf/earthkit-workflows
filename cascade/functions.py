@@ -59,19 +59,37 @@ def comp_str2func(comparison: str):
     return jnp.greater
 
 
-def threshold(comparison: str, threshold: float, arr):
+def threshold(comparison: str, threshold: float, arr, meta_override={}):
     res = comp_str2func(comparison)(arr.values, threshold)
-    return FieldList.from_numpy(standardise_output(res), arr.metadata())
+    metadata = arr[0].metadata().override(meta_override)
+    return FieldList.from_numpy(standardise_output(res), metadata)
 
 
-def efi(clim, ens, eps: float):
+def efi(clim, ens, eps: float, control: bool = False):
+    if control:
+        metadata = (
+            ens[0]
+            .metadata()
+            .override({"marsType": "efic", "totalNumber": 1, "number": 0})
+        )
+    else:
+        metadata = ens[0].metadata().override({"marsType": "efi", "efiOrder": 0})
     res = extreme.efi(clim.values, ens.values, eps)
-    return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
+    return FieldList.from_numpy(standardise_output(res), metadata)
 
 
 def sot(clim, ens, number: int, eps: float):
+    if number == 90:
+        efi_order = 99
+    elif number == 10:
+        efi_order = 1
+    else:
+        raise Exception(
+            "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
+        )
+    metadata = ens[0].metadata().override({"marsType": "sot", "efiOrder": efi_order})
     res = extreme.sot(clim.values, ens.values, number, eps)
-    return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
+    return FieldList.from_numpy(standardise_output(res), metadata)
 
 
 def wind_speed(arr):

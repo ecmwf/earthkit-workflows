@@ -16,9 +16,6 @@ def create_payload(func, args: list | tuple, kwargs: dict = {}):
 
 
 class Node(PPNode):
-    class Attributes(Enum):
-        GRIB_KEYS = auto()
-
     def __init__(self, payload, inputs: PPNode | tuple[PPNode] = (), name=None):
         if isinstance(inputs, PPNode):
             inputs = [inputs]
@@ -42,18 +39,6 @@ class Node(PPNode):
             **{f"input{x}": node for x, node in enumerate(inputs)},
         )
         self.attributes = {}
-
-    def add_attribute(self, key: Attributes, value):
-        assert key in Node.Attributes, f"Unknown attribute {key}"
-        if key == Node.Attributes.GRIB_KEYS:
-            self.attributes.setdefault(key, {}).update(value)
-        else:
-            self.attributes[key] = value
-
-    def get_attribute(self, key):
-        if key == Node.Attributes.GRIB_KEYS:
-            return self.attributes.get(key, {})
-        return self.attributes.get(key, 0)
 
 
 class Action:
@@ -116,18 +101,12 @@ class SingleAction(Action):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def add_node_attributes(self, key: Node.Attributes, value):
-        node = self.node()
-        node.add_attribute(key, value)
-        self.nodes = xr.DataArray(node, attrs=self.nodes.attrs)
-
     def then(self, payload):
         return type(self)(payload, self)
 
     def write(self, target, config_grib_sets: dict):
         grib_sets = config_grib_sets.copy()
         grib_sets.update(self.nodes.attrs)
-        grib_sets.update(self.node().get_attribute(Node.Attributes.GRIB_KEYS))
         payload = (write_grib, (target, "input0", grib_sets))
         return type(self)(
             payload,
@@ -145,11 +124,6 @@ class MultiAction(Action):
 
     def to_single(self, payload, node=None):
         return SingleAction(payload, self, node)
-
-    def add_node_attributes(self, key: Node.Attributes, value, criteria: dict):
-        node = self.node(criteria)
-        node.add_attribute(key, value)
-        self.nodes.loc[criteria] = node
 
     def foreach(self, payload):
         # Applies operation to every node, keeping node array structure
@@ -226,7 +200,6 @@ class MultiAction(Action):
             grib_sets = config_grib_sets.copy()
             grib_sets.update(self.nodes.attrs)
             grib_sets.update(node_coords)
-            grib_sets.update(node.get_attribute(Node.Attributes.GRIB_KEYS))
             new_nodes.append(Node((write_grib, (target, "input0", grib_sets)), [node]))
         return type(self)(
             self,

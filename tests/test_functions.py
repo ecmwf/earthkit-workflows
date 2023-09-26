@@ -67,17 +67,6 @@ def test_threshold(comparison):
 
 
 def test_extreme():
-    ens = FieldList()
-    base_request = request.copy()
-    base_request["interpolate"] = {
-        "grid": "O640",
-        "intgrid": "none",
-        "legendre-loader": "shmem",
-        "matrix-loader": "file-io",
-    }
-    for x in range(1, 5):
-        base_request["number"] = x
-        ens += retrieve("mars", base_request)
     clim = retrieve(
         "mars",
         {
@@ -100,6 +89,25 @@ def test_extreme():
             },
         },
     )
+    base_request = request.copy()
+    base_request["interpolate"] = {
+        "grid": "O640",
+        "intgrid": "none",
+        "legendre-loader": "shmem",
+        "matrix-loader": "file-io",
+    }
+
+    # Control
+    base_request["type"] = "cf"
+    functions.efi(clim, retrieve("mars", base_request), 0.0001, control=True)
+
+    # Ensemble
+    ens = FieldList()
+    for x in range(1, 5):
+        base_request["type"] = "pf"
+        base_request["number"] = x
+        ens += retrieve("mars", base_request)
+
     functions.efi(clim, ens, 0.0001)
     functions.sot(clim, ens, 90, 0.0001)
 
