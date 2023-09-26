@@ -17,28 +17,44 @@ class SingleAction(BaseSingleAction):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def extreme(self, climatology: Action, eps: float):
+    def extreme(
+        self,
+        climatology: Action,
+        eps: float,
+        target_efi: str = "null:",
+        grib_sets: dict = {},
+    ):
         # Join with climatology and compute efi control
         payload = (functions.efi, ("input1", "input0", eps), {"control": True})
         ret = self.join(climatology, "datatype").reduce(payload)
-        return ret
+        return ret.write(target_efi, grib_sets)
 
 
 class MultiAction(BaseMultiAction):
     def to_single(self, payload, node=None):
         return SingleAction(payload, self, node)
 
-    def extreme(self, climatology: Action, sot: list, eps: float):
+    def extreme(
+        self,
+        climatology: Action,
+        sot: list,
+        eps: float,
+        target_efi: str = "null:",
+        target_sot: str = "null:",
+        grib_sets: dict = {},
+    ):
         # First concatenate across ensemble, and then join
         # with climatology and reduce efi/sot
         def _extreme(action, number):
             if number == 0:
                 payload = (functions.efi, ("input1", "input0", eps))
+                target = target_efi
             else:
                 payload = (functions.sot, ("input1", "input0", number, eps))
+                target = target_sot
             new_extreme = action.reduce(payload)
             new_extreme._add_dimension("number", number)
-            return new_extreme
+            return new_extreme.write(target, grib_sets)
 
         return (
             self.concatenate("number")
@@ -46,15 +62,21 @@ class MultiAction(BaseMultiAction):
             .transform(_extreme, [0] + sot, "number")
         )
 
-    def ensms(self):
+    def ensms(
+        self, target_mean: str = "null:", target_std: str = "null:", grib_sets={}
+    ):
         mean = self.mean("number")
         mean._add_dimension("type", "em")
+        mean.write(target_mean, grib_sets)
         std = self.std("number")
         std._add_dimension("type", "es")
+        std.write(target_std, grib_sets)
         res = mean.join(std, "type")
         return res
 
-    def threshold_prob(self, thresholds: list):
+    def threshold_prob(
+        self, thresholds: list, target: str = "null:", grib_sets: dict = {}
+    ):
         def _threshold_prob(action, threshold):
             threshold_config = ThresholdConfig(threshold)
             payload = (
@@ -74,7 +96,9 @@ class MultiAction(BaseMultiAction):
             new_threshold_action._add_dimension("paramId", threshold["out_paramid"])
             return new_threshold_action
 
-        return self.transform(_threshold_prob, thresholds, "paramId")
+        return self.transform(_threshold_prob, thresholds, "paramId").write(
+            target, grib_sets
+        )
 
     def anomaly(self, climatology: Action, standardised: bool):
         anomaly = self.join(
@@ -87,20 +111,24 @@ class MultiAction(BaseMultiAction):
             ).divide()
         return anomaly
 
-    def quantiles(self, n: int = 100):
+    def quantiles(self, n: int = 100, target: str = "null:", grib_sets: dict = {}):
         def _quantiles(action, quantile):
             new_quantile = action.then(("meteokit.stats.quantiles", "input0", quantile))
             new_quantile._add_dimension("pertubationNumber", quantile)
             return new_quantile
 
-        return self.concatenate("number").transform(
-            _quantiles, range(n), "perturbationNumber"
+        return (
+            self.concatenate("number")
+            .transform(_quantiles, range(n), "perturbationNumber")
+            .write(target, grib_sets)
         )
 
-    def wind_speed(self, vod2uv: bool):
+    def wind_speed(self, vod2uv: bool, target: str = "null:", grib_sets={}):
         if vod2uv:
-            return self.foreach((functions.wind_speed, ("input0",)))
-        return self.param_operation("norm")
+            ret = self.foreach((functions.wind_speed, ("input0",)))
+        else:
+            ret = self.param_operation("norm")
+        return ret.write(target, grib_sets)
 
     def param_operation(self, operation: str):
         if operation is None:
@@ -109,13 +137,13 @@ class MultiAction(BaseMultiAction):
             return getattr(self, operation)("param")
         return self.reduce(operation, "param")
 
-    def window_operation(self, window):
+    def window_operation(self, window, target: str = "null:", grib_sets: dict = {}):
         if window.operation is None:
             self._squeeze_dimension("step")
             return self
         ret = getattr(self, window.operation)("step")
         ret.add_attributes({"stepRange": window.name})
-        return ret
+        return ret.write(target, grib_sets)
 
 
 def read(requests: list, join_key: str = "number", **kwargs):
@@ -168,9 +196,12 @@ def anomaly_prob(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .anomaly(climatology, window.options.get("std_anomaly", False))
-            .window_operation(window)
-            .threshold_prob(window.options.get("thresholds", []))
-            .write(param_config.target, window.options.get("grib_set", {}))
+            .window_operation(window, param_config.get_target("out_ensemble"))
+            .threshold_prob(
+                window.options.get("thresholds", []),
+                param_config.get_target("out_prob"),
+                window.options.get("grib_set", {}),
+            )
             .graph()
         )
 
@@ -183,9 +214,12 @@ def prob(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .param_operation(param_config.param_operation)
-            .window_operation(window)
-            .threshold_prob(window.options.get("thresholds", []))
-            .write(param_config.target, window.options.get("grib_set", {}))
+            .window_operation(window, param_config.get_target("out_ensemble"))
+            .threshold_prob(
+                window.options.get("thresholds", []),
+                param_config.get_target("out_prob"),
+                window.options.get("grib_set", {}),
+            )
             .graph()
         )
 
@@ -195,28 +229,19 @@ def prob(param_config):
 def wind(param_config: WindConfig):
     total_graph = Graph([])
     for window in param_config.windows:
-        # For ensemble forecasts
-        ens_vod2uv = param_config.vod2uv("ens")
-        total_graph += (
-            read(param_config.forecast_request(window, "ens"), stream=(not ens_vod2uv))
-            .wind_speed(ens_vod2uv)
-            .ensms()
-            .write(param_config.target, window.options.get("grib_set", {}))
-            .graph()
-        )
-
-        # deterministic forecast
-        if "det" in param_config.sources:
-            det_vod2uv = param_config.vod2uv("det")
-            total_graph += (
-                read(
-                    param_config.forecast_request(window, "det"),
-                    stream=(not det_vod2uv),
+        for source in param_config.sources:
+            vod2uv = param_config.vod2uv(source)
+            total_graph = (
+                read(param_config.forecast_request(window, source), stream=(not vod2uv))
+                .wind_speed(vod2uv, param_config.get_target(f"out_{source}_ws"))
+                .ensms(
+                    param_config.get_target("out_mean"),
+                    param_config.get_target("out_std"),
+                    window.options.get("grib_set", {}),
                 )
-                .wind_speed(det_vod2uv)
-                .write(param_config.target, window.options.get("grib_set", {}))
                 .graph()
             )
+
     return deduplicate_nodes(total_graph)
 
 
@@ -226,8 +251,11 @@ def ensms(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .window_operation(window)
-            .ensms()
-            .write(param_config.target, window.options.get("grib_set", {}))
+            .ensms(
+                param_config.get_target("out_mean"),
+                param_config.get_target("out_std"),
+                window.options.get("grib_set", {}),
+            )
             .graph()
         )
     return deduplicate_nodes(total_graph)
@@ -250,15 +278,22 @@ def extreme(param_config):
             total_graph += (
                 parameter.select({"number": 0})
                 .window_operation(window)
-                .extreme(climatology, eps)
-                .write(param_config.target, grib_sets)
+                .extreme(
+                    climatology, eps, param_config.get_target(f"out_efi"), grib_sets
+                )
                 .graph()
             )
 
         total_graph += (
             parameter.window_operation(window)
-            .extreme(climatology, list(map(int, param_config.options["sot"])), eps)
-            .write(param_config.target, grib_sets)
+            .extreme(
+                climatology,
+                list(map(int, param_config.options["sot"])),
+                eps,
+                param_config.get_target(f"out_efi"),
+                param_config.get_target(f"out_sot"),
+                grib_sets,
+            )
             .graph()
         )
 
@@ -272,8 +307,10 @@ def quantiles(param_config):
             read(param_config.forecast_request(window), "number")
             .param_operation(param_config.param_operation)
             .window_operation(window)
-            .quantiles()
-            .write(param_config.target, window.options.get("grib_set", {}))
+            .quantiles(
+                target=param_config.get_target("out_quantiles"),
+                grib_sets=window.options.get("grib_set", {}),
+            )
             .graph()
         )
     return deduplicate_nodes(total_graph)

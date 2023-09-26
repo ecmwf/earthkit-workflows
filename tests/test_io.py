@@ -46,7 +46,7 @@ def test_multiprocess(tmpdir):
         for x in range(1, 5):
             base_request["type"] = "pf"
             base_request["number"] = x
-            futures.append(executor.submit(retrieve, "mars", base_request))
+            futures.append(executor.submit(retrieve, "fdb", base_request))
 
     for future in fut.as_completed(futures):
         data = future.result()

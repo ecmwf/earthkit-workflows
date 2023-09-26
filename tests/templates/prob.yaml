@@ -1,7 +1,8 @@
 members: 5
 parameters:
   rain:
-    target: "fileset:cascade_prob_{param}.grib"
+    targets: 
+      out_prob: "fileset:cascade_prob_{param}.grib"
     windows:
       - window_operation: 'diff'
         include_start_step: True
@@ -52,12 +53,13 @@ parameters:
         levtype: sfc
         domain: g
         param: 228
-        date: 20230912
+        date: 20230914
         time: 12
         expver: "0001"
         source: fdb
   ff:
-    target: "fileset:cascade_prob_{param}.grib"
+    targets: 
+      out_prob: "fileset:cascade_prob_{param}.grib"
     input_combine_operation: 'norm'
     windows:
       - periods:
@@ -78,12 +80,13 @@ parameters:
         levtype: sfc
         domain: g
         param: [165, 166]
-        date: 20230912
+        date: 20230914
         time: 12
         expver: "0001"
         source: fdb
   mn2t6:
-    target: "file:prob_test_mn2t6.grib"
+    targets: 
+      out_prob: "fileset:cascade_prob_{param}.grib"
     steps:
       - interval: 6
         start_step: 126
@@ -107,7 +110,7 @@ parameters:
         levtype: sfc
         domain: g
         param: 122
-        date: 20230912
+        date: 20230914
         time: 12
         expver: "0001"
         source: fdb

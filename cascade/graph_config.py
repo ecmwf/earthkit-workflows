@@ -139,7 +139,7 @@ class ParamConfig:
         self.members = members
         self.windows = self._generate_windows(param_options.pop("windows"))
         self.param_operation = self._generate_param_operation(param_options)
-        self.target = param_options.pop("target", "fdb:")
+        self.targets = param_options.pop("targets")
         self.options = param_options
 
     @classmethod
@@ -188,6 +188,9 @@ class ParamConfig:
                 ),
             )
         return param_config.pop("input_combine_operation", None)
+
+    def get_target(self, target: str) -> str:
+        return self.targets.get(target, "null:")
 
     def _request_steps(self, window):
         if len(self.steps) == 0:

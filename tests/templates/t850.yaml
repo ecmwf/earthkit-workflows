@@ -1,7 +1,8 @@
 members: 5
 parameters:
   t850:
-    target: "fileset:cascade_anom_prob_{param}.grib"
+    targets: 
+      out_prob: "fileset:cascade_prob_{param}.grib"
     steps:
       - interval: 12
         start_step: 120
@@ -54,8 +55,8 @@ parameters:
           indicatorOfUnitForTimeIncrement: 1
           typeOfStatisticalProcessing: 10
           packingType: "grid_ccsds"
-          scaleFactorOfUpperLimit: 'MISSING'
-          scaledValueOfUpperLimit: 'MISSING'
+          # scaleFactorOfUpperLimit: 'MISSING'
+          # scaledValueOfUpperLimit: 'MISSING'
     defs:
       base_keys: &base_keys
         class: 'od'
@@ -74,14 +75,14 @@ parameters:
         - <<: *base_keys
           stream: 'enfo'
           type: cf
-          date: 20230912
+          date: 20230914
           time: 12
           interpolate: *base_interp
           source: fdb
         - <<: *base_keys
           stream: 'enfo'
           type: pf 
-          date: 20230912
+          date: 20230914
           time: 12
           interpolate: *base_interp
           source: fdb
@@ -89,7 +90,7 @@ parameters:
         <<: *base_keys
         stream: 'efhs'
         type: [em, es]
-        date: 20230911
+        date: 20230914
         time: 00
         interpolate: *base_interp
         source: fdb

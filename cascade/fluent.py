@@ -45,9 +45,10 @@ class Action:
     def __init__(self, previous: "Action", nodes: xr.DataArray):
         self.previous = previous
         self.nodes = nodes
+        self.sinks = [] if previous is None else previous.sinks.copy()
 
     def graph(self) -> Graph:
-        return Graph(list(self.nodes.data.flatten()))
+        return Graph(self.sinks)
 
     def join(
         self,
@@ -68,8 +69,11 @@ class Action:
             coords="minimal",
         )
         if hasattr(self, "to_multi"):
-            return self.to_multi(new_nodes)
-        return type(self)(self, new_nodes)
+            ret = self.to_multi(new_nodes)
+        else:
+            ret = type(self)(self, new_nodes)
+        ret.sinks = self.sinks + other_action.sinks
+        return ret
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
@@ -105,14 +109,12 @@ class SingleAction(Action):
         return type(self)(payload, self)
 
     def write(self, target, config_grib_sets: dict):
-        grib_sets = config_grib_sets.copy()
-        grib_sets.update(self.nodes.attrs)
-        payload = (write_grib, (target, "input0", grib_sets))
-        return type(self)(
-            payload,
-            self,
-            node=xr.DataArray(Node(payload, self.node())),
-        )
+        if target != "null:":
+            grib_sets = config_grib_sets.copy()
+            grib_sets.update(self.nodes.attrs)
+            payload = (write_grib, (target, "input0", grib_sets))
+            self.sinks.append(Node(payload, self.node()))
+        return self
 
     def node(self):
         return self.nodes.data[()]
@@ -189,22 +191,23 @@ class MultiAction(Action):
         return res
 
     def write(self, target, config_grib_sets: dict):
-        coords = list(self.nodes.coords.keys())
-        new_nodes = []
-        for node_attrs in itertools.product(
-            *[self.nodes.coords[key].data for key in coords]
-        ):
-            node_coords = {key: node_attrs[index] for index, key in enumerate(coords)}
-            node = self.node(node_coords)
+        if target != "null:":
+            coords = list(self.nodes.coords.keys())
+            for node_attrs in itertools.product(
+                *[self.nodes.coords[key].data for key in coords]
+            ):
+                node_coords = {
+                    key: node_attrs[index] for index, key in enumerate(coords)
+                }
+                node = self.node(node_coords)
 
-            grib_sets = config_grib_sets.copy()
-            grib_sets.update(self.nodes.attrs)
-            grib_sets.update(node_coords)
-            new_nodes.append(Node((write_grib, (target, "input0", grib_sets)), [node]))
-        return type(self)(
-            self,
-            xr.DataArray(new_nodes),
-        )
+                grib_sets = config_grib_sets.copy()
+                grib_sets.update(self.nodes.attrs)
+                grib_sets.update(node_coords)
+                self.sinks.append(
+                    Node((write_grib, (target, "input0", grib_sets)), [node])
+                )
+        return self
 
     def node(self, criteria: dict):
         return self.nodes.sel(**criteria, drop=True).data[()]

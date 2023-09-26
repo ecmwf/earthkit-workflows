@@ -40,13 +40,13 @@ def test_single_action_from_node(previous, nodes):
 
 
 @pytest.mark.parametrize(
-    "input_nodes_shape, func, inputs, output_type, output_nodes_shape, node_inputs",
+    "input_nodes_shape, func, inputs, output_type, output_nodes_shape, node_inputs, num_sinks",
     [
-        [(3, 4), "foreach", ["test"], MultiAction, (3, 4), 1],
-        [(3, 4, 5), "reduce", ["func"], MultiAction, (4, 5), 3],
-        [(3, 4, 5), "reduce", ["func", "dim_1"], MultiAction, (3, 5), 4],
-        [(1,), "reduce", ["func"], SingleAction, (), 1],
-        [(3,), "reduce", ["func"], SingleAction, (), 3],
+        [(3, 4), "foreach", ["test"], MultiAction, (3, 4), 1, 0],
+        [(3, 4, 5), "reduce", ["func"], MultiAction, (4, 5), 3, 0],
+        [(3, 4, 5), "reduce", ["func", "dim_1"], MultiAction, (3, 5), 4, 0],
+        [(1,), "reduce", ["func"], SingleAction, (), 1, 0],
+        [(3,), "reduce", ["func"], SingleAction, (), 3, 0],
         [
             (3,),
             "join",
@@ -60,6 +60,7 @@ def test_single_action_from_node(previous, nodes):
             ],
             MultiAction,
             (4,),
+            0,
             0,
         ],
         [
@@ -79,10 +80,11 @@ def test_single_action_from_node(previous, nodes):
             MultiAction,
             (2, 3),
             0,
+            0,
         ],
-        [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0],
-        [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0],
-        [(3, 4), "write", ["target", {}], MultiAction, (12,), 1],
+        [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0, 0],
+        [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0, 0],
+        [(3, 4), "write", ["target", {}], MultiAction, (3, 4), 0, 12],
     ],
 )
 def test_multi_action(
@@ -92,6 +94,7 @@ def test_multi_action(
     output_type,
     output_nodes_shape,
     node_inputs,
+    num_sinks,
 ):
     nodes = np.empty(input_nodes_shape, dtype=object)
     nodes[:] = Node("1")
@@ -111,6 +114,7 @@ def test_multi_action(
     assert type(output_action) == output_type
     assert output_action.nodes.shape == output_nodes_shape
     assert len(output_action.nodes.data.item(0).inputs) == node_inputs
+    assert len(output_action.sinks) == num_sinks
 
 
 def test_attributes():

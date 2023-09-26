@@ -3,7 +3,9 @@ members:
   start: 1
 parameters:
   tp:
-    target: "fileset:cascade_extreme_{param}.grib"
+    targets: 
+      out_efi: "fileset:cascade_extreme_{param}.grib"
+      out_sot: "fileset:cascade_extreme_{param}.grib"
     efi_control: True
     defs:
       base_keys: &base_keys_tp
@@ -73,7 +75,9 @@ parameters:
       window_operation: diff
       include_start_step: True
   capeshear:
-    target: "fileset:cascade_extreme_{param}.grib"
+    targets: 
+      out_efi: "fileset:cascade_extreme_{param}.grib"
+      out_sot: "fileset:cascade_extreme_{param}.grib"
     defs:
       base_keys: &base_keys_capeshear
         class: od
@@ -90,7 +94,7 @@ parameters:
         - <<: *base_keys_capeshear
           stream: enfo
           type: cf
-          date: 20230913
+          date: 20230914
           time: 12
           param: [228036, 228035]
           interpolate: *base_interp_capeshear
@@ -98,7 +102,7 @@ parameters:
         - <<: *base_keys_capeshear
           stream: enfo
           type: pf
-          date: 20230913
+          date: 20230914
           time: 12
           param: [228036, 228035]
           interpolate: *base_interp_capeshear
