@@ -1,3 +1,8 @@
+out_keys:
+  mars.expver: 9078
+  type: ep
+  localDefinitionNumber: 5
+  bitsPerValue: 8
 members: 5
 parameters:
   rain:

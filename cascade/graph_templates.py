@@ -196,11 +196,13 @@ def anomaly_prob(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .anomaly(climatology, window.options.get("std_anomaly", False))
-            .window_operation(window, param_config.get_target("out_ensemble"))
+            .window_operation(
+                window, param_config.get_target("out_ensemble"), param_config.out_keys
+            )
             .threshold_prob(
                 window.options.get("thresholds", []),
                 param_config.get_target("out_prob"),
-                window.options.get("grib_set", {}),
+                {**window.grib_set, **param_config.out_keys},
             )
             .graph()
         )
@@ -214,11 +216,13 @@ def prob(param_config):
         total_graph += (
             read(param_config.forecast_request(window))
             .param_operation(param_config.param_operation)
-            .window_operation(window, param_config.get_target("out_ensemble"))
+            .window_operation(
+                window, param_config.get_target("out_ensemble"), param_config.out_keys
+            )
             .threshold_prob(
                 window.options.get("thresholds", []),
                 param_config.get_target("out_prob"),
-                window.options.get("grib_set", {}),
+                {**window.grib_set, **param_config.out_keys},
             )
             .graph()
         )
@@ -233,11 +237,15 @@ def wind(param_config: WindConfig):
             vod2uv = param_config.vod2uv(source)
             total_graph = (
                 read(param_config.forecast_request(window, source), stream=(not vod2uv))
-                .wind_speed(vod2uv, param_config.get_target(f"out_{source}_ws"))
+                .wind_speed(
+                    vod2uv,
+                    param_config.get_target(f"out_{source}_ws"),
+                    param_config.out_keys,
+                )
                 .ensms(
                     param_config.get_target("out_mean"),
                     param_config.get_target("out_std"),
-                    window.options.get("grib_set", {}),
+                    {**window.grib_set, **param_config.out_keys},
                 )
                 .graph()
             )
@@ -254,7 +262,7 @@ def ensms(param_config):
             .ensms(
                 param_config.get_target("out_mean"),
                 param_config.get_target("out_std"),
-                window.options.get("grib_set", {}),
+                {**window.grib_set, **param_config.out_keys},
             )
             .graph()
         )
@@ -271,7 +279,7 @@ def extreme(param_config):
             param_config.param_operation
         )
         eps = float(param_config.options["eps"])
-        grib_sets = window.options.get("grib_set", {})
+        grib_sets = {**window.grib_set, **param_config.out_keys}
 
         # EFI Control
         if param_config.options.get("efi_control", False):
@@ -309,7 +317,7 @@ def quantiles(param_config):
             .window_operation(window)
             .quantiles(
                 target=param_config.get_target("out_quantiles"),
-                grib_sets=window.options.get("grib_set", {}),
+                grib_sets={**window.grib_set, **param_config.out_keys},
             )
             .graph()
         )

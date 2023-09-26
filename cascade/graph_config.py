@@ -50,7 +50,8 @@ class Window:
             self.steps = list(range(self.start + self.step, self.end + 1, self.step))
 
         self.operation = operation
-        self.options = window_options
+        self.options = window_options.copy()
+        self.grib_set = self.options.pop("grib_set", {})
 
 
 class Request:
@@ -105,12 +106,12 @@ class Request:
             yield tuple(indices), new_request
 
 
-def param_config(product: str, members: int, cfg: dict):
+def param_config(product: str, members: int, cfg: dict, in_keys, out_keys):
     if product == "wind":
-        return WindConfig(members, cfg)
+        return WindConfig(members, cfg, in_keys, out_keys)
     if product == "extreme":
-        return ExtremeConfig(members, cfg)
-    return ParamConfig(members, cfg)
+        return ExtremeConfig(members, cfg, in_keys, out_keys)
+    return ParamConfig(members, cfg, in_keys, out_keys)
 
 
 class Config:
@@ -125,14 +126,16 @@ class Config:
             )
         else:
             members = range(1, int(self.options["members"]) + 1)
+        out_keys = self.options.pop("out_keys", {})
+        in_keys = self.options.pop("in_keys", {})
         self.parameters = {
-            param: param_config(product, members, cfg)
+            param: param_config(product, members, cfg, in_keys, out_keys)
             for param, cfg in self.options["parameters"].items()
         }
 
 
 class ParamConfig:
-    def __init__(self, members, param_config):
+    def __init__(self, members, param_config, in_keys, out_keys):
         param_options = param_config.copy()
         self.steps = self._generate_steps(param_options.pop("steps", []))
         self.sources = param_options.pop("sources")
@@ -140,6 +143,8 @@ class ParamConfig:
         self.windows = self._generate_windows(param_options.pop("windows"))
         self.param_operation = self._generate_param_operation(param_options)
         self.targets = param_options.pop("targets")
+        self.out_keys = out_keys.copy()
+        self.in_keys = in_keys.copy()
         self.options = param_options
 
     @classmethod
@@ -209,7 +214,7 @@ class ParamConfig:
 
         window_requests = []
         for request in requests:
-            req = Request(request, no_expand)
+            req = Request({**request, **self.in_keys}, no_expand)
             req["step"] = self._request_steps(window)
             if request["type"] == "pf":
                 req["number"] = self.members
@@ -232,9 +237,6 @@ class ParamConfig:
 
 
 class WindConfig(ParamConfig):
-    def __init__(self, members, param_config):
-        super().__init__(members, param_config)
-
     def vod2uv(self, source: str) -> bool:
         req = self.sources[source]
         if isinstance(req, list):
