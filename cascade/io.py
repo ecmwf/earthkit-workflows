@@ -18,6 +18,8 @@ from earthkit.data.readers.grib.metadata import GribMetadata
 from earthkit.data.readers.grib.memory import GribMessageMemoryReader
 from earthkit.data.readers.grib.codes import GribCodesHandle
 
+from .grib import basic_headers
+
 
 def mir_job(input, mir_options):
     job = mir.Job(**mir_options)
@@ -76,8 +78,8 @@ def retrieve(source: str, request: dict, **kwargs):
         raise NotImplementedError("Source {source} not supported.")
     ret = None
     for source in ret_sources:
-        grib_metadata = source.metadata()._handle.clone()
-        grib_metadata.set_values(np.zeros(source.values.shape))
+        grib_metadata = source.metadata()._handle.copy()
+        grib_metadata.set_array("values", np.zeros(source.values.shape))
         field_list = FieldList.from_numpy(
             np.asarray([source.values]),
             RawMetadata({"buffer": grib_metadata.get_buffer()}),
@@ -97,12 +99,9 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
         target.enable_recovery()
     assert len(data) == 1
     metadata = data.metadata()[0]._d.copy()
+    metadata.update(grib_sets)
     buffer = metadata.pop("buffer")
-    template = (
-        GribMetadata(
-            GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
-        )
-        # .override(grib_sets)
-        # .override(metadata)
-    )
+    template = GribMetadata(
+        GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
+    ).override(basic_headers(metadata))
     write_grib(target, template._handle, data[0].values)

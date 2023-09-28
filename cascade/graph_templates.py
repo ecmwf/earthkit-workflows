@@ -66,12 +66,12 @@ class MultiAction(BaseMultiAction):
         self, target_mean: str = "null:", target_std: str = "null:", grib_sets={}
     ):
         mean = self.mean("number")
-        mean._add_dimension("type", "em")
+        mean._add_dimension("marsType", "em")
         mean.write(target_mean, grib_sets)
         std = self.std("number")
-        std._add_dimension("type", "es")
+        std._add_dimension("marsType", "es")
         std.write(target_std, grib_sets)
-        res = mean.join(std, "type")
+        res = mean.join(std, "marsType")
         return res
 
     def threshold_prob(

@@ -1,6 +1,9 @@
 import xarray as xr
 import numpy as np
+import jax
 import jax.numpy as jnp
+
+jax.config.update("jax_enable_x64", True)
 import functools
 
 from meteokit import extreme as extreme

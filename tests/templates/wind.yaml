@@ -70,11 +70,11 @@ parameters:
     sources:
       ens:
         - <<: *vod2uv_base_keys
-          type: pf
+          type: cf
           interpolate: *vod2uv_base_interp
           source: fdb
         - <<: *vod2uv_base_keys
-          type: cf
+          type: pf
           interpolate: *vod2uv_base_interp
           source: fdb
     windows:
