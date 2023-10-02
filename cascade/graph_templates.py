@@ -9,7 +9,7 @@ from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
 from .graph_config import ThresholdConfig
 from .io import retrieve
-from .graph_config import WindConfig
+from .graph_config import WindConfig, Window
 from . import functions
 
 
@@ -21,11 +21,16 @@ class SingleAction(BaseSingleAction):
         self,
         climatology: Action,
         eps: float,
+        num_steps: int,
         target_efi: str = "null:",
         grib_sets: dict = {},
     ):
         # Join with climatology and compute efi control
-        payload = (functions.efi, ("input1", "input0", eps), {"control": True})
+        payload = (
+            functions.efi,
+            ("input1", "input0", eps, num_steps),
+            {"control": True},
+        )
         ret = self.join(climatology, "datatype").reduce(payload)
         return ret.write(target_efi, grib_sets)
 
@@ -39,6 +44,7 @@ class MultiAction(BaseMultiAction):
         climatology: Action,
         sot: list,
         eps: float,
+        num_steps: int,
         target_efi: str = "null:",
         target_sot: str = "null:",
         grib_sets: dict = {},
@@ -47,10 +53,10 @@ class MultiAction(BaseMultiAction):
         # with climatology and reduce efi/sot
         def _extreme(action, number):
             if number == 0:
-                payload = (functions.efi, ("input1", "input0", eps))
+                payload = (functions.efi, ("input1", "input0", eps, num_steps))
                 target = target_efi
             else:
-                payload = (functions.sot, ("input1", "input0", number, eps))
+                payload = (functions.sot, ("input1", "input0", number, eps, num_steps))
                 target = target_sot
             new_extreme = action.reduce(payload)
             new_extreme._add_dimension("number", number)
@@ -290,7 +296,11 @@ def extreme(param_config):
                 parameter.select({"number": 0})
                 .window_operation(window)
                 .extreme(
-                    climatology, eps, param_config.get_target(f"out_efi"), grib_sets
+                    climatology,
+                    eps,
+                    len(window.steps),
+                    param_config.get_target(f"out_efi"),
+                    grib_sets,
                 )
                 .graph()
             )
@@ -301,6 +311,7 @@ def extreme(param_config):
                 climatology,
                 list(map(int, param_config.options["sot"])),
                 eps,
+                len(window.steps),
                 param_config.get_target(f"out_efi"),
                 param_config.get_target(f"out_sot"),
                 grib_sets,

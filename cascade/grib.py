@@ -1,6 +1,7 @@
 from earthkit.data.readers.grib.metadata import GribMetadata
 from earthkit.data.readers.grib.memory import GribMessageMemoryReader
 from earthkit.data.readers.grib.codes import GribCodesHandle
+from earthkit.data import FieldList
 
 
 def buffer_to_template(buffer):
@@ -21,8 +22,7 @@ def basic_headers(grib_sets: dict) -> dict:
     ret = grib_sets.copy()
     step = ret.get("step")
     if step is None:
-        step_range = ret.get("stepRange")
-        assert step_range is not None
+        assert ret.get("stepRange") is not None
         ret.setdefault("stepType", "max")
     else:
         step = int(step)
@@ -30,14 +30,14 @@ def basic_headers(grib_sets: dict) -> dict:
     return ret
 
 
-def extreme_grib_headers(clim, ens):
+def extreme_grib_headers(clim: FieldList, ens: FieldList, num_steps: int) -> dict:
     extreme_headers = {}
 
     # EFI specific stuff
     ens_template = buffer_to_template(ens.metadata()[0].get("buffer"))
     if int(ens_template.get("timeRangeIndicator")) == 3:
         if extreme_headers.get("numberIncludedInAverage") == 0:
-            extreme_headers["numberIncludedInAverage"] = len(window.steps)
+            extreme_headers["numberIncludedInAverage"] = num_steps
         extreme_headers["numberMissingFromAveragesOrAccumulations"] = 0
 
     # set clim keys

@@ -12,7 +12,7 @@ from earthkit.data import FieldList
 from .grib import extreme_grib_headers
 
 
-def _concatenate(*arrays):
+def _concatenate(*arrays) -> FieldList:
     # Combine earthkit data objects into one object
     return sum(arrays[1:], arrays[0])
 
@@ -64,14 +64,18 @@ def comp_str2func(comparison: str):
     return jnp.greater
 
 
-def threshold(comparison: str, threshold: float, arr, meta_override={}):
+def threshold(
+    comparison: str, threshold: float, arr: FieldList, meta_override: dict = {}
+) -> FieldList:
     res = comp_str2func(comparison)(arr.values, threshold)
     metadata = arr[0].metadata().override(meta_override)
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
-def efi(clim, ens, eps: float, control: bool = False):
-    extreme_headers = extreme_grib_headers(clim, ens)
+def efi(
+    clim: FieldList, ens: FieldList, eps: float, num_steps: int, control: bool = False
+) -> FieldList:
+    extreme_headers = extreme_grib_headers(clim, ens, num_steps)
     if control:
         extreme_headers.update({"marsType": "efic", "totalNumber": 1, "number": 0})
         metadata = ens[0].metadata().override(extreme_headers)
@@ -82,8 +86,10 @@ def efi(clim, ens, eps: float, control: bool = False):
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
-def sot(clim, ens, number: int, eps: float):
-    extreme_headers = extreme_grib_headers(clim, ens)
+def sot(
+    clim: FieldList, ens: FieldList, number: int, eps: float, num_steps: int
+) -> FieldList:
+    extreme_headers = extreme_grib_headers(clim, ens, num_steps)
     if number == 90:
         efi_order = 99
     elif number == 10:
@@ -101,13 +107,15 @@ def sot(clim, ens, number: int, eps: float):
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
-def wind_speed(arr):
+def wind_speed(arr: FieldList) -> FieldList:
     assert len(arr.values) == 2
     res = jnp.linalg.norm(arr.values, axis=0)
     return FieldList.from_numpy(standardise_output(res), arr[0].metadata())
 
 
-def filter(comparison, threshold, arr1, arr2, replacement=0):
+def filter(
+    comparison: str, threshold: float, arr1: FieldList, arr2: FieldList, replacement=0
+) -> FieldList:
     condition = comp_str2func(comparison)(arr2.values, threshold)
     res = jnp.where(condition, replacement, arr1.values)
     return FieldList.from_numpy(standardise_output(res), arr1.metadata())

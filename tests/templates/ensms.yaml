@@ -7,8 +7,8 @@ members: 5
 parameters:
   T:
     targets: 
-      out_mean: "fdb:"
-      out_std: "fdb:"
+      out_mean: fileset:cascade_mean_{param}.grib
+      out_std: fileset:cascade_mean_{param}.grib
     defs:
       base_keys: &base_keys_T
         class: od
@@ -41,8 +41,8 @@ parameters:
         - range: [0, 6, 3]
   mn2t6:
     targets: 
-      out_mean: "fdb:"
-      out_std: "fdb:"
+      out_mean: fileset:cascade_mean_{param}.grib
+      out_std: fileset:cascade_mean_{param}.grib
     defs:
       base_keys: &base_keys_mn2t6
         class: od
@@ -78,8 +78,8 @@ parameters:
         - 6
   tp:
     targets: 
-      out_mean: "fdb:"
-      out_std: "fdb:"
+      out_mean: fileset:cascade_mean_{param}.grib
+      out_std: fileset:cascade_mean_{param}.grib
     defs:
       base_keys: &base_keys_tp
         class: od
