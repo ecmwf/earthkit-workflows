@@ -10,28 +10,6 @@ import functools
 from . import functions
 
 
-class ThresholdConfig:
-    def __init__(self, threshold: dict):
-        self.threshold = threshold["value"]
-        self.comparison = threshold["comparison"]
-        self.grib_keys = {"paramId": threshold["out_paramid"]}
-        if "localDecimalScaleFactor" in threshold:
-            scale_factor = threshold["localDecimalScaleFactor"]
-            self.grib_keys["localDecimalScaleFactor"] = scale_factor
-            threshold_value = round(self.threshold * 10**scale_factor, 0)
-        else:
-            threshold_value = self.threshold
-
-        if "<" in self.comparison:
-            self.grib_keys.update(
-                {"thresholdIndicator": 2, "upperThreshold": threshold_value}
-            )
-        elif ">" in self.comparison:
-            self.grib_keys.update(
-                {"thresholdIndicator": 1, "lowerThreshold": threshold_value}
-            )
-
-
 class Window:
     def __init__(self, window_range, operation, include_init, window_options):
         self.start = int(window_range[0])

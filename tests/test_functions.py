@@ -63,7 +63,8 @@ def test_two_arg(func):
     ],
 )
 def test_threshold(comparison):
-    functions.threshold(comparison, 2, retrieve("mars", request))
+    config = {"comparison": comparison, "value": 2, "out_paramid": 120}
+    functions.threshold(config, retrieve("mars", request))
 
 
 def test_extreme():
@@ -99,7 +100,7 @@ def test_extreme():
 
     # Control
     base_request["type"] = "cf"
-    functions.efi(clim, retrieve("mars", base_request), 0.0001, control=True)
+    functions.efi(clim, retrieve("mars", base_request), 0.0001, 2, control=True)
 
     # Ensemble
     ens = FieldList()
@@ -108,8 +109,8 @@ def test_extreme():
         base_request["number"] = x
         ens += retrieve("mars", base_request)
 
-    functions.efi(clim, ens, 0.0001)
-    functions.sot(clim, ens, 90, 0.0001)
+    functions.efi(clim, ens, 0.0001, 2)
+    functions.sot(clim, ens, 90, 0.0001, 2)
 
 
 def test_wind_speed():

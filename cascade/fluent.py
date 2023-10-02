@@ -112,9 +112,12 @@ class SingleAction(Action):
         if target != "null:":
             grib_sets = config_grib_sets.copy()
             grib_sets.update(self.nodes.attrs)
-            grib_sets.update(
-                {name: values.data[0] for name, values in self.nodes.coords.items()}
-            )
+            for name, values in self.nodes.coords.items():
+                if values.data.ndim == 0:
+                    grib_sets[name] = values.data
+                else:
+                    assert values.data.ndim == 1
+                    grib_sets[name] = values.data[0]
             payload = (write_grib, (target, "input0", grib_sets))
             self.sinks.append(Node(payload, self.node()))
         return self
@@ -236,8 +239,10 @@ class MultiAction(Action):
     def diff(self, key: str = ""):
         return self.reduce((functions._subtract, ("input1", "input0")), key)
 
-    def subtract(self, key: str = ""):
-        return self.reduce(functions._subtract, key)
+    def subtract(self, key: str = "", extract_keys: tuple = ()):
+        return self.reduce(
+            (functions._subtract, ("input0", "input1", extract_keys)), key
+        )
 
     def add(self, key: str = ""):
         return self.reduce(functions._add, key)

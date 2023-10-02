@@ -7,7 +7,6 @@ from earthkit.data import FieldList
 from .fluent import Action, Node
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
-from .graph_config import ThresholdConfig
 from .io import retrieve
 from .graph_config import WindConfig, Window
 from . import functions
@@ -84,15 +83,9 @@ class MultiAction(BaseMultiAction):
         self, thresholds: list, target: str = "null:", grib_sets: dict = {}
     ):
         def _threshold_prob(action, threshold):
-            threshold_config = ThresholdConfig(threshold)
             payload = (
                 functions.threshold,
-                (
-                    threshold_config.comparison,
-                    threshold_config.threshold,
-                    "input0",
-                    threshold_config.grib_keys,
-                ),
+                (threshold, "input0", grib_sets.get("edition", 1)),
             )
             new_threshold_action = (
                 action.foreach(payload)
@@ -106,16 +99,22 @@ class MultiAction(BaseMultiAction):
             target, grib_sets
         )
 
-    def anomaly(self, climatology: Action, standardised: bool):
-        anomaly = self.join(
-            climatology.select({"type": "em"}), "datatype", match_coord_values=True
-        ).subtract()
+    def anomaly(self, climatology: Action, window: Window):
+        extract = (
+            ("climateDateFrom", "climateDateTo", "referenceDate")
+            if window.grib_set.get("edition", 1) == 2
+            else ()
+        )
 
-        if standardised:
-            anomaly = anomaly.join(
+        anom = self.join(
+            climatology.select({"type": "em"}), "datatype", match_coord_values=True
+        ).subtract(extract_keys=extract)
+
+        if window.options.get("std_anomaly", False):
+            anom = anom.join(
                 climatology.select({"type": "es"}), "datatype", match_coord_values=True
             ).divide()
-        return anomaly
+        return anom
 
     def quantiles(self, n: int = 100, target: str = "null:", grib_sets: dict = {}):
         def _quantiles(action, quantile):
@@ -145,6 +144,7 @@ class MultiAction(BaseMultiAction):
 
     def window_operation(self, window, target: str = "null:", grib_sets: dict = {}):
         if window.operation is None:
+            self.add_attributes({"step": window.name})
             self._squeeze_dimension("step")
             return self
         ret = getattr(self, window.operation)("step")
@@ -204,14 +204,14 @@ def anomaly_prob(param_config):
 
         total_graph += (
             read(param_config.forecast_request(window))
-            .anomaly(climatology, window.options.get("std_anomaly", False))
+            .anomaly(climatology, window)
             .window_operation(
                 window, param_config.get_target("out_ensemble"), param_config.out_keys
             )
             .threshold_prob(
                 window.options.get("thresholds", []),
                 param_config.get_target("out_prob"),
-                {**window.grib_set, **param_config.out_keys},
+                {**param_config.out_keys, **window.grib_set},
             )
             .graph()
         )
@@ -231,7 +231,7 @@ def prob(param_config):
             .threshold_prob(
                 window.options.get("thresholds", []),
                 param_config.get_target("out_prob"),
-                {**window.grib_set, **param_config.out_keys},
+                {**param_config.out_keys, **window.grib_set},
             )
             .graph()
         )
@@ -254,7 +254,7 @@ def wind(param_config: WindConfig):
                 .ensms(
                     param_config.get_target("out_mean"),
                     param_config.get_target("out_std"),
-                    {**window.grib_set, **param_config.out_keys},
+                    {**param_config.out_keys, **window.grib_set},
                 )
                 .graph()
             )
@@ -271,7 +271,7 @@ def ensms(param_config):
             .ensms(
                 param_config.get_target("out_mean"),
                 param_config.get_target("out_std"),
-                {**window.grib_set, **param_config.out_keys},
+                {**param_config.out_keys, **window.grib_set},
             )
             .graph()
         )
@@ -288,7 +288,7 @@ def extreme(param_config):
             param_config.param_operation
         )
         eps = float(param_config.options["eps"])
-        grib_sets = {**window.grib_set, **param_config.out_keys}
+        grib_sets = {**param_config.out_keys, **window.grib_set}
 
         # EFI Control
         if param_config.options.get("efi_control", False):
@@ -331,7 +331,7 @@ def quantiles(param_config):
             .window_operation(window)
             .quantiles(
                 target=param_config.get_target("out_quantiles"),
-                grib_sets={**window.grib_set, **param_config.out_keys},
+                grib_sets={**param_config.out_keys, **window.grib_set},
             )
             .graph()
         )

@@ -26,7 +26,7 @@ request = {
 
 def test_retrieve(tmpdir):
     data = retrieve("mars", request)
-    write(f"{tmpdir}/test.grib", data, {})
+    write(f"{tmpdir}/test.grib", data, {"step": 12})
 
 
 def test_retrieve_fail():
@@ -50,4 +50,4 @@ def test_multiprocess(tmpdir):
 
     for future in fut.as_completed(futures):
         data = future.result()
-        write(f"{tmpdir}/test.grib", data, {})
+        write(f"{tmpdir}/test.grib", data, {"step": 12})

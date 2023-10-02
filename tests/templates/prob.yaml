@@ -23,9 +23,9 @@ parameters:
             comparison: ">="
             value: 0.005
             localDecimalScaleFactor: 3
-        # grib_set:
-        #   timeRangeIndicator: 5
-        #   stepType: diff 
+        grib_set:
+          timeRangeIndicator: 5
+          stepType: diff 
       - window_operation: 'diff'
         include_start_step: True
         periods:
@@ -38,18 +38,18 @@ parameters:
           - out_paramid: 131099
             comparison: ">="
             value: 0.05
-        # grib_set:
-        #   edition: 2
-        #   indicatorOfUnitForTimeIncrement: 1
-        #   packingType: grid_ccsds
-        #   probabilityType: 3
-        #   scaleFactorOfLowerLimit: 0
-        #   scaleFactorOfUpperLimit: MISSING
-        #   scaledValueOfUpperLimit: MISSING
-        #   stepRange: 0-0
-        #   stepType: accum
-        #   timeIncrement: 12
-        #   typeOfGeneratingProcess: 5
+        grib_set:
+          stepType: accum
+          stepRange: 0-0
+          edition: 2
+          scaleFactorOfLowerLimit: 0
+          probabilityType: 3
+          typeOfGeneratingProcess: 5
+          indicatorOfUnitForTimeIncrement: 1
+          timeIncrement: 12
+          packingType: grid_ccsds
+          scaleFactorOfUpperLimit: MISSING
+          scaledValueOfUpperLimit: MISSING
     sources:
       ens:
         class: od
@@ -68,8 +68,8 @@ parameters:
     input_combine_operation: 'norm'
     windows:
       - periods:
-          - range: [12, 12]
-          - range: [24, 24]
+          - range: [12, 24, 12]
+        include_start_step: True
         thresholds:
           - out_paramid: 131068
             comparison: ">="

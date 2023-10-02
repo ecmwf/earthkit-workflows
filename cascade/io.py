@@ -95,8 +95,16 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
         # Allows file to be appended on each write call
         target.enable_recovery()
     assert len(data) == 1
-    metadata = data.metadata()[0]._d.copy()
-    metadata.update(grib_sets)
+    metadata = grib_sets.copy()
+    metadata.update(data.metadata()[0]._d)
+    metadata = basic_headers(metadata)
     buffer = metadata.pop("buffer")
-    template = buffer_to_template(buffer).override(basic_headers(metadata))
+    set_missing = [key for key, value in metadata.items() if value == "MISSING"]
+    for missing_key in set_missing:
+        metadata.pop(missing_key)
+
+    template = buffer_to_template(buffer).override(metadata)
+
+    for missing_key in set_missing:
+        template._handle.set_missing(missing_key)
     write_grib(target, template._handle, data[0].values)

@@ -7,7 +7,7 @@ members: 5
 parameters:
   t850:
     targets: 
-      out_prob: "fileset:cascade_prob_{param}.grib"
+      out_prob: "fdb:"
     steps:
       - interval: 12
         start_step: 120
@@ -60,8 +60,8 @@ parameters:
           indicatorOfUnitForTimeIncrement: 1
           typeOfStatisticalProcessing: 10
           packingType: "grid_ccsds"
-          # scaleFactorOfUpperLimit: 'MISSING'
-          # scaledValueOfUpperLimit: 'MISSING'
+          scaleFactorOfUpperLimit: 'MISSING'
+          scaledValueOfUpperLimit: 'MISSING'
     defs:
       base_keys: &base_keys
         class: 'od'

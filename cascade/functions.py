@@ -9,7 +9,7 @@ import functools
 from meteokit import extreme as extreme
 from earthkit.data import FieldList
 
-from .grib import extreme_grib_headers
+from .grib import extreme_grib_headers, threshold_grib_headers, buffer_to_template
 
 
 def _concatenate(*arrays) -> FieldList:
@@ -39,9 +39,13 @@ def _norm(arr1, arr2):
     return FieldList.from_numpy(standardise_output(norm), arr1.metadata())
 
 
-def _two_arg_function(func, arr1, arr2):
+def _two_arg_function(func, arr1, arr2, extract_keys: tuple = ()):
+    arr2_meta = buffer_to_template(arr2.metadata()[0].get("buffer"))
+    metadata = arr1.metadata()[0].override(
+        {key: arr2_meta.get(key) for key in extract_keys}
+    )
     res = getattr(jnp, func)(arr1.values, arr2.values)
-    return FieldList.from_numpy(standardise_output(res), arr1.metadata())
+    return FieldList.from_numpy(standardise_output(res), metadata)
 
 
 _mean = functools.partial(_multi_arg_function, "mean")
@@ -64,11 +68,15 @@ def comp_str2func(comparison: str):
     return jnp.greater
 
 
-def threshold(
-    comparison: str, threshold: float, arr: FieldList, meta_override: dict = {}
-) -> FieldList:
-    res = comp_str2func(comparison)(arr.values, threshold)
-    metadata = arr[0].metadata().override(meta_override)
+def threshold(threshold_config: dict, arr: FieldList, edition: int = 1) -> FieldList:
+    # Find all locations where np.nan appears as an ensemble value
+    is_nan = jnp.isnan(arr.values)
+    thesh = comp_str2func(threshold_config["comparison"])(
+        arr.values, threshold_config["value"]
+    )
+    res = jnp.where(is_nan, jnp.nan, thesh)
+    threshold_headers = threshold_grib_headers(edition, threshold_config)
+    metadata = arr[0].metadata().override(threshold_headers)
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
