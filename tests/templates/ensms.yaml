@@ -1,13 +1,14 @@
 out_keys:
   mars.expver: '9078'
-  numberOfForecastsInEnsemble: 51
+  numberOfForecastsInEnsemble: 6
   perturbationNumber: 0
+  bitsPerValue: 16
 members: 5
 parameters:
   T:
     targets: 
-      out_mean: fileset:cascade_mean_{param}.grib
-      out_std: fileset:cascade_std_{param}.grib
+      out_mean: "fdb:"
+      out_std: "fdb:"
     defs:
       base_keys: &base_keys_T
         class: od
@@ -40,8 +41,8 @@ parameters:
         - range: [0, 6, 3]
   mn2t6:
     targets: 
-      out_mean: fileset:cascade_mean_{param}.grib
-      out_std: fileset:cascade_std_{param}.grib
+      out_mean: "fdb:"
+      out_std: "fdb:"
     defs:
       base_keys: &base_keys_mn2t6
         class: od
@@ -61,7 +62,8 @@ parameters:
           type: cf
           source: fdb
     windows:
-    - periods:
+    - window_operation: minimum
+      periods:
       - range:
         - 0
         - 0
@@ -76,8 +78,8 @@ parameters:
         - 6
   tp:
     targets: 
-      out_mean: fileset:cascade_mean_{param}.grib
-      out_std: fileset:cascade_std_{param}.grib
+      out_mean: "fdb:"
+      out_std: "fdb:"
     defs:
       base_keys: &base_keys_tp
         class: od

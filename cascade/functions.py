@@ -9,6 +9,8 @@ import functools
 from meteokit import extreme as extreme
 from earthkit.data import FieldList
 
+from .grib import extreme_grib_headers
+
 
 def _concatenate(*arrays):
     # Combine earthkit data objects into one object
@@ -69,19 +71,19 @@ def threshold(comparison: str, threshold: float, arr, meta_override={}):
 
 
 def efi(clim, ens, eps: float, control: bool = False):
+    extreme_headers = extreme_grib_headers(clim, ens)
     if control:
-        metadata = (
-            ens[0]
-            .metadata()
-            .override({"marsType": "efic", "totalNumber": 1, "number": 0})
-        )
+        extreme_headers.update({"marsType": "efic", "totalNumber": 1, "number": 0})
+        metadata = ens[0].metadata().override(extreme_headers)
     else:
-        metadata = ens[0].metadata().override({"marsType": "efi", "efiOrder": 0})
+        extreme_headers.update({"marsType": "efi", "efiOrder": 0})
+        metadata = ens[0].metadata().override(extreme_headers)
     res = extreme.efi(clim.values, ens.values, eps)
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
 def sot(clim, ens, number: int, eps: float):
+    extreme_headers = extreme_grib_headers(clim, ens)
     if number == 90:
         efi_order = 99
     elif number == 10:
@@ -90,7 +92,11 @@ def sot(clim, ens, number: int, eps: float):
         raise Exception(
             "SOT value '{sot}' not supported in template! Only accepting 10 and 90"
         )
-    metadata = ens[0].metadata().override({"marsType": "sot", "efiOrder": efi_order})
+    metadata = (
+        ens[0]
+        .metadata()
+        .override({**extreme_headers, "marsType": "sot", "efiOrder": efi_order})
+    )
     res = extreme.sot(clim.values, ens.values, number, eps)
     return FieldList.from_numpy(standardise_output(res), metadata)
 

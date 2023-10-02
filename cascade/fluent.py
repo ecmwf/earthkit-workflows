@@ -112,7 +112,9 @@ class SingleAction(Action):
         if target != "null:":
             grib_sets = config_grib_sets.copy()
             grib_sets.update(self.nodes.attrs)
-            grib_sets.update({name: values.data[0] for name, values in self.nodes.coords.items()})
+            grib_sets.update(
+                {name: values.data[0] for name, values in self.nodes.coords.items()}
+            )
             payload = (write_grib, (target, "input0", grib_sets))
             self.sinks.append(Node(payload, self.node()))
         return self

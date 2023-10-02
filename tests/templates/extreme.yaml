@@ -1,3 +1,5 @@
+out_keys:
+  bitsPerValue: 12
 members:
   end: 5
   start: 1
@@ -59,6 +61,7 @@ parameters:
         localDefinitionNumber: 19
         mars.expver: '9078'
         timeRangeIndicator: 5
+        stepType: diff
       periods:
       - range:
         - 12
@@ -85,7 +88,7 @@ parameters:
         expver: '0001'
         levtype: sfc
       base_interp: &base_interp_capeshear
-        grid: 'O640'
+        grid: 'O1280'
         intgrid: none
         legendre-loader: shmem
         matrix-loader: file-io
@@ -127,15 +130,15 @@ parameters:
     - 90
     windows:
     - grib_set:
+        param: 228035
+        typeOfStatisticalProcessing: 1
         edition: 1
-        gribTablesVersionNo: 132
-        indicatorOfParameter: 44
         indicatorOfTypeOfLevel: 1
+        timeRangeIndicator: 2
+        indicatorOfParameter: 44
+        gribTablesVersionNo: 132
         localDefinitionNumber: 19
         mars.expver: '9078'
-        param: 228035
-        timeRangeIndicator: 2
-        typeOfStatisticalProcessing: 1
       periods:
       - range:
         - 12

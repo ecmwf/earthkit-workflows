@@ -14,11 +14,8 @@ import earthkit.data
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data import FieldList
 from earthkit.data.core.metadata import RawMetadata
-from earthkit.data.readers.grib.metadata import GribMetadata
-from earthkit.data.readers.grib.memory import GribMessageMemoryReader
-from earthkit.data.readers.grib.codes import GribCodesHandle
 
-from .grib import basic_headers
+from .grib import basic_headers, buffer_to_template
 
 
 def mir_job(input, mir_options):
@@ -101,7 +98,5 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
     metadata = data.metadata()[0]._d.copy()
     metadata.update(grib_sets)
     buffer = metadata.pop("buffer")
-    template = GribMetadata(
-        GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
-    ).override(basic_headers(metadata))
+    template = buffer_to_template(buffer).override(basic_headers(metadata))
     write_grib(target, template._handle, data[0].values)
