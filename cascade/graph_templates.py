@@ -142,7 +142,10 @@ class MultiAction(BaseMultiAction):
             self._squeeze_dimension("step")
             return self
         ret = getattr(self, window.operation)("step")
-        ret.add_attributes({"stepRange": window.name})
+        if window.end - window.start == 0:
+            ret.add_attributes({"step": window.name})
+        else:
+            ret.add_attributes({"stepRange": window.name})
         return ret.write(target, grib_sets)
 
 

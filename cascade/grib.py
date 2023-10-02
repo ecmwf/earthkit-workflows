@@ -12,7 +12,7 @@ def basic_headers(grib_sets: dict) -> dict:
     if step is None:
         step_range = ret.get("stepRange")
         assert step_range is not None
-        ret.setdefault("max")
+        ret.setdefault("stepType", "max")
     else:
         step = int(step)
         ret["timeRangeIndicator"] = time_range_indicator(step)
