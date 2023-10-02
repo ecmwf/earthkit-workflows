@@ -8,7 +8,7 @@ parameters:
   T:
     targets: 
       out_mean: fileset:cascade_mean_{param}.grib
-      out_std: fileset:cascade_mean_{param}.grib
+      out_std: fileset:cascade_std_{param}.grib
     defs:
       base_keys: &base_keys_T
         class: od
@@ -42,7 +42,7 @@ parameters:
   mn2t6:
     targets: 
       out_mean: fileset:cascade_mean_{param}.grib
-      out_std: fileset:cascade_mean_{param}.grib
+      out_std: fileset:cascade_std_{param}.grib
     defs:
       base_keys: &base_keys_mn2t6
         class: od
@@ -62,8 +62,7 @@ parameters:
           type: cf
           source: fdb
     windows:
-    - window_operation: minimum
-      periods:
+    - periods:
       - range:
         - 0
         - 0
@@ -79,7 +78,7 @@ parameters:
   tp:
     targets: 
       out_mean: fileset:cascade_mean_{param}.grib
-      out_std: fileset:cascade_mean_{param}.grib
+      out_std: fileset:cascade_std_{param}.grib
     defs:
       base_keys: &base_keys_tp
         class: od

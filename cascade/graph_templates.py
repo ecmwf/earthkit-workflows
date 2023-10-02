@@ -144,10 +144,10 @@ class MultiAction(BaseMultiAction):
 
     def window_operation(self, window, target: str = "null:", grib_sets: dict = {}):
         if window.operation is None:
-            self.add_attributes({"step": window.name})
             self._squeeze_dimension("step")
-            return self
-        ret = getattr(self, window.operation)("step")
+            ret = self
+        else:
+            ret = getattr(self, window.operation)("step")
         if window.end - window.start == 0:
             ret.add_attributes({"step": window.name})
         else:
