@@ -2,10 +2,13 @@ cuda-python
 cupy-cuda12x
 numpy
 randomname
-jax
+jax[cpu]
 xarray
 cython
 earthkit-data
+dask 
+dask_kubernetes
+dill
 git+ssh://git@github.com/ecmwf/pproc-graph.git
 git+ssh://git@git.ecmwf.int/eccodes/eccodes-python.git@develop
 git+ssh://git@git.ecmwf.int/ecsdk/meteokit.git

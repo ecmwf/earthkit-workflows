@@ -45,18 +45,5 @@ def node_info_ext(sinks, node):
 def test_graph_construction(product, config, expected_num_nodes):
     cfg = Config(product, config)
     graph = Cascade.graph(cfg)
-    if True:
-        pyvis_graph = pyvis.to_pyvis(
-            graph,
-            notebook=True,
-            cdn_resources="remote",
-            height="1500px",
-            node_attrs=functools.partial(node_info_ext, graph.sinks),
-            hierarchical_layout=False,
-        )
-        pyvis_graph.show(
-            f"/etc/ecmwf/nfs/dh1_home_a/mawj/Documents/cascade/{product}_graph.html"
-        )
     print([x for x in graph.nodes()])
-    # assert len(pyvis_graph.nodes) == expected_num_nodes
     assert len([x for x in graph.nodes()]) == expected_num_nodes
