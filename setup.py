@@ -33,7 +33,7 @@ setup(
         "dask",
         "dill",
         "git+ssh://git@github.com/ecmwf/pproc-graph.git",
-        "git+ssh://git@git.ecmwf.int/ecsdk/meteokit.git"
+        "git+ssh://git@git.ecmwf.int/ecsdk/meteokit.git",
         "git+https://github.com/ecmwf/pyfdb.git@master",
         "git+ssh://git@git.ecmwf.int/ecsdk/pproc.git",
     ]
