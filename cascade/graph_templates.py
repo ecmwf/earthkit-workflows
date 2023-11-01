@@ -7,6 +7,7 @@ from earthkit.data import FieldList
 from .fluent import Action, Node
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
+from .fluent import create_payload, custom_hash
 from .io import retrieve
 from .graph_config import WindConfig, Window
 from . import functions
@@ -158,26 +159,22 @@ class MultiAction(BaseMultiAction):
 def read(requests: list, join_key: str = "number", **kwargs):
     all_actions = None
     for request in requests:
+        nodes = np.empty(tuple(request.dims.values()), dtype=object)
+        for indices, new_request in request.expand():
+            payload = create_payload(
+                retrieve,
+                (new_request.pop("source"), new_request),
+                kwargs,
+            )
+            nodes[indices] = Node(
+                payload=payload,
+                name=f"retrieve@{new_request['type']}:{custom_hash(str(payload))}",
+            )
         if len(request.dims) == 0:
             new_action = SingleAction(
-                payload=(
-                    retrieve,
-                    (request.pop("source"), request.request),
-                    kwargs,
-                ),
-                previous=None,
+                payload=None, previous=None, node=xr.DataArray(nodes[()])
             )
         else:
-            nodes = np.empty(tuple(request.dims.values()), dtype=object)
-            for indices, new_request in request.expand():
-                nodes[indices] = Node(
-                    payload=(
-                        retrieve,
-                        (new_request.pop("source"), new_request),
-                        kwargs,
-                    ),
-                    name=f"{new_request}",
-                )
             new_action = MultiAction(
                 None,
                 xr.DataArray(

@@ -3,6 +3,7 @@ import xarray as xr
 import itertools
 from enum import Enum, auto
 import functools
+import hashlib
 
 from ppgraph import Graph
 from ppgraph import Node as PPNode
@@ -13,6 +14,12 @@ from . import functions
 
 def create_payload(func, args: list | tuple, kwargs: dict = {}):
     return (func, args, kwargs)
+
+
+def custom_hash(string: str) -> str:
+    ret = hashlib.sha256()
+    ret.update(string.encode())
+    return ret.hexdigest()
 
 
 class Node(PPNode):
@@ -31,7 +38,11 @@ class Node(PPNode):
             name = ""
             if hasattr(payload[0], "__name__"):
                 name += payload[0].__name__
-            name += str(hash(f"{[payload] + [x.name for x in inputs]}"))
+            elif isinstance(payload[0], functools.partial):
+                name += (
+                    f"{payload[0].func.__name__}@{'/'.join(map(str, payload[0].args))}"
+                )
+            name += f":{custom_hash(f'{[payload] + [x.name for x in inputs]}')}"
 
         super().__init__(
             name,
