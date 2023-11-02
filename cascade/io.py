@@ -8,6 +8,8 @@ from pproc.common.io import (
     FileTarget,
     FileSetTarget,
 )
+from pproc.common import ResourceMeter
+
 import pyfdb
 import mir
 import earthkit.data
@@ -64,15 +66,16 @@ def file_retrieve(path: str, request):
 
 def retrieve(source: str, request: dict, **kwargs):
     req = request.copy()
-    if source == "fdb":
-        ret_sources = fdb_retrieve(req, **kwargs)
-    elif source == "mars":
-        ret_sources = mars_retrieve(req)
-    elif source == "fileset":
-        path = req.pop("location")
-        ret_sources = file_retrieve(path, req)
-    else:
-        raise NotImplementedError("Source {source} not supported.")
+    with ResourceMeter(f"retrieve: source {source}, request {request}"):
+        if source == "fdb":
+            ret_sources = fdb_retrieve(req, **kwargs)
+        elif source == "mars":
+            ret_sources = mars_retrieve(req)
+        elif source == "fileset":
+            path = req.pop("location")
+            ret_sources = file_retrieve(path, req)
+        else:
+            raise NotImplementedError("Source {source} not supported.")
     ret = None
     for source in ret_sources:
         grib_metadata = source.metadata()._handle.copy()
@@ -107,4 +110,5 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
 
     for missing_key in set_missing:
         template._handle.set_missing(missing_key)
-    write_grib(target, template._handle, data[0].values)
+    with ResourceMeter(f"write: target {loc}"):
+        write_grib(target, template._handle, data[0].values)
