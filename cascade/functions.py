@@ -6,7 +6,8 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 import functools
 
-from meteokit import extreme as extreme
+from meteokit import extreme
+from meteokit.stats import iter_quantiles
 from earthkit.data import FieldList
 
 from .grib import extreme_grib_headers, threshold_grib_headers, buffer_to_template
@@ -113,6 +114,11 @@ def sot(
     )
     res = extreme.sot(clim.values, ens.values, number, eps)
     return FieldList.from_numpy(standardise_output(res), metadata)
+
+
+def quantiles(ens: FieldList, quantile: float) -> FieldList:
+    res = list(iter_quantiles(ens.values, [quantile], method="numpy"))[0]
+    return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
 
 
 def wind_speed(arr: FieldList) -> FieldList:

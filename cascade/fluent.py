@@ -35,7 +35,7 @@ class Node(PPNode):
             # All inputs into Node should also feature in payload - no dangling inputs
             assert np.all(
                 [x in payload[1] for x in [f"input{x}" for x in range(len(inputs))]]
-            )
+            ), f"Payload {payload} does not use all node inputs {len(inputs)}"
 
         assert len(payload) == 3
 
@@ -90,6 +90,18 @@ class Action:
             ret = type(self)(self, new_nodes)
         ret.sinks = self.sinks + other_action.sinks
         return ret
+
+    def transform(self, func, params: list, key: str):
+        res = None
+        for param in params:
+            new_res = func(self, param)
+            if res is None:
+                res = new_res
+            else:
+                res = res.join(new_res, key)
+        # Remove expanded dimension if only a single element in param list
+        res._squeeze_dimension(key)
+        return res
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
@@ -200,18 +212,6 @@ class MultiAction(Action):
             return self.to_single(None, selected_nodes)
         return type(self)(self, selected_nodes)
 
-    def transform(self, func, params: list, key: str):
-        res = None
-        for param in params:
-            new_res = func(self, param)
-            if res is None:
-                res = new_res
-            else:
-                res = res.join(new_res, key)
-        # Remove expanded dimension if only a single element in param list
-        res._squeeze_dimension(key)
-        return res
-
     def write(self, target, config_grib_sets: dict):
         if target != "null:":
             coords = list(self.nodes.coords.keys())
@@ -254,7 +254,7 @@ class MultiAction(Action):
 
     def diff(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions._subtract, ("input1", "input0", extract_keys), key)
+            (functions._subtract, ("input1", "input0", extract_keys)), key
         )
 
     def subtract(self, key: str = "", extract_keys: tuple = ()):

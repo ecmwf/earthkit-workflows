@@ -40,6 +40,7 @@ def node_info_ext(sinks, node):
         ["wind", f"{ROOT_DIR}/templates/wind.yaml", 96],
         ["ensms", f"{ROOT_DIR}/templates/ensms.yaml", 180],
         ["extreme", f"{ROOT_DIR}/templates/extreme.yaml", 150],
+        ["quantiles", f"{ROOT_DIR}/templates/quantiles.yaml", 92],
     ],
 )
 def test_graph_construction(product, config, expected_num_nodes):

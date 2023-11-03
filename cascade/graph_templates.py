@@ -119,13 +119,17 @@ class MultiAction(BaseMultiAction):
 
     def quantiles(self, n: int = 100, target: str = "null:", grib_sets: dict = {}):
         def _quantiles(action, quantile):
-            new_quantile = action.then(("meteokit.stats.quantiles", "input0", quantile))
-            new_quantile._add_dimension("pertubationNumber", quantile)
+            payload = (functions.quantiles, ("input0", quantile))
+            if isinstance(action, BaseSingleAction):
+                new_quantile = action.then(payload)
+            else:
+                new_quantile = action.foreach(payload)
+            new_quantile._add_dimension("perturbationNumber", quantile)
             return new_quantile
 
         return (
             self.concatenate("number")
-            .transform(_quantiles, range(n), "perturbationNumber")
+            .transform(_quantiles, np.linspace(0.0, 1.0, n + 1), "perturbationNumber")
             .write(target, grib_sets)
         )
 
@@ -327,6 +331,7 @@ def quantiles(param_config):
             .param_operation(param_config.param_operation)
             .window_operation(window)
             .quantiles(
+                param_config.options["num_quantiles"],
                 target=param_config.get_target("out_quantiles"),
                 grib_sets={**param_config.out_keys, **window.grib_set},
             )

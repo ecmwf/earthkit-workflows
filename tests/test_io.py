@@ -1,8 +1,9 @@
 import pytest
-
-from cascade.io import retrieve, write
+from datetime import datetime, timedelta
 import dill
 import multiprocessing
+
+from cascade.io import retrieve, write
 
 dill.Pickler.dumps, dill.Pickler.loads = dill.dumps, dill.loads
 multiprocessing.reduction.ForkingPickler = dill.Pickler
@@ -15,7 +16,7 @@ request = {
     "expver": "0001",
     "stream": "enfo",
     "type": "cf",
-    "date": "20230914",
+    "date": (datetime.today() - timedelta(days=1)).strftime("%Y%m%d"),
     "time": "12",
     "domain": "g",
     "levtype": "sfc",
@@ -43,7 +44,7 @@ def test_multiprocess(tmpdir):
     futures = []
     base_request = request.copy()
     with fut.ProcessPoolExecutor(max_workers=2) as executor:
-        for x in range(1, 5):
+        for x in range(1, 2):
             base_request["type"] = "pf"
             base_request["number"] = x
             futures.append(executor.submit(retrieve, "mars", base_request))

@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta
 
 from earthkit.data import FieldList
 
@@ -10,7 +11,7 @@ request = {
     "expver": "0001",
     "stream": "enfo",
     "type": "pf",
-    "date": "20230914",
+    "date": (datetime.today() - timedelta(days=1)).strftime("%Y%m%d"),
     "time": "12",
     "domain": "g",
     "levtype": "sfc",
