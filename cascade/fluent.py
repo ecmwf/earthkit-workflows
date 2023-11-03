@@ -32,6 +32,11 @@ class Node(PPNode):
             payload = create_payload(payload, [f"input{x}" for x in range(len(inputs))])
         else:
             payload = create_payload(*payload)
+            # All inputs into Node should also feature in payload - no dangling inputs
+            assert np.all(
+                [x in payload[1] for x in [f"input{x}" for x in range(len(inputs))]]
+            )
+
         assert len(payload) == 3
 
         if name is None:
@@ -203,7 +208,7 @@ class MultiAction(Action):
                 res = new_res
             else:
                 res = res.join(new_res, key)
-        # Remove expanded dimension if only a single threshold in list
+        # Remove expanded dimension if only a single element in param list
         res._squeeze_dimension(key)
         return res
 
@@ -247,19 +252,23 @@ class MultiAction(Action):
     def norm(self, key: str = ""):
         return self.reduce(functions._norm, key)
 
-    def diff(self, key: str = ""):
-        return self.reduce((functions._subtract, ("input1", "input0")), key)
+    def diff(self, key: str = "", extract_keys: tuple = ()):
+        return self.reduce(
+            (functions._subtract, ("input1", "input0", extract_keys), key)
+        )
 
     def subtract(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
             (functions._subtract, ("input0", "input1", extract_keys)), key
         )
 
-    def add(self, key: str = ""):
-        return self.reduce(functions._add, key)
+    def add(self, key: str = "", extract_keys: tuple = ()):
+        return self.reduce((functions._add, ("input0", "input1", extract_keys)), key)
 
-    def divide(self, key: str = ""):
-        return self.reduce(functions._divide, key)
+    def divide(self, key: str = "", extract_keys: tuple = ()):
+        return self.reduce((functions._divide, ("input0", "input1", extract_keys)), key)
 
-    def multiply(self, key: str = ""):
-        return self.reduce(functions._multiply, key)
+    def multiply(self, key: str = "", extract_keys: tuple = ()):
+        return self.reduce(
+            (functions._multiply, ("input0", "input1", extract_keys)), key
+        )
