@@ -23,10 +23,10 @@ request = {
 @pytest.mark.parametrize(
     "func",
     [
-        functions._mean,
-        functions._std,
-        functions._maximum,
-        functions._minimum,
+        functions.mean,
+        functions.std,
+        functions.maximum,
+        functions.minimum,
     ],
 )
 def test_multi_arg(func):
@@ -40,10 +40,10 @@ def test_multi_arg(func):
 @pytest.mark.parametrize(
     "func",
     [
-        functions._add,
-        functions._subtract,
-        functions._multiply,
-        functions._divide,
+        functions.add,
+        functions.subtract,
+        functions.multiply,
+        functions.divide,
     ],
 )
 def test_two_arg(func):

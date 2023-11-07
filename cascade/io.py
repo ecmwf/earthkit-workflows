@@ -10,17 +10,17 @@ from pproc.common.io import (
 )
 from pproc.common import ResourceMeter
 
-import pyfdb
 import mir
-import earthkit.data
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data import FieldList
 from earthkit.data.core.metadata import RawMetadata
+from earthkit.data.sources import Source, from_source
+from earthkit.data.sources.numpy_list import NumpyFieldList
 
 from .grib import basic_headers, buffer_to_template
 
 
-def mir_job(input, mir_options):
+def mir_job(input: mir.MultiDimensionalGribFileInput, mir_options: dict) -> Source:
     job = mir.Job(**mir_options)
     stream = BytesIO()
     job.execute(input, stream)
@@ -28,25 +28,24 @@ def mir_job(input, mir_options):
     return StreamSource(stream, batch_size=0).mutate()
 
 
-def fdb_retrieve(request: dict, *, stream=True):
+def fdb_retrieve(request: dict, *, stream: bool = True) -> Source:
     mir_options = request.pop("interpolate", None)
     # print("REQUEST", request, "STREAM", stream)
     if mir_options:
-        reader = earthkit.data.from_source("fdb", request, stream=stream)
+        reader = from_source("fdb", request, stream=stream)
         if stream:
             ds = mir_job(reader._stream, mir_options)
         else:
             size = len(request["param"]) if isinstance(request["param"], list) else 1
-            # print("MIR_JOB", size)
             inp = mir.MultiDimensionalGribFileInput(reader.path, size)
             ds = mir_job(inp, mir_options)
         return ds
-    return earthkit.data.from_source("fdb", request, batch_size=0, stream=stream)
+    return from_source("fdb", request, batch_size=0, stream=stream)
 
 
-def mars_retrieve(request: dict):
+def mars_retrieve(request: dict) -> Source:
     mir_options = request.pop("interpolate", None)
-    ds = earthkit.data.from_source("mars", request)
+    ds = from_source("mars", request)
     if mir_options:
         size = len(request["param"]) if isinstance(request["param"], list) else 1
         inp = mir.MultiDimensionalGribFileInput(ds.path, size)
@@ -54,17 +53,17 @@ def mars_retrieve(request: dict):
     return ds
 
 
-def file_retrieve(path: str, request):
+def file_retrieve(path: str, request: dict) -> Source:
     mir_options = request.pop("interpolate", None)
     location = path.format_map(request)
     if mir_options:
         size = len(request["param"]) if isinstance(request["param"], list) else 1
         inp = mir.MultiDimensionalGribFileInput(location, size)
         return mir_job(inp, mir_options)
-    return earthkit.data.from_source("file", location)
+    return from_source("file", location)
 
 
-def retrieve(source: str, request: dict, **kwargs):
+def retrieve(source: str, request: dict, **kwargs) -> NumpyFieldList:
     req = request.copy()
     with ResourceMeter(f"retrieve: source {source}, request {request}"):
         if source == "fdb":

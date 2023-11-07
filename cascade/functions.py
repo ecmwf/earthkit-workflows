@@ -1,25 +1,20 @@
-import xarray as xr
 import numpy as np
-import jax
-import jax.numpy as jnp
-
-jax.config.update("jax_enable_x64", True)
 import functools
 
 from meteokit import extreme
 from meteokit.stats import iter_quantiles
 from earthkit.data import FieldList
+from earthkit.data.sources.numpy_list import NumpyFieldList
 
 from .grib import extreme_grib_headers, threshold_grib_headers, buffer_to_template
 
 
-def _concatenate(*arrays) -> FieldList:
+def concatenate(*arrays) -> NumpyFieldList:
     # Combine earthkit data objects into one object
     return sum(arrays[1:], arrays[0])
 
 
-def standardise_output(data):
-    # Need to convert to numpy array as jax array is not yet supported
+def standardise_output(data: np.ndarray) -> np.ndarray:
     # Also, nest the data to avoid problems with not finding geography attribute
     ret = np.asarray(data)
     if len(ret.shape) == 1:
@@ -28,62 +23,70 @@ def standardise_output(data):
     return ret
 
 
-def _multi_arg_function(func, *arrays):
-    concat = _concatenate(*arrays).values
+def multi_arg_function(func: str, *arrays: list[NumpyFieldList]) -> NumpyFieldList:
+    concat = concatenate(*arrays).values
     assert len(concat) == len(arrays)
-    res = getattr(jnp, func)(concat, axis=0)
+    res = getattr(np, func)(concat, axis=0)
     return FieldList.from_numpy(standardise_output(res), arrays[0][0].metadata())
 
 
-def _norm(arr1, arr2):
-    norm = jnp.linalg.norm(_concatenate(arr1, arr2).values, axis=0)
+def norm(arr1: NumpyFieldList, arr2: NumpyFieldList) -> NumpyFieldList:
+    norm = np.linalg.norm(concatenate(arr1, arr2).values, axis=0)
     return FieldList.from_numpy(standardise_output(norm), arr1.metadata())
 
 
-def _two_arg_function(func, arr1, arr2, extract_keys: tuple = ()):
+def two_arg_function(
+    func: str, arr1: NumpyFieldList, arr2: NumpyFieldList, extract_keys: tuple = ()
+) -> NumpyFieldList:
     arr2_meta = buffer_to_template(arr2.metadata()[0].get("buffer"))
     metadata = arr1.metadata()[0].override(
         {key: arr2_meta.get(key) for key in extract_keys}
     )
-    res = getattr(jnp, func)(arr1.values, arr2.values)
+    res = getattr(np, func)(arr1.values, arr2.values)
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
-_mean = functools.partial(_multi_arg_function, "mean")
-_std = functools.partial(_multi_arg_function, "std")
-_maximum = functools.partial(_multi_arg_function, "max")
-_minimum = functools.partial(_multi_arg_function, "min")
-_subtract = functools.partial(_two_arg_function, "subtract")
-_add = functools.partial(_two_arg_function, "add")
-_multiply = functools.partial(_two_arg_function, "multiply")
-_divide = functools.partial(_two_arg_function, "divide")
+mean = functools.partial(multi_arg_function, "mean")
+std = functools.partial(multi_arg_function, "std")
+maximum = functools.partial(multi_arg_function, "max")
+minimum = functools.partial(multi_arg_function, "min")
+subtract = functools.partial(two_arg_function, "subtract")
+add = functools.partial(two_arg_function, "add")
+multiply = functools.partial(two_arg_function, "multiply")
+divide = functools.partial(two_arg_function, "divide")
 
 
 def comp_str2func(comparison: str):
     if comparison == "<=":
-        return jnp.less_equal
+        return np.less_equal
     if comparison == "<":
-        return jnp.less
+        return np.less
     if comparison == ">=":
-        return jnp.greater_equal
-    return jnp.greater
+        return np.greater_equal
+    return np.greater
 
 
-def threshold(threshold_config: dict, arr: FieldList, edition: int = 1) -> FieldList:
+def threshold(
+    threshold_config: dict, arr: NumpyFieldList, edition: int = 1
+) -> NumpyFieldList:
     # Find all locations where np.nan appears as an ensemble value
-    is_nan = jnp.isnan(arr.values)
+    is_nan = np.isnan(arr.values)
     thesh = comp_str2func(threshold_config["comparison"])(
         arr.values, threshold_config["value"]
     )
-    res = jnp.where(is_nan, jnp.nan, thesh)
+    res = np.where(is_nan, np.nan, thesh)
     threshold_headers = threshold_grib_headers(edition, threshold_config)
     metadata = arr[0].metadata().override(threshold_headers)
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
 def efi(
-    clim: FieldList, ens: FieldList, eps: float, num_steps: int, control: bool = False
-) -> FieldList:
+    clim: NumpyFieldList,
+    ens: NumpyFieldList,
+    eps: float,
+    num_steps: int,
+    control: bool = False,
+) -> NumpyFieldList:
     extreme_headers = extreme_grib_headers(clim, ens, num_steps)
     if control:
         extreme_headers.update({"marsType": "efic", "totalNumber": 1, "number": 0})
@@ -96,8 +99,8 @@ def efi(
 
 
 def sot(
-    clim: FieldList, ens: FieldList, number: int, eps: float, num_steps: int
-) -> FieldList:
+    clim: NumpyFieldList, ens: NumpyFieldList, number: int, eps: float, num_steps: int
+) -> NumpyFieldList:
     extreme_headers = extreme_grib_headers(clim, ens, num_steps)
     if number == 90:
         efi_order = 99
@@ -116,20 +119,24 @@ def sot(
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
-def quantiles(ens: FieldList, quantile: float) -> FieldList:
+def quantiles(ens: NumpyFieldList, quantile: float) -> NumpyFieldList:
     res = list(iter_quantiles(ens.values, [quantile], method="numpy"))[0]
     return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
 
 
-def wind_speed(arr: FieldList) -> FieldList:
+def wind_speed(arr: NumpyFieldList) -> NumpyFieldList:
     assert len(arr.values) == 2
-    res = jnp.linalg.norm(arr.values, axis=0)
+    res = np.linalg.norm(arr.values, axis=0)
     return FieldList.from_numpy(standardise_output(res), arr[0].metadata())
 
 
 def filter(
-    comparison: str, threshold: float, arr1: FieldList, arr2: FieldList, replacement=0
-) -> FieldList:
+    comparison: str,
+    threshold: float,
+    arr1: NumpyFieldList,
+    arr2: NumpyFieldList,
+    replacement=0,
+) -> NumpyFieldList:
     condition = comp_str2func(comparison)(arr2.values, threshold)
-    res = jnp.where(condition, replacement, arr1.values)
+    res = np.where(condition, replacement, arr1.values)
     return FieldList.from_numpy(standardise_output(res), arr1.metadata())

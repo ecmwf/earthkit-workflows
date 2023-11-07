@@ -29,7 +29,6 @@ setup(
         "xarray",
         "numexpr",
         "networkx",
-        "jax[cpu]",
         "dask",
         "dill",
         "pproc-graph @ git+ssh://git@github.com/ecmwf/pproc-graph.git",

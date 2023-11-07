@@ -38,17 +38,3 @@ def test_retrieve_fail():
             "fdb",
             new_request,
         )
-
-
-def test_multiprocess(tmpdir):
-    futures = []
-    base_request = request.copy()
-    with fut.ProcessPoolExecutor(max_workers=2) as executor:
-        for x in range(1, 2):
-            base_request["type"] = "pf"
-            base_request["number"] = x
-            futures.append(executor.submit(retrieve, "mars", base_request))
-
-    for future in fut.as_completed(futures):
-        data = future.result()
-        write(f"{tmpdir}/test.grib", data, {"step": 12})

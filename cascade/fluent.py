@@ -235,40 +235,40 @@ class MultiAction(Action):
         return self.nodes.sel(**criteria, drop=True).data[()]
 
     def concatenate(self, key: str):
-        return self.reduce(functions._concatenate, key)
+        return self.reduce(functions.concatenate, key)
 
     def mean(self, key: str = ""):
-        return self.reduce(functions._mean, key)
+        return self.reduce(functions.mean, key)
 
     def std(self, key: str = ""):
-        return self.reduce(functions._std, key)
+        return self.reduce(functions.std, key)
 
     def maximum(self, key: str = ""):
-        return self.reduce(functions._maximum, key)
+        return self.reduce(functions.maximum, key)
 
     def minimum(self, key: str = ""):
-        return self.reduce(functions._minimum, key)
+        return self.reduce(functions.minimum, key)
 
     def norm(self, key: str = ""):
-        return self.reduce(functions._norm, key)
+        return self.reduce(functions.norm, key)
 
     def diff(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions._subtract, ("input1", "input0", extract_keys)), key
+            (functions.subtract, ("input1", "input0", extract_keys)), key
         )
 
     def subtract(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions._subtract, ("input0", "input1", extract_keys)), key
+            (functions.subtract, ("input0", "input1", extract_keys)), key
         )
 
     def add(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce((functions._add, ("input0", "input1", extract_keys)), key)
+        return self.reduce((functions.add, ("input0", "input1", extract_keys)), key)
 
     def divide(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce((functions._divide, ("input0", "input1", extract_keys)), key)
+        return self.reduce((functions.divide, ("input0", "input1", extract_keys)), key)
 
     def multiply(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions._multiply, ("input0", "input1", extract_keys)), key
+            (functions.multiply, ("input0", "input1", extract_keys)), key
         )
