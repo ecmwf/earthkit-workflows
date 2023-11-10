@@ -13,11 +13,10 @@ from pproc.common import ResourceMeter
 import mir
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data import FieldList
-from earthkit.data.core.metadata import RawMetadata
 from earthkit.data.sources import Source, from_source
 from earthkit.data.sources.numpy_list import NumpyFieldList
 
-from .grib import basic_headers, buffer_to_template
+from .grib import GribBufferMetaData, basic_headers, buffer_to_template
 
 
 def mir_job(input: mir.MultiDimensionalGribFileInput, mir_options: dict) -> Source:
@@ -81,7 +80,7 @@ def retrieve(source: str, request: dict, **kwargs) -> NumpyFieldList:
         grib_metadata.set_array("values", np.zeros(source.values.shape))
         field_list = FieldList.from_numpy(
             np.asarray([source.values]),
-            RawMetadata({"buffer": grib_metadata.get_buffer()}),
+            GribBufferMetaData(grib_metadata.get_buffer()),
         )
         if ret is None:
             ret = field_list
@@ -100,12 +99,11 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
     metadata = grib_sets.copy()
     metadata.update(data.metadata()[0]._d)
     metadata = basic_headers(metadata)
-    buffer = metadata.pop("buffer")
     set_missing = [key for key, value in metadata.items() if value == "MISSING"]
     for missing_key in set_missing:
         metadata.pop(missing_key)
 
-    template = buffer_to_template(buffer).override(metadata)
+    template = buffer_to_template(data.metadata()[0]).override(metadata)
 
     for missing_key in set_missing:
         template._handle.set_missing(missing_key)

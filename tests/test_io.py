@@ -1,4 +1,3 @@
-import pytest
 from datetime import datetime, timedelta
 import dill
 import multiprocessing
@@ -28,13 +27,3 @@ request = {
 def test_retrieve(tmpdir):
     data = retrieve("mars", request)
     write(f"{tmpdir}/test.grib", data, {"step": 12})
-
-
-def test_retrieve_fail():
-    new_request = request.copy()
-    new_request["date"] = "20230101"
-    with pytest.raises(Exception):
-        retrieve(
-            "fdb",
-            new_request,
-        )

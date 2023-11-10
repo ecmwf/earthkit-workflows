@@ -1,10 +1,19 @@
+from earthkit.data.core.metadata import RawMetadata
 from earthkit.data.readers.grib.metadata import GribMetadata
 from earthkit.data.readers.grib.memory import GribMessageMemoryReader
 from earthkit.data.readers.grib.codes import GribCodesHandle
 from earthkit.data import FieldList
 
 
-def buffer_to_template(buffer):
+class GribBufferMetaData(RawMetadata):
+    def __init__(self, buffer: bytes):
+        super().__init__({})
+        self.buffer = buffer
+
+
+def buffer_to_template(metadata: GribBufferMetaData) -> GribMetadata:
+    buffer = metadata.buffer
+    assert buffer is not None
     return GribMetadata(
         GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
     )
@@ -34,14 +43,14 @@ def extreme_grib_headers(clim: FieldList, ens: FieldList, num_steps: int) -> dic
     extreme_headers = {}
 
     # EFI specific stuff
-    ens_template = buffer_to_template(ens.metadata()[0].get("buffer"))
+    ens_template = buffer_to_template(ens.metadata()[0])
     if int(ens_template.get("timeRangeIndicator")) == 3:
         if extreme_headers.get("numberIncludedInAverage") == 0:
             extreme_headers["numberIncludedInAverage"] = num_steps
         extreme_headers["numberMissingFromAveragesOrAccumulations"] = 0
 
     # set clim keys
-    clim_template = buffer_to_template(clim.metadata()[0].get("buffer"))
+    clim_template = buffer_to_template(clim.metadata()[0])
     clim_keys = [
         "powerOfTenUsedToScaleClimateWeight",
         "weightAppliedToClimateMonth1",
