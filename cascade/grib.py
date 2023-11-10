@@ -6,17 +6,22 @@ from earthkit.data import FieldList
 
 
 class GribBufferMetaData(RawMetadata):
-    def __init__(self, buffer: bytes):
-        super().__init__({})
+    def __init__(self, buffer: bytes, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        assert buffer is not None
         self.buffer = buffer
 
+    def override(self, *args, **kwargs):
+        d = dict(**self._d)
+        d.update(*args, **kwargs)
+        return GribBufferMetaData(self.buffer, d)
 
-def buffer_to_template(metadata: GribBufferMetaData) -> GribMetadata:
-    buffer = metadata.buffer
-    assert buffer is not None
-    return GribMetadata(
-        GribCodesHandle(GribMessageMemoryReader(buffer)._next_handle(), None, None)
-    )
+    def buffer_to_metadata(self) -> GribMetadata:
+        return GribMetadata(
+            GribCodesHandle(
+                GribMessageMemoryReader(self.buffer)._next_handle(), None, None
+            )
+        )
 
 
 def time_range_indicator(step: int) -> int:
@@ -43,14 +48,14 @@ def extreme_grib_headers(clim: FieldList, ens: FieldList, num_steps: int) -> dic
     extreme_headers = {}
 
     # EFI specific stuff
-    ens_template = buffer_to_template(ens.metadata()[0])
+    ens_template = ens.metadata()[0].buffer_to_metadata()
     if int(ens_template.get("timeRangeIndicator")) == 3:
         if extreme_headers.get("numberIncludedInAverage") == 0:
             extreme_headers["numberIncludedInAverage"] = num_steps
         extreme_headers["numberMissingFromAveragesOrAccumulations"] = 0
 
     # set clim keys
-    clim_template = buffer_to_template(clim.metadata()[0])
+    clim_template = clim.metadata()[0].buffer_to_metadata()
     clim_keys = [
         "powerOfTenUsedToScaleClimateWeight",
         "weightAppliedToClimateMonth1",

@@ -6,7 +6,7 @@ from meteokit.stats import iter_quantiles
 from earthkit.data import FieldList
 from earthkit.data.sources.numpy_list import NumpyFieldList
 
-from .grib import extreme_grib_headers, threshold_grib_headers, buffer_to_template
+from .grib import extreme_grib_headers, threshold_grib_headers
 from .patch import PatchModule
 
 
@@ -41,7 +41,7 @@ def norm(arr1: NumpyFieldList, arr2: NumpyFieldList) -> NumpyFieldList:
 def two_arg_function(
     func: str, arr1: NumpyFieldList, arr2: NumpyFieldList, extract_keys: tuple = ()
 ) -> NumpyFieldList:
-    arr2_meta = buffer_to_template(arr2.metadata()[0])
+    arr2_meta = arr2.metadata()[0].buffer_to_metadata()
     metadata = arr1.metadata()[0].override(
         {key: arr2_meta.get(key) for key in extract_keys}
     )

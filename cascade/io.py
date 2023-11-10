@@ -16,7 +16,7 @@ from earthkit.data import FieldList
 from earthkit.data.sources import Source, from_source
 from earthkit.data.sources.numpy_list import NumpyFieldList
 
-from .grib import GribBufferMetaData, basic_headers, buffer_to_template
+from .grib import GribBufferMetaData, basic_headers
 
 
 def mir_job(input: mir.MultiDimensionalGribFileInput, mir_options: dict) -> Source:
@@ -103,7 +103,7 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
     for missing_key in set_missing:
         metadata.pop(missing_key)
 
-    template = buffer_to_template(data.metadata()[0]).override(metadata)
+    template = data.metadata()[0].buffer_to_metadata().override(metadata)
 
     for missing_key in set_missing:
         template._handle.set_missing(missing_key)

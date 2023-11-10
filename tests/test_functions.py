@@ -1,22 +1,23 @@
 import pytest
 import numpy.random as random
-import importlib
 
 from earthkit.data import FieldList
+from earthkit.data.core.metadata import RawMetadata
 
-from cascade.grib import GribBufferMetaData
-from cascade import grib
 from cascade import functions
 
 
-# Monkey patch extracting grib template from buffer
-def buffer_to_template(metadata):
-    return metadata
+class MockMetaData(RawMetadata):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def buffer_to_metadata(self) -> "MockMetaData":
+        return self
 
 
 def random_fieldlist(*shape) -> FieldList:
     return FieldList.from_numpy(
-        random.rand(*shape), [GribBufferMetaData(None) for x in range(shape[0])]
+        random.rand(*shape), [MockMetaData() for x in range(shape[0])]
     )
 
 
@@ -45,7 +46,6 @@ def test_multi_arg(func):
 )
 def test_two_arg(monkeypatch, func):
     arr = [random_fieldlist(1, 5) for _ in range(2)]
-    monkeypatch.setattr(functions, "buffer_to_template", buffer_to_template)
     func(*arr)
 
 
@@ -85,8 +85,6 @@ def test_extreme(monkeypatch):
             "numberOfBitsContainingEachPackedValue": 0,
         }
     )
-    monkeypatch.setattr(grib, "buffer_to_template", buffer_to_template)
-    importlib.reload(functions)
     functions.efi(clim, ens, 0.0001, 2)
     functions.sot(clim, ens, 90, 0.0001, 2)
 
