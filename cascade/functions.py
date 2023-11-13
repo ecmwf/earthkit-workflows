@@ -25,28 +25,48 @@ def standardise_output(data):
 
 
 def multi_arg_function(func: str, *arrays: list[NumpyFieldList]) -> NumpyFieldList:
-    concat = concatenate(*arrays).values
-    assert len(concat) == len(arrays)
+    if len(arrays) == 1:
+        concat = arrays[0].values
+    else:
+        concat = concatenate(*arrays).values
+        assert len(concat) == len(arrays)
+
     xp = array_api_compat.array_namespace(concat)
     res = getattr(xp, func)(concat, axis=0)
     return FieldList.from_numpy(standardise_output(res), arrays[0][0].metadata())
 
 
-def norm(arr1: NumpyFieldList, arr2: NumpyFieldList) -> NumpyFieldList:
-    xp = array_api_compat.array_namespace(arr1.values, arr2.values)
-    norm = xp.sqrt(arr1.values**2 + arr2.values**2)
-    return FieldList.from_numpy(standardise_output(norm), arr1.metadata())
+def norm(*arrays: list[NumpyFieldList]) -> NumpyFieldList:
+    vals = [x.values for x in arrays]
+    xp = array_api_compat.array_namespace(*vals)
+    if len(vals) == 1:
+        # Assume fields to compute norm of are nested in single field list
+        vals = vals[0]
+    assert len(vals) == 2, f"Expected 2 fields for norm, received {len(vals)}"
+    norm = xp.sqrt(vals[0] ** 2 + vals[1] ** 2)
+    return FieldList.from_numpy(standardise_output(norm), arrays[0][0].metadata())
 
 
 def two_arg_function(
-    func: str, arr1: NumpyFieldList, arr2: NumpyFieldList, extract_keys: tuple = ()
+    func: str, *arrays: NumpyFieldList, extract_keys: tuple = ()
 ) -> NumpyFieldList:
-    arr2_meta = arr2.metadata()[0].buffer_to_metadata()
-    metadata = arr1.metadata()[0].override(
-        {key: arr2_meta.get(key) for key in extract_keys}
+    vals = [x.values for x in arrays]
+    xp = array_api_compat.array_namespace(*vals)
+    if len(vals) == 1:
+        # Assume fields to compute norm of are nested in single field list
+        vals = vals[0]
+        arr2_meta = arrays[0][1].metadata().buffer_to_metadata()
+    else:
+        arr2_meta = arrays[1][0].metadata().buffer_to_metadata()
+    assert (
+        len(vals) == 2
+    ), f"Expected 2 fields for two_arg_functions@{func}, received {len(vals)}"
+    metadata = (
+        arrays[0][0]
+        .metadata()
+        .override({key: arr2_meta.get(key) for key in extract_keys})
     )
-    xp = array_api_compat.array_namespace(arr1.values, arr2.values)
-    res = getattr(xp, func)(arr1.values, arr2.values)
+    res = getattr(xp, func)(vals[0], vals[1])
     return FieldList.from_numpy(standardise_output(res), metadata)
 
 
@@ -135,14 +155,6 @@ def quantiles(ens: NumpyFieldList, quantile: float) -> NumpyFieldList:
     with PatchModule(extreme, "numpy", xp):
         res = list(iter_quantiles(ens.values, [quantile], method="numpy"))[0]
     return FieldList.from_numpy(standardise_output(res), ens[0].metadata())
-
-
-def wind_speed(arr: NumpyFieldList) -> NumpyFieldList:
-    uv = arr.values
-    assert len(uv) == 2, f"Expected 2 fields for u/v, received {len(uv)}"
-    xp = array_api_compat.array_namespace(uv)
-    norm = xp.sqrt(uv[0] ** 2 + uv[1] ** 2)
-    return FieldList.from_numpy(standardise_output(norm), arr[0].metadata())
 
 
 def filter(

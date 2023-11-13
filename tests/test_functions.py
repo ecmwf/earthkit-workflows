@@ -1,5 +1,6 @@
 import pytest
 import numpy.random as random
+import numpy as np
 
 from earthkit.data import FieldList
 from earthkit.data.core.metadata import RawMetadata
@@ -32,7 +33,9 @@ def random_fieldlist(*shape) -> FieldList:
 )
 def test_multi_arg(func):
     arr = [random_fieldlist(1, 5) for _ in range(5)]
-    func(*arr)
+    unnested = func(*arr)
+    nested = func(functions.concatenate(*arr))
+    assert np.all(unnested.values == nested.values)
 
 
 @pytest.mark.parametrize(
@@ -42,11 +45,29 @@ def test_multi_arg(func):
         functions.subtract,
         functions.multiply,
         functions.divide,
+        functions.norm,
     ],
 )
-def test_two_arg(monkeypatch, func):
+def test_two_arg(func):
     arr = [random_fieldlist(1, 5) for _ in range(2)]
-    func(*arr)
+    unnested = func(*arr)
+    nested = func(functions.concatenate(*arr))
+    assert np.all(unnested.values == nested.values)
+
+
+@pytest.mark.parametrize(
+    "func",
+    [
+        functions.divide,
+        functions.norm,
+    ],
+)
+def test_two_arg(func):
+    arr = [random_fieldlist(1, 5) for _ in range(3)]
+    with pytest.raises(AssertionError):
+        func(*arr)
+    with pytest.raises(AssertionError):
+        func(functions.concatenate(*arr))
 
 
 @pytest.mark.parametrize(
@@ -63,7 +84,7 @@ def test_threshold(comparison):
     functions.threshold(config, random_fieldlist(1, 5))
 
 
-def test_extreme(monkeypatch):
+def test_extreme():
     ens = random_fieldlist(5, 5)
     ens.metadata()[0]._d.update(
         {
@@ -92,15 +113,6 @@ def test_extreme(monkeypatch):
 def test_quantiles():
     ens = random_fieldlist(5, 5)
     functions.quantiles(ens, 0.1)
-
-
-def test_wind_speed():
-    # Wind speed computed with u/v params inside a single field
-    functions.wind_speed(random_fieldlist(2, 5))
-
-    # Error when number of fields in list is not equal to 2
-    with pytest.raises(AssertionError):
-        functions.wind_speed(functions.wind_speed(random_fieldlist(6, 5)))
 
 
 def test_filter():

@@ -135,7 +135,7 @@ class MultiAction(BaseMultiAction):
 
     def wind_speed(self, vod2uv: bool, target: str = "null:", grib_sets={}):
         if vod2uv:
-            ret = self.foreach((functions.wind_speed, ("input0",)))
+            ret = self.foreach((functions.norm, ("input0",)))
         else:
             ret = self.param_operation("norm")
         return ret.write(target, grib_sets)
