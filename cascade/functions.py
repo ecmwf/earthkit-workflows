@@ -1,12 +1,17 @@
 import functools
 import array_api_compat
+import numpy as np
 
 from meteokit import extreme
 from meteokit.stats import iter_quantiles
 from earthkit.data import FieldList
 from earthkit.data.sources.numpy_list import NumpyFieldList
+from pproc.common.resources import ResourceMeter
+from pproc import clustereps
+from pproc.clustereps.utils import normalise_angles
+from pproc.clustereps.io import read_steps_grib
 
-from .grib import extreme_grib_headers, threshold_grib_headers
+from .grib import extreme_grib_headers, threshold_grib_headers, GribBufferMetaData
 from .patch import PatchModule
 
 
@@ -168,3 +173,122 @@ def filter(
     condition = comp_str2func(xp, comparison)(arr2.values, threshold)
     res = xp.where(condition, replacement, arr1.values)
     return FieldList.from_numpy(standardise_output(res), arr1.metadata())
+
+
+def pca(
+    config, ens: NumpyFieldList, spread: NumpyFieldList, mask: np.ndarray, target: str
+):
+    template = ens[0].metadata().buffer_to_metadata()
+    lat = template.get_array("latitudes")
+    lon = normalise_angles(template.get_array("longitudes"))
+    with ResourceMeter("PCA"):
+        pca_data = clustereps.pca.do_pca(
+            config, lat, lon, ens.values, spread.values, mask
+        )
+
+    ## Save data
+    if target is not None:
+        np.savez_compressed(target, **pca_data)
+
+    return (pca_data, ens[0].metadata())
+
+
+def cluster(
+    config,
+    pca_output: tuple[dict, GribBufferMetaData],
+    ncomp_file: str,
+    indexes: str,
+    deterministic: str,
+):
+    pca_data, pca_metadata = pca_output
+
+    ## Compute number of PCs based on the variance threshold
+    var_cum = pca_data["var_cum"]
+    npc = config.npc
+    if npc <= 0:
+        npc = clustereps.cluster.select_npc(config.var_th, var_cum)
+        if ncomp_file is not None:
+            with open(ncomp_file, "w") as f:
+                print(npc, file=f)
+
+    print(f"Number of PCs used: {npc}, explained variance: {var_cum[npc-1]} %")
+
+    with ResourceMeter("Clustering"):
+        (
+            ind_cl,
+            centroids,
+            rep_members,
+            centroids_gp,
+            rep_members_gp,
+            ens_mean,
+        ) = clustereps.cluster.do_clustering(
+            config, pca_data, npc, verbose=True, dump_indexes=indexes
+        )
+
+    ## Find the deterministic forecast
+    if deterministic is not None:
+        with ResourceMeter("Find deterministic"):
+            det = read_steps_grib(
+                config.sources, deterministic, config.steps, **config.override_input
+            )
+            det_index = clustereps.cluster.find_cluster(
+                det,
+                ens_mean,
+                pca_data["eof"][:npc, ...],
+                pca_data["weights"],
+                centroids,
+            )
+    else:
+        det_index = 0
+
+    metadata = pca_metadata.override(
+        {"rep_members": rep_members, "det_index": det_index, "ind_cl": ind_cl}
+    )
+    ret = FieldList.from_numpy(
+        [centroids_gp, rep_members_gp],
+        [
+            metadata.override({"type": "cm", "scenario": "centroids"}),
+            metadata.override({"type": "cr", "scenario": "representatives"}),
+        ],
+    )
+    return ret
+
+
+def attribution(
+    config, scenario: str, pca_output: dict, cluster_output: NumpyFieldList
+):
+    pca_data, _ = pca_output
+    scdata = cluster_output.sel(scenario=scenario)
+
+    with ResourceMeter("Read climatology"):
+        ## Read climatology fields
+        clim = clustereps.attribution.get_climatology_fields(
+            config.climMeans, config.seasons, config.stepDate
+        )
+
+        ## Read climatological EOFs
+        clim_eof, clim_ind = clustereps.attribution.get_climatology_eof(
+            config.climClusterCentroidsEOF,
+            config.climEOFs,
+            config.climPCs,
+            config.climSdv,
+            config.climClusterIndex,
+            config.nClusterClim,
+            config.monStartDoS,
+            config.monEndDoS,
+        )
+
+    scdata = np.array(scdata.values)
+    weights = pca_data["weights"]
+
+    ## Compute anomalies
+    anom = scdata - clim
+    anom = np.clip(anom, -config.clip, config.clip)
+    scdata += FieldList.from_numpy([anom], scdata[0].metadata())
+
+    with ResourceMeter(f"Attribute {scenario}"):
+        cluster_att, min_dist = clustereps.attribution.attribution(
+            anom, clim_eof, clim_ind, weights
+        )
+
+    return (scdata, cluster_att, min_dist)

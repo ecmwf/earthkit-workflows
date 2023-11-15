@@ -1,7 +1,6 @@
 import numpy as np
 import xarray as xr
 import itertools
-from enum import Enum, auto
 import functools
 import hashlib
 
@@ -12,8 +11,32 @@ from .io import write as write_grib
 from . import functions
 
 
-def create_payload(func, args: list | tuple, kwargs: dict = {}):
-    return (func, args, kwargs)
+class Payload:
+    def __init__(self, func, args: list | tuple = None, kwargs: dict = {}):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def has_args(self) -> bool:
+        return self.args is not None
+
+    def set_args(self, args: list | tuple):
+        assert not self.has_args()
+        self.args = args
+
+    def to_tuple(self) -> tuple:
+        assert self.has_args()
+        return (self.func, self.args, self.kwargs)
+
+    def name(self) -> str:
+        if hasattr(self.func, "__name__"):
+            return self.func.__name__
+        if isinstance(self.func, functools.partial):
+            return f"{self.func.func.__name__}@{'/'.join(map(str, self.func.args))}"
+        return ""
+
+    def __str__(self) -> str:
+        return str(self.to_tuple())
 
 
 def custom_hash(string: str) -> str:
@@ -23,35 +46,30 @@ def custom_hash(string: str) -> str:
 
 
 class Node(PPNode):
-    def __init__(self, payload, inputs: PPNode | tuple[PPNode] = (), name=None):
+    def __init__(
+        self, payload: Payload, inputs: PPNode | tuple[PPNode] = (), name=None
+    ):
         if isinstance(inputs, PPNode):
             inputs = [inputs]
-        # If payload is just a function, assume inputs to the function are the inputs
+        # If payload doesn't have inputs, assume inputs to the function are the inputs
         # to the node, in the order provided
-        if not isinstance(payload, tuple) or len(payload) == 1:
-            payload = create_payload(payload, [f"input{x}" for x in range(len(inputs))])
+        if not payload.has_args():
+            payload.set_args([f"input{x}" for x in range(len(inputs))])
         else:
-            payload = create_payload(*payload)
             # All inputs into Node should also feature in payload - no dangling inputs
             assert np.all(
-                [x in payload[1] for x in [f"input{x}" for x in range(len(inputs))]]
+                [x in payload.args for x in [f"input{x}" for x in range(len(inputs))]]
             ), f"Payload {payload} does not use all node inputs {len(inputs)}"
 
-        assert len(payload) == 3
-
         if name is None:
-            name = ""
-            if hasattr(payload[0], "__name__"):
-                name += payload[0].__name__
-            elif isinstance(payload[0], functools.partial):
-                name += (
-                    f"{payload[0].func.__name__}@{'/'.join(map(str, payload[0].args))}"
-                )
-            name += f":{custom_hash(f'{[payload] + [x.name for x in inputs]}')}"
+            name = payload.name()
+            name += (
+                f":{custom_hash(f'{[payload.to_tuple()] + [x.name for x in inputs]}')}"
+            )
 
         super().__init__(
             name,
-            payload=payload,
+            payload=payload.to_tuple(),
             **{f"input{x}": node for x, node in enumerate(inputs)},
         )
         self.attributes = {}
@@ -64,6 +82,18 @@ class Action:
         self.sinks = [] if previous is None else previous.sinks.copy()
 
     def graph(self) -> Graph:
+        """
+        Creates graph from sinks. If list of sinks is empty then uses the
+        list of nodes.
+
+        Returns
+        -------
+        Graph instance constructed from list of sinks, or if empty, list
+        of nodes
+
+        """
+        if len(self.sinks) == 0:
+            return Graph(list(self.nodes.data.flatten()))
         return Graph(self.sinks)
 
     def join(
@@ -115,7 +145,7 @@ class Action:
 
 
 class SingleAction(Action):
-    def __init__(self, payload, previous, node=None):
+    def __init__(self, payload: Payload, previous, node=None):
         if node is None:
             if previous is None:
                 node = xr.DataArray(Node(payload))
@@ -133,7 +163,7 @@ class SingleAction(Action):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def then(self, payload):
+    def then(self, payload: Payload):
         return type(self)(payload, self)
 
     def write(self, target, config_grib_sets: dict):
@@ -146,7 +176,7 @@ class SingleAction(Action):
                 else:
                     assert values.data.ndim == 1
                     grib_sets[name] = values.data[0]
-            payload = (write_grib, (target, "input0", grib_sets))
+            payload = Payload(write_grib, (target, "input0", grib_sets))
             self.sinks.append(Node(payload, self.node()))
         return self
 
@@ -158,15 +188,34 @@ class MultiAction(Action):
     def __init__(self, previous, nodes):
         super().__init__(previous, nodes)
 
-    def to_single(self, payload, node=None):
+    def to_single(self, payload: Payload, node=None):
         return SingleAction(payload, self, node)
 
-    def foreach(self, payload):
+    def foreach(self, payload: Payload | np.ndarray[Payload]):
+        """
+        Parameters
+        ----------
+        payload: Payload or array of Payloads
+
+        Returns
+        -------
+        MultiAction where nodes are a result of applying the same
+        payload to all nodes, or in the case where payload is an array,
+        applying a different payload to each node
+        """
+        if not isinstance(payload, Payload):
+            assert (
+                payload.shape == self.nodes.shape
+            ), f"For unique payloads for each node, payload shape {payload.shape} must match node array shape {self.nodes.shape}"
+
         # Applies operation to every node, keeping node array structure
         new_nodes = np.empty(self.nodes.shape, dtype=object)
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
+        node_payload = payload
         for node in it:
-            new_nodes[it.multi_index] = Node(payload, node[()])
+            if not isinstance(payload, Payload):
+                node_payload = payload[it.multi_index]
+            new_nodes[it.multi_index] = Node(node_payload, node[()])
         return type(self)(
             self,
             xr.DataArray(
@@ -177,7 +226,7 @@ class MultiAction(Action):
             ),
         )
 
-    def reduce(self, payload, key: str = ""):
+    def reduce(self, payload: Payload, key: str = ""):
         if self.nodes.ndim == 1:
             return self.to_single(payload)
 
@@ -227,7 +276,7 @@ class MultiAction(Action):
                 grib_sets.update(self.nodes.attrs)
                 grib_sets.update(node_coords)
                 self.sinks.append(
-                    Node((write_grib, (target, "input0", grib_sets)), [node])
+                    Node(Payload(write_grib, (target, "input0", grib_sets)), [node])
                 )
         return self
 
@@ -235,40 +284,44 @@ class MultiAction(Action):
         return self.nodes.sel(**criteria, drop=True).data[()]
 
     def concatenate(self, key: str):
-        return self.reduce(functions.concatenate, key)
+        return self.reduce(Payload(functions.concatenate), key)
 
     def mean(self, key: str = ""):
-        return self.reduce(functions.mean, key)
+        return self.reduce(Payload(functions.mean), key)
 
     def std(self, key: str = ""):
-        return self.reduce(functions.std, key)
+        return self.reduce(Payload(functions.std), key)
 
     def maximum(self, key: str = ""):
-        return self.reduce(functions.maximum, key)
+        return self.reduce(Payload(functions.maximum), key)
 
     def minimum(self, key: str = ""):
-        return self.reduce(functions.minimum, key)
+        return self.reduce(Payload(functions.minimum), key)
 
     def norm(self, key: str = ""):
-        return self.reduce(functions.norm, key)
+        return self.reduce(Payload(functions.norm), key)
 
     def diff(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions.subtract, ("input1", "input0", extract_keys)), key
+            Payload(functions.subtract, ("input1", "input0", extract_keys)), key
         )
 
     def subtract(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions.subtract, ("input0", "input1", extract_keys)), key
+            Payload(functions.subtract, ("input0", "input1", extract_keys)), key
         )
 
     def add(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce((functions.add, ("input0", "input1", extract_keys)), key)
+        return self.reduce(
+            Payload(functions.add, ("input0", "input1", extract_keys)), key
+        )
 
     def divide(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce((functions.divide, ("input0", "input1", extract_keys)), key)
+        return self.reduce(
+            Payload(functions.divide, ("input0", "input1", extract_keys)), key
+        )
 
     def multiply(self, key: str = "", extract_keys: tuple = ()):
         return self.reduce(
-            (functions.multiply, ("input0", "input1", extract_keys)), key
+            Payload(functions.multiply, ("input0", "input1", extract_keys)), key
         )

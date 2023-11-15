@@ -1,11 +1,11 @@
 import pytest
 import os
-import functools
 
-from ppgraph import pyvis, Sink
+from ppgraph import pyvis
 
-from cascade.graph_config import Config
 from cascade.cascade import Cascade
+
+from helpers.mock import MockArgs
 
 ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
 
@@ -44,7 +44,6 @@ def node_info_ext(sinks, node):
     ],
 )
 def test_graph_construction(product, config, expected_num_nodes):
-    cfg = Config(product, config)
-    graph = Cascade.graph(cfg)
+    graph = Cascade.graph(product, MockArgs(config))
     print([x for x in graph.nodes()])
     assert len([x for x in graph.nodes()]) == expected_num_nodes

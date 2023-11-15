@@ -1,11 +1,8 @@
 import itertools
 from collections import OrderedDict
-import yaml
 import bisect
-import numexpr
-import xarray as xr
-import numpy as np
-import functools
+
+from pproc.common.config import Config as BaseConfig
 
 from . import functions
 
@@ -84,32 +81,18 @@ class Request:
             yield tuple(indices), new_request
 
 
-def param_config(product: str, members: int, cfg: dict, in_keys, out_keys):
-    if product == "wind":
-        return WindConfig(members, cfg, in_keys, out_keys)
-    if product == "extreme":
-        return ExtremeConfig(members, cfg, in_keys, out_keys)
-    return ParamConfig(members, cfg, in_keys, out_keys)
-
-
-class Config:
-    def __init__(self, product, config):
-        self.product = product
-        with open(config, "r") as f:
-            self.options = yaml.safe_load(f)
+class Config(BaseConfig):
+    def __init__(self, args):
+        super().__init__(args)
 
         if isinstance(self.options["members"], dict):
-            members = range(
+            self.members = range(
                 self.options["members"]["start"], self.options["members"]["end"] + 1
             )
         else:
-            members = range(1, int(self.options["members"]) + 1)
-        out_keys = self.options.pop("out_keys", {})
-        in_keys = self.options.pop("in_keys", {})
-        self.parameters = {
-            param: param_config(product, members, cfg, in_keys, out_keys)
-            for param, cfg in self.options["parameters"].items()
-        }
+            self.members = range(1, int(self.options["members"]) + 1)
+        self.out_keys = self.options.pop("out_keys", {})
+        self.in_keys = self.options.pop("in_keys", {})
 
 
 class ParamConfig:

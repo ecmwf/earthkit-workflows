@@ -51,10 +51,11 @@ class _ToDaskGraph(Transformer):
         ret = {}
         new_nodes = list(new_graph.nodes(forwards=True))
         for node in new_nodes:
+            assert node.name not in ret, f"{node.name} already exists"
             ret[node.name] = node.payload
         assert list(ret.keys()) == [
             node.name for node in new_nodes
-        ], f"Expected {len(new_nodes)} for {len(ret.keys())}"
+        ], f"Expected {len(new_nodes)} nodes, got {len(ret.keys())}"
         return ret
 
 
