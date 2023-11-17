@@ -18,10 +18,40 @@ from pproc.clustereps.cluster import get_output_keys
 import mir
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data import FieldList
-from earthkit.data.sources import Source, from_source
+from earthkit.data.sources import Source, from_source, register
 from earthkit.data.sources.numpy_list import NumpyFieldList
+from earthkit.data.sources.mars import MarsRetriever
 
 from .grib import GribBufferMetaData, basic_headers
+
+
+class MarsRetrieverWithCache(MarsRetriever):
+    @classmethod
+    def _reverse_request_formatting(cls, request: dict):
+        new_request = request.copy()
+        new_request["param"] = (
+            request["param"][0] if len(request["param"]) == 1 else request["param"]
+        )
+        new_request["date"] = [d.replace("-", "") for d in request["date"]]
+        if len(new_request["date"]) == 1:
+            new_request["date"] = new_request["date"][0]
+        return new_request
+
+    def _retrieve(self, request):
+        cache_path = request.pop("cache", None)
+        cache = (
+            None
+            if cache_path is None
+            else cache_path.format_map(self._reverse_request_formatting(request))
+        )
+        if cache is None:
+            return super()._retrieve(request)
+
+        self.service().execute(request, cache)
+        return cache
+
+
+register("mars_with_cache", MarsRetrieverWithCache)
 
 
 def mir_job(input: mir.MultiDimensionalGribFileInput, mir_options: dict) -> Source:
@@ -34,7 +64,6 @@ def mir_job(input: mir.MultiDimensionalGribFileInput, mir_options: dict) -> Sour
 
 def fdb_retrieve(request: dict, *, stream: bool = True) -> Source:
     mir_options = request.pop("interpolate", None)
-    # print("REQUEST", request, "STREAM", stream)
     if mir_options:
         reader = from_source("fdb", request, stream=stream)
         if stream:
@@ -49,7 +78,7 @@ def fdb_retrieve(request: dict, *, stream: bool = True) -> Source:
 
 def mars_retrieve(request: dict) -> Source:
     mir_options = request.pop("interpolate", None)
-    ds = from_source("mars", request)
+    ds = from_source("mars_with_cache", request)
     if mir_options:
         size = len(request["param"]) if isinstance(request["param"], list) else 1
         inp = mir.MultiDimensionalGribFileInput(ds.path, size)
@@ -67,10 +96,29 @@ def file_retrieve(path: str, request: dict) -> Source:
     return from_source("file", location)
 
 
-def retrieve(source: str, request: dict, **kwargs) -> NumpyFieldList:
+def retrieve(request: dict | list[dict], **kwargs):
+    if isinstance(request, dict):
+        return retrieve_single_source(request, **kwargs)
+    return retrieve_multi_sources(request, **kwargs)
+
+
+def retrieve_multi_sources(requests: list[dict], **kwargs) -> NumpyFieldList:
+    ret = None
+    for req in requests:
+        try:
+            ret = retrieve_single_source(req, **kwargs)
+            break
+        except AssertionError:
+            continue
+    assert ret is not None, f"No data retrieved from requests: {requests}"
+    return ret
+
+
+def retrieve_single_source(request: dict, **kwargs) -> NumpyFieldList:
     xp = importlib.import_module(os.getenv("CASCADE_ARRAY_MODULE", "numpy"))
 
     req = request.copy()
+    source = req.pop("source")
     with ResourceMeter(f"retrieve: source {source}, request {request}"):
         if source == "fdb":
             ret_sources = fdb_retrieve(req, **kwargs)

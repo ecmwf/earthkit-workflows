@@ -1,8 +1,13 @@
 import itertools
 from collections import OrderedDict
 import bisect
+from datetime import timedelta
+import copy
+import numpy as np
 
 from pproc.common.config import Config as BaseConfig
+from pproc.clustereps.config import FullClusterConfig
+from pproc.common.io import split_location
 
 from . import functions
 
@@ -34,12 +39,13 @@ class Request:
         self.request = request.copy()
         self.fake_dims = []
         self.no_expand = no_expand
+        self.ignore = ["interpolate"]
 
     @property
-    def dims(self):
+    def dims(self) -> OrderedDict:
         dimensions = OrderedDict()
         for key, values in self.request.items():
-            if key == "interpolate" or key in self.no_expand:
+            if key in self.ignore or key in self.no_expand:
                 continue
             if hasattr(values, "__iter__") and not isinstance(values, str):
                 dimensions[key] = len(values)
@@ -51,8 +57,11 @@ class Request:
     def __getitem__(self, key):
         return self.request[key]
 
-    def __contains__(self, key):
+    def __contains__(self, key) -> bool:
         return key in self.request
+
+    def update(self, **kwargs):
+        self.request.update(**kwargs)
 
     def pop(self, key, default=None):
         if default is None:
@@ -61,24 +70,79 @@ class Request:
 
     def make_dim(self, key, value=None):
         if key in self:
-            assert type(self.request[key], (str, int, float))
-            self.request[key] = [self.request[key]]
+            assert type(self[key], (str, int, float))
+            self[key] = [self[key]]
         else:
-            self.request[key] = [value]
+            self[key] = [value]
             self.fake_dims.append(key)
 
     def expand(self):
         for params in itertools.product(*[self.request[x] for x in self.dims.keys()]):
             new_request = self.request.copy()
             indices = []
+            name = [f"type={self.request['type']}"]
             for index, expand_param in enumerate(self.dims.keys()):
                 new_request[expand_param] = params[index]
+                name.append(f"{expand_param}={params[index]}")
                 indices.append(list(self.request[expand_param]).index(params[index]))
 
             # Remove fake dims from request
             for dim in self.fake_dims:
                 new_request.pop(dim)
-            yield tuple(indices), new_request
+            yield tuple(indices), new_request, ",".join(name)
+
+
+class MultiSourceRequest(Request):
+    def __init__(self, requests: list[dict], no_expand: tuple[str] = ()):
+        super().__init__(requests[0], no_expand)
+        self.requests = requests
+
+    def __setitem__(self, key, value):
+        super().__setattr__(key, value)
+        [x.__setitem__(key, value) for x in self.requests]
+
+    def __getitem__(self, key):
+        values = [x.__getitem__(key) for x in self.requests]
+        # print("__getitem__", key, values[0], values[1], np.all([values[0] == values[x] for x in range(1, len(values))]))
+        if np.all([values[0] == values[x] for x in range(1, len(values))]):
+            return values[0]
+        raise Exception(f"Requests {self.requests} differ on value for key {key}")
+
+    def __contains__(self, key) -> bool:
+        contains = [x.__contains__(key) for x in self.requests]
+        if all([contains[0] == contains[x] for x in range(1, len(contains))]):
+            return contains[0]
+        raise Exception(f"Not all requests {self.requests} contain key {key}")
+
+    def update(self, **kwargs):
+        super().update(**kwargs)
+        [x.update(**kwargs) for x in self.requests]
+
+    def pop(self, key, default=None):
+        contains = key in self
+        if default is None or contains:
+            value = self[key]
+            super().pop(key)
+            [x.pop(key) for x in self.requests]
+            return value
+        super().pop(key)
+        [x.pop(key) for x in self.requests]
+        return default
+
+    def expand(self):
+        for params in itertools.product(*[self.request[x] for x in self.dims.keys()]):
+            indices = []
+            name = [f"type={self.request['type']}"]
+            new_requests = copy.deepcopy(self.requests)
+            for index, expand_param in enumerate(self.dims.keys()):
+                [x.__setitem__(expand_param, params[index]) for x in new_requests]
+                name.append(f"{expand_param}={params[index]}")
+                indices.append(list(self.request[expand_param]).index(params[index]))
+
+            # Remove fake dims from request
+            for dim in self.fake_dims:
+                [x.pop(dim) for x in new_requests]
+            yield tuple(indices), new_requests, ",".join(name)
 
 
 class Config(BaseConfig):
@@ -218,3 +282,48 @@ class ExtremeConfig(ParamConfig):
             num_quantiles = int(req["quantile"])
             req["quantile"] = ["{}:100".format(i) for i in range(num_quantiles + 1)]
         return clim_reqs
+
+
+class ClusterConfig(FullClusterConfig):
+    def _source_from_location(self, loc) -> tuple[str, list[dict]]:
+        type_, ident = split_location(loc, default="file")
+        requests = self.sources.get(type_, {}).get(ident, None)
+        if isinstance(requests, dict):
+            requests = [requests]
+        return type_, requests
+
+    def spread_request(self, spread: str, no_expand: tuple[str] = ()):
+        source, reqs = self._source_from_location(spread)
+        assert len(reqs) == 1, f"Expected a single request, got {reqs}"
+        ret = Request(reqs[0], no_expand=no_expand)
+        ret.update(source=source, step=self.steps)
+        return [ret]
+
+    def spread_compute_request(
+        self, spread_compute: list[str], ndays: int = 31, no_expand: tuple[str] = ()
+    ):
+        ret = []
+        dates = [
+            (self.date - timedelta(days=diff)).strftime("%Y%m%d")
+            for diff in range(ndays, 0, -1)
+        ]
+        for loc in spread_compute:
+            source, reqs = self._source_from_location(loc)
+            assert len(reqs) == 1, f"Expected a single request, got {reqs}"
+            reqs[0].update(step=self.steps, date=dates, source=source)
+            ret.append(reqs[0])
+        return [MultiSourceRequest(ret, no_expand=no_expand)]
+
+    def forecast_request(self, ensemble: str, no_expand: tuple[str] = ()):
+        source, requests = self._source_from_location(ensemble)
+
+        window_requests = []
+        for request in requests:
+            req = Request({**request, "source": source}, no_expand)
+            req["step"] = self.steps
+            if request["type"] == "pf":
+                req["number"] = range(1, self.num_members + 1)
+            elif request["type"] == "cf":
+                req.make_dim("number", 0)
+            window_requests.append(req)
+        return window_requests

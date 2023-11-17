@@ -3,14 +3,22 @@ import xarray as xr
 
 from ppgraph import Graph, deduplicate_nodes
 from earthkit.data import FieldList
-from pproc.clustereps.config import FullClusterConfig
 
 from .fluent import Action, Node, Payload
 from .fluent import SingleAction as BaseSingleAction
 from .fluent import MultiAction as BaseMultiAction
 from .fluent import custom_hash
-from .io import retrieve
-from .graph_config import Config, Window, ParamConfig, WindConfig, ExtremeConfig
+from .io import retrieve, cluster_write
+from .graph_config import (
+    Config,
+    Window,
+    ParamConfig,
+    WindConfig,
+    ExtremeConfig,
+    ClusterConfig,
+    Request,
+    MultiSourceRequest,
+)
 from . import functions
 
 
@@ -34,6 +42,14 @@ class SingleAction(BaseSingleAction):
         )
         ret = self.join(climatology, "datatype").reduce(payload)
         return ret.write(target_efi, grib_sets)
+
+    def cluster(self, config, ncomp_file, indexes, deterministic):
+        return self.then(
+            Payload(
+                functions.cluster,
+                (config, "input0", ncomp_file, indexes, deterministic),
+            )
+        )
 
 
 class MultiAction(BaseMultiAction):
@@ -152,7 +168,7 @@ class MultiAction(BaseMultiAction):
             return self
         if isinstance(operation, str):
             return getattr(self, operation)("param")
-        return self.reduce(operation, "param")
+        return self.reduce(Payload(operation), "param")
 
     def window_operation(self, window, target: str = "null:", grib_sets: dict = {}):
         if window.operation is None:
@@ -167,16 +183,10 @@ class MultiAction(BaseMultiAction):
         return ret.write(target, grib_sets)
 
     def pca(self, config, mask, target: str = None):
+        if mask is not None:
+            raise NotImplementedError()
         return self.reduce(
             Payload(functions.pca, (config, "input0", "input1", mask, target))
-        )
-
-    def cluster(self, config, ncomp_file, indexes, deterministic):
-        return self.foreach(
-            Payload(
-                functions.cluster,
-                (config, "input0", ncomp_file, indexes, deterministic),
-            )
         )
 
     def attribution(self, config, targets):
@@ -184,12 +194,9 @@ class MultiAction(BaseMultiAction):
             payload = Payload(
                 functions.attribution, (config, scenario, "input0", "input1")
             )
-            if isinstance(action, BaseSingleAction):
-                new_quantile = action.then(payload)
-            else:
-                new_quantile = action.foreach(payload)
-            new_quantile._add_dimension("scenario", scenario)
-            return new_quantile
+            attr = action.reduce(payload)
+            attr._add_dimension("scenario", scenario)
+            return attr
 
         return self.transform(
             _attribution, ["centroids", "representatives"], "scenario"
@@ -197,11 +204,11 @@ class MultiAction(BaseMultiAction):
             np.asarray(
                 [
                     Payload(
-                        functions.cluster_write,
+                        cluster_write,
                         (config, "centroids", "input0", targets["centroids"]),
                     ),
                     Payload(
-                        functions.cluster_write,
+                        cluster_write,
                         (
                             config,
                             "representatives",
@@ -214,19 +221,21 @@ class MultiAction(BaseMultiAction):
         )
 
 
-def read(requests: list, join_key: str = "number", **kwargs):
+def read(
+    requests: list[Request | MultiSourceRequest], join_key: str = "number", **kwargs
+):
     all_actions = None
     for request in requests:
         nodes = np.empty(tuple(request.dims.values()), dtype=object)
-        for indices, new_request in request.expand():
+        for indices, new_request, name in request.expand():
             payload = Payload(
                 retrieve,
-                (new_request.pop("source"), new_request),
+                (new_request,),
                 kwargs,
             )
             nodes[indices] = Node(
                 payload=payload,
-                name=f"retrieve@{new_request['type']}:{custom_hash(str(payload))}",
+                name=f"retrieve@{name}:{custom_hash(str(payload))}",
             )
         if len(request.dims) == 0:
             new_action = SingleAction(
@@ -422,12 +431,27 @@ def quantiles(args):
 
 
 def clustereps(args):
-    config = FullClusterConfig(args)
-    spread = read(config.spread_request(args.spread))
-    pca = read(config.forecast_request()).join(spread).pca(config, args.mask, args.pca)
+    config = ClusterConfig(args)
+    if args.spread is not None:
+        spread = read(config.spread_request(args.spread, no_expand=("step",)))
+    else:
+        spread = read(
+            config.spread_compute_request(args.spread_compute, no_expand=("step",)),
+            join_key="date",
+        ).mean(key="date")
+
+    pca = (
+        read(
+            config.forecast_request(args.ensemble, no_expand=("number", "step")),
+            join_key="type",
+        )
+        .concatenate(key="type")
+        .join(spread, dim_name="data_type")
+        .pca(config, args.mask, args.pca)
+    )
     cluster = pca.cluster(config, args.ncomp_file, args.indexes, args.deterministic)
-    total_graph += (
-        pca.join(cluster)
+    total_graph = (
+        pca.join(cluster, dim_name="data_type")
         .attribution(
             config,
             {
@@ -437,3 +461,4 @@ def clustereps(args):
         )
         .graph()
     )
+    return deduplicate_nodes(total_graph)

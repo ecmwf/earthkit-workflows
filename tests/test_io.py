@@ -1,14 +1,7 @@
 from datetime import datetime, timedelta
-import dill
-import multiprocessing
+import numpy as np
 
 from cascade.io import retrieve, write
-
-dill.Pickler.dumps, dill.Pickler.loads = dill.dumps, dill.loads
-multiprocessing.reduction.ForkingPickler = dill.Pickler
-multiprocessing.reduction.dump = dill.dump
-multiprocessing.queues._ForkingPickler = dill.Pickler
-import concurrent.futures as fut
 
 request = {
     "class": "od",
@@ -21,9 +14,17 @@ request = {
     "levtype": "sfc",
     "step": "12",
     "param": 228,
+    "source": "mars",
 }
 
 
 def test_retrieve(tmpdir):
-    data = retrieve("mars", request)
+    # Retrieve from single source
+    data = retrieve(request)
     write(f"{tmpdir}/test.grib", data, {"step": 12})
+
+    # Retrieve with multiple sources
+    fdb_request = request.copy()
+    fdb_request["source"] = "fdb"
+    data2 = retrieve([request, fdb_request])
+    assert np.all(data.values == data2.values)
