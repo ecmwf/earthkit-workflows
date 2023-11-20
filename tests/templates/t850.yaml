@@ -76,38 +76,36 @@ parameters:
         legendre-loader: shmem
         matrix-loader: file-io
     sources:
-      ens:
-        - <<: *base_keys
-          stream: 'enfo'
-          type: cf
+      fdb:
+        ens:
+          - <<: *base_keys
+            stream: 'enfo'
+            type: cf
+            date: 20230914
+            time: 12
+            interpolate: *base_interp
+          - <<: *base_keys
+            stream: 'enfo'
+            type: pf 
+            date: 20230914
+            time: 12
+            interpolate: *base_interp
+        clim:
+          <<: *base_keys
+          stream: 'efhs'
+          type: [em, es]
           date: 20230914
-          time: 12
+          time: 00
           interpolate: *base_interp
-          source: fdb
-        - <<: *base_keys
-          stream: 'enfo'
-          type: pf 
-          date: 20230914
-          time: 12
-          interpolate: *base_interp
-          source: fdb
-      clim:
-        <<: *base_keys
-        stream: 'efhs'
-        type: [em, es]
-        date: 20230914
-        time: 00
-        interpolate: *base_interp
-        source: fdb
-        step:
-          120: 132
-          132: 144
-          144: 156
-          156: 168
-          168: 180
-          180: 192
-          192: 204
-          204: 216
-          216: 228
-          228: 240
-          240: 252
+          step:
+            120: 132
+            132: 144
+            144: 156
+            156: 168
+            168: 180
+            180: 192
+            192: 204
+            204: 216
+            216: 228
+            228: 240
+            240: 252

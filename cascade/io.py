@@ -14,6 +14,7 @@ from pproc.common.io import (
 from pproc.common import ResourceMeter
 from pproc.clustereps.__main__ import write_cluster_attr_grib
 from pproc.clustereps.cluster import get_output_keys
+from pproc.common.io import split_location
 
 import mir
 from earthkit.data.sources.stream import StreamSource
@@ -27,6 +28,17 @@ from .wrappers.mars import MarsRetrieverWithCache
 from .wrappers.metadata import GribBufferMetaData
 
 register("mars_with_cache", MarsRetrieverWithCache)
+
+
+def _source_from_location(loc, sources) -> tuple[str, list[dict]]:
+    type_, ident = split_location(loc, default="file")
+    requests = sources.get(type_, {}).get(ident, None)
+    assert (
+        requests is not None
+    ), f"Not requests listed for location {loc} in sources {sources}"
+    if isinstance(requests, dict):
+        requests = [requests]
+    return type_, requests
 
 
 def mir_job(input: mir.MultiDimensionalGribFileInput, mir_options: dict) -> Source:

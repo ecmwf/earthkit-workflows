@@ -7,9 +7,9 @@ import numpy as np
 
 from pproc.common.config import Config as BaseConfig
 from pproc.clustereps.config import FullClusterConfig
-from pproc.common.io import split_location
 
 from . import functions
+from .io import _source_from_location
 
 
 class Window:
@@ -232,14 +232,14 @@ class ParamConfig:
             start_index = bisect.bisect_right(self.steps, window.start)
         return self.steps[start_index : self.steps.index(window.end) + 1]
 
-    def forecast_request(self, window, source: str = "ens", no_expand: tuple[str] = ()):
-        requests = self.sources[source]
+    def forecast_request(self, window, ens: str, no_expand: tuple[str] = ()):
+        source, requests = _source_from_location(ens, self.sources)
         if isinstance(requests, dict):
             requests = [requests]
 
         window_requests = []
         for request in requests:
-            req = Request({**request, **self.in_keys}, no_expand)
+            req = Request({**request, **self.in_keys, "source": source}, no_expand)
             req["step"] = self._request_steps(window)
             if request["type"] == "pf":
                 req["number"] = self.members
@@ -249,9 +249,12 @@ class ParamConfig:
         return window_requests
 
     def clim_request(
-        self, window, accumulated: bool = False, no_expand: tuple[str] = ()
+        self, window, clim: str, accumulated: bool = False, no_expand: tuple[str] = ()
     ):
-        clim_req = Request(self.sources["clim"], no_expand)
+        source, requests = _source_from_location(clim, self.sources)
+        assert len(requests) == 1, f"Expected a single request, got {requests}"
+        clim_req = Request(requests[0], no_expand)
+        clim_req["source"] = source
         steps = clim_req.pop("step", {})
         if accumulated:
             clim_req["step"] = steps.get(window.name, window.name)
@@ -262,22 +265,21 @@ class ParamConfig:
 
 
 class WindConfig(ParamConfig):
-    def vod2uv(self, source: str) -> bool:
-        req = self.sources[source]
-        if isinstance(req, list):
-            req = req[0]
-        return req.get("interpolate", {}).get("vod2uv", "0") == "1"
+    def vod2uv(self, ens: str) -> bool:
+        _, reqs = _source_from_location(ens, self.sources)
+        return reqs[0].get("interpolate", {}).get("vod2uv", "0") == "1"
 
-    def forecast_request(self, window: Window, source: str):
-        no_expand = ("param") if self.vod2uv(source) else ()
-        return super().forecast_request(window, source, no_expand)
+    def forecast_request(self, window: Window, ens: str):
+        vod2uv = self.vod2uv(ens)
+        no_expand = ("param") if vod2uv else ()
+        return vod2uv, super().forecast_request(window, ens, no_expand)
 
 
 class ExtremeConfig(ParamConfig):
     def clim_request(
-        self, window, accumulated: bool = False, no_expand: tuple[str] = ()
+        self, window, clim: str, accumulated: bool = False, no_expand: tuple[str] = ()
     ):
-        clim_reqs = super().clim_request(window, accumulated, no_expand)
+        clim_reqs = super().clim_request(window, clim, accumulated, no_expand)
         for req in clim_reqs:
             num_quantiles = int(req["quantile"])
             req["quantile"] = ["{}:100".format(i) for i in range(num_quantiles + 1)]
@@ -285,15 +287,8 @@ class ExtremeConfig(ParamConfig):
 
 
 class ClusterConfig(FullClusterConfig):
-    def _source_from_location(self, loc) -> tuple[str, list[dict]]:
-        type_, ident = split_location(loc, default="file")
-        requests = self.sources.get(type_, {}).get(ident, None)
-        if isinstance(requests, dict):
-            requests = [requests]
-        return type_, requests
-
     def spread_request(self, spread: str, no_expand: tuple[str] = ()):
-        source, reqs = self._source_from_location(spread)
+        source, reqs = _source_from_location(spread, self.sources)
         assert len(reqs) == 1, f"Expected a single request, got {reqs}"
         ret = Request(reqs[0], no_expand=no_expand)
         ret.update(source=source, step=self.steps)
@@ -308,14 +303,14 @@ class ClusterConfig(FullClusterConfig):
             for diff in range(ndays, 0, -1)
         ]
         for loc in spread_compute:
-            source, reqs = self._source_from_location(loc)
+            source, reqs = _source_from_location(loc, self.sources)
             assert len(reqs) == 1, f"Expected a single request, got {reqs}"
             reqs[0].update(step=self.steps, date=dates, source=source)
             ret.append(reqs[0])
         return [MultiSourceRequest(ret, no_expand=no_expand)]
 
     def forecast_request(self, ensemble: str, no_expand: tuple[str] = ()):
-        source, requests = self._source_from_location(ensemble)
+        source, requests = _source_from_location(ensemble, self.sources)
 
         window_requests = []
         for request in requests:

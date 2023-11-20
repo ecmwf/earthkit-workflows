@@ -51,17 +51,17 @@ parameters:
           scaleFactorOfUpperLimit: MISSING
           scaledValueOfUpperLimit: MISSING
     sources:
-      ens:
-        class: od
-        stream: enfo
-        type: pf
-        levtype: sfc
-        domain: g
-        param: 228
-        date: 20230914
-        time: 12
-        expver: "0001"
-        source: fdb
+      fdb:
+        ens:
+          class: od
+          stream: enfo
+          type: pf
+          levtype: sfc
+          domain: g
+          param: 228
+          date: 20230914
+          time: 12
+          expver: "0001"
   ff:
     targets: 
       out_prob: "fileset:cascade_prob_{param}.grib"
@@ -78,17 +78,17 @@ parameters:
             comparison: ">="
             value: 15
     sources:
-      ens:
-        class: od
-        stream: enfo
-        type: pf
-        levtype: sfc
-        domain: g
-        param: [165, 166]
-        date: 20230914
-        time: 12
-        expver: "0001"
-        source: fdb
+      fdb:
+        ens:
+          class: od
+          stream: enfo
+          type: pf
+          levtype: sfc
+          domain: g
+          param: [165, 166]
+          date: 20230914
+          time: 12
+          expver: "0001"
   mn2t6:
     targets: 
       out_prob: "fileset:cascade_prob_{param}.grib"
@@ -108,14 +108,14 @@ parameters:
           value: 273.15
           localDecimalScaleFactor: 2
     sources:
-      ens:
-        class: od
-        stream: enfo
-        type: pf
-        levtype: sfc
-        domain: g
-        param: 122
-        date: 20230914
-        time: 12
-        expver: "0001"
-        source: fdb
+      fdb:
+        ens:
+          class: od
+          stream: enfo
+          type: pf
+          levtype: sfc
+          domain: g
+          param: 122
+          date: 20230914
+          time: 12
+          expver: "0001"

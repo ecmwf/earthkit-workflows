@@ -2,50 +2,42 @@ out_keys:
   mars.expver: '9078'
 members: 5
 parameters:
-  # wind1:
-  #   targets: 
-  #     out_ens_ws: fileset:wind_{step}_{stream}.grib
-  #     out_det_ws: fileset:wind_{step}_{stream}.grib
-  #   defs:
-  #     base_keys: &base_keys
-  #       class: od
-  #       domain: g
-  #       expver: '0001'
-  #       levtype: sfc
-  #       param: [165, 166]
-  #       date: 20230914
-  #       time: 12
-  #     base_interp: &base_interp
-  #       grid: O640
-  #       intgrid: none
-  #       legendre-loader: shmem
-  #       matrix-loader: file-io
-  #   sources:
-  #     ens:
-  #       - <<: *base_keys
-  #         stream: enfo
-  #         type: pf
-  #         interpolate: *base_interp
-  #         source: fdb
-  #       - <<: *base_keys
-  #         stream: enfo
-  #         type: cf
-  #         interpolate: *base_interp
-  #         source: fdb
-  #     det:
-  #       << : *base_keys
-  #       stream: oper
-  #       type: fc
-  #       interpolate: *base_interp
-  #       source: fdb
-  #   windows:
-  #     - include_start_step: true
-  #       grib_set:
-  #         indicatorOfParameter: 207
-  #         gribTablesVersionNo: 128
-  #         bitsPerValue: 16
-  #       periods:
-  #         - range: [0, 6, 3]
+  wind1:
+    targets: 
+      out_ens_ws: fileset:wind_{step}_{stream}.grib
+    defs:
+      base_keys: &base_keys
+        class: od
+        domain: g
+        expver: '0001'
+        levtype: sfc
+        param: [165, 166]
+        date: 20230914
+        time: 12
+      base_interp: &base_interp
+        grid: O640
+        intgrid: none
+        legendre-loader: shmem
+        matrix-loader: file-io
+    sources:
+      fdb:
+        ens:
+          - <<: *base_keys
+            stream: enfo
+            type: pf
+            interpolate: *base_interp
+          - <<: *base_keys
+            stream: enfo
+            type: cf
+            interpolate: *base_interp
+    windows:
+      - include_start_step: true
+        grib_set:
+          indicatorOfParameter: 207
+          gribTablesVersionNo: 128
+          bitsPerValue: 16
+        periods:
+          - range: [0, 6, 3]
   wind_vod2uv:
     targets: 
       out_mean: fileset:wind_{step}_{type}.grib
@@ -68,15 +60,14 @@ parameters:
         legendre-loader: shmem
         matrix-loader: file-io
     sources:
-      ens:
-        - <<: *vod2uv_base_keys
-          type: cf
-          interpolate: *vod2uv_base_interp
-          source: fdb
-        - <<: *vod2uv_base_keys
-          type: pf
-          interpolate: *vod2uv_base_interp
-          source: fdb
+      fdb:
+        ens:
+          - <<: *vod2uv_base_keys
+            type: cf
+            interpolate: *vod2uv_base_interp
+          - <<: *vod2uv_base_keys
+            type: pf
+            interpolate: *vod2uv_base_interp  
     windows:
       - include_start_step: true
         grib_set:

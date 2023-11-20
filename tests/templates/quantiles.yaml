@@ -18,13 +18,12 @@ parameters:
         stream: enfo
     num_quantiles: *quantiles
     sources:
-      ens:
-        - <<: *base_keys_2t
-          type: cf
-          source: mars
-        - <<: *base_keys_2t
-          type: pf
-          source: mars
+      fdb:
+        ens:
+          - <<: *base_keys_2t
+            type: cf
+          - <<: *base_keys_2t
+            type: pf
     windows:
       - periods:
         - range:
@@ -46,13 +45,12 @@ parameters:
         stream: enfo
     num_quantiles: *quantiles
     sources:
-      ens:
-        - <<: *base_keys_tp
-          type: cf
-          source: mars
-        - <<: *base_keys_tp
-          type: pf
-          source: mars
+      fdb:
+        ens:
+          - <<: *base_keys_tp
+            type: cf
+          - <<: *base_keys_tp
+            type: pf
     windows:
       - window_operation: diff
         include_start_step: True

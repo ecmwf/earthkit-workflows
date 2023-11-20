@@ -10,6 +10,9 @@ class MockArgs:
         self.recover = False
         self.override_input = []
         self.override_output = []
+        self.ensemble = "fdb:ens"
+        self.climatology = "fdb:clim"
+        self.deterministic = None
 
 
 class MockClusterArgs(MockArgs):

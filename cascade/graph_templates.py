@@ -266,11 +266,11 @@ def anomaly_prob(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             climatology = read(
-                param_config.clim_request(window)
+                param_config.clim_request(window, args.climatology)
             )  # Will contain type em and es
 
             total_graph += (
-                read(param_config.forecast_request(window))
+                read(param_config.forecast_request(window, args.ensemble))
                 .anomaly(climatology, window)
                 .window_operation(
                     window,
@@ -295,7 +295,7 @@ def prob(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             total_graph += (
-                read(param_config.forecast_request(window))
+                read(param_config.forecast_request(window, args.ensemble))
                 .param_operation(param_config.param_operation)
                 .window_operation(
                     window,
@@ -319,25 +319,28 @@ def wind(args):
     for _, cfg in config.options["parameters"].items():
         param_config = WindConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
-            for source in param_config.sources:
-                vod2uv = param_config.vod2uv(source)
-                total_graph = (
-                    read(
-                        param_config.forecast_request(window, source),
-                        stream=(not vod2uv),
-                    )
-                    .wind_speed(
-                        vod2uv,
-                        param_config.get_target(f"out_{source}_ws"),
-                        param_config.out_keys,
-                    )
-                    .ensms(
+            for loc, target in [
+                (args.ensemble, f"out_ens_ws"),
+                (args.deterministic, f"out_det_ws"),
+            ]:
+                if loc is None:
+                    continue
+                vod2uv, requests = param_config.forecast_request(window, loc)
+                ws = read(
+                    requests,
+                    stream=(not vod2uv),
+                ).wind_speed(
+                    vod2uv,
+                    param_config.get_target(target),
+                    param_config.out_keys,
+                )
+                if loc == args.ensemble:
+                    ws = ws.ensms(
                         param_config.get_target("out_mean"),
                         param_config.get_target("out_std"),
                         {**param_config.out_keys, **window.grib_set},
                     )
-                    .graph()
-                )
+                total_graph += ws.graph()
 
     return deduplicate_nodes(total_graph)
 
@@ -349,7 +352,7 @@ def ensms(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             total_graph += (
-                read(param_config.forecast_request(window))
+                read(param_config.forecast_request(window, args.ensemble))
                 .window_operation(window)
                 .ensms(
                     param_config.get_target("out_mean"),
@@ -370,11 +373,13 @@ def extreme(args):
         )
         for window in param_config.windows:
             climatology = read(
-                param_config.clim_request(window, True, no_expand=("quantile"))
+                param_config.clim_request(
+                    window, args.climatology, True, no_expand=("quantile")
+                )
             )
-            parameter = read(param_config.forecast_request(window)).param_operation(
-                param_config.param_operation
-            )
+            parameter = read(
+                param_config.forecast_request(window, args.ensemble)
+            ).param_operation(param_config.param_operation)
             eps = float(param_config.options["eps"])
             grib_sets = {**param_config.out_keys, **window.grib_set}
 
@@ -417,7 +422,7 @@ def quantiles(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             total_graph += (
-                read(param_config.forecast_request(window), "number")
+                read(param_config.forecast_request(window, args.ensemble), "number")
                 .param_operation(param_config.param_operation)
                 .window_operation(window)
                 .quantiles(
@@ -436,9 +441,7 @@ def clustereps(args):
         spread = read(config.spread_request(args.spread, no_expand=("step",)))
     else:
         spread = read(
-            config.spread_compute_request(
-                args.spread_compute, no_expand=("step",)
-            ),
+            config.spread_compute_request(args.spread_compute, no_expand=("step",)),
             join_key="date",
         ).mean(key="date")
 

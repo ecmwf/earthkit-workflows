@@ -26,15 +26,14 @@ parameters:
         legendre-loader: shmem
         matrix-loader: file-io
     sources:
-      ens:
-        - <<: *base_keys_T
-          type: pf
-          interpolate: *base_interp
-          source: fdb
-        - <<: *base_keys_T
-          type: cf
-          interpolate: *base_interp
-          source: fdb
+      fdb:
+        ens:
+          - <<: *base_keys_T
+            type: pf
+            interpolate: *base_interp
+          - <<: *base_keys_T
+            type: cf
+            interpolate: *base_interp
     windows:
     - include_start_step: True
       periods:
@@ -54,13 +53,12 @@ parameters:
         date: 20230914
         time: 12
     sources:
-      ens:
-        - <<: *base_keys_mn2t6
-          type: pf
-          source: fdb
-        - <<: *base_keys_mn2t6
-          type: cf
-          source: fdb
+      fdb:
+        ens:
+          - <<: *base_keys_mn2t6
+            type: pf
+          - <<: *base_keys_mn2t6
+            type: cf
     windows:
     - periods:
       - range:
@@ -90,13 +88,12 @@ parameters:
         date: 20230914
         time: 12
     sources:
-      ens:
-        - <<: *base_keys_tp
-          type: cf
-          source: fdb
-        - <<: *base_keys_tp
-          type: pf
-          source: fdb
+      fdb:
+        ens:
+          - <<: *base_keys_tp
+            type: cf
+          - <<: *base_keys_tp
+            type: pf
     windows:
     - grib_set:
         paramId: 200228
