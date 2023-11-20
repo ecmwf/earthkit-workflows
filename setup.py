@@ -31,6 +31,7 @@ setup(
         "networkx",
         "dask",
         "dill",
+        "scikit-learn",
         "pproc-graph @ git+ssh://git@github.com/ecmwf/pproc-graph.git",
         "meteokit @ git+ssh://git@git.ecmwf.int/ecsdk/meteokit.git",
         "pyfdb @ git+https://github.com/ecmwf/pyfdb.git@master",

@@ -436,16 +436,15 @@ def clustereps(args):
         spread = read(config.spread_request(args.spread, no_expand=("step",)))
     else:
         spread = read(
-            config.spread_compute_request(args.spread_compute, no_expand=("step",)),
+            config.spread_compute_request(
+                args.spread_compute, no_expand=("step",)
+            ),
             join_key="date",
         ).mean(key="date")
 
     pca = (
-        read(
-            config.forecast_request(args.ensemble, no_expand=("number", "step")),
-            join_key="type",
-        )
-        .concatenate(key="type")
+        read(config.forecast_request(args.ensemble, no_expand="step"))
+        .concatenate(key="number")
         .join(spread, dim_name="data_type")
         .pca(config, args.mask, args.pca)
     )

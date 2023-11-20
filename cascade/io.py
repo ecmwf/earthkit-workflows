@@ -18,38 +18,13 @@ from pproc.clustereps.cluster import get_output_keys
 import mir
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data import FieldList
-from earthkit.data.sources import Source, from_source, register
+from earthkit.data.sources import Source, from_source
 from earthkit.data.sources.numpy_list import NumpyFieldList
-from earthkit.data.sources.mars import MarsRetriever
+from earthkit.data.sources import register
 
-from .grib import GribBufferMetaData, basic_headers
-
-
-class MarsRetrieverWithCache(MarsRetriever):
-    @classmethod
-    def _reverse_request_formatting(cls, request: dict):
-        new_request = request.copy()
-        new_request["param"] = (
-            request["param"][0] if len(request["param"]) == 1 else request["param"]
-        )
-        new_request["date"] = [d.replace("-", "") for d in request["date"]]
-        if len(new_request["date"]) == 1:
-            new_request["date"] = new_request["date"][0]
-        return new_request
-
-    def _retrieve(self, request):
-        cache_path = request.pop("cache", None)
-        cache = (
-            None
-            if cache_path is None
-            else cache_path.format_map(self._reverse_request_formatting(request))
-        )
-        if cache is None:
-            return super()._retrieve(request)
-
-        self.service().execute(request, cache)
-        return cache
-
+from .grib import basic_headers
+from .wrappers.mars import MarsRetrieverWithCache
+from .wrappers.metadata import GribBufferMetaData
 
 register("mars_with_cache", MarsRetrieverWithCache)
 
@@ -131,11 +106,9 @@ def retrieve_single_source(request: dict, **kwargs) -> NumpyFieldList:
             raise NotImplementedError("Source {source} not supported.")
     ret = None
     for source in ret_sources:
-        grib_metadata = source.metadata()._handle.copy()
-        grib_metadata.set_array("values", np.zeros(source.values.shape))
         field_list = FieldList.from_numpy(
             xp.asarray([source.values]),
-            GribBufferMetaData(grib_metadata.get_buffer()),
+            GribBufferMetaData(source.metadata()),
         )
         if ret is None:
             ret = field_list
@@ -169,30 +142,29 @@ def write(loc: str, data: xr.DataArray, grib_sets: dict):
 def cluster_write(
     config,
     scenario,
-    attribution_output: tuple[NumpyFieldList, np.ndarray, np.ndarray],
+    attribution_output,
     cluster_dests,
 ):
-    fields, cluster_att, min_dist = attribution_output
-    grib_template = fields[0].metadata().buffer_to_metadata()
+    metadata, scdata, anom, cluster_att, min_dist = attribution_output
+    grib_template = metadata.buffer_to_metadata()
     cluster_type, ind_cl, rep_members, det_index = [
-        fields[0].metadata()._d[x]
-        for x in ["type", "ind_cl", "rep_members", "det_index"]
+        metadata._d[x] for x in ["type", "ind_cl", "rep_members", "det_index"]
     ]
 
     keys, steps = get_output_keys(config, grib_template)
     with ResourceMeter(f"Write {scenario} output"):
         ## Write anomalies and cluster scenarios
         dest, adest = cluster_dests
-        target = target_from_location(dest, overrides=config.override_output)
-        anom_target = target_from_location(adest, overrides=config.override_output)
+        target = target_from_location(dest)
+        anom_target = target_from_location(adest)
         keys["type"] = cluster_type
         write_cluster_attr_grib(
             steps,
             ind_cl,
             rep_members,
             det_index,
-            fields[0].values,
-            fields[1].values,
+            scdata,
+            anom,
             cluster_att,
             target,
             anom_target,

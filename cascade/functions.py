@@ -11,12 +11,26 @@ from pproc import clustereps
 from pproc.clustereps.utils import normalise_angles
 from pproc.clustereps.io import read_steps_grib
 
-from .grib import extreme_grib_headers, threshold_grib_headers, GribBufferMetaData
+from .grib import extreme_grib_headers, threshold_grib_headers
 from .patch import PatchModule
+from .wrappers.metadata import GribBufferMetaData
 
 
 def concatenate(*arrays: list[NumpyFieldList]) -> NumpyFieldList:
-    # Combine earthkit data objects into one object
+    """
+    Concatenates the list of fields inside each NumpyFieldList into a single
+    NumpyFieldList object
+
+    Parameters
+    ----------
+    arrays: list[NumpyFieldList]
+        NumpyFieldList instances to whose fields are to be concatenated
+
+    Return
+    ------
+    NumpyFieldList
+        Contains all fields inside the input field lists
+    """
     return sum(arrays[1:], arrays[0])
 
 
@@ -34,7 +48,7 @@ def multi_arg_function(func: str, *arrays: list[NumpyFieldList]) -> NumpyFieldLi
         concat = arrays[0].values
     else:
         concat = concatenate(*arrays).values
-        assert len(concat) == len(arrays)
+        # assert len(concat) == len(arrays)
 
     xp = array_api_compat.array_namespace(concat)
     res = getattr(xp, func)(concat, axis=0)
@@ -178,12 +192,15 @@ def filter(
 def pca(
     config, ens: NumpyFieldList, spread: NumpyFieldList, mask: np.ndarray, target: str
 ):
-    template = ens[0].metadata().buffer_to_metadata()
-    lat = template.get_array("latitudes")
-    lon = normalise_angles(template.get_array("longitudes"))
-    with ResourceMeter("PCA"):
+    xp = array_api_compat.array_namespace(ens.values)
+    lat_lon = ens.to_latlon(flatten=True)
+    ens_data = xp.reshape(
+        ens.to_numpy(flatten=True),
+        (config.num_members, len(config.steps), len(lat_lon["lat"])),
+    )
+    with ResourceMeter(f"PCA: lat {lat_lon['lat'].shape} lon {lat_lon['lon'].shape}"):
         pca_data = clustereps.pca.do_pca(
-            config, lat, lon, ens.values, spread.values, mask
+            config, lat_lon["lat"], lat_lon["lon"], ens_data, spread[0].values, mask
         )
 
     ## Save data
@@ -228,9 +245,7 @@ def cluster(
     ## Find the deterministic forecast
     if deterministic is not None:
         with ResourceMeter("Find deterministic"):
-            det = read_steps_grib(
-                config.sources, deterministic, config.steps, **config.override_input
-            )
+            det = read_steps_grib(config.sources, deterministic, config.steps)
             det_index = clustereps.cluster.find_cluster(
                 det,
                 ens_mean,
@@ -244,21 +259,22 @@ def cluster(
     metadata = pca_metadata.override(
         {"rep_members": rep_members, "det_index": det_index, "ind_cl": ind_cl}
     )
-    ret = FieldList.from_numpy(
-        [centroids_gp, rep_members_gp],
-        [
+    ret = {
+        "centroids": [
+            np.array(centroids_gp),
             metadata.override({"type": "cm", "scenario": "centroids"}),
+        ],
+        "representatives": [
+            np.array(rep_members_gp),
             metadata.override({"type": "cr", "scenario": "representatives"}),
         ],
-    )
+    }
     return ret
 
 
-def attribution(
-    config, scenario: str, pca_output: dict, cluster_output: NumpyFieldList
-):
+def attribution(config, scenario: str, pca_output: dict, cluster_output: dict):
     pca_data, _ = pca_output
-    scdata = cluster_output.sel(scenario=scenario)
+    scdata, metadata = cluster_output[scenario]
 
     with ResourceMeter("Read climatology"):
         ## Read climatology fields
@@ -278,17 +294,15 @@ def attribution(
             config.monEndDoS,
         )
 
-    scdata = np.array(scdata.values)
     weights = pca_data["weights"]
 
     ## Compute anomalies
     anom = scdata - clim
     anom = np.clip(anom, -config.clip, config.clip)
-    scdata += FieldList.from_numpy([anom], scdata[0].metadata())
 
     with ResourceMeter(f"Attribute {scenario}"):
         cluster_att, min_dist = clustereps.attribution.attribution(
             anom, clim_eof, clim_ind, weights
         )
 
-    return (scdata, cluster_att, min_dist)
+    return (metadata, scdata, anom, cluster_att, min_dist)

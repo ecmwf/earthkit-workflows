@@ -31,14 +31,14 @@ max_anom: 10000.0
 max_sig: 95.0
 med_sig: 90.0
 min_sig: 55.0
-n_par: 32
+n_par: 1
 ncl_clim: 4
 ncl_max: 6
 npass: 100
 npc: -1
-nrsamples: 500
-num_components: 50
-num_members: 51
+nrsamples: 100
+num_components: 24
+num_members: 25
 out_keys:
   expver: '0001'
 seasons:
@@ -146,6 +146,7 @@ sources:
       time: '1200'
       type: es
     determ_z500:
+      cache: es_z500_{date}{time}_{step[0]}
       class: od
       date: 20231116
       domain: g

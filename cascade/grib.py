@@ -1,27 +1,4 @@
-from earthkit.data.core.metadata import RawMetadata
-from earthkit.data.readers.grib.metadata import GribMetadata
-from earthkit.data.readers.grib.memory import GribMessageMemoryReader
-from earthkit.data.readers.grib.codes import GribCodesHandle
 from earthkit.data import FieldList
-
-
-class GribBufferMetaData(RawMetadata):
-    def __init__(self, buffer: bytes, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        assert buffer is not None
-        self.buffer = buffer
-
-    def override(self, *args, **kwargs):
-        d = dict(**self._d)
-        d.update(*args, **kwargs)
-        return GribBufferMetaData(self.buffer, d)
-
-    def buffer_to_metadata(self) -> GribMetadata:
-        return GribMetadata(
-            GribCodesHandle(
-                GribMessageMemoryReader(self.buffer)._next_handle(), None, None
-            )
-        )
 
 
 def time_range_indicator(step: int) -> int:

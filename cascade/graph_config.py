@@ -322,7 +322,7 @@ class ClusterConfig(FullClusterConfig):
             req = Request({**request, "source": source}, no_expand)
             req["step"] = self.steps
             if request["type"] == "pf":
-                req["number"] = range(1, self.num_members + 1)
+                req["number"] = list(range(1, self.num_members))
             elif request["type"] == "cf":
                 req.make_dim("number", 0)
             window_requests.append(req)

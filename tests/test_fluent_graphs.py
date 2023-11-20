@@ -46,7 +46,6 @@ def node_info_ext(sinks, node):
 )
 def test_graph_construction(product, config, expected_num_nodes):
     graph = Cascade.graph(product, MockArgs(config))
-    print([x for x in graph.nodes()])
     assert len([x for x in graph.nodes()]) == expected_num_nodes
 
 
@@ -54,11 +53,9 @@ def test_cluster_graph():
     # With spread compute
     mock_args = MockClusterArgs(f"{ROOT_DIR}/templates/clustereps.yaml")
     graph = Cascade.graph("clustereps", mock_args)
-    print([x for x in graph.nodes()])
-    assert len([x for x in graph.nodes()]) == 41
+    assert len([x for x in graph.nodes()]) == 64
 
     # With spread
     mock_args.spread = "fileset:spread_z500"
     graph = Cascade.graph("clustereps", mock_args)
-    print([x for x in graph.nodes()])
-    assert len([x for x in graph.nodes()]) == 10
+    assert len([x for x in graph.nodes()]) == 33
