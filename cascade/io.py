@@ -75,12 +75,19 @@ def mars_retrieve(request: dict) -> Source:
 
 def file_retrieve(path: str, request: dict) -> Source:
     mir_options = request.pop("interpolate", None)
-    location = path.format_map(request)
     if mir_options:
-        size = len(request["param"]) if isinstance(request["param"], list) else 1
-        inp = mir.MultiDimensionalGribFileInput(location, size)
-        return mir_job(inp, mir_options)
-    return from_source("file", location)
+        raise NotImplementedError()
+    location = path.format_map(request)
+    try:
+        paramId = int(request["param"])
+        del request["param"]
+        request["paramId"] = paramId
+    except:
+        pass
+    request["date"] = int(request["date"])
+    request["time"] = int(f"{request['time']:<04d}")
+    ds = from_source("file", location).sel(request)
+    return ds
 
 
 def retrieve(request: dict | list[dict], **kwargs):
@@ -130,7 +137,7 @@ def retrieve_single_source(request: dict, **kwargs) -> NumpyFieldList:
     return ret
 
 
-def write(loc: str, data: xr.DataArray, grib_sets: dict):
+def write(loc: str, data: NumpyFieldList, grib_sets: dict):
     target = target_from_location(loc)
     if isinstance(target, (FileTarget, FileSetTarget)):
         # Allows file to be appended on each write call
