@@ -85,7 +85,8 @@ def file_retrieve(path: str, request: dict) -> Source:
     except:
         pass
     request["date"] = int(request["date"])
-    request["time"] = int(f"{request['time']:<04d}")
+    time = int(request["time"])
+    request["time"] = time if time % 100 == 0 else time * 100
     ds = from_source("file", location).sel(request)
     return ds
 
