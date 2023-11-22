@@ -146,7 +146,7 @@ sources:
       time: '1200'
       type: es
     determ_z500:
-      cache: es_z500_{date}{time}_{step[0]}
+      cache: fc_z500_{date}{time}_{step[0]}
       class: od
       date: 20231116
       domain: g
