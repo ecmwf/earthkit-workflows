@@ -1,7 +1,7 @@
 import copy
 
 from earthkit.data.core.metadata import RawMetadata
-from earthkit.data.readers.grib.metadata import GribMetadata
+from earthkit.data.readers.grib.metadata import GribMetadata, GribFieldGeography
 from earthkit.data.readers.grib.memory import GribMessageMemoryReader
 from earthkit.data.readers.grib.codes import GribCodesHandle
 
@@ -12,11 +12,10 @@ class GribBufferMetaData(RawMetadata):
         metadata = grib_metadata._handle.copy()
         metadata.set_array("values", metadata.get_array("values").shape)
         self.buffer = metadata.get_buffer()
-        self._geo = grib_metadata.geography
 
     @property
     def geography(self):
-        return self._geo
+        return GribFieldGeography(self.buffer_to_metadata())
 
     def override(self, *args, **kwargs):
         new_metadata = copy.deepcopy(self)

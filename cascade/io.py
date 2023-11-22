@@ -73,11 +73,7 @@ def mars_retrieve(request: dict) -> Source:
     return ds
 
 
-def file_retrieve(path: str, request: dict) -> Source:
-    mir_options = request.pop("interpolate", None)
-    if mir_options:
-        raise NotImplementedError()
-    location = path.format_map(request)
+def _transform_request(request: dict):
     try:
         paramId = int(request["param"])
         del request["param"]
@@ -87,7 +83,22 @@ def file_retrieve(path: str, request: dict) -> Source:
     request["date"] = int(request["date"])
     time = int(request["time"])
     request["time"] = time if time % 100 == 0 else time * 100
-    ds = from_source("file", location).sel(request)
+    step = request["step"]
+    if isinstance(step, int):
+        request["step"] = str(step)
+    elif isinstance(step, (list, np.ndarray)):
+        request["step"] = list(map(str, step))
+    else:
+        assert isinstance(step, int)
+    return request
+
+
+def file_retrieve(path: str, request: dict) -> Source:
+    mir_options = request.pop("interpolate", None)
+    if mir_options:
+        raise NotImplementedError()
+    location = path.format_map(request)
+    ds = from_source("file", location).sel(_transform_request(request))
     return ds
 
 

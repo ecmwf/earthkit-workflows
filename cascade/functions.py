@@ -198,9 +198,16 @@ def pca(
         ens.to_numpy(flatten=True),
         (config.num_members, len(config.steps), len(lat_lon["lat"])),
     )
-    with ResourceMeter(f"PCA: lat {lat_lon['lat'].shape} lon {lat_lon['lon'].shape}"):
+    with ResourceMeter(
+        f"PCA: lat {lat_lon['lat'].shape} lon {lat_lon['lon'].shape}"
+    ):
         pca_data = clustereps.pca.do_pca(
-            config, lat_lon["lat"], lat_lon["lon"], ens_data, spread[0].values, mask
+            config,
+            lat_lon["lat"],
+            normalise_angles(lat_lon["lon"]),
+            ens_data,
+            spread[0].values,
+            mask,
         )
 
     ## Save data
