@@ -4,15 +4,20 @@ from .executor import ExecutionReport, BasicExecutor
 from .transformers import to_task_graph
 
 from ppgraph import Graph
-from . import graph_templates
+
+GRAPHS = []
 
 
 class Cascade:
-    def graph(product, args):
-        return getattr(graph_templates, product)(args)
+    def graph(product, *args, **kwargs):
+        if product not in GRAPHS:
+            raise Exception(f"No graph for '{product}' registered")
+        return getattr(Cascade, product)(*args, **kwargs)
 
     def schedule(
-        taskgraph: Graph, contextgraph: ContextGraph, determine_resources: bool = True
+        taskgraph: Graph,
+        contextgraph: ContextGraph,
+        determine_resources: bool = True,
     ) -> Schedule:
         if not isinstance(taskgraph, TaskGraph):
             taskgraph = to_task_graph(taskgraph)
@@ -35,3 +40,9 @@ class Cascade:
         schedule: Schedule, with_communication: bool = True
     ) -> ExecutionReport:
         return BasicExecutor(schedule, with_communication).simulate()
+
+
+def register_graph(name: str, func):
+    assert name not in GRAPHS
+    GRAPHS.append(name)
+    setattr(Cascade, name, func)

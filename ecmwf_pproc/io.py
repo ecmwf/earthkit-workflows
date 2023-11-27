@@ -1,11 +1,12 @@
-import xarray as xr
 from io import BytesIO
 import numpy as np
 import os
 import importlib
 from os.path import join as pjoin
 import shutil
+import sys
 
+import mir
 from pproc.common.io import (
     target_from_location,
     write_grib,
@@ -16,14 +17,11 @@ from pproc.common import ResourceMeter
 from pproc.clustereps.__main__ import write_cluster_attr_grib
 from pproc.clustereps.cluster import get_output_keys
 from pproc.common.io import split_location
-
-import mir
 from earthkit.data import FieldList
 from earthkit.data.sources.stream import StreamSource
 from earthkit.data.sources.file import FileSource
 from earthkit.data.sources import Source, from_source
 from earthkit.data.sources.numpy_list import NumpyFieldList
-from earthkit.data.sources import register
 
 from .grib import basic_headers
 from .wrappers.metadata import GribBufferMetaData
@@ -140,7 +138,7 @@ def retrieve_single_source(request: dict, **kwargs) -> NumpyFieldList:
 
     req = request.copy()
     source = req.pop("source")
-    with ResourceMeter(f"retrieve: source {source}, request {request}"):
+    with ResourceMeter(f"RETRIEVE source {source}, request {request}"):
         if source == "fdb":
             ret_sources = fdb_retrieve(req, **kwargs)
         elif source == "mars":
@@ -177,7 +175,9 @@ def write(loc: str, data: NumpyFieldList, grib_sets: dict):
 
     for missing_key in set_missing:
         template._handle.set_missing(missing_key)
-    with ResourceMeter(f"write: target {loc}"):
+    with ResourceMeter(
+        f"WRITE target {loc}, size {sys.getsizeof(data[0].values)} bytes"
+    ):
         write_grib(target, template._handle, data[0].values)
 
 

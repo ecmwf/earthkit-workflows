@@ -2,16 +2,13 @@ import numpy as np
 import xarray as xr
 
 from ppgraph import Graph, deduplicate_nodes
-from earthkit.data import FieldList
+from cascade.fluent import Node, Payload
+from cascade.fluent import custom_hash
 
-from .fluent import Action, Node, Payload
-from .fluent import SingleAction as BaseSingleAction
-from .fluent import MultiAction as BaseMultiAction
-from .fluent import custom_hash
-from .io import retrieve, cluster_write
+from .actions import SingleAction, MultiAction
+from .io import retrieve
 from .graph_config import (
     Config,
-    Window,
     ParamConfig,
     WindConfig,
     ExtremeConfig,
@@ -19,209 +16,9 @@ from .graph_config import (
     Request,
     MultiSourceRequest,
 )
-from . import functions
 
 
-class SingleAction(BaseSingleAction):
-    def to_multi(self, nodes: xr.DataArray):
-        return MultiAction(self, nodes)
-
-    def extreme(
-        self,
-        climatology: Action,
-        eps: float,
-        num_steps: int,
-        target_efi: str = "null:",
-        grib_sets: dict = {},
-    ):
-        # Join with climatology and compute efi control
-        payload = Payload(
-            functions.efi,
-            ("input1", "input0", eps, num_steps),
-            {"control": True},
-        )
-        ret = self.join(climatology, "datatype").reduce(payload)
-        return ret.write(target_efi, grib_sets)
-
-    def cluster(self, config, ncomp_file, indexes, deterministic):
-        return self.then(
-            Payload(
-                functions.cluster,
-                (config, "input0", ncomp_file, indexes, deterministic),
-            )
-        )
-
-
-class MultiAction(BaseMultiAction):
-    def to_single(self, payload: Payload, node: Node = None):
-        return SingleAction(payload, self, node)
-
-    def extreme(
-        self,
-        climatology: Action,
-        sot: list,
-        eps: float,
-        num_steps: int,
-        target_efi: str = "null:",
-        target_sot: str = "null:",
-        grib_sets: dict = {},
-    ):
-        # First concatenate across ensemble, and then join
-        # with climatology and reduce efi/sot
-        def _extreme(action, number):
-            if number == 0:
-                payload = Payload(functions.efi, ("input1", "input0", eps, num_steps))
-                target = target_efi
-            else:
-                payload = Payload(
-                    functions.sot, ("input1", "input0", number, eps, num_steps)
-                )
-                target = target_sot
-            new_extreme = action.reduce(payload)
-            new_extreme._add_dimension("number", number)
-            return new_extreme.write(target, grib_sets)
-
-        return (
-            self.concatenate("number")
-            .join(climatology, "datatype")
-            .transform(_extreme, [0] + sot, "number")
-        )
-
-    def ensms(
-        self, target_mean: str = "null:", target_std: str = "null:", grib_sets={}
-    ):
-        mean = self.mean("number")
-        mean._add_dimension("marsType", "em")
-        mean.write(target_mean, grib_sets)
-        std = self.std("number")
-        std._add_dimension("marsType", "es")
-        std.write(target_std, grib_sets)
-        res = mean.join(std, "marsType")
-        return res
-
-    def threshold_prob(
-        self, thresholds: list, target: str = "null:", grib_sets: dict = {}
-    ):
-        def _threshold_prob(action, threshold):
-            payload = Payload(
-                functions.threshold,
-                (threshold, "input0", grib_sets.get("edition", 1)),
-            )
-            new_threshold_action = (
-                action.foreach(payload)
-                .foreach(
-                    Payload(
-                        lambda x: FieldList.from_numpy(x.values * 100, x.metadata())
-                    )
-                )
-                .mean("number")
-            )
-            new_threshold_action._add_dimension("paramId", threshold["out_paramid"])
-            return new_threshold_action
-
-        return self.transform(_threshold_prob, thresholds, "paramId").write(
-            target, grib_sets
-        )
-
-    def anomaly(self, climatology: Action, window: Window):
-        extract = (
-            ("climateDateFrom", "climateDateTo", "referenceDate")
-            if window.grib_set.get("edition", 1) == 2
-            else ()
-        )
-
-        anom = self.join(
-            climatology.select({"type": "em"}), "datatype", match_coord_values=True
-        ).subtract(extract_keys=extract)
-
-        if window.options.get("std_anomaly", False):
-            anom = anom.join(
-                climatology.select({"type": "es"}), "datatype", match_coord_values=True
-            ).divide()
-        return anom
-
-    def quantiles(self, n: int = 100, target: str = "null:", grib_sets: dict = {}):
-        def _quantiles(action, quantile):
-            payload = Payload(functions.quantiles, ("input0", quantile))
-            if isinstance(action, BaseSingleAction):
-                new_quantile = action.then(payload)
-            else:
-                new_quantile = action.foreach(payload)
-            new_quantile._add_dimension("perturbationNumber", quantile)
-            return new_quantile
-
-        return (
-            self.concatenate("number")
-            .transform(_quantiles, np.linspace(0.0, 1.0, n + 1), "perturbationNumber")
-            .write(target, grib_sets)
-        )
-
-    def wind_speed(self, vod2uv: bool, target: str = "null:", grib_sets={}):
-        if vod2uv:
-            ret = self.foreach(Payload(functions.norm, ("input0",)))
-        else:
-            ret = self.param_operation("norm")
-        return ret.write(target, grib_sets)
-
-    def param_operation(self, operation: str):
-        if operation is None:
-            return self
-        if isinstance(operation, str):
-            return getattr(self, operation)("param")
-        return self.reduce(Payload(operation), "param")
-
-    def window_operation(self, window, target: str = "null:", grib_sets: dict = {}):
-        if window.operation is None:
-            self._squeeze_dimension("step")
-            ret = self
-        else:
-            ret = getattr(self, window.operation)("step")
-        if window.end - window.start == 0:
-            ret.add_attributes({"step": window.name})
-        else:
-            ret.add_attributes({"stepRange": window.name})
-        return ret.write(target, grib_sets)
-
-    def pca(self, config, mask, target: str = None):
-        if mask is not None:
-            raise NotImplementedError()
-        return self.reduce(
-            Payload(functions.pca, (config, "input0", "input1", mask, target))
-        )
-
-    def attribution(self, config, targets):
-        def _attribution(action, scenario):
-            payload = Payload(
-                functions.attribution, (config, scenario, "input0", "input1")
-            )
-            attr = action.reduce(payload)
-            attr._add_dimension("scenario", scenario)
-            return attr
-
-        return self.transform(
-            _attribution, ["centroids", "representatives"], "scenario"
-        ).foreach(
-            np.asarray(
-                [
-                    Payload(
-                        cluster_write,
-                        (config, "centroids", "input0", targets["centroids"]),
-                    ),
-                    Payload(
-                        cluster_write,
-                        (
-                            config,
-                            "representatives",
-                            "input0",
-                            targets["representatives"],
-                        ),
-                    ),
-                ]
-            )
-        )
-
-
-def read(
+def _read(
     requests: list[Request | MultiSourceRequest], join_key: str = "number", **kwargs
 ):
     all_actions = None
@@ -265,12 +62,12 @@ def anomaly_prob(args):
     for _, cfg in config.options["parameters"].items():
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
-            climatology = read(
+            climatology = _read(
                 param_config.clim_request(window, args.climatology)
             )  # Will contain type em and es
 
             total_graph += (
-                read(param_config.forecast_request(window, args.ensemble))
+                _read(param_config.forecast_request(window, args.ensemble))
                 .anomaly(climatology, window)
                 .window_operation(
                     window,
@@ -295,7 +92,7 @@ def prob(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             total_graph += (
-                read(param_config.forecast_request(window, args.ensemble))
+                _read(param_config.forecast_request(window, args.ensemble))
                 .param_operation(param_config.param_operation)
                 .window_operation(
                     window,
@@ -326,7 +123,7 @@ def wind(args):
                 if loc is None:
                     continue
                 vod2uv, requests = param_config.forecast_request(window, loc)
-                ws = read(
+                ws = _read(
                     requests,
                     stream=(not vod2uv),
                 ).wind_speed(
@@ -352,7 +149,7 @@ def ensms(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             total_graph += (
-                read(param_config.forecast_request(window, args.ensemble))
+                _read(param_config.forecast_request(window, args.ensemble))
                 .window_operation(window)
                 .ensms(
                     param_config.get_target("out_mean"),
@@ -372,12 +169,12 @@ def extreme(args):
             config.members, cfg, config.in_keys, config.out_keys
         )
         for window in param_config.windows:
-            climatology = read(
+            climatology = _read(
                 param_config.clim_request(
                     window, args.climatology, True, no_expand=("quantile")
                 )
             )
-            parameter = read(
+            parameter = _read(
                 param_config.forecast_request(window, args.ensemble)
             ).param_operation(param_config.param_operation)
             eps = float(param_config.options["eps"])
@@ -422,7 +219,7 @@ def quantiles(args):
         param_config = ParamConfig(config.members, cfg, config.in_keys, config.out_keys)
         for window in param_config.windows:
             total_graph += (
-                read(param_config.forecast_request(window, args.ensemble), "number")
+                _read(param_config.forecast_request(window, args.ensemble), "number")
                 .param_operation(param_config.param_operation)
                 .window_operation(window)
                 .quantiles(
@@ -438,15 +235,15 @@ def quantiles(args):
 def clustereps(args):
     config = ClusterConfig(args)
     if args.spread is not None:
-        spread = read(config.spread_request(args.spread, no_expand=("step",)))
+        spread = _read(config.spread_request(args.spread, no_expand=("step",)))
     else:
-        spread = read(
+        spread = _read(
             config.spread_compute_request(args.spread_compute, no_expand=("step",)),
             join_key="date",
         ).mean(key="date")
 
     pca = (
-        read(config.forecast_request(args.ensemble, no_expand="step"))
+        _read(config.forecast_request(args.ensemble, no_expand="step"))
         .concatenate(key="number")
         .join(spread, dim_name="data_type")
         .pca(config, args.mask, args.pca)
@@ -464,3 +261,6 @@ def clustereps(args):
         .graph()
     )
     return deduplicate_nodes(total_graph)
+
+
+GRAPHS = [anomaly_prob, prob, ensms, wind, extreme, clustereps, quantiles]

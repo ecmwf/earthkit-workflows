@@ -97,7 +97,6 @@ def test_single_action_from_node(previous, nodes):
         ],
         [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0, 0],
         [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0, 0],
-        [(3, 4), "write", ["target", {}], MultiAction, (3, 4), 0, 12],
     ],
 )
 def test_multi_action(

@@ -1,10 +1,10 @@
 import os
 import pytest
 
-from cascade.cascade import Cascade
 from cascade.transformers import to_dask_graph
 
-from helpers.mock import MockArgs
+from cascade.cascade import Cascade
+from helpers.mock import mock_args
 
 ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
 
@@ -20,7 +20,7 @@ ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
     ],
 )
 def test_dask_transform(product, config):
-    graph = Cascade.graph(product, MockArgs(config))
+    graph = Cascade.graph(product, mock_args(config))
 
     dask_graph = to_dask_graph(graph)
     assert all([isinstance(x, tuple) for x in dask_graph.items()])

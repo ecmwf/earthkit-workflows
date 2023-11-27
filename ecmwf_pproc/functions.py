@@ -10,9 +10,9 @@ from pproc.common.resources import ResourceMeter
 from pproc import clustereps
 from pproc.clustereps.utils import normalise_angles
 from pproc.clustereps.io import read_steps_grib
+from cascade.patch import PatchModule
 
 from .grib import extreme_grib_headers, threshold_grib_headers
-from .patch import PatchModule
 from .wrappers.metadata import GribBufferMetaData
 
 
@@ -198,9 +198,7 @@ def pca(
         ens.to_numpy(flatten=True),
         (config.num_members, len(config.steps), len(lat_lon["lat"])),
     )
-    with ResourceMeter(
-        f"PCA: lat {lat_lon['lat'].shape} lon {lat_lon['lon'].shape}"
-    ):
+    with ResourceMeter(f"PCA: lat {lat_lon['lat'].shape} lon {lat_lon['lon'].shape}"):
         pca_data = clustereps.pca.do_pca(
             config,
             lat_lon["lat"],

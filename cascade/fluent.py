@@ -1,14 +1,11 @@
 import numpy as np
 import xarray as xr
-import itertools
+
 import functools
 import hashlib
 
 from ppgraph import Graph
 from ppgraph import Node as PPNode
-
-from .io import write as write_grib
-from . import functions
 
 
 class Payload:
@@ -166,20 +163,6 @@ class SingleAction(Action):
     def then(self, payload: Payload):
         return type(self)(payload, self)
 
-    def write(self, target, config_grib_sets: dict):
-        if target != "null:":
-            grib_sets = config_grib_sets.copy()
-            grib_sets.update(self.nodes.attrs)
-            for name, values in self.nodes.coords.items():
-                if values.data.ndim == 0:
-                    grib_sets[name] = values.data
-                else:
-                    assert values.data.ndim == 1
-                    grib_sets[name] = values.data[0]
-            payload = Payload(write_grib, (target, "input0", grib_sets))
-            self.sinks.append(Node(payload, self.node()))
-        return self
-
     def node(self):
         return self.nodes.data[()]
 
@@ -261,67 +244,5 @@ class MultiAction(Action):
             return self.to_single(None, selected_nodes)
         return type(self)(self, selected_nodes)
 
-    def write(self, target, config_grib_sets: dict):
-        if target != "null:":
-            coords = list(self.nodes.coords.keys())
-            for node_attrs in itertools.product(
-                *[self.nodes.coords[key].data for key in coords]
-            ):
-                node_coords = {
-                    key: node_attrs[index] for index, key in enumerate(coords)
-                }
-                node = self.node(node_coords)
-
-                grib_sets = config_grib_sets.copy()
-                grib_sets.update(self.nodes.attrs)
-                grib_sets.update(node_coords)
-                self.sinks.append(
-                    Node(Payload(write_grib, (target, "input0", grib_sets)), [node])
-                )
-        return self
-
     def node(self, criteria: dict):
         return self.nodes.sel(**criteria, drop=True).data[()]
-
-    def concatenate(self, key: str):
-        return self.reduce(Payload(functions.concatenate), key)
-
-    def mean(self, key: str = ""):
-        return self.reduce(Payload(functions.mean), key)
-
-    def std(self, key: str = ""):
-        return self.reduce(Payload(functions.std), key)
-
-    def maximum(self, key: str = ""):
-        return self.reduce(Payload(functions.maximum), key)
-
-    def minimum(self, key: str = ""):
-        return self.reduce(Payload(functions.minimum), key)
-
-    def norm(self, key: str = ""):
-        return self.reduce(Payload(functions.norm), key)
-
-    def diff(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce(
-            Payload(functions.subtract, ("input1", "input0", extract_keys)), key
-        )
-
-    def subtract(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce(
-            Payload(functions.subtract, ("input0", "input1", extract_keys)), key
-        )
-
-    def add(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce(
-            Payload(functions.add, ("input0", "input1", extract_keys)), key
-        )
-
-    def divide(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce(
-            Payload(functions.divide, ("input0", "input1", extract_keys)), key
-        )
-
-    def multiply(self, key: str = "", extract_keys: tuple = ()):
-        return self.reduce(
-            Payload(functions.multiply, ("input0", "input1", extract_keys)), key
-        )

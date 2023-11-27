@@ -5,7 +5,7 @@ import numpy as np
 from earthkit.data import FieldList
 from earthkit.data.core.metadata import RawMetadata
 
-from cascade import functions
+from ecmwf_pproc import functions
 
 
 class MockMetaData(RawMetadata):

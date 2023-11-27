@@ -1,43 +1,36 @@
-from datetime import datetime
-
 from cascade.fluent import Payload, Node
+from ecmwf_pproc import parsers
 
 
-class MockArgs:
-    def __init__(self, config_path: str):
-        self.config = config_path
-        self.set = None
-        self.recover = False
-        self.override_input = []
-        self.override_output = []
-        self.ensemble = "fdb:ens"
-        self.climatology = "fdb:clim"
-        self.deterministic = None
+def mock_args(config_path: str):
+    parser = parsers.basic_parser("Test", True, True)
+    return parser.parse_args(
+        ["--config", config_path, "--ensemble", "fdb:ens", "--climatology", "fdb:clim"]
+    )
 
 
-class MockClusterArgs(MockArgs):
-    def __init__(self, config_path: str):
-        super().__init__(config_path)
-        self.date = datetime.fromisoformat("2023-11-01")
-        self.spread = None
-        self.pca = None
-        self.spread_compute = [
+def mock_cluster_args(config_path: str):
+    parser = parsers.cluster_parser()
+    return parser.parse_args(
+        [
+            "--config",
+            config_path,
+            "--ensemble",
+            "fdb:ens_z500",
+            "--deterministic",
+            "fdb:determ_z500",
+            "--date",
+            "20231101",
+            "--spread-compute",
             "fdb:spread_z500",
+            "--spread-compute",
             "fileset:spread_z500",
+            "--spread-compute",
             "mars:spread_z500",
-            "fdb:spread_z500_0001",
+            "--clim-dir",
+            "",
         ]
-        self.ensemble = "fdb:ens_z500"
-        self.deterministic = "fdb:determ_z500"
-        self.clim_dir = ""
-        self.ncomp_file = ""
-        self.centroids = ""
-        self.representative = ""
-        self.output_root = ""
-        self.cen_anomalies = ""
-        self.rep_anomalies = ""
-        self.mask = None
-        self.indexes = None
+    )
 
 
 class MockPayload(Payload):

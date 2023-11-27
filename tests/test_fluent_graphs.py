@@ -1,12 +1,10 @@
 import pytest
 import os
-import functools
 
 from ppgraph import pyvis
-
 from cascade.cascade import Cascade
 
-from helpers.mock import MockArgs, MockClusterArgs
+from helpers.mock import mock_args, mock_cluster_args
 
 ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)))
 
@@ -45,13 +43,13 @@ def node_info_ext(sinks, node):
     ],
 )
 def test_graph_construction(product, config, expected_num_nodes):
-    graph = Cascade.graph(product, MockArgs(config))
+    graph = Cascade.graph(product, mock_args(config))
     assert len([x for x in graph.nodes()]) == expected_num_nodes
 
 
 def test_cluster_graph():
     # With spread compute
-    mock_args = MockClusterArgs(f"{ROOT_DIR}/templates/clustereps.yaml")
+    mock_args = mock_cluster_args(f"{ROOT_DIR}/templates/clustereps.yaml")
     graph = Cascade.graph("clustereps", mock_args)
     assert len([x for x in graph.nodes()]) == 64
 
@@ -59,3 +57,8 @@ def test_cluster_graph():
     mock_args.spread = "fileset:spread_z500"
     graph = Cascade.graph("clustereps", mock_args)
     assert len([x for x in graph.nodes()]) == 33
+
+
+def test_unregistered():
+    with pytest.raises(Exception):
+        Cascade.graph("test")

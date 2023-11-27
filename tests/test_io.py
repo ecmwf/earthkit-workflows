@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pytest
 
-from cascade.io import retrieve, write
+from ecmwf_pproc.io import retrieve, write
 
 request = {
     "class": "od",
