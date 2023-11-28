@@ -5,9 +5,10 @@ import random
 import numpy as np
 
 from .utility import EventLoop
+from .contextgraph import ContextGraph
 from .executor import BasicExecutor
 from .graph.copy import copy_graph
-from .graphs import Task, ContextGraph, TaskGraph
+from .taskgraph import Task, TaskGraph
 
 
 class Schedule:
