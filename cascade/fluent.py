@@ -4,8 +4,8 @@ import xarray as xr
 import functools
 import hashlib
 
-from ppgraph import Graph
-from ppgraph import Node as PPNode
+from .graph import Graph
+from .graph import Node as BaseNode
 
 
 class Payload:
@@ -42,11 +42,11 @@ def custom_hash(string: str) -> str:
     return ret.hexdigest()
 
 
-class Node(PPNode):
+class Node(BaseNode):
     def __init__(
-        self, payload: Payload, inputs: PPNode | tuple[PPNode] = (), name=None
+        self, payload: Payload, inputs: BaseNode | tuple[BaseNode] = (), name=None
     ):
-        if isinstance(inputs, PPNode):
+        if isinstance(inputs, BaseNode):
             inputs = [inputs]
         # If payload doesn't have inputs, assume inputs to the function are the inputs
         # to the node, in the order provided

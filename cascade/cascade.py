@@ -1,9 +1,8 @@
 from .scheduler import Schedule, DepthFirstScheduler
+from .graph import Graph
 from .graphs import ContextGraph, TaskGraph
 from .executor import ExecutionReport, BasicExecutor
 from .transformers import to_task_graph
-
-from ppgraph import Graph
 
 GRAPHS = []
 

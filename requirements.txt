@@ -8,7 +8,6 @@ cython
 earthkit-data
 dask 
 dill
-git+ssh://git@github.com/ecmwf/pproc-graph.git
 git+ssh://git@git.ecmwf.int/eccodes/eccodes-python.git@develop
 git+ssh://git@git.ecmwf.int/ecsdk/meteokit.git
 git+ssh://git@git.ecmwf.int/mir/mir-python.git

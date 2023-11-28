@@ -4,10 +4,9 @@ import datetime
 import random
 import numpy as np
 
-from ppgraph.copy import copy_graph
-
 from .utility import EventLoop
 from .executor import BasicExecutor
+from .graph.copy import copy_graph
 from .graphs import Task, ContextGraph, TaskGraph
 
 
