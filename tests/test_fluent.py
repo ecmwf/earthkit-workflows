@@ -2,17 +2,20 @@ import pytest
 import xarray as xr
 import numpy as np
 
-from cascade.fluent import SingleAction, MultiAction
+from cascade.fluent import Payload, Node, SingleAction, MultiAction
 
-from helpers.mock import MockNode, MockPayload
+
+class MockNode(Node):
+    def __init__(self, name: str):
+        super().__init__(Payload(name))
 
 
 @pytest.mark.parametrize(
     "payload, previous",
     [
-        [MockPayload("test"), SingleAction(MockPayload("test"), None)],
+        [Payload("test"), SingleAction(Payload("test"), None)],
         [
-            MockPayload("test"),
+            Payload("test"),
             MultiAction(
                 None,
                 xr.DataArray(
@@ -32,40 +35,40 @@ def test_single_action(payload, previous):
 @pytest.mark.parametrize(
     "previous, nodes",
     [
-        [SingleAction(MockPayload("test"), None), xr.DataArray([MockNode("1")])],
+        [SingleAction(Payload("test"), None), xr.DataArray([MockNode("1")])],
         [None, xr.DataArray([MockNode("1"), MockNode("2")])],
     ],
 )
 def test_single_action_from_node(previous, nodes):
     if nodes.size > 1:
         with pytest.raises(Exception):
-            SingleAction(MockPayload("test"), previous, nodes)
+            SingleAction(Payload("test"), previous, nodes)
     else:
-        SingleAction(MockPayload("test"), previous, nodes)
+        SingleAction(Payload("test"), previous, nodes)
 
 
 @pytest.mark.parametrize(
     "input_nodes_shape, func, inputs, output_type, output_nodes_shape, node_inputs, num_sinks",
     [
-        [(3, 4), "foreach", [MockPayload("test")], MultiAction, (3, 4), 1, 0],
-        [(3, 4, 5), "reduce", [MockPayload("func")], MultiAction, (4, 5), 3, 0],
+        [(3, 4), "foreach", [Payload("test")], MultiAction, (3, 4), 1, 0],
+        [(3, 4, 5), "reduce", [Payload("func")], MultiAction, (4, 5), 3, 0],
         [
             (3, 4, 5),
             "reduce",
-            [MockPayload("func"), "dim_1"],
+            [Payload("func"), "dim_1"],
             MultiAction,
             (3, 5),
             4,
             0,
         ],
-        [(1,), "reduce", [MockPayload("func")], SingleAction, (), 1, 0],
-        [(3,), "reduce", [MockPayload("func")], SingleAction, (), 3, 0],
+        [(1,), "reduce", [Payload("func")], SingleAction, (), 1, 0],
+        [(3,), "reduce", [Payload("func")], SingleAction, (), 3, 0],
         [
             (3,),
             "join",
             [
                 SingleAction(
-                    MockPayload("test"),
+                    Payload("test"),
                     None,
                     xr.DataArray(MockNode("1"), coords={"dim_0": [0]}, dims=["dim_0"]),
                 ),
