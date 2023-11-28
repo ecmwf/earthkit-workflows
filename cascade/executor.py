@@ -5,8 +5,6 @@ import datetime
 import dask
 from dask.delayed import Delayed
 
-from pproc.common.resources import ResourceMeter
-
 from .graphs import Task, Communication, Communicator
 from .utility import EventLoop
 from .transformers import to_execution_graph, to_dask_graph
@@ -203,50 +201,6 @@ class BasicExecutor(Executor):
         assert self.ntasks_complete == self.total_tasks
 
         return ExecutionReport(self.schedule, self.task_graph, self.context_graph)
-
-    def determine_resources(self) -> ExecutionReport:
-        assert len(self.schedule.task_allocation) == 1
-
-        for task_name in sum(self.schedule.task_allocation.values(), []):
-            task = self.task_graph.get_node(task_name)
-            schedule_task = self.schedule.task_graph.get_node(task.name)
-            payload = task.payload
-            assert len(payload) == 3
-            with ResourceMeter() as rm:
-                args = payload[1]
-                kwargs = payload[2]
-
-            print("NODE", task_name, "PAYLOAD", payload, "ARGS", args, "KWARGS", kwargs)
-            schedule_task.in_memory = rm.mem
-            with ResourceMeter() as rm:
-                output = payload[0](*args, **kwargs)
-
-            print("OUTPUT", output)
-            schedule_task.cost = rm.elapsed_cpu
-            schedule_task.out_memory = rm.mem
-
-            # Pass output to arguments in payloads requiring it
-            successors = self.task_graph.successors(task)
-            for successor in successors:
-                assert not isinstance(
-                    successor.payload, str
-                ), f"Payload can not be str. Got {successor.payload}"
-                assert (
-                    len(successor.payload) == 3
-                ), f"Payload should contain 3 elements. Got {successor.payload} length {len(successor.payload)}"
-
-                for iname, input in successor.inputs.items():
-                    if input.parent == task:
-                        successor.payload = (
-                            successor.payload[0],
-                            [
-                                output if (isinstance(x, str) and x == iname) else x
-                                for x in successor.payload[1]
-                            ],
-                            successor.payload[2],
-                        )
-                        break
-            task.payload = None
 
 
 class DaskExecutor(Executor):

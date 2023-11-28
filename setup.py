@@ -23,19 +23,8 @@ setup(
     install_requires=[
         "randomname",
         "numpy",
-        "eccodes",
-        "earthkit-data",
-        "filelock>=3.12.0",
         "xarray",
-        "numexpr",
         "networkx",
         "dask",
-        "dill",
-        "scikit-learn",
-        "array_api_compat",
-        "pproc-graph @ git+ssh://git@github.com/ecmwf/pproc-graph.git",
-        "meteokit @ git+ssh://git@git.ecmwf.int/ecsdk/meteokit.git",
-        "pyfdb @ git+https://github.com/ecmwf/pyfdb.git@master",
-        "pproc @ git+ssh://git@git.ecmwf.int/ecsdk/pproc.git",
     ]
 )

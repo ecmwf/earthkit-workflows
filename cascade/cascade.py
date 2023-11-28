@@ -16,20 +16,10 @@ class Cascade:
 
     def schedule(
         taskgraph: Graph,
-        contextgraph: ContextGraph,
-        determine_resources: bool = True,
+        contextgraph: ContextGraph
     ) -> Schedule:
         if not isinstance(taskgraph, TaskGraph):
             taskgraph = to_task_graph(taskgraph)
-            if determine_resources:
-                # Need to execute and assign resources
-                test_context = ContextGraph()
-                test_context.add_node("cpu1", "cpu", 100, 100)
-                test_schedule = DepthFirstScheduler(
-                    taskgraph, test_context
-                ).create_schedule()
-                BasicExecutor(test_schedule).determine_resources()
-                taskgraph = test_schedule.task_graph
 
         return DepthFirstScheduler(taskgraph, contextgraph).create_schedule()
 
