@@ -1,9 +1,8 @@
 import pytest
 import networkx as nx
 
-from ppgraph import Graph
-
 from cascade.scheduler import Schedule
+from cascade.graph import Graph
 from cascade.graphs import Task
 
 

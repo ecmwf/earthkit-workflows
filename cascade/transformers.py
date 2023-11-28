@@ -1,7 +1,6 @@
 from dask.utils import apply
 
-from ppgraph import Sink, Node, Graph, Transformer
-
+from .graph import Sink, Node, Graph, Transformer
 from .graphs import Task, TaskGraph, ExecutionGraph
 
 
