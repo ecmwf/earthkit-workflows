@@ -119,30 +119,32 @@ class Action:
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
-    def transform(self, func, params: list, key: str):
+    def transform(self, func, params: list, dim: str):
         res = None
         for param in params:
             new_res = func(self, param)
             if res is None:
                 res = new_res
             else:
-                res = res.join(new_res, key)
+                res = res.join(new_res, dim)
         # Remove expanded dimension if only a single element in param list
-        res._squeeze_dimension(key)
+        res._squeeze_dimension(dim)
         return res
 
-    def broadcast(self, other_action: "Action", exclude: list[str] = None) -> "Action":
+    def broadcast(
+        self, other_action: "Action", exclude: list[str] = None
+    ) -> "MultiAction":
         """
-        Broadcast the nodes against nodes in other_action
+        Broadcast nodes against nodes in other_action
 
         Parameters
         ----------
-        other_action: Action containings nodes to broadcast against
-        exclude: List of dimension names to exclude from broadcasting
+        other_action: Action containing nodes to broadcast against
+        exclude: List of str, dimension names to exclude from broadcasting
 
         Return
         ------
-        Action with broadcasted set of nodes
+        MultiAction
         """
         # Ensure coordinates in existing dimensions match, otherwise obtain NaNs
         for key, values in other_action.nodes.coords.items():
@@ -159,15 +161,51 @@ class Action:
         )
         for node in it:
             new_nodes[it.multi_index] = Node(Payload(functions.trivial), node[()])
-        return MultiAction(
-            self,
-            xr.DataArray(
-                new_nodes,
-                coords=broadcasted_nodes.coords,
-                dims=broadcasted_nodes.dims,
-                attrs=self.nodes.attrs,
-            ),
+
+        new_nodes = xr.DataArray(
+            new_nodes,
+            coords=broadcasted_nodes.coords,
+            dims=broadcasted_nodes.dims,
+            attrs=self.nodes.attrs,
         )
+        if hasattr(self, "to_multi"):
+            return self.to_multi(new_nodes)
+        return type(self)(self, new_nodes)
+
+    def expand(self, dim: str, dim_size: int, axis: int = 0) -> "MultiAction":
+        """
+        Create new dimension in array of nodes of specified size by
+        selecting elements of internal data in each node. Indexing is taken along first
+        dimension of internal data and graph execution will fail if
+        dim_size exceeds first dimension size of internal data.
+
+        Parameters
+        ----------
+        dim: str, name of new dimension
+        dim_size: int, size of new dimension
+        axis: int, position to insert new dimension
+
+        Returns
+        -------
+        MultiAction
+        """
+        expanded = self.nodes.expand_dims(dim={dim: np.arange(dim_size)}, axis=axis)
+        new_nodes = np.empty(expanded.shape, dtype=object)
+        it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
+        for _ in it:
+            new_nodes[it.multi_index] = Node(
+                Payload(functions.get_item, ["input0", it.multi_index[axis]]),
+                self.nodes[it.multi_index[:-1]].data[()],
+            )
+        new_nodes = xr.DataArray(
+            new_nodes,
+            coords=expanded.coords,
+            dims=expanded.dims,
+            attrs=self.nodes.attrs,
+        )
+        if hasattr(self, "to_multi"):
+            return self.to_multi(new_nodes)
+        return type(self)(self, new_nodes)
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
@@ -194,7 +232,8 @@ class SingleAction(Action):
     def node(self):
         return self.nodes.data[()]
 
-    def from_payload(previous: Action, payload: Payload) -> "SingleAction":
+    @classmethod
+    def from_payload(cls, previous: Action, payload: Payload) -> "SingleAction":
         """
         Factory for SingleAction from previous action and payload
 
@@ -217,14 +256,14 @@ class SingleAction(Action):
                 ),
                 attrs=previous.nodes.attrs,
             )
-        return SingleAction(previous, node)
+        return cls(previous, node)
 
 
 class MultiAction(Action):
     def __init__(self, previous, nodes):
         super().__init__(previous, nodes)
 
-    def to_single(self, payload_or_node: Payload | xr.DataArray):
+    def to_single(self, payload_or_node: Payload | xr.DataArray) -> SingleAction:
         """
         Conversion from MultiAction to SingleAction
 
@@ -241,7 +280,7 @@ class MultiAction(Action):
             return SingleAction.from_payload(self, payload_or_node)
         return SingleAction(self, payload_or_node)
 
-    def map(self, payload: Payload | np.ndarray[Payload]):
+    def map(self, payload: Payload | np.ndarray[Payload]) -> Action:
         """
         Parameters
         ----------
@@ -276,15 +315,15 @@ class MultiAction(Action):
             ),
         )
 
-    def reduce(self, payload: Payload, key: str = ""):
+    def reduce(self, payload: Payload, dim: str = "") -> Action:
         if self.nodes.ndim == 1:
             return self.to_single(payload)
 
-        if len(key) == 0:
-            key = self.nodes.dims[0]
+        if len(dim) == 0:
+            dim = self.nodes.dims[0]
 
-        new_dims = [x for x in self.nodes.dims if x != key]
-        transposed_nodes = self.nodes.transpose(key, *new_dims)
+        new_dims = [x for x in self.nodes.dims if x != dim]
+        transposed_nodes = self.nodes.transpose(dim, *new_dims)
         new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
         it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
         for _ in it:
@@ -299,6 +338,22 @@ class MultiAction(Action):
                 attrs=self.nodes.attrs,
             ),
         )
+
+    def flatten(self, dim: str = "", axis: int = 0) -> Action:
+        """
+        Flattens the array of nodes along specified dimension by creating new
+        nodes from stacking internal data of nodes along that dimension.
+
+        Parameters
+        ----------
+        dim: str, name of dimension to flatten along
+        axis: int, axis of new dimension in internal data
+
+        Returns
+        -------
+        SingleAction or MultiAction
+        """
+        return self.reduce(Payload(functions.stack, kwargs={"axis": axis}), dim)
 
     def select(self, criteria: dict):
         if any([key not in self.nodes.dims for key in criteria.keys()]):

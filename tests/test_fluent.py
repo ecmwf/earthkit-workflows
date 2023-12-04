@@ -26,6 +26,41 @@ def mock_action(shape: tuple) -> MultiAction:
     )
 
 
+@pytest.mark.parametrize(
+    "previous, nodes",
+    [
+        [
+            SingleAction.from_payload(None, Payload("test")),
+            xr.DataArray([MockNode("1")]),
+        ],
+        [None, xr.DataArray([MockNode("1"), MockNode("2")])],
+    ],
+)
+def test_single_action(previous, nodes):
+    if nodes.size > 1:
+        with pytest.raises(Exception):
+            SingleAction(previous, nodes)
+    else:
+        SingleAction(previous, nodes)
+
+
+@pytest.mark.parametrize(
+    "payload, previous",
+    [
+        [Payload("test"), SingleAction.from_payload(None, Payload("test"))],
+        [
+            Payload("test"),
+            mock_action((2, 2)),
+        ],
+    ],
+)
+def test_single_action_from_payload(payload, previous):
+    single_action = SingleAction.from_payload(previous, payload)
+    assert single_action.nodes.size == 1
+    assert single_action.nodes.shape == ()
+    assert len(single_action.nodes.data[()].inputs) == previous.nodes.size
+
+
 def test_broadcast():
     input_action = mock_action((2, 3))
 
@@ -44,39 +79,30 @@ def test_broadcast():
         ].parent == input_action.nodes[it.multi_index[:2]].item(0)
 
 
-@pytest.mark.parametrize(
-    "payload, previous",
-    [
-        [Payload("test"), SingleAction.from_payload(None, Payload("test"))],
-        [
-            Payload("test"),
-            mock_action((2, 2)),
-        ],
-    ],
-)
-def test_single_action(payload, previous):
-    single_action = SingleAction.from_payload(previous, payload)
-    assert single_action.nodes.size == 1
-    assert single_action.nodes.shape == ()
-    assert len(single_action.nodes.data[()].inputs) == previous.nodes.size
+def test_flatten_expand():
+    input_action = mock_action((2, 3))
 
+    with pytest.raises(Exception):
+        input_action.flatten(dim="dim_2")
 
-@pytest.mark.parametrize(
-    "previous, nodes",
-    [
-        [
-            SingleAction.from_payload(None, Payload("test")),
-            xr.DataArray([MockNode("1")]),
-        ],
-        [None, xr.DataArray([MockNode("1"), MockNode("2")])],
-    ],
-)
-def test_single_action_from_node(previous, nodes):
-    if nodes.size > 1:
-        with pytest.raises(Exception):
-            SingleAction(previous, nodes)
-    else:
-        SingleAction(previous, nodes)
+    action1 = input_action.flatten(dim="dim_1")
+    assert action1.nodes.shape == (2,)
+    assert len(action1.nodes.data.item(0).inputs) == 3
+
+    action2 = action1.flatten(dim="dim_0")
+    assert type(action2) == SingleAction
+    assert len(action2.nodes.data.item(0).inputs) == 2
+
+    with pytest.raises(Exception):
+        action2.flatten()
+
+    action3 = action2.expand("dim_0", 2)
+    assert action3.nodes.shape == (2,)
+    assert len(action3.nodes.data.item(0).inputs) == 1
+
+    action4 = action3.expand("dim_1", 3, 1)
+    assert action4.nodes.shape == (2, 3)
+    assert len(action4.nodes.data.item(0).inputs) == 1
 
 
 @pytest.mark.parametrize(
