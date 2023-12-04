@@ -3,7 +3,7 @@ import networkx as nx
 
 from cascade.scheduler import Schedule
 from cascade.graph import Graph
-from cascade.graphs import Task
+from cascade.taskgraph import Task
 
 
 @pytest.mark.parametrize(

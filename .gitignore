@@ -2,7 +2,7 @@
 *.swp
 **/__pycache__
 .vscode
-polytope.egg-info
+*.egg-info
 .pytest_cache
 *.prof
 *.idx

@@ -1,7 +1,7 @@
 from dask.utils import apply
 
 from .graph import Sink, Node, Graph, Transformer
-from .graphs import Task, TaskGraph, ExecutionGraph
+from .taskgraph import Task, TaskGraph, ExecutionGraph
 
 
 class _ToTaskGraph(Transformer):

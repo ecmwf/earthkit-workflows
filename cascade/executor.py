@@ -5,7 +5,8 @@ import datetime
 import dask
 from dask.delayed import Delayed
 
-from .graphs import Task, Communication, Communicator
+from .contextgraph import Communicator
+from .taskgraph import Task, Communication
 from .utility import EventLoop
 from .transformers import to_execution_graph, to_dask_graph
 
