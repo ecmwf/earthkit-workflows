@@ -6,6 +6,7 @@ import hashlib
 
 from .graph import Graph
 from .graph import Node as BaseNode
+from . import functions
 
 
 class Payload:
@@ -130,6 +131,44 @@ class Action:
         res._squeeze_dimension(key)
         return res
 
+    def broadcast(self, other_action: "Action", exclude: list[str] = None) -> "Action":
+        """
+        Broadcast the nodes against nodes in other_action
+
+        Params
+        ------
+        other_action: Action containings nodes to broadcast against
+        exclude: List of dimension names to exclude from broadcasting
+
+        Return
+        ------
+        Action with broadcasted set of nodes
+        """
+        # Ensure coordinates in existing dimensions match, otherwise obtain NaNs
+        for key, values in other_action.nodes.coords.items():
+            if key in self.nodes.coords and (exclude is None or key not in exclude):
+                assert np.all(
+                    values.data == self.nodes.coords[key].data
+                ), f"Existing coordinates must match for broadcast. Found mismatch in {key}!"
+
+        broadcasted_nodes = self.nodes.broadcast_like(other_action.nodes, exclude)
+        new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
+        it = np.nditer(
+            self.nodes.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
+            flags=["multi_index", "refs_ok"],
+        )
+        for node in it:
+            new_nodes[it.multi_index] = Node(Payload(functions.trivial), node[()])
+        return MultiAction(
+            self,
+            xr.DataArray(
+                new_nodes,
+                coords=broadcasted_nodes.coords,
+                dims=broadcasted_nodes.dims,
+                attrs=self.nodes.attrs,
+            ),
+        )
+
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
@@ -160,7 +199,7 @@ class SingleAction(Action):
     def to_multi(self, nodes):
         return MultiAction(self, nodes)
 
-    def then(self, payload: Payload):
+    def map(self, payload: Payload):
         return type(self)(payload, self)
 
     def node(self):
@@ -174,7 +213,7 @@ class MultiAction(Action):
     def to_single(self, payload: Payload, node=None):
         return SingleAction(payload, self, node)
 
-    def foreach(self, payload: Payload | np.ndarray[Payload]):
+    def map(self, payload: Payload | np.ndarray[Payload]):
         """
         Parameters
         ----------

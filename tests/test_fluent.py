@@ -10,18 +10,47 @@ class MockNode(Node):
         super().__init__(Payload(name))
 
 
+def mock_action(shape: tuple) -> MultiAction:
+    nodes = np.empty(shape, dtype=object)
+    it = np.nditer(nodes, flags=["multi_index", "refs_ok"])
+    for _ in it:
+        nodes[it.multi_index] = MockNode(f"{it.multi_index}")
+    nodes = xr.DataArray(
+        nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
+    )
+    if nodes.size == 1:
+        return SingleAction(Payload("test"), None, nodes)
+    return MultiAction(
+        None,
+        nodes,
+    )
+
+
+def test_broadcast():
+    input_action = mock_action((2, 3))
+
+    with pytest.raises(Exception):
+        input_action.broadcast(mock_action((3, 3)))
+
+    output_action = input_action.broadcast(mock_action((2, 3, 3)))
+    assert type(output_action) == MultiAction
+    assert output_action.nodes.shape == (2, 3, 3)
+    assert len(output_action.nodes.data.item(0).inputs) == 1
+    it = np.nditer(output_action.nodes, flags=["multi_index", "refs_ok"])
+    for _ in it:
+        print(it.multi_index)
+        assert output_action.nodes[it.multi_index].item(0).inputs[
+            "input0"
+        ].parent == input_action.nodes[it.multi_index[:2]].item(0)
+
+
 @pytest.mark.parametrize(
     "payload, previous",
     [
         [Payload("test"), SingleAction(Payload("test"), None)],
         [
             Payload("test"),
-            MultiAction(
-                None,
-                xr.DataArray(
-                    [[MockNode("1"), MockNode("2")], [MockNode("3"), MockNode("4")]]
-                ),
-            ),
+            mock_action((2, 2)),
         ],
     ],
 )
@@ -48,10 +77,10 @@ def test_single_action_from_node(previous, nodes):
 
 
 @pytest.mark.parametrize(
-    "input_nodes_shape, func, inputs, output_type, output_nodes_shape, node_inputs, num_sinks",
+    "input_nodes_shape, func, inputs, output_type, output_nodes_shape, node_inputs",
     [
-        [(3, 4), "foreach", [Payload("test")], MultiAction, (3, 4), 1, 0],
-        [(3, 4, 5), "reduce", [Payload("func")], MultiAction, (4, 5), 3, 0],
+        [(3, 4), "map", [Payload("test")], MultiAction, (3, 4), 1],
+        [(3, 4, 5), "reduce", [Payload("func")], MultiAction, (4, 5), 3],
         [
             (3, 4, 5),
             "reduce",
@@ -59,47 +88,32 @@ def test_single_action_from_node(previous, nodes):
             MultiAction,
             (3, 5),
             4,
-            0,
         ],
-        [(1,), "reduce", [Payload("func")], SingleAction, (), 1, 0],
-        [(3,), "reduce", [Payload("func")], SingleAction, (), 3, 0],
+        [(3,), "reduce", [Payload("func")], SingleAction, (), 3],
         [
             (3,),
             "join",
             [
-                SingleAction(
-                    Payload("test"),
-                    None,
-                    xr.DataArray(MockNode("1"), coords={"dim_0": [0]}, dims=["dim_0"]),
-                ),
+                mock_action((1,)),
                 "dim_0",
             ],
             MultiAction,
             (4,),
             0,
-            0,
         ],
         [
             (3,),
             "join",
             [
-                MultiAction(
-                    None,
-                    xr.DataArray(
-                        [MockNode("1"), MockNode("2"), MockNode("3")],
-                        coords={"dim_0": list(range(3))},
-                        dims=["dim_0"],
-                    ),
-                ),
+                mock_action((3,)),
                 "data_type",
             ],
             MultiAction,
             (2, 3),
             0,
-            0,
         ],
-        [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0, 0],
-        [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0, 0],
+        [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0],
+        [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0],
     ],
 )
 def test_multi_action(
@@ -109,38 +123,17 @@ def test_multi_action(
     output_type,
     output_nodes_shape,
     node_inputs,
-    num_sinks,
 ):
-    nodes = np.empty(input_nodes_shape, dtype=object)
-    nodes[:] = MockNode("1")
-    input_action = MultiAction(
-        None,
-        xr.DataArray(
-            nodes,
-            coords={
-                f"dim_{index}": list(range(shape))
-                for index, shape in enumerate(input_nodes_shape)
-            },
-            dims=[f"dim_{index}" for index in range(len(input_nodes_shape))],
-        ),
-    )
+    input_action = mock_action(input_nodes_shape)
 
     output_action = getattr(input_action, func)(*inputs)
     assert type(output_action) == output_type
     assert output_action.nodes.shape == output_nodes_shape
     assert len(output_action.nodes.data.item(0).inputs) == node_inputs
-    assert len(output_action.sinks) == num_sinks
 
 
 def test_attributes():
-    action = MultiAction(
-        None,
-        xr.DataArray(
-            [MockNode("1"), MockNode("2"), MockNode("3")],
-            coords={"dim_0": list(range(3))},
-            dims=["dim_0"],
-        ),
-    )
+    action = mock_action((3,))
 
     # Set attributes global to all nodes
     action.add_attributes({"expver": "0001"})
