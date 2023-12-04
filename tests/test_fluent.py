@@ -19,7 +19,7 @@ def mock_action(shape: tuple) -> MultiAction:
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
     if nodes.size == 1:
-        return SingleAction(Payload("test"), None, nodes)
+        return SingleAction(None, nodes)
     return MultiAction(
         None,
         nodes,
@@ -47,7 +47,7 @@ def test_broadcast():
 @pytest.mark.parametrize(
     "payload, previous",
     [
-        [Payload("test"), SingleAction(Payload("test"), None)],
+        [Payload("test"), SingleAction.from_payload(None, Payload("test"))],
         [
             Payload("test"),
             mock_action((2, 2)),
@@ -55,7 +55,7 @@ def test_broadcast():
     ],
 )
 def test_single_action(payload, previous):
-    single_action = SingleAction(payload, previous, None)
+    single_action = SingleAction.from_payload(previous, payload)
     assert single_action.nodes.size == 1
     assert single_action.nodes.shape == ()
     assert len(single_action.nodes.data[()].inputs) == previous.nodes.size
@@ -64,16 +64,19 @@ def test_single_action(payload, previous):
 @pytest.mark.parametrize(
     "previous, nodes",
     [
-        [SingleAction(Payload("test"), None), xr.DataArray([MockNode("1")])],
+        [
+            SingleAction.from_payload(None, Payload("test")),
+            xr.DataArray([MockNode("1")]),
+        ],
         [None, xr.DataArray([MockNode("1"), MockNode("2")])],
     ],
 )
 def test_single_action_from_node(previous, nodes):
     if nodes.size > 1:
         with pytest.raises(Exception):
-            SingleAction(Payload("test"), previous, nodes)
+            SingleAction(previous, nodes)
     else:
-        SingleAction(Payload("test"), previous, nodes)
+        SingleAction(previous, nodes)
 
 
 @pytest.mark.parametrize(

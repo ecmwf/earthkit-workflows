@@ -135,8 +135,8 @@ class Action:
         """
         Broadcast the nodes against nodes in other_action
 
-        Params
-        ------
+        Parameters
+        ----------
         other_action: Action containings nodes to broadcast against
         exclude: List of dimension names to exclude from broadcasting
 
@@ -181,18 +181,7 @@ class Action:
 
 
 class SingleAction(Action):
-    def __init__(self, payload: Payload, previous, node=None):
-        if node is None:
-            if previous is None:
-                node = xr.DataArray(Node(payload))
-            else:
-                node = xr.DataArray(
-                    Node(
-                        payload,
-                        previous.nodes.data.flatten(),
-                    ),
-                    attrs=previous.nodes.attrs,
-                )
+    def __init__(self, previous: Action, node):
         assert node.size == 1
         super().__init__(previous, node)
 
@@ -205,13 +194,52 @@ class SingleAction(Action):
     def node(self):
         return self.nodes.data[()]
 
+    def from_payload(previous: Action, payload: Payload) -> "SingleAction":
+        """
+        Factory for SingleAction from previous action and payload
+
+        Parameters
+        ----------
+        previous: Action that precedes action to be constructed
+        payload: Payload for node in new action
+
+        Returns
+        -------
+        SingleAction
+        """
+        if previous is None:
+            node = xr.DataArray(Node(payload))
+        else:
+            node = xr.DataArray(
+                Node(
+                    payload,
+                    previous.nodes.data.flatten(),
+                ),
+                attrs=previous.nodes.attrs,
+            )
+        return SingleAction(previous, node)
+
 
 class MultiAction(Action):
     def __init__(self, previous, nodes):
         super().__init__(previous, nodes)
 
-    def to_single(self, payload: Payload, node=None):
-        return SingleAction(payload, self, node)
+    def to_single(self, payload_or_node: Payload | xr.DataArray):
+        """
+        Conversion from MultiAction to SingleAction
+
+        Parameters
+        ----------
+        payload_or_node: Payload or xr.DataArray[Node] for constructing
+        SingleAction
+
+        Returns
+        -------
+        SingleAction
+        """
+        if isinstance(payload_or_node, Payload):
+            return SingleAction.from_payload(self, payload_or_node)
+        return SingleAction(self, payload_or_node)
 
     def map(self, payload: Payload | np.ndarray[Payload]):
         """
@@ -280,7 +308,7 @@ class MultiAction(Action):
 
         selected_nodes = self.nodes.sel(**criteria, drop=True)
         if selected_nodes.size == 1:
-            return self.to_single(None, selected_nodes)
+            return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes)
 
     def node(self, criteria: dict):
