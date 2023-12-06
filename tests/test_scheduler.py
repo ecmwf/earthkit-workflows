@@ -1,5 +1,4 @@
 import pytest
-import networkx as nx
 
 from cascade.scheduler import Schedule
 from cascade.graph import Graph

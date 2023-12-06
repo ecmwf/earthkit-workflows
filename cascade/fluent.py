@@ -52,11 +52,14 @@ class Node(BaseNode):
         # If payload doesn't have inputs, assume inputs to the function are the inputs
         # to the node, in the order provided
         if not payload.has_args():
-            payload.set_args([f"input{x}" for x in range(len(inputs))])
+            payload.set_args([self.input_name(x) for x in range(len(inputs))])
         else:
             # All inputs into Node should also feature in payload - no dangling inputs
             assert np.all(
-                [x in payload.args for x in [f"input{x}" for x in range(len(inputs))]]
+                [
+                    x in payload.args
+                    for x in [self.input_name(x) for x in range(len(inputs))]
+                ]
             ), f"Payload {payload} does not use all node inputs {len(inputs)}"
 
         if name is None:
@@ -68,9 +71,13 @@ class Node(BaseNode):
         super().__init__(
             name,
             payload=payload.to_tuple(),
-            **{f"input{x}": node for x, node in enumerate(inputs)},
+            **{self.input_name(x): node for x, node in enumerate(inputs)},
         )
         self.attributes = {}
+
+    @staticmethod
+    def input_name(index: int):
+        return f"input{index}"
 
 
 class Action:
@@ -194,7 +201,9 @@ class Action:
         it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
         for _ in it:
             new_nodes[it.multi_index] = Node(
-                Payload(functions.get_item, ["input0", it.multi_index[axis]]),
+                Payload(
+                    functions.__getitem__, [Node.input_name(0), it.multi_index[axis]]
+                ),
                 self.nodes[it.multi_index[:-1]].data[()],
             )
         new_nodes = xr.DataArray(
@@ -368,3 +377,84 @@ class MultiAction(Action):
 
     def node(self, criteria: dict):
         return self.nodes.sel(**criteria, drop=True).data[()]
+
+    def concatenate(self, key: str):
+        return self.reduce(Payload(functions.concatenate), key)
+
+    def mean(self, key: str = ""):
+        return self.reduce(Payload(functions.mean), key)
+
+    def std(self, key: str = ""):
+        return self.reduce(Payload(functions.std), key)
+
+    def maximum(self, key: str = ""):
+        return self.reduce(Payload(functions.maximum), key)
+
+    def minimum(self, key: str = ""):
+        return self.reduce(Payload(functions.minimum), key)
+
+    def diff(self, key: str = ""):
+        return self.reduce(
+            Payload(functions.subtract, (Node.input_name(1), Node.input_name(0))), key
+        )
+
+    def subtract(self, key: str = ""):
+        return self.reduce(Payload(functions.subtract), key)
+
+    def add(self, key: str = ""):
+        return self.reduce(Payload(functions.add), key)
+
+    def divide(self, key: str = ""):
+        return self.reduce(Payload(functions.divide), key)
+
+    def multiply(self, key: str = ""):
+        return self.reduce(Payload(functions.multiply), key)
+
+
+def source(
+    payloads: np.ndarray[Payload], dims: list | dict
+) -> SingleAction | MultiAction:
+    """
+    Create source nodes in graph from an array of payloads, containing
+    payload for each source node
+
+    Parameters
+    ----------
+    payloads: np.ndarray[Payload], containing payload for each source node
+    dims: list or dict, specifying dimension names. If dict, then used
+    as coords in xarray.DataArray of nodes. If list, then values of coordinates
+    are integers up to the dimension size
+
+    Return
+    ------
+    SingleAction or MultiAction
+    """
+    if payloads.size == 1:
+        return SingleAction.from_payload(None, payloads[()])
+
+    assert len(dims) == len(payloads.shape)
+    if isinstance(dims, dict):
+        coords = dims
+        dims = list(coords.keys())
+    else:
+        coords = {x: np.arange(payloads.shape[i]) for i, x in enumerate(dims)}
+
+    nodes = np.empty(payloads.shape, dtype=object)
+    all_actions = None
+    it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+    for payload in it:
+        nodes[it.multi_index] = Node(payload)
+        new_action = MultiAction(
+            None,
+            xr.DataArray(
+                nodes,
+                dims=dims,
+                coords={x: coords[x][it.multi_index[i]] for i, x in enumerate(dims)},
+            ),
+        )
+
+        if all_actions is None:
+            all_actions = new_action
+        else:
+            all_actions = all_actions.join(new_action, dims[0])
+    return all_actions
