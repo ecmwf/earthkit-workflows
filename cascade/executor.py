@@ -212,7 +212,7 @@ class DaskExecutor(Executor):
             Delayed(x.name, self.dask_graph) for x in schedule.task_graph.sinks
         ]
 
-    def execute_with_dask_schedule(
+    def execute(
         self,
         memory_limit: str = "24GB",
         n_workers: int = 1,

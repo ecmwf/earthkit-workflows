@@ -100,7 +100,7 @@ def test_flatten_expand():
     assert action3.nodes.shape == (2,)
     assert len(action3.nodes.data.item(0).inputs) == 1
 
-    action4 = action3.expand("dim_1", 3, 1)
+    action4 = action3.expand("dim_1", 3, new_axis=1)
     assert action4.nodes.shape == (2, 3)
     assert len(action4.nodes.data.item(0).inputs) == 1
 

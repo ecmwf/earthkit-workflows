@@ -194,48 +194,42 @@ class Action:
             return self.to_multi(new_nodes)
         return type(self)(self, new_nodes)
 
-    def expand(self, dim: str, dim_size: int, axis: int = 0) -> "MultiAction":
+    def expand(
+        self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
+    ) -> "MultiAction":
         """
         Create new dimension in array of nodes of specified size by
-        selecting elements of internal data in each node. Indexing is taken along first
+        taking elements of internal data in each node. Indexing is taken along the specified axis
         dimension of internal data and graph execution will fail if
-        dim_size exceeds first dimension size of internal data.
+        dim_size exceeds the dimension size of this axis in the internal data.
 
         Parameters
         ----------
         dim: str, name of new dimension
         dim_size: int, size of new dimension
-        axis: int, position to insert new dimension
+        axis: int, axis to take values from in internal data of node
+        new_axis: int, position to insert new dimension
+
 
         Returns
         -------
         MultiAction
         """
-        expanded = self.nodes.expand_dims(dim={dim: np.arange(dim_size)}, axis=axis)
-        new_nodes = np.empty(expanded.shape, dtype=object)
-        it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
-        for _ in it:
-            new_nodes[it.multi_index] = Node(
-                Payload(
-                    functions.__getitem__, [Node.input_name(0), it.multi_index[axis]]
-                ),
-                self.nodes[it.multi_index[:axis] + it.multi_index[axis + 1 :]].data[()],
+
+        def _expand(action: Action, index: int) -> Action:
+            ret = action.map(
+                Payload(functions.take, [Node.input_name(0), index], {"axis": axis})
             )
-        new_nodes = xr.DataArray(
-            new_nodes,
-            coords=expanded.coords,
-            dims=expanded.dims,
-            attrs=self.nodes.attrs,
-        )
-        if hasattr(self, "to_multi"):
-            return self.to_multi(new_nodes)
-        return type(self)(self, new_nodes)
+            ret._add_dimension(dim, index, new_axis)
+            return ret
+
+        return self.transform(_expand, np.arange(dim_size), dim)
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
-    def _add_dimension(self, name, value):
-        self.nodes = self.nodes.expand_dims({name: [value]})
+    def _add_dimension(self, name: str, value: float, axis: int = 0):
+        self.nodes = self.nodes.expand_dims({name: [value]}, axis)
 
     def _squeeze_dimension(self, dim_name: str):
         if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
@@ -251,7 +245,7 @@ class SingleAction(Action):
         return MultiAction(self, nodes)
 
     def map(self, payload: Payload):
-        return type(self)(payload, self)
+        return type(self).from_payload(self, payload)
 
     def node(self):
         return self.nodes.data[()]
@@ -317,6 +311,7 @@ class MultiAction(Action):
         applying a different payload to each node
         """
         if not isinstance(payload, Payload):
+            payload = np.asarray(payload)
             assert (
                 payload.shape == self.nodes.shape
             ), f"For unique payloads for each node, payload shape {payload.shape} must match node array shape {self.nodes.shape}"
@@ -444,6 +439,7 @@ def source(
     ------
     SingleAction or MultiAction
     """
+    payloads = np.asarray(payloads)
     if payloads.size == 1:
         return SingleAction.from_payload(None, payloads[()])
 
@@ -455,21 +451,14 @@ def source(
         coords = {x: np.arange(payloads.shape[i]) for i, x in enumerate(dims)}
 
     nodes = np.empty(payloads.shape, dtype=object)
-    all_actions = None
     it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
     for payload in it:
-        nodes[it.multi_index] = Node(payload)
-        new_action = MultiAction(
-            None,
-            xr.DataArray(
-                nodes,
-                dims=dims,
-                coords={x: coords[x][it.multi_index[i]] for i, x in enumerate(dims)},
-            ),
-        )
-
-        if all_actions is None:
-            all_actions = new_action
-        else:
-            all_actions = all_actions.join(new_action, dims[0])
-    return all_actions
+        nodes[it.multi_index] = Node(payload[()], name=f"source{it.multi_index}")
+    return MultiAction(
+        None,
+        xr.DataArray(
+            nodes,
+            dims=dims,
+            coords=coords,
+        ),
+    )
