@@ -64,9 +64,7 @@ class Node(BaseNode):
 
         if name is None:
             name = payload.name()
-            name += (
-                f":{custom_hash(f'{[payload.to_tuple()] + [x.name for x in inputs]}')}"
-            )
+        name += f":{custom_hash(f'{[payload.to_tuple()] + [x.name for x in inputs]}')}"
 
         super().__init__(
             name,
@@ -175,7 +173,9 @@ class Action:
                     values.data == self.nodes.coords[key].data
                 ), f"Existing coordinates must match for broadcast. Found mismatch in {key}!"
 
-        broadcasted_nodes = self.nodes.broadcast_like(other_action.nodes, exclude)
+        broadcasted_nodes = self.nodes.broadcast_like(
+            other_action.nodes, exclude=exclude
+        )
         new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
         it = np.nditer(
             self.nodes.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
@@ -422,7 +422,7 @@ class MultiAction(Action):
 
 
 def source(
-    payloads: np.ndarray[Payload], dims: list | dict
+    payloads: np.ndarray[Payload], dims: list | dict, name: str = "source"
 ) -> SingleAction | MultiAction:
     """
     Create source nodes in graph from an array of payloads, containing
@@ -434,6 +434,7 @@ def source(
     dims: list or dict, specifying dimension names. If dict, then used
     as coords in xarray.DataArray of nodes. If list, then values of coordinates
     are integers up to the dimension size
+    name: str, common string to appear in the name of all source nodes
 
     Return
     ------
@@ -453,7 +454,7 @@ def source(
     nodes = np.empty(payloads.shape, dtype=object)
     it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
     for payload in it:
-        nodes[it.multi_index] = Node(payload[()], name=f"source{it.multi_index}")
+        nodes[it.multi_index] = Node(payload[()], name=f"{name}{it.multi_index}")
     return MultiAction(
         None,
         xr.DataArray(

@@ -7,9 +7,7 @@ def trivial(arg):
 
 
 def multi_arg_function(name: str, *args, **kwargs):
-    print(name, len(args), args[0].shape)
     xp = array_api_compat.array_namespace(*args)
-    print("XP", xp)
     if len(args) > 1:
         kwargs["axis"] = 0
     return getattr(xp, name)(args, **kwargs)
