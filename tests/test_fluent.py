@@ -141,6 +141,14 @@ def test_flatten_expand():
             (2, 3),
             0,
         ],
+        [
+            (3,),
+            "transform",
+            [lambda action, x: action.expand("dim_1", x), [4, 4, 4], "index"],
+            MultiAction,
+            (3, 4, 3),
+            1,
+        ],
         [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0],
         [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0],
     ],
@@ -159,6 +167,15 @@ def test_multi_action(
     assert type(output_action) == output_type
     assert output_action.nodes.shape == output_nodes_shape
     assert len(output_action.nodes.data.item(0).inputs) == node_inputs
+
+
+def test_join_fail():
+    input_action = mock_action((3, 4))
+    second_action = mock_action((3, 5))
+    with pytest.raises(Exception):
+        input_action.join(second_action, "new_dim")
+
+    input_action.join(second_action, "dim_1")
 
 
 def test_attributes():

@@ -83,6 +83,7 @@ class Node(BaseNode):
 class Action:
     def __init__(self, previous: "Action", nodes: xr.DataArray):
         self.previous = previous
+        assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
         self.sinks = [] if previous is None else previous.sinks.copy()
 
@@ -118,6 +119,7 @@ class Action:
             dim_name,
             combine_attrs="no_conflicts",
             coords="minimal",
+            join="exact",
         )
         if hasattr(self, "to_multi"):
             ret = self.to_multi(new_nodes)
@@ -126,7 +128,20 @@ class Action:
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
-    def transform(self, func, params: list, dim: str):
+    def transform(self, func: callable, params: list, dim: str):
+        """
+        Create new nodes by applying function on action with different
+        parameters. The result actions from applying function are joined
+        along the specified dimension.
+
+        Parameters
+        ----------
+        func: function with signature func(Action, arg) -> Action
+        params: list, containing different arguments to pass into func
+        for generating new nodes
+        dim: str, name of dimension to join actions resulting from applying
+        function on
+        """
         res = None
         for param in params:
             new_res = func(self, param)
@@ -204,7 +219,7 @@ class Action:
                 Payload(
                     functions.__getitem__, [Node.input_name(0), it.multi_index[axis]]
                 ),
-                self.nodes[it.multi_index[:-1]].data[()],
+                self.nodes[it.multi_index[:axis] + it.multi_index[axis + 1 :]].data[()],
             )
         new_nodes = xr.DataArray(
             new_nodes,
