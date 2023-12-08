@@ -1,32 +1,61 @@
 import numpy as np
 import xarray as xr
-
 import functools
 import hashlib
+from dataclasses import dataclass, field
 
 from .graph import Graph
 from .graph import Node as BaseNode
-from . import functions
+from .backends import array_api as functions
 
 
+@dataclass
 class Payload:
-    def __init__(self, func, args: list | tuple = None, kwargs: dict = {}):
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
+    """
+    Class for detailing function, args and kwargs to be computing in a graph node
+    """
+
+    func: callable
+    args: list = None
+    kwargs: dict = field(default_factory=dict)
 
     def has_args(self) -> bool:
+        """
+        Return
+        ------
+        bool, specifying if arguments have been set
+        """
         return self.args is not None
 
-    def set_args(self, args: list | tuple):
+    def set_args(self, args: list):
+        """
+        Parameters
+        ----------
+        args: list, arguments to pass to the function
+
+        Raises
+        ------
+        AssertionError if arguments already exist
+        """
         assert not self.has_args()
         self.args = args
 
     def to_tuple(self) -> tuple:
+        """
+        Return
+        ------
+        tuple, containing function, arguments and kwargs
+        """
         assert self.has_args()
         return (self.func, self.args, self.kwargs)
 
     def name(self) -> str:
+        """
+        Return
+        ------
+        str, name of function, or if a partial function, the function name and partial
+        arguments
+        """
         if hasattr(self.func, "__name__"):
             return self.func.__name__
         if isinstance(self.func, functools.partial):
@@ -45,7 +74,10 @@ def custom_hash(string: str) -> str:
 
 class Node(BaseNode):
     def __init__(
-        self, payload: Payload, inputs: BaseNode | tuple[BaseNode] = (), name=None
+        self,
+        payload: Payload,
+        inputs: BaseNode | tuple[BaseNode] = (),
+        name: str = None,
     ):
         if isinstance(inputs, BaseNode):
             inputs = [inputs]
@@ -90,8 +122,8 @@ class Action:
         Creates graph from sinks. If list of sinks is empty then uses the
         list of nodes.
 
-        Returns
-        -------
+        Return
+        ------
         Graph instance constructed from list of sinks, or if empty, list
         of nodes
 
@@ -105,7 +137,7 @@ class Action:
         other_action: "Action",
         dim_name: str | xr.DataArray,
         match_coord_values: bool = False,
-    ) -> "MultiAction":
+    ) -> "Action":
         if match_coord_values:
             for coord, values in self.nodes.coords.items():
                 if coord in other_action.nodes.coords:
@@ -126,7 +158,7 @@ class Action:
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
-    def transform(self, func: callable, params: list, dim: str):
+    def transform(self, func: callable, params: list, dim: str) -> "Action":
         """
         Create new nodes by applying function on action with different
         parameters. The result actions from applying function are joined
@@ -139,6 +171,10 @@ class Action:
         for generating new nodes
         dim: str, name of dimension to join actions resulting from applying
         function on
+
+        Return
+        ------
+        SingleAction or MultiAction
         """
         res = None
         for param in params:
@@ -151,9 +187,7 @@ class Action:
         res._squeeze_dimension(dim)
         return res
 
-    def broadcast(
-        self, other_action: "Action", exclude: list[str] = None
-    ) -> "MultiAction":
+    def broadcast(self, other_action: "Action", exclude: list[str] = None) -> "Action":
         """
         Broadcast nodes against nodes in other_action
 
@@ -196,7 +230,7 @@ class Action:
 
     def expand(
         self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
-    ) -> "MultiAction":
+    ) -> "Action":
         """
         Create new dimension in array of nodes of specified size by
         taking elements of internal data in each node. Indexing is taken along the specified axis
@@ -211,8 +245,8 @@ class Action:
         new_axis: int, position to insert new dimension
 
 
-        Returns
-        -------
+        Return
+        ------
         MultiAction
         """
 
@@ -241,13 +275,35 @@ class SingleAction(Action):
         assert node.size == 1
         super().__init__(previous, node)
 
-    def to_multi(self, nodes):
+    def to_multi(self, nodes: xr.DataArray) -> "MultiAction":
+        """
+        Conversion from SingleAction to MultiAction
+
+        Parameters
+        ----------
+        nodes: xr.DataArray[Node], new nodes for constructing MultiAction
+
+        Return
+        ------
+        MultiAction
+        """
         return MultiAction(self, nodes)
 
-    def map(self, payload: Payload):
+    def map(self, payload: Payload) -> "SingleAction":
+        """
+        Create new action from applying payload to node
+
+        Parameters
+        ----------
+        payload: Payload
+
+        Return
+        ------
+        SingleAction
+        """
         return type(self).from_payload(self, payload)
 
-    def node(self):
+    def node(self) -> Node:
         return self.nodes.data[()]
 
     @classmethod
@@ -260,8 +316,8 @@ class SingleAction(Action):
         previous: Action that precedes action to be constructed
         payload: Payload for node in new action
 
-        Returns
-        -------
+        Return
+        ------
         SingleAction
         """
         if previous is None:
@@ -290,25 +346,48 @@ class MultiAction(Action):
         payload_or_node: Payload or xr.DataArray[Node] for constructing
         SingleAction
 
-        Returns
-        -------
+        Return
+        ------
         SingleAction
         """
         if isinstance(payload_or_node, Payload):
             return SingleAction.from_payload(self, payload_or_node)
         return SingleAction(self, payload_or_node)
 
-    def map(self, payload: Payload | np.ndarray[Payload]) -> Action:
+    def node(self, criteria: dict) -> Node | np.ndarray[Node]:
         """
+        Get nodes matching selection criteria from action
+
+        Parameters
+        ----------
+        criteria: dict, key-value pairs specifying selection criteria
+
+        Return
+        ------
+        Node or np.ndarray[Node]
+        """
+        return self.nodes.sel(**criteria, drop=True).data[()]
+
+    def map(self, payload: Payload | np.ndarray[Payload]) -> "MultiAction":
+        """
+        Apply specified payload on all nodes. If argument is an array of payloads,
+        this must be the same size as the array of nodes and each node gets a
+        unique payload from the array
+
         Parameters
         ----------
         payload: Payload or array of Payloads
 
-        Returns
-        -------
+        Return
+        ------
         MultiAction where nodes are a result of applying the same
         payload to all nodes, or in the case where payload is an array,
         applying a different payload to each node
+
+        Raises
+        ------
+        AssertionError if the shape of the payload array does not match the shape of the
+        array of nodes
         """
         if not isinstance(payload, Payload):
             payload = np.asarray(payload)
@@ -334,7 +413,20 @@ class MultiAction(Action):
             ),
         )
 
-    def reduce(self, payload: Payload, dim: str = "") -> Action:
+    def reduce(self, payload: Payload, dim: str = "") -> "SingleAction | MultiAction":
+        """
+        Reduction operation across the named dimension using the provided
+        function in the payload
+
+        Parameters
+        ----------
+        payload: Payload, payload specifying function for performing the reduction
+        dim: str, name of dimension along which to return
+
+        Return
+        ------
+        SingleAction or MultiAction
+        """
         if self.nodes.ndim == 1:
             return self.to_single(payload)
 
@@ -358,7 +450,7 @@ class MultiAction(Action):
             ),
         )
 
-    def flatten(self, dim: str = "", axis: int = 0) -> Action:
+    def flatten(self, dim: str = "", axis: int = 0) -> "SingleAction | MultiAction":
         """
         Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
@@ -368,13 +460,24 @@ class MultiAction(Action):
         dim: str, name of dimension to flatten along
         axis: int, axis of new dimension in internal data
 
-        Returns
-        -------
+        Return
+        ------
         SingleAction or MultiAction
         """
         return self.reduce(Payload(functions.stack, kwargs={"axis": axis}), dim)
 
-    def select(self, criteria: dict):
+    def select(self, criteria: dict) -> "SingleAction | MultiAction":
+        """
+        Create action contaning nodes match selection criteria
+
+        Parameters
+        ----------
+        criteria: dict, key-value pairs specifying selection criteria
+
+        Return
+        ------
+        SingleAction or MultiAction
+        """
         if any([key not in self.nodes.dims for key in criteria.keys()]):
             raise NotImplementedError(
                 f"Unknown coordinate in criteria {criteria}. Existing dimensions {self.nodes.dims}"
@@ -385,39 +488,36 @@ class MultiAction(Action):
             return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes)
 
-    def node(self, criteria: dict):
-        return self.nodes.sel(**criteria, drop=True).data[()]
-
-    def concatenate(self, key: str):
+    def concatenate(self, key: str) -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.concatenate), key)
 
-    def mean(self, key: str = ""):
+    def mean(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.mean), key)
 
-    def std(self, key: str = ""):
+    def std(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.std), key)
 
-    def maximum(self, key: str = ""):
+    def maximum(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.maximum), key)
 
-    def minimum(self, key: str = ""):
+    def minimum(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.minimum), key)
 
-    def diff(self, key: str = ""):
+    def diff(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(
             Payload(functions.subtract, (Node.input_name(1), Node.input_name(0))), key
         )
 
-    def subtract(self, key: str = ""):
+    def subtract(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.subtract), key)
 
-    def add(self, key: str = ""):
+    def add(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.add), key)
 
-    def divide(self, key: str = ""):
+    def divide(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.divide), key)
 
-    def multiply(self, key: str = ""):
+    def multiply(self, key: str = "") -> "SingleAction | MultiAction":
         return self.reduce(Payload(functions.multiply), key)
 
 

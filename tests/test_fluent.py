@@ -184,3 +184,9 @@ def test_attributes():
     # Set attributes global to all nodes
     action.add_attributes({"expver": "0001"})
     assert action.nodes.attrs["expver"] == "0001"
+
+
+def test_select_nodes():
+    action = mock_action((3, 4))
+    assert isinstance(action.node({"dim_0": 0}), np.ndarray)
+    assert isinstance(action.node({"dim_0": 0, "dim_1": 1}), Node)
