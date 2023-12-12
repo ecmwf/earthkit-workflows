@@ -1,11 +1,7 @@
 import pytest
 import numpy as np
 
-from cascade.backends.array_api import (
-    multi_arg_function,
-    two_arg_function,
-    single_arg_function,
-)
+from cascade import backends
 
 
 def inputs(number: int, shape=(2, 3)):
@@ -23,8 +19,7 @@ def inputs(number: int, shape=(2, 3)):
 )
 def test_multi_arg(num_inputs, input_shape, kwargs, output_shape):
     assert (
-        multi_arg_function("mean", *inputs(num_inputs, input_shape), **kwargs).shape
-        == output_shape
+        backends.mean(*inputs(num_inputs, input_shape), **kwargs).shape == output_shape
     )
 
 
@@ -37,9 +32,7 @@ def test_multi_arg(num_inputs, input_shape, kwargs, output_shape):
     ],
 )
 def test_two_arg(num_inputs, input_shape, output_shape):
-    assert (
-        two_arg_function("add", *inputs(num_inputs, input_shape)).shape == output_shape
-    )
+    assert backends.add(*inputs(num_inputs, input_shape)).shape == output_shape
 
 
 @pytest.mark.parametrize(
@@ -51,16 +44,16 @@ def test_two_arg(num_inputs, input_shape, output_shape):
 )
 def test_two_arg_raises(num_inputs, shape):
     with pytest.raises(Exception):
-        two_arg_function("add", *inputs(num_inputs, shape))
+        backends.add(*inputs(num_inputs, shape))
 
 
 @pytest.mark.parametrize(
-    ["name", "num_inputs", "kwargs", "output_shape"],
+    ["args", "kwargs", "output_shape"],
     [
-        ["take", 1, {"indices": [0], "axis": 0}, (1, 3)],
-        ["take", 1, {"indices": [0, 1], "axis": 1}, (2, 2)],
+        [[[0]], {"axis": 0}, (1, 3)],
+        [[[0, 1]], {"axis": 1}, (2, 2)],
     ],
 )
-def test_single_arg(name, num_inputs, kwargs, output_shape):
-    output = single_arg_function(name, *inputs(num_inputs), **kwargs)
+def test_single_arg(args, kwargs, output_shape):
+    output = backends.take(*inputs(1), *args, **kwargs)
     assert output.shape == output_shape

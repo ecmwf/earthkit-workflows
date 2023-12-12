@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .graph import Graph
 from .graph import Node as BaseNode
-from .backends import array_api as functions
+from . import backends
 
 
 @dataclass
@@ -216,7 +216,7 @@ class Action:
             flags=["multi_index", "refs_ok"],
         )
         for node in it:
-            new_nodes[it.multi_index] = Node(Payload(functions.trivial), node[()])
+            new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])
 
         new_nodes = xr.DataArray(
             new_nodes,
@@ -252,7 +252,7 @@ class Action:
 
         def _expand(action: Action, index: int) -> Action:
             ret = action.map(
-                Payload(functions.take, [Node.input_name(0), index], {"axis": axis})
+                Payload(backends.take, [Node.input_name(0), [index]], {"axis": axis})
             )
             ret._add_dimension(dim, index, new_axis)
             return ret
@@ -464,7 +464,7 @@ class MultiAction(Action):
         ------
         SingleAction or MultiAction
         """
-        return self.reduce(Payload(functions.stack, kwargs={"axis": axis}), dim)
+        return self.reduce(Payload(backends.stack, kwargs={"axis": axis}), dim)
 
     def select(self, criteria: dict) -> "SingleAction | MultiAction":
         """
@@ -489,36 +489,34 @@ class MultiAction(Action):
         return type(self)(self, selected_nodes)
 
     def concatenate(self, key: str) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.concatenate), key)
+        return self.reduce(Payload(backends.concat), key)
 
     def mean(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.mean), key)
+        return self.reduce(Payload(backends.mean), key)
 
     def std(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.std), key)
+        return self.reduce(Payload(backends.std), key)
 
     def maximum(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.maximum), key)
+        return self.reduce(Payload(backends.max), key)
 
     def minimum(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.minimum), key)
+        return self.reduce(Payload(backends.min), key)
 
     def diff(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(
-            Payload(functions.subtract, (Node.input_name(1), Node.input_name(0))), key
-        )
+        return self.reduce(Payload(backends.diff), key)
 
     def subtract(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.subtract), key)
+        return self.reduce(Payload(backends.subtract), key)
 
     def add(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.add), key)
+        return self.reduce(Payload(backends.add), key)
 
     def divide(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.divide), key)
+        return self.reduce(Payload(backends.divide), key)
 
     def multiply(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(functions.multiply), key)
+        return self.reduce(Payload(backends.multiply), key)
 
 
 def source(

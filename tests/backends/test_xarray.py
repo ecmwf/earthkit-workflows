@@ -2,13 +2,7 @@ import pytest
 import numpy as np
 import xarray as xr
 
-from cascade.backends.xarray_backend import (
-    multi_arg_function,
-    two_arg_function,
-    take,
-    concatenate,
-    stack,
-)
+from cascade import backends
 
 
 def inputs(number: int, shape=(2, 3)):
@@ -29,9 +23,7 @@ def inputs(number: int, shape=(2, 3)):
     ],
 )
 def test_multi_arg(num_inputs, kwargs, output_shape):
-    assert (
-        multi_arg_function("mean", *inputs(num_inputs), **kwargs).shape == output_shape
-    )
+    assert backends.mean(*inputs(num_inputs), **kwargs).shape == output_shape
 
 
 @pytest.mark.parametrize(
@@ -41,7 +33,7 @@ def test_multi_arg(num_inputs, kwargs, output_shape):
     ],
 )
 def test_two_arg(num_inputs, output_shape):
-    assert two_arg_function("add", *inputs(num_inputs)).shape == output_shape
+    assert backends.add(*inputs(num_inputs)).shape == output_shape
 
 
 @pytest.mark.parametrize(
@@ -53,18 +45,18 @@ def test_two_arg(num_inputs, output_shape):
 )
 def test_two_arg_raises(num_inputs, shape):
     with pytest.raises(Exception):
-        two_arg_function("add", *inputs(num_inputs, shape))
+        backends.add(*inputs(num_inputs, shape))
 
 
 @pytest.mark.parametrize(
-    ["num_inputs", "kwargs", "output_shape"],
+    ["args", "kwargs", "output_shape"],
     [
-        [1, {"indices": [0], "axis": 0}, (1, 3)],
-        [1, {"indices": [0, 1], "axis": 1}, (2, 2)],
+        [[[0]], {"axis": 0}, (1, 3)],
+        [[[0, 1]], {"axis": 1}, (2, 2)],
     ],
 )
-def test_single_arg(num_inputs, kwargs, output_shape):
-    output = take(*inputs(num_inputs), **kwargs)
+def test_single_arg(args, kwargs, output_shape):
+    output = backends.take(*inputs(1), *args, **kwargs)
     assert output.shape == output_shape
 
 
@@ -73,25 +65,25 @@ def test_concatenate():
 
     # Without dim
     with pytest.raises(Exception):
-        concatenate(*input)
+        backends.concatenate(*input)
 
     # With dim
-    concatenate(*input, dim="dim1")
+    backends.concatenate(*input, dim="dim1")
 
 
 def test_stack():
     input = inputs(3) + inputs(2, (2,))
 
-    x = stack(*input, dim="NEW")
+    x = backends.stack(*input, dim="NEW")
 
     # Without dim
     with pytest.raises(Exception):
-        stack(*input)
+        backends.stack(*input)
 
     # With existing dim
     with pytest.raises(Exception):
-        stack(*input, dim="dim0")
+        backends.stack(*input, dim="dim0")
 
     # With dim and axis
-    y = stack(*input, axis=2, dim="NEW")
+    y = backends.stack(*input, axis=2, dim="NEW")
     assert np.all(x.transpose("dim0", "dim1", "NEW") == y)
