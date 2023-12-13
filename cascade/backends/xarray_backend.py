@@ -1,4 +1,3 @@
-import functools
 import xarray as xr
 import numpy as np
 from typing import Any
@@ -76,22 +75,73 @@ class XArrayBackend(BaseBackend):
         with xr.set_options(keep_attrs=keep_attrs):
             return getattr(np, name)(arrays[0], arrays[1], **method_kwargs)
 
-    def concatenate(
+    def mean(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "mean", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def std(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "std", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def min(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "min", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def max(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "max", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def sum(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "sum", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def prod(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "prod", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def var(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        stack_kwargs: dict[str, Any] | None = None,
+        method_kwargs: dict[str, Any] | None = None,
+    ) -> xr.DataArray | xr.Dataset:
+        return XArrayBackend.multi_arg_function(
+            "var", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
+        )
+
+    def concat(
         *arrays: list[xr.DataArray | xr.Dataset],
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
-        """
-        Join along existing dimension in one of the inputs
-
-        Parameters
-        ----------
-        arrays: list DataArrays or Datasets to apply function on
-        method_kwargs: dict, kwargs for xarray.concat
-
-        Return
-        ------
-        DataArray or Dataset
-        """
         dim = method_kwargs.pop("dim")
         assert np.any([dim in a.dims for a in arrays])
         return xr.concat(arrays, dim=dim, **method_kwargs)
@@ -101,19 +151,6 @@ class XArrayBackend(BaseBackend):
         axis: int | None = None,
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
-        """
-        Join along new dimension in one of the inputs
-
-        Parameters
-        ----------
-        arrays: list DataArrays or Datasets to apply function on
-        axis: int | None, axis of new dimension if provided
-        method_kwargs: dict, kwargs for xarray.concat
-
-        Return
-        ------
-        DataArray or Dataset
-        """
         dim = method_kwargs.pop("dim")
         assert not np.any([dim in a.dims for a in arrays])
 
@@ -121,6 +158,42 @@ class XArrayBackend(BaseBackend):
         if axis is not None and axis != 0:
             ret = ret.transpose(*ret.dims[1:axis], dim, *ret.dims[axis:])
         return ret
+
+    def add(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        keep_attrs: bool | str = False,
+        **method_kwargs,
+    ):
+        return XArrayBackend.two_arg_function(
+            "add", *arrays, keep_attrs=keep_attrs, **method_kwargs
+        )
+
+    def subtract(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        keep_attrs: bool | str = False,
+        **method_kwargs,
+    ):
+        return XArrayBackend.two_arg_function(
+            "subtract", *arrays, keep_attrs=keep_attrs, **method_kwargs
+        )
+
+    def multiply(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        keep_attrs: bool | str = False,
+        **method_kwargs,
+    ):
+        return XArrayBackend.two_arg_function(
+            "multiply", *arrays, keep_attrs=keep_attrs, **method_kwargs
+        )
+
+    def divide(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        keep_attrs: bool | str = False,
+        **method_kwargs,
+    ):
+        return XArrayBackend.two_arg_function(
+            "divide", *arrays, keep_attrs=keep_attrs, **method_kwargs
+        )
 
     def diff(
         *arrays: list[xr.DataArray | xr.Dataset],
@@ -131,16 +204,8 @@ class XArrayBackend(BaseBackend):
             "subtract", arrays[1], arrays[0], keep_attrs=keep_attrs, **method_kwargs
         )
 
-    def take(*args, **kwargs):
-        return np.take(*args, **kwargs)
-
-
-for func in ["mean", "std", "min", "max", "sum", "prod", "var"]:
-    setattr(
-        XArrayBackend, func, functools.partial(XArrayBackend.multi_arg_function, func)
-    )
-
-for func in ["add", "subtract", "multiply", "divide"]:
-    setattr(
-        XArrayBackend, func, functools.partial(XArrayBackend.two_arg_function, func)
-    )
+    def take(array, indices, *, axis: int, **kwargs):
+        if hasattr(indices, "__iter__"):
+            return np.take(array, indices, axis=axis, **kwargs)
+        ret = np.take(array, [indices], axis=axis, **kwargs)
+        return np.squeeze(ret, axis=axis)

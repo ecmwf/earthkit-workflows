@@ -252,7 +252,7 @@ class Action:
 
         def _expand(action: Action, index: int) -> Action:
             ret = action.map(
-                Payload(backends.take, [Node.input_name(0), [index]], {"axis": axis})
+                Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
             )
             ret._add_dimension(dim, index, new_axis)
             return ret
@@ -450,7 +450,9 @@ class MultiAction(Action):
             ),
         )
 
-    def flatten(self, dim: str = "", axis: int = 0) -> "SingleAction | MultiAction":
+    def flatten(
+        self, dim: str = "", axis: int = 0, **method_kwargs
+    ) -> "SingleAction | MultiAction":
         """
         Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
@@ -459,12 +461,15 @@ class MultiAction(Action):
         ----------
         dim: str, name of dimension to flatten along
         axis: int, axis of new dimension in internal data
+        method_kwargs: dict, kwargs for the underlying array module stack method
 
         Return
         ------
         SingleAction or MultiAction
         """
-        return self.reduce(Payload(backends.stack, kwargs={"axis": axis}), dim)
+        return self.reduce(
+            Payload(backends.stack, kwargs={"axis": axis, **method_kwargs}), dim
+        )
 
     def select(self, criteria: dict) -> "SingleAction | MultiAction":
         """
@@ -488,35 +493,35 @@ class MultiAction(Action):
             return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes)
 
-    def concatenate(self, key: str) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.concat), key)
+    def concatenate(self, key: str, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.concat, kwargs=method_kwargs), key)
 
-    def mean(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.mean), key)
+    def mean(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.mean, kwargs=method_kwargs), key)
 
-    def std(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.std), key)
+    def std(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.std, kwargs=method_kwargs), key)
 
-    def maximum(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.max), key)
+    def maximum(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.max, kwargs=method_kwargs), key)
 
-    def minimum(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.min), key)
+    def minimum(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.min, kwargs=method_kwargs), key)
 
-    def diff(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.diff), key)
+    def diff(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.diff, kwargs=method_kwargs), key)
 
-    def subtract(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.subtract), key)
+    def subtract(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.subtract, kwargs=method_kwargs), key)
 
-    def add(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.add), key)
+    def add(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.add, kwargs=method_kwargs), key)
 
-    def divide(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.divide), key)
+    def divide(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.divide, kwargs=method_kwargs), key)
 
-    def multiply(self, key: str = "") -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.multiply), key)
+    def multiply(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.multiply, kwargs=method_kwargs), key)
 
 
 def source(

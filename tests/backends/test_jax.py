@@ -1,13 +1,17 @@
 import pytest
+
+pytest.importorskip("jax")
 import numpy as np
+import jax.numpy as jnp
 
 from cascade import backends
+from cascade.backends.jax_backend import JaxBackend
 
 from generic_tests import *
 
 
-def inputs(num_inputs: int, input_shape=(2, 3)):
-    return [np.random.rand(*input_shape) for _ in range(num_inputs)]
+def inputs(number: int, shape=(2, 3)):
+    return [jnp.array(np.random.rand(*shape)) for _ in range(number)]
 
 
 @pytest.fixture
@@ -16,7 +20,7 @@ def input_generator():
 
 
 def test_instantiation():
-    backends.ArrayApiBackend()
+    JaxBackend()
 
 
 @pytest.mark.parametrize(
