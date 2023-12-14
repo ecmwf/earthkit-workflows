@@ -91,10 +91,6 @@ class BaseBackend(ABC):
         return args[0] - args[1]
 
     @num_args(2)
-    def diff(*args, **kwargs):
-        return args[1] - args[0]
-
-    @num_args(2)
     def multiply(*args, **kwargs):
         return args[0] * args[1]
 

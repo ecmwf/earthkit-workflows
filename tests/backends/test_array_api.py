@@ -42,7 +42,7 @@ def test_multi_arg_axis(num_inputs, input_shape, kwargs, output_shape):
     ],
 )
 def test_two_arg_single(input_generator, num_inputs, input_shape, output_shape):
-    for func in ["add", "subtract", "diff", "multiply", "divide"]:
+    for func in ["add", "subtract", "multiply", "divide"]:
         assert (
             getattr(backends, func)(*input_generator(num_inputs, input_shape)).shape
             == output_shape

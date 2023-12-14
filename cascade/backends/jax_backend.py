@@ -4,7 +4,7 @@ from .base import BaseBackend
 
 
 class JaxBackend(BaseBackend):
-    def multi_arg_function(name: str, *arrays, **method_kwargs):
+    def stat_funcs(name: str, *arrays, **method_kwargs):
         """
         Apply named function in array module on arrays. If arrays
         only consists of single array then function is applied
@@ -28,25 +28,25 @@ class JaxBackend(BaseBackend):
         return getattr(jnp, name)(arrays, **method_kwargs)
 
     def mean(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("mean", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("mean", *arrays, **method_kwargs)
 
     def std(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("std", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("std", *arrays, **method_kwargs)
 
     def min(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("min", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("min", *arrays, **method_kwargs)
 
     def max(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("max", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("max", *arrays, **method_kwargs)
 
     def sum(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("sum", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("sum", *arrays, **method_kwargs)
 
     def prod(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("prod", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("prod", *arrays, **method_kwargs)
 
     def var(*arrays, **method_kwargs) -> jnp.ndarray:
-        return JaxBackend.multi_arg_function("var", *arrays, **method_kwargs)
+        return JaxBackend.stat_funcs("var", *arrays, **method_kwargs)
 
     def stack(*arrays, axis: int = 0) -> jnp.ndarray:
         broadcasted = jnp.broadcast_arrays(*arrays)

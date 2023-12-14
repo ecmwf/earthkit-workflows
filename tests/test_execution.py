@@ -5,14 +5,14 @@ import pytest
 
 from cascade.executor import DaskExecutor
 from cascade.scheduler import Schedule
-from cascade.fluent import source, Payload
+from cascade.fluent import Fluent, Payload
 
 input = np.random.rand(2, 3)
 
 
 def graph(payloads):
     return (
-        source(payloads, ["x", "y"])
+        Fluent.source(payloads, ["x", "y"])
         .mean("x")
         .minimum("y")
         .expand("z", 3, 1, 0)

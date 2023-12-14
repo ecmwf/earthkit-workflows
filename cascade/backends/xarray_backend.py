@@ -195,15 +195,6 @@ class XArrayBackend(BaseBackend):
             "divide", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
-    def diff(
-        *arrays: list[xr.DataArray | xr.Dataset],
-        keep_attrs: bool | str = False,
-        **method_kwargs,
-    ):
-        return XArrayBackend.two_arg_function(
-            "subtract", arrays[1], arrays[0], keep_attrs=keep_attrs, **method_kwargs
-        )
-
     def take(array, indices, *, axis: int, **kwargs):
         if hasattr(indices, "__iter__"):
             return np.take(array, indices, axis=axis, **kwargs)

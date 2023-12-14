@@ -3,13 +3,13 @@ import xarray as xr
 import pytest
 
 from cascade.transformers import to_dask_graph
-from cascade.fluent import source, Payload, Node, MultiAction
+from cascade.fluent import Fluent, Payload, Node, MultiAction
 
 
 def test_dask_transform():
     payloads = np.empty((4, 5), dtype=object)
     payloads[:] = Payload(np.random.rand, [2, 3])
-    example = source(payloads, ["x", "y"]).mean("x").expand("z", 3, 1, 0)
+    example = Fluent.source(payloads, ["x", "y"]).mean("x").expand("z", 3, 1, 0)
 
     dask_graph = to_dask_graph(example.graph())
     assert all([isinstance(x, tuple) for x in dask_graph.items()])

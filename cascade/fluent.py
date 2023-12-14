@@ -508,9 +508,6 @@ class MultiAction(Action):
     def minimum(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
         return self.reduce(Payload(backends.min, kwargs=method_kwargs), key)
 
-    def diff(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.diff, kwargs=method_kwargs), key)
-
     def subtract(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
         return self.reduce(Payload(backends.subtract, kwargs=method_kwargs), key)
 
@@ -524,45 +521,50 @@ class MultiAction(Action):
         return self.reduce(Payload(backends.multiply, kwargs=method_kwargs), key)
 
 
-def source(
-    payloads: np.ndarray[Payload], dims: list | dict, name: str = "source"
-) -> SingleAction | MultiAction:
-    """
-    Create source nodes in graph from an array of payloads, containing
-    payload for each source node
+class Fluent:
+    single_action: type = SingleAction
+    multi_action: type = MultiAction
 
-    Parameters
-    ----------
-    payloads: np.ndarray[Payload], containing payload for each source node
-    dims: list or dict, specifying dimension names. If dict, then used
-    as coords in xarray.DataArray of nodes. If list, then values of coordinates
-    are integers up to the dimension size
-    name: str, common string to appear in the name of all source nodes
+    @classmethod
+    def source(
+        cls, payloads: np.ndarray[Payload], dims: list | dict, name: str = "source"
+    ) -> "SingleAction | MultiAction":
+        """
+        Create source nodes in graph from an array of payloads, containing
+        payload for each source node
 
-    Return
-    ------
-    SingleAction or MultiAction
-    """
-    payloads = np.asarray(payloads)
-    if payloads.size == 1:
-        return SingleAction.from_payload(None, payloads[()])
+        Parameters
+        ----------
+        payloads: np.ndarray[Payload], containing payload for each source node
+        dims: list or dict, specifying dimension names. If dict, then used
+        as coords in xarray.DataArray of nodes. If list, then values of coordinates
+        are integers up to the dimension size
+        name: str, common string to appear in the name of all source nodes
 
-    assert len(dims) == len(payloads.shape)
-    if isinstance(dims, dict):
-        coords = dims
-        dims = list(coords.keys())
-    else:
-        coords = {x: np.arange(payloads.shape[i]) for i, x in enumerate(dims)}
+        Return
+        ------
+        SingleAction or MultiAction
+        """
+        payloads = np.asarray(payloads)
+        if len(dims) == 0:
+            return cls.single_action.from_payload(None, payloads[()])
 
-    nodes = np.empty(payloads.shape, dtype=object)
-    it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
-    for payload in it:
-        nodes[it.multi_index] = Node(payload[()], name=f"{name}{it.multi_index}")
-    return MultiAction(
-        None,
-        xr.DataArray(
-            nodes,
-            dims=dims,
-            coords=coords,
-        ),
-    )
+        assert len(dims) == len(payloads.shape)
+        if isinstance(dims, dict):
+            coords = dims
+            dims = list(coords.keys())
+        else:
+            coords = {x: np.arange(payloads.shape[i]) for i, x in enumerate(dims)}
+
+        nodes = np.empty(payloads.shape, dtype=object)
+        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+        for payload in it:
+            nodes[it.multi_index] = Node(payload[()], name=f"{name}{it.multi_index}")
+        return cls.multi_action(
+            None,
+            xr.DataArray(
+                nodes,
+                dims=dims,
+                coords=coords,
+            ),
+        )
