@@ -135,7 +135,7 @@ class Action:
     def join(
         self,
         other_action: "Action",
-        dim_name: str | xr.DataArray,
+        dim: str | xr.DataArray,
         match_coord_values: bool = False,
     ) -> "Action":
         if match_coord_values:
@@ -146,7 +146,7 @@ class Action:
                     )
         new_nodes = xr.concat(
             [self.nodes, other_action.nodes],
-            dim_name,
+            dim,
             combine_attrs="no_conflicts",
             coords="minimal",
             join="exact",
@@ -493,32 +493,32 @@ class MultiAction(Action):
             return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes)
 
-    def concatenate(self, key: str, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.concat, kwargs=method_kwargs), key)
+    def concatenate(self, dim: str, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.concat, kwargs=method_kwargs), dim)
 
-    def mean(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.mean, kwargs=method_kwargs), key)
+    def mean(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.mean, kwargs=method_kwargs), dim)
 
-    def std(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.std, kwargs=method_kwargs), key)
+    def std(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.std, kwargs=method_kwargs), dim)
 
-    def maximum(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.max, kwargs=method_kwargs), key)
+    def maximum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.max, kwargs=method_kwargs), dim)
 
-    def minimum(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.min, kwargs=method_kwargs), key)
+    def minimum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.min, kwargs=method_kwargs), dim)
 
-    def subtract(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.subtract, kwargs=method_kwargs), key)
+    def subtract(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.subtract, kwargs=method_kwargs), dim)
 
-    def add(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.add, kwargs=method_kwargs), key)
+    def add(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.add, kwargs=method_kwargs), dim)
 
-    def divide(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.divide, kwargs=method_kwargs), key)
+    def divide(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.divide, kwargs=method_kwargs), dim)
 
-    def multiply(self, key: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.multiply, kwargs=method_kwargs), key)
+    def multiply(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(backends.multiply, kwargs=method_kwargs), dim)
 
 
 class Fluent:
