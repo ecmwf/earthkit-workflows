@@ -47,7 +47,7 @@ class Payload:
         tuple, containing function, arguments and kwargs
         """
         assert self.has_args()
-        return (self.func, self.args, self.kwargs)
+        return (self.name(), self.args, self.kwargs)
 
     def name(self) -> str:
         """
@@ -158,7 +158,9 @@ class Action:
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
-    def transform(self, func: callable, params: list, dim: str) -> "Action":
+    def transform(
+        self, func: callable, params: list, dim: str | xr.DataArray
+    ) -> "Action":
         """
         Create new nodes by applying function on action with different
         parameters. The result actions from applying function are joined
@@ -169,22 +171,32 @@ class Action:
         func: function with signature func(Action, arg) -> Action
         params: list, containing different arguments to pass into func
         for generating new nodes
-        dim: str, name of dimension to join actions resulting from applying
-        function on
+        dim: str or DataArray, name of dimension to join actions or xr.DataArray specifying new dimension name and
+        coordinate values
 
         Return
         ------
         SingleAction or MultiAction
         """
         res = None
-        for param in params:
+        if isinstance(dim, str):
+            dim_name = dim
+            dim_values = list(range(len(params)))
+        else:
+            dim_name = dim.name
+            dim_values = dim.values
+
+        for index, param in enumerate(params):
             new_res = func(self, param)
+            if dim_name not in new_res.nodes.coords:
+                new_res._add_dimension(dim_name, dim_values[index])
             if res is None:
                 res = new_res
             else:
-                res = res.join(new_res, dim)
+                res = res.join(new_res, dim_name)
+
         # Remove expanded dimension if only a single element in param list
-        res._squeeze_dimension(dim)
+        res._squeeze_dimension(dim_name)
         return res
 
     def broadcast(self, other_action: "Action", exclude: list[str] = None) -> "Action":
