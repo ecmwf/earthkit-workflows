@@ -195,7 +195,7 @@ class Action:
             else:
                 res = res.join(new_res, dim_name)
 
-        # Remove expanded dimension if only a single element in param list
+        # Remove expanded dimension if only a single element
         res._squeeze_dimension(dim_name)
         return res
 
@@ -277,14 +277,14 @@ class Action:
     def _add_dimension(self, name: str, value: float, axis: int = 0):
         self.nodes = self.nodes.expand_dims({name: [value]}, axis)
 
-    def _squeeze_dimension(self, dim_name: str):
+    def _squeeze_dimension(self, dim_name: str, drop: bool = False):
         if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
-            self.nodes = self.nodes.squeeze(dim_name)
+            self.nodes = self.nodes.squeeze(dim_name, drop=drop)
 
 
 class SingleAction(Action):
-    def __init__(self, previous: Action, node):
-        assert node.size == 1
+    def __init__(self, previous: Action, node: xr.DataArray):
+        assert node.size == 1, f"Expected node size 1, got {node.size}"
         super().__init__(previous, node)
 
     def to_multi(self, nodes: xr.DataArray) -> "MultiAction":
@@ -340,6 +340,11 @@ class SingleAction(Action):
                     payload,
                     previous.nodes.data.flatten(),
                 ),
+                coords={
+                    k: v
+                    for k, v in previous.nodes.coords.items()
+                    if k not in previous.nodes.dims
+                },
                 attrs=previous.nodes.attrs,
             )
         return cls(previous, node)
@@ -452,11 +457,17 @@ class MultiAction(Action):
         for _ in it:
             inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
             new_nodes[it.multi_index] = Node(payload, inputs)
+
+        new_coords = {key: self.nodes.coords[key] for key in new_dims}
+        # Propagate scalar coords
+        new_coords.update(
+            {k: v for k, v in self.nodes.coords.items() if k not in self.nodes.dims}
+        )
         return type(self)(
             self,
             xr.DataArray(
                 new_nodes,
-                coords={key: self.nodes.coords[key] for key in new_dims},
+                coords=new_coords,
                 dims=new_dims,
                 attrs=self.nodes.attrs,
             ),
@@ -483,13 +494,16 @@ class MultiAction(Action):
             Payload(backends.stack, kwargs={"axis": axis, **method_kwargs}), dim
         )
 
-    def select(self, criteria: dict) -> "SingleAction | MultiAction":
+    def select(
+        self, criteria: dict, drop: bool = False
+    ) -> "SingleAction | MultiAction":
         """
         Create action contaning nodes match selection criteria
 
         Parameters
         ----------
         criteria: dict, key-value pairs specifying selection criteria
+        drop: bool, drop coord variables in criteria if True
 
         Return
         ------
@@ -500,7 +514,7 @@ class MultiAction(Action):
                 f"Unknown coordinate in criteria {criteria}. Existing dimensions {self.nodes.dims}"
             )
 
-        selected_nodes = self.nodes.sel(**criteria, drop=True)
+        selected_nodes = self.nodes.sel(**criteria, drop=drop)
         if selected_nodes.size == 1:
             return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes)
