@@ -47,7 +47,7 @@ class Payload:
         tuple, containing function, arguments and kwargs
         """
         assert self.has_args()
-        return (self.name(), self.args, self.kwargs)
+        return (self.func, self.args, self.kwargs)
 
     def name(self) -> str:
         """
@@ -63,7 +63,7 @@ class Payload:
         return ""
 
     def __str__(self) -> str:
-        return str(self.to_tuple())
+        return f"{self.name()}{self.args}{self.kwargs}"
 
 
 def custom_hash(string: str) -> str:
@@ -96,7 +96,7 @@ class Node(BaseNode):
 
         if name is None:
             name = payload.name()
-        name += f":{custom_hash(f'{[payload.to_tuple()] + [x.name for x in inputs]}')}"
+        name += f":{custom_hash(f'{payload}{[x.name for x in inputs]}')}"
 
         super().__init__(
             name,
@@ -553,7 +553,8 @@ class Fluent:
 
     @classmethod
     def source(
-        cls, payloads: np.ndarray[Payload], dims: list | dict, name: str = "source"
+        cls, payloads: np.ndarray[Payload], dims: list | dict, name: str = "source", 
+        append_unique_index: bool = True
     ) -> "SingleAction | MultiAction":
         """
         Create source nodes in graph from an array of payloads, containing
@@ -585,7 +586,8 @@ class Fluent:
         nodes = np.empty(payloads.shape, dtype=object)
         it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
         for payload in it:
-            nodes[it.multi_index] = Node(payload[()], name=f"{name}{it.multi_index}")
+            node_name = f"{name}{it.multi_index}" if append_unique_index else name
+            nodes[it.multi_index] = Node(payload[()], name=node_name)
         return cls.multi_action(
             None,
             xr.DataArray(
