@@ -3,6 +3,9 @@ import xarray as xr
 import numpy as np
 
 from cascade.fluent import Payload, Node, SingleAction, MultiAction
+from cascade.backends.array_api import ArrayApiBackend
+
+backend = ArrayApiBackend
 
 
 class MockNode(Node):
@@ -19,18 +22,15 @@ def mock_action(shape: tuple) -> MultiAction:
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
     if nodes.size == 1:
-        return SingleAction(None, nodes)
-    return MultiAction(
-        None,
-        nodes,
-    )
+        return SingleAction(None, nodes, backend)
+    return MultiAction(None, nodes, backend)
 
 
 @pytest.mark.parametrize(
     "previous, nodes",
     [
         [
-            SingleAction.from_payload(None, Payload("test")),
+            SingleAction.from_payload(None, Payload("test"), backend),
             xr.DataArray([MockNode("1")]),
         ],
         [None, xr.DataArray([MockNode("1"), MockNode("2")])],
@@ -39,15 +39,15 @@ def mock_action(shape: tuple) -> MultiAction:
 def test_single_action(previous, nodes):
     if nodes.size > 1:
         with pytest.raises(Exception):
-            SingleAction(previous, nodes)
+            SingleAction(previous, nodes, backend)
     else:
-        SingleAction(previous, nodes)
+        SingleAction(previous, nodes, backend)
 
 
 @pytest.mark.parametrize(
     "payload, previous",
     [
-        [Payload("test"), SingleAction.from_payload(None, Payload("test"))],
+        [Payload("test"), SingleAction.from_payload(None, Payload("test"), backend)],
         [
             Payload("test"),
             mock_action((2, 2)),
@@ -55,7 +55,7 @@ def test_single_action(previous, nodes):
     ],
 )
 def test_single_action_from_payload(payload, previous):
-    single_action = SingleAction.from_payload(previous, payload)
+    single_action = SingleAction.from_payload(previous, payload, backend)
     assert single_action.nodes.size == 1
     assert single_action.nodes.shape == ()
     assert len(single_action.nodes.data[()].inputs) == previous.nodes.size

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .graph import Graph
 from .graph import Node as BaseNode
-from . import backends
+from .backends.array_api import ArrayApiBackend
 
 
 @dataclass
@@ -111,11 +111,12 @@ class Node(BaseNode):
 
 
 class Action:
-    def __init__(self, previous: "Action", nodes: xr.DataArray):
+    def __init__(self, previous: "Action", nodes: xr.DataArray, backend):
         self.previous = previous
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
         self.sinks = [] if previous is None else previous.sinks.copy()
+        self.backend = backend
 
     def graph(self) -> Graph:
         """
@@ -154,7 +155,7 @@ class Action:
         if hasattr(self, "to_multi"):
             ret = self.to_multi(new_nodes)
         else:
-            ret = type(self)(self, new_nodes)
+            ret = type(self)(self, new_nodes, self.backend)
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
@@ -228,7 +229,7 @@ class Action:
             flags=["multi_index", "refs_ok"],
         )
         for node in it:
-            new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])
+            new_nodes[it.multi_index] = Node(Payload(self.backend.trivial), node[()])
 
         new_nodes = xr.DataArray(
             new_nodes,
@@ -238,7 +239,7 @@ class Action:
         )
         if hasattr(self, "to_multi"):
             return self.to_multi(new_nodes)
-        return type(self)(self, new_nodes)
+        return type(self)(self, new_nodes, self.backend)
 
     def expand(
         self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
@@ -264,7 +265,7 @@ class Action:
 
         def _expand(action: Action, index: int) -> Action:
             ret = action.map(
-                Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
+                Payload(self.backend.take, [Node.input_name(0), index], {"axis": axis})
             )
             ret._add_dimension(dim, index, new_axis)
             return ret
@@ -283,9 +284,9 @@ class Action:
 
 
 class SingleAction(Action):
-    def __init__(self, previous: Action, node: xr.DataArray):
+    def __init__(self, previous: Action, node: xr.DataArray, backend):
         assert node.size == 1, f"Expected node size 1, got {node.size}"
-        super().__init__(previous, node)
+        super().__init__(previous, node, backend)
 
     def to_multi(self, nodes: xr.DataArray) -> "MultiAction":
         """
@@ -299,7 +300,7 @@ class SingleAction(Action):
         ------
         MultiAction
         """
-        return MultiAction(self, nodes)
+        return MultiAction(self, nodes, self.backend)
 
     def map(self, payload: Payload) -> "SingleAction":
         """
@@ -313,13 +314,15 @@ class SingleAction(Action):
         ------
         SingleAction
         """
-        return type(self).from_payload(self, payload)
+        return type(self).from_payload(self, payload, self.backend)
 
     def node(self) -> Node:
         return self.nodes.data[()]
 
     @classmethod
-    def from_payload(cls, previous: Action, payload: Payload) -> "SingleAction":
+    def from_payload(
+        cls, previous: Action, payload: Payload, backend
+    ) -> "SingleAction":
         """
         Factory for SingleAction from previous action and payload
 
@@ -347,12 +350,12 @@ class SingleAction(Action):
                 },
                 attrs=previous.nodes.attrs,
             )
-        return cls(previous, node)
+        return cls(previous, node, backend)
 
 
 class MultiAction(Action):
-    def __init__(self, previous, nodes):
-        super().__init__(previous, nodes)
+    def __init__(self, previous: xr.DataArray, nodes: xr.DataArray, backend):
+        super().__init__(previous, nodes, backend)
 
     def to_single(self, payload_or_node: Payload | xr.DataArray) -> SingleAction:
         """
@@ -368,8 +371,8 @@ class MultiAction(Action):
         SingleAction
         """
         if isinstance(payload_or_node, Payload):
-            return SingleAction.from_payload(self, payload_or_node)
-        return SingleAction(self, payload_or_node)
+            return SingleAction.from_payload(self, payload_or_node, self.backend)
+        return SingleAction(self, payload_or_node, self.backend)
 
     def node(self, criteria: dict) -> Node | np.ndarray[Node]:
         """
@@ -428,6 +431,7 @@ class MultiAction(Action):
                 dims=self.nodes.dims,
                 attrs=self.nodes.attrs,
             ),
+            self.backend,
         )
 
     def reduce(self, payload: Payload, dim: str = "") -> "SingleAction | MultiAction":
@@ -471,6 +475,7 @@ class MultiAction(Action):
                 dims=new_dims,
                 attrs=self.nodes.attrs,
             ),
+            self.backend,
         )
 
     def flatten(
@@ -491,7 +496,7 @@ class MultiAction(Action):
         SingleAction or MultiAction
         """
         return self.reduce(
-            Payload(backends.stack, kwargs={"axis": axis, **method_kwargs}), dim
+            Payload(self.backend.stack, kwargs={"axis": axis, **method_kwargs}), dim
         )
 
     def select(
@@ -517,44 +522,53 @@ class MultiAction(Action):
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
         if selected_nodes.size == 1:
             return self.to_single(selected_nodes)
-        return type(self)(self, selected_nodes)
+        return type(self)(self, selected_nodes, self.backend)
 
     def concatenate(self, dim: str, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.concat, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.concat, kwargs=method_kwargs), dim)
 
     def mean(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.mean, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
 
     def std(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.std, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.std, kwargs=method_kwargs), dim)
 
     def maximum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.max, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.max, kwargs=method_kwargs), dim)
 
     def minimum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.min, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.min, kwargs=method_kwargs), dim)
 
     def subtract(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.subtract, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.subtract, kwargs=method_kwargs), dim)
 
     def add(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.add, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.add, kwargs=method_kwargs), dim)
 
     def divide(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.divide, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.divide, kwargs=method_kwargs), dim)
 
     def multiply(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.multiply, kwargs=method_kwargs), dim)
+        return self.reduce(Payload(self.backend.multiply, kwargs=method_kwargs), dim)
 
 
 class Fluent:
-    single_action: type = SingleAction
-    multi_action: type = MultiAction
+    def __init__(
+        self,
+        single_action=SingleAction,
+        multi_action=MultiAction,
+        backend=ArrayApiBackend,
+    ):
+        self.single_action = single_action
+        self.multi_action = multi_action
+        self.backend = backend
 
-    @classmethod
     def source(
-        cls, payloads: np.ndarray[Payload], dims: list | dict, name: str = "source", 
-        append_unique_index: bool = True
+        self,
+        payloads: np.ndarray[Payload],
+        dims: list | dict,
+        name: str = "source",
+        append_unique_index: bool = True,
     ) -> "SingleAction | MultiAction":
         """
         Create source nodes in graph from an array of payloads, containing
@@ -574,7 +588,7 @@ class Fluent:
         """
         payloads = np.asarray(payloads)
         if len(dims) == 0:
-            return cls.single_action.from_payload(None, payloads[()])
+            return self.single_action.from_payload(None, payloads[()], self.backend)
 
         assert len(dims) == len(payloads.shape)
         if isinstance(dims, dict):
@@ -588,11 +602,12 @@ class Fluent:
         for payload in it:
             node_name = f"{name}{it.multi_index}" if append_unique_index else name
             nodes[it.multi_index] = Node(payload[()], name=node_name)
-        return cls.multi_action(
+        return self.multi_action(
             None,
             xr.DataArray(
                 nodes,
                 dims=dims,
                 coords=coords,
             ),
+            self.backend,
         )

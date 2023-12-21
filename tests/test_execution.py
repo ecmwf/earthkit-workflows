@@ -6,13 +6,16 @@ import pytest
 from cascade.executor import DaskExecutor
 from cascade.scheduler import Schedule
 from cascade.fluent import Fluent, Payload
+from cascade.backends.array_api import ArrayApiBackend
+from cascade.backends.xarray_backend import XArrayBackend
 
 input = np.random.rand(2, 3)
 
 
-def graph(payloads):
+def graph(backend, payloads):
     return (
-        Fluent.source(payloads, ["x", "y"])
+        Fluent(backend=backend)
+        .source(payloads, ["x", "y"])
         .mean("x")
         .minimum("y")
         .expand("z", 3, 1, 0)
@@ -22,16 +25,20 @@ def graph(payloads):
 
 
 @pytest.mark.parametrize(
-    "payload, output_type",
+    "backend, payload, output_type",
     [
-        [Payload(np.asarray, [input]), np.ndarray],
-        [Payload(xr.DataArray, [input], {"dims": ["a", "b"]}), xr.DataArray],
+        [ArrayApiBackend, Payload(np.asarray, [input]), np.ndarray],
+        [
+            XArrayBackend,
+            Payload(xr.DataArray, [input], {"dims": ["a", "b"]}),
+            xr.DataArray,
+        ],
     ],
 )
-def test_graph_execution(payload, output_type):
+def test_graph_execution(backend, payload, output_type):
     payloads = np.empty((4, 5), dtype=object)
     payloads[:] = payload
-    g = graph(payloads)
+    g = graph(backend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     schedule = Schedule(g, None, {})
@@ -44,9 +51,11 @@ def test_graph_execution(payload, output_type):
 
 def test_graph_execution_jax():
     jax = pytest.importorskip("jax")
+    from cascade.backends.jax_backend import JaxBackend
+
     payloads = np.empty((4, 5), dtype=object)
     payloads[:] = Payload(jax.numpy.asarray, [input])
-    g = graph(payloads)
+    g = graph(JaxBackend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     schedule = Schedule(g, None, {})
