@@ -4,7 +4,7 @@ import pytest
 
 from cascade.transformers import to_dask_graph
 from cascade.fluent import Fluent, Payload, Node, MultiAction
-from cascade.backends.array_api import ArrayApiBackend
+from cascade.backends.arrayapi import ArrayApiBackend
 
 
 def test_dask_transform():

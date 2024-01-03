@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 import xarray as xr
 
-from cascade.backends.xarray_backend import XArrayBackend
+from cascade.backends.xarray import XArrayBackend
 
 from generic_tests import *
 

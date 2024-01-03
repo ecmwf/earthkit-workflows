@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 
 from cascade.fluent import Payload, Node, SingleAction, MultiAction
-from cascade.backends.array_api import ArrayApiBackend
+from cascade.backends.arrayapi import ArrayApiBackend
 
 backend = ArrayApiBackend
 

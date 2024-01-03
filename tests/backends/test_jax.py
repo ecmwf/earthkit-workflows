@@ -4,7 +4,7 @@ pytest.importorskip("jax")
 import numpy as np
 import jax.numpy as jnp
 
-from cascade.backends.jax_backend import JaxBackend
+from cascade.backends.jax import JaxBackend
 
 from generic_tests import *
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .graph import Graph
 from .graph import Node as BaseNode
-from .backends.array_api import ArrayApiBackend
+from .backends.arrayapi import ArrayApiBackend
 
 
 @dataclass

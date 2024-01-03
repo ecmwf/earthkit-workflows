@@ -6,8 +6,8 @@ import pytest
 from cascade.executor import DaskExecutor
 from cascade.scheduler import Schedule
 from cascade.fluent import Fluent, Payload
-from cascade.backends.array_api import ArrayApiBackend
-from cascade.backends.xarray_backend import XArrayBackend
+from cascade.backends.arrayapi import ArrayApiBackend
+from cascade.backends.xarray import XArrayBackend
 
 input = np.random.rand(2, 3)
 
@@ -51,7 +51,7 @@ def test_graph_execution(backend, payload, output_type):
 
 def test_graph_execution_jax():
     jax = pytest.importorskip("jax")
-    from cascade.backends.jax_backend import JaxBackend
+    from cascade.backends.jax import JaxBackend
 
     payloads = np.empty((4, 5), dtype=object)
     payloads[:] = Payload(jax.numpy.asarray, [input])

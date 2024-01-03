@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from cascade.backends.array_api import ArrayApiBackend
+from cascade.backends.arrayapi import ArrayApiBackend
 
 from generic_tests import *
 
