@@ -26,5 +26,6 @@ setup(
         "xarray",
         "networkx",
         "dask",
+        "bokeh"
     ]
 )

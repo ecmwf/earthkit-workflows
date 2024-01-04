@@ -217,8 +217,9 @@ class DaskExecutor(Executor):
         memory_limit: str = "24GB",
         n_workers: int = 1,
         threads_per_worker: int = 1,
+        report: str = "performance_report.html",
     ):
-        from dask.distributed import Client, as_completed
+        from dask.distributed import Client, as_completed, performance_report
 
         # Set up distributed client
         dask.config.set(
@@ -230,19 +231,21 @@ class DaskExecutor(Executor):
             n_workers=n_workers,
             threads_per_worker=threads_per_worker,
         )
-        future = client.compute(self.outputs)
 
-        seq = as_completed(future)
-        del future
-        results = []
-        # Trigger gargage collection on completed end tasks so scheduler doesn't
-        # try to repeat them
-        errored_tasks = 0
-        for fut in seq:
-            if fut.status != "finished":
-                print(f"Task failed with exception: {fut.exception()}")
-                errored_tasks += 1
-            results.append(fut.result())
+        with performance_report(report):
+            future = client.compute(self.outputs)
+
+            seq = as_completed(future)
+            del future
+            results = []
+            # Trigger gargage collection on completed end tasks so scheduler doesn't
+            # try to repeat them
+            errored_tasks = 0
+            for fut in seq:
+                if fut.status != "finished":
+                    print(f"Task failed with exception: {fut.exception()}")
+                    errored_tasks += 1
+                results.append(fut.result())
 
         client.close()
 
