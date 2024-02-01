@@ -2,13 +2,13 @@ import copy
 from dataclasses import dataclass, field
 import randomname
 import datetime
-import dask
-from dask.delayed import Delayed
 
-from .contextgraph import Communicator
-from .taskgraph import Task, Communication
-from .utility import EventLoop
-from .transformers import to_execution_graph, to_dask_graph
+from cascade.contextgraph import Communicator
+from cascade.taskgraph import Task, Communication
+from cascade.utility import EventLoop
+from cascade.transformers import to_execution_graph
+from cascade.schedulers.schedule import Schedule
+from .base import Executor
 
 
 ####################################################################################################
@@ -82,33 +82,31 @@ class ExecutionReport:
         return sum([processor.state.idle_time for processor in self.context_graph])
 
 
-class Executor:
-    def __init__(self, schedule, with_communication: bool = True):
-        self.schedule = schedule
-
-        self.task_graph = to_execution_graph(schedule.task_graph)
-        self.context_graph = copy.deepcopy(schedule.context_graph)
-        self.with_communication = with_communication
-
-    def reset_state(self):
-        for task in self.task_graph.nodes():
-            task.state = TaskState()
-        for ctx in self.context_graph:
-            ctx.state = ProcessorState()
-        for _, _, ctx in self.context_graph.edges(data=True):
-            ctx["obj"].state = CommunicatorState()
-
-    def execute(self) -> ExecutionReport:
-        raise NotImplementedError()
-
-    def simulate(self) -> ExecutionReport:
-        raise NotImplementedError()
-
-
-class BasicExecutor(Executor):
-    """The basic executor executes tasks in the order they are given by the schedule.
+class Simulator(Executor):
+    """
+    Simulator for task execution according to order given by the schedule.
     It does not dictate the order of communications, it just begins communications
-    as soon as data becomes available."""
+    as soon as data becomes available.
+    """
+
+    class State:
+        def __init__(self, schedule: Schedule):
+            self.schedule = schedule
+            self.task_graph = to_execution_graph(schedule.task_graph)
+            self.context_graph = copy.deepcopy(schedule.context_graph)
+            self.total_tasks = len(list(self.task_graph.nodes()))
+            self.ntasks_complete = 0
+            self.sim = EventLoop()
+
+            for task in self.task_graph.nodes():
+                task.state = TaskState()
+            for ctx in self.context_graph:
+                ctx.state = ProcessorState()
+            for _, _, ctx in self.context_graph.edges(data=True):
+                ctx["obj"].state = CommunicatorState()
+
+    def __init__(self):
+        self.state = None
 
     def assign_task_to_processor(self, task, processor, start_time):
         # print(f"Task {task.name} assigned to processor {processor.name} at time {start_time}")
@@ -123,17 +121,17 @@ class BasicExecutor(Executor):
             )
         processor.state.end_time = task.state.end_time
         processor.state.next_task_index += 1
-        self.sim.add_event(task.state.end_time, self.on_task_complete, task)
+        self.state.sim.add_event(task.state.end_time, self.on_task_complete, task)
         # print(f"Task {task.name} will finish at time {task.state.end_time}")
 
     def on_task_complete(self, time, task):
         # print(f"Task {task.name} completed at time {time}")
         task.state.finished = True
-        self.ntasks_complete += 1
+        self.state.ntasks_complete += 1
 
         if isinstance(task, Task):
-            processor = self.schedule.get_processor(task.name)
-            self.context_graph.node_dict[processor].state.current_task = None
+            processor = self.state.schedule.get_processor(task.name)
+            self.state.context_graph.node_dict[processor].state.current_task = None
         else:
             communicator = task.state.communicator
             communicator.state.current_task = None
@@ -141,23 +139,23 @@ class BasicExecutor(Executor):
         self.assign_idle_processors_and_communicators(time)
 
     def is_task_eligible(self, task):
-        return all(t.state.finished for t in self.task_graph.predecessors(task))
+        return all(t.state.finished for t in self.state.task_graph.predecessors(task))
 
     def assign_idle_processors_and_communicators(self, time):
-        for processor in self.context_graph:
+        for processor in self.state.context_graph:
             if processor.state.current_task is None:
                 if processor.state.next_task_index >= len(
-                    self.schedule.task_allocation[processor.name]
+                    self.state.schedule.task_allocation[processor.name]
                 ):
                     continue
-                next_task_name = self.schedule.task_allocation[processor.name][
+                next_task_name = self.state.schedule.task_allocation[processor.name][
                     processor.state.next_task_index
                 ]
-                next_task = self.task_graph.get_node(next_task_name)
+                next_task = self.state.task_graph.get_node(next_task_name)
                 if self.is_task_eligible(next_task):
                     self.assign_task_to_processor(next_task, processor, time)
 
-        for _, _, communicator in self.context_graph.edges(data=True):
+        for _, _, communicator in self.state.context_graph.edges(data=True):
             communicator = communicator["obj"]
             if communicator.state.current_task is None:
                 # Check all tasks, because communications are not ordered
@@ -169,86 +167,36 @@ class BasicExecutor(Executor):
                     if self.is_task_eligible(task):
                         self.assign_task_to_processor(task, communicator, time)
 
-    def simulate(self) -> ExecutionReport:
-        self.reset_state()
+    def execute(
+        self, schedule: Schedule, with_communication: bool = False
+    ) -> ExecutionReport:
+        self.state = Simulator.State(schedule)
 
-        self.total_tasks = len(list(self.task_graph.nodes()))
-
-        if self.with_communication:
-            for start, end in self.task_graph.edges():
-                start_processor = self.context_graph.node_dict[
-                    self.schedule.get_processor(start.name)
+        if with_communication:
+            for start, end in self.state.task_graph.edges():
+                start_processor = self.state.context_graph.node_dict[
+                    schedule.get_processor(start.name)
                 ]
-                end_processor = self.context_graph.node_dict[
-                    self.schedule.get_processor(end.name)
+                end_processor = self.state.context_graph.node_dict[
+                    schedule.get_processor(end.name)
                 ]
                 if start_processor != end_processor:
-                    t = self.task_graph._make_communication_task(start, end)
+                    t = self.state.task_graph._make_communication_task(start, end)
                     t.state = CommunicationState()
                     # find the communicator which can handle this communication
-                    ctx = self.context_graph.get_edge_data(
+                    ctx = self.state.context_graph.get_edge_data(
                         start_processor, end_processor
                     )["obj"]
                     t.state.communicator = ctx
                     ctx.state.tasks.append(t)
-                    self.total_tasks += 1
+                    self.state.total_tasks += 1
 
-        self.ntasks_complete = 0
-        self.sim = EventLoop()
         self.assign_idle_processors_and_communicators(time=0)
-        self.sim.run()
+        self.state.sim.run()
 
         # print(f"Finished {self.ntasks_complete} tasks out of {self.total_tasks}")
-        assert self.ntasks_complete == self.total_tasks
+        assert self.state.ntasks_complete == self.state.total_tasks
 
-        return ExecutionReport(self.schedule, self.task_graph, self.context_graph)
-
-
-class DaskExecutor(Executor):
-    def __init__(self, schedule):
-        self.schedule = schedule
-        self.dask_graph = to_dask_graph(schedule.task_graph)
-        self.outputs = [
-            Delayed(x.name, self.dask_graph) for x in schedule.task_graph.sinks
-        ]
-
-    def execute(
-        self,
-        memory_limit: str = "24GB",
-        n_workers: int = 1,
-        threads_per_worker: int = 1,
-        report: str = "performance_report.html",
-    ):
-        from dask.distributed import Client, as_completed, performance_report
-
-        # Set up distributed client
-        dask.config.set(
-            {"distributed.scheduler.worker-saturation": 1.0}
-        )  # Important to prevent root task overloading
-        client = Client(
-            memory_limit=memory_limit,
-            processes=True,
-            n_workers=n_workers,
-            threads_per_worker=threads_per_worker,
+        return ExecutionReport(
+            self.state.schedule, self.state.task_graph, self.state.context_graph
         )
-
-        with performance_report(report):
-            future = client.compute(self.outputs)
-
-            seq = as_completed(future)
-            del future
-            results = []
-            # Trigger gargage collection on completed end tasks so scheduler doesn't
-            # try to repeat them
-            errored_tasks = 0
-            for fut in seq:
-                if fut.status != "finished":
-                    print(f"Task failed with exception: {fut.exception()}")
-                    errored_tasks += 1
-                results.append(fut.result())
-
-        client.close()
-
-        if errored_tasks != 0:
-            raise RuntimeError(f"{errored_tasks} task failed. Re-run required.")
-        return results

@@ -3,8 +3,7 @@ import numpy as np
 import xarray as xr
 import pytest
 
-from cascade.executor import DaskExecutor
-from cascade.scheduler import Schedule
+from cascade.executors.dask import DaskExecutor
 from cascade.fluent import Fluent, Payload
 from cascade.backends.arrayapi import ArrayApiBackend
 from cascade.backends.xarray import XArrayBackend
@@ -41,9 +40,7 @@ def test_graph_execution(backend, payload, output_type):
     g = graph(backend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    schedule = Schedule(g, None, {})
-    executor = DaskExecutor(schedule)
-    output = executor.execute(memory_limit="10GB", n_workers=1, threads_per_worker=1)
+    output = DaskExecutor.execute(g)
     assert len(output) == 3
     assert output[0].shape == (2,)
     assert np.all([isinstance(x, output_type) for x in output])
@@ -58,9 +55,7 @@ def test_graph_execution_jax():
     g = graph(JaxBackend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    schedule = Schedule(g, None, {})
-    executor = DaskExecutor(schedule)
-    output = executor.execute(memory_limit="10GB", n_workers=1, threads_per_worker=1)
+    output = DaskExecutor.execute(g)
     assert len(output) == 3
     assert output[0].shape == (2,)
     assert np.all([isinstance(x, jax.Array) for x in output])

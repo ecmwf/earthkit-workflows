@@ -1,12 +1,13 @@
 import pytest
 import random
 
-from cascade.cascade import Cascade
-from cascade.scheduler import Schedule
+from cascade.schedulers.schedule import Schedule
 from cascade.graph import Graph, Node, Sink, Graph, Transformer
 from cascade.taskgraph import Task, TaskGraph
 from cascade.contextgraph import ContextGraph
-from cascade.scheduler import AnnealingScheduler
+
+from cascade.schedulers.anneal import AnnealingScheduler
+from cascade.schedulers.depthfirst import DepthFirstScheduler
 
 
 def setup_context():
@@ -77,8 +78,7 @@ def test_valid_allocations(allocations, exp):
 def test_depth_first_scheduler():
     context = setup_context()
     graph = example_graph(5)
-    schedule = Cascade.schedule(add_resources(graph), context)
-    Cascade.simulate(schedule)
+    DepthFirstScheduler().schedule(add_resources(graph), context)
 
 
 @pytest.mark.skip(
@@ -87,6 +87,6 @@ def test_depth_first_scheduler():
 def test_annealing_scheduler():
     context = setup_context()
     graph = example_graph(5)
-    scheduler = AnnealingScheduler(add_resources(graph), context)
-    schedule = scheduler.create_schedule(num_temp_levels=10, num_tries=10)
-    Cascade.simulate(schedule)
+    AnnealingScheduler().schedule(
+        add_resources(graph), context, num_temp_levels=10, num_tries=10
+    )
