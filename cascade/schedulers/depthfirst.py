@@ -5,7 +5,6 @@ from cascade.taskgraph import Task, TaskGraph
 from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
 from cascade.transformers import to_task_graph
-from .base import Scheduler
 from .schedule import Schedule
 
 
@@ -31,7 +30,7 @@ class MemoryUsage:
         return f"Memory:{self.memory},Tasks:{self.tasks_in_memory}"
 
 
-class DepthFirstScheduler(Scheduler):
+class DepthFirstScheduler:
     class State:
         def __init__(self, task_graph: Graph, context_graph: ContextGraph):
             if not isinstance(task_graph, TaskGraph):

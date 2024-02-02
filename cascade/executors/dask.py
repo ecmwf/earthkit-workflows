@@ -8,7 +8,6 @@ from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
 
-from .base import Executor
 from .dask_utils import create_cluster
 
 
@@ -114,7 +113,7 @@ class DaskExecutor:
         return results
 
 
-class DaskLocalExecutor(Executor):
+class DaskLocalExecutor:
     """
     Convenience class for DaskExecutor using LocalCluster exposing most
     common configuration arguments
@@ -147,7 +146,7 @@ class DaskLocalExecutor(Executor):
         )
 
 
-class DaskKubeExecutor(Executor):
+class DaskKubeExecutor:
     """
     Convenience class for DaskExecutor using KubeCluster exposing most
     common configuration arguments

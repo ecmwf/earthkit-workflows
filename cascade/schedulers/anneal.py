@@ -5,17 +5,16 @@ import numpy as np
 from cascade.executors.simulate import Simulator
 from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
-from .base import Scheduler
 from .schedule import Schedule
 from .depthfirst import DepthFirstScheduler
 
 
-class AnnealingScheduler(Scheduler):
+class AnnealingScheduler:
+    @classmethod
     def schedule(
-        self,
+        cls,
         task_graph: Graph,
         context_graph: ContextGraph,
-        *,
         num_temp_levels: int = 100,
         num_tries: int = 100,
         num_success_cutoff: int = 10,

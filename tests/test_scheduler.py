@@ -87,6 +87,6 @@ def test_depth_first_scheduler():
 def test_annealing_scheduler():
     context = setup_context()
     graph = example_graph(5)
-    AnnealingScheduler().schedule(
+    AnnealingScheduler.schedule(
         add_resources(graph), context, num_temp_levels=10, num_tries=10
     )

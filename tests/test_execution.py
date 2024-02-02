@@ -55,7 +55,7 @@ def test_graph_execution_jax():
     g = graph(JaxBackend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    output = DaskLocalExecutor.execute(g)
+    output = DaskLocalExecutor.execute(g, 2)
     assert len(output) == 3
     assert output[0].shape == (2,)
     assert np.all([isinstance(x, jax.Array) for x in output])

@@ -8,7 +8,6 @@ from cascade.taskgraph import Task, Communication
 from cascade.utility import EventLoop
 from cascade.transformers import to_execution_graph
 from cascade.schedulers.schedule import Schedule
-from .base import Executor
 
 
 ####################################################################################################
@@ -82,7 +81,7 @@ class ExecutionReport:
         return sum([processor.state.idle_time for processor in self.context_graph])
 
 
-class Simulator(Executor):
+class Simulator:
     """
     Simulator for task execution according to order given by the schedule.
     It does not dictate the order of communications, it just begins communications
