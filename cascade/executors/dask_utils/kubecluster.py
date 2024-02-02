@@ -32,13 +32,12 @@ class KubeCluster(DaskKubeCluster):
         protocol=None,
         dashboard_address=None,
         security=None,
-        scheduler_class=None,
-        scheduler_kwargs=None,
         scheduler_service_wait_timeout=None,
         scheduler_service_name_resolution_retries=None,
         scheduler_pod_template=None,
+        worker_names=None,
         apply_default_affinity="preferred",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             pod_template,
@@ -61,8 +60,22 @@ class KubeCluster(DaskKubeCluster):
             apply_default_affinity,
             kwargs,
         )
-        self.scheduler_class = scheduler_class
-        self.scheduler_kwargs = scheduler_kwargs
+        self.worker_names = worker_names
+
+    def _new_worker_name(self, worker_number):
+        # Revert to default worker names if worker_number
+        # greater than provided set of names for cases of adaptive scaling
+        if self.worker_names is None or worker_number >= len(worker_number):
+            return super()._new_worker_name(worker_number)
+        return self.worker_names[worker_number]
+
+    def scale(self, n=0, memory=None, cores=None):
+        if self.worker_names is not None:
+            assert n >= len(
+                self.work_names
+            ), f"Can not scale down cluster to less than {len(self.worker_names)}\
+with static scheduling enabled. Scheduler will hang waiting to schedule job on specified workers"
+        super().scale(n, memory, cores)
 
     async def _start(self):
         self.pod_template = self._get_pod_template(self.pod_template, pod_type="worker")
@@ -124,9 +137,7 @@ class KubeCluster(DaskKubeCluster):
 
         if self._deploy_mode == "local":
             self.scheduler_spec = {
-                "cls": dask.distributed.Scheduler
-                if self.scheduler_class is None
-                else self.scheduler_class,
+                "cls": dask.distributed.Scheduler,
                 "options": {
                     "protocol": self._protocol,
                     "interface": self._interface,
@@ -139,9 +150,7 @@ class KubeCluster(DaskKubeCluster):
             }
         elif self._deploy_mode == "remote":
             self.scheduler_spec = {
-                "cls": Scheduler
-                if self.scheduler_class is None
-                else self.scheduler_class,
+                "cls": Scheduler,
                 "options": {
                     "idle_timeout": self._idle_timeout,
                     "service_wait_timeout_s": self._scheduler_service_wait_timeout,
@@ -159,7 +168,9 @@ class KubeCluster(DaskKubeCluster):
             "cls": Worker,
             "options": {"pod_template": self.pod_template, **common_options},
         }
-        self.worker_spec = {i: self.new_spec for i in range(self._n_workers)}
+        self.worker_spec = {
+            self._new_worker_name(i): self.new_spec for i in range(self._n_workers)
+        }
 
         self.name = self.pod_template.metadata.generate_name
 

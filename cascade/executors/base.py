@@ -7,5 +7,5 @@ from cascade.graph import Graph
 
 class Executor(ABC):
     @abstractmethod
-    def execute(schedule: Schedule | Graph, **kwargs) -> Any:
+    def execute(self, schedule: Schedule | Graph, **kwargs) -> Any:
         pass

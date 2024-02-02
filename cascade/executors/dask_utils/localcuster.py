@@ -3,15 +3,12 @@ import warnings
 import toolz
 import math
 
-from dask.distributed import LocalCluster as DaskLocalCluster
-from distributed.nanny import Nanny
-from distributed.security import Security
-from distributed.worker import Worker
-from dask.system import CPU_COUNT
-from distributed.deploy.utils import nprocesses_nthreads
-from distributed.worker_memory import parse_memory_limit
 
-from .scheduler import StaticScheduler
+from dask.distributed import LocalCluster as DaskLocalCluster
+from dask.distributed import Worker, Nanny, Scheduler, SpecCluster, Security
+from dask.system import CPU_COUNT
+from dask.distributed.deploy.utils import nprocesses_nthreads
+from dask.distributed.worker_memory import parse_memory_limit
 
 logger = logging.getLogger("local")
 
@@ -20,8 +17,8 @@ class LocalCluster(DaskLocalCluster):
     def __init__(
         self,
         name=None,
-        n_workers=1,
-        threads_per_worker=1,
+        n_workers=None,
+        threads_per_worker=None,
         processes=True,
         loop=None,
         start=None,
@@ -41,9 +38,9 @@ class LocalCluster(DaskLocalCluster):
         blocked_handlers=None,
         interface=None,
         worker_class=None,
-        scheduler_class=None,
         scheduler_kwargs=None,
         scheduler_sync_interval=1,
+        worker_names=None,
         **worker_kwargs,
     ):
         if ip is not None:
@@ -137,7 +134,7 @@ class LocalCluster(DaskLocalCluster):
         )
 
         scheduler = {
-            "cls": scheduler_class,
+            "cls": Scheduler,
             "options": toolz.merge(
                 dict(
                     host=host,
@@ -155,10 +152,12 @@ class LocalCluster(DaskLocalCluster):
             ),
         }
 
+        self.worker_names = worker_names
         worker = {"cls": worker_class, "options": worker_kwargs}
-        workers = {i: worker for i in range(n_workers)}
+        workers = {self._new_worker_name(i): worker for i in range(n_workers)}
 
-        super().__init__(
+        SpecCluster.__init__(
+            self,
             name=name,
             scheduler=scheduler,
             workers=workers,
@@ -169,3 +168,18 @@ class LocalCluster(DaskLocalCluster):
             security=security,
             scheduler_sync_interval=scheduler_sync_interval,
         )
+
+    def _new_worker_name(self, worker_number):
+        # Revert to default worker names if worker_number
+        # greater than provided set of names for cases of adaptive scaling
+        if self.worker_names is None or worker_number >= len(worker_number):
+            return super()._new_worker_name(worker_number)
+        return self.worker_names[worker_number]
+
+    def scale(self, n=0, memory=None, cores=None):
+        if self.worker_names is not None:
+            assert n >= len(
+                self.work_names
+            ), f"Can not scale down cluster to less than {len(self.worker_names)}\
+with static scheduling enabled. Scheduler will hang waiting to schedule job on specified workers"
+        super().scale(n, memory, cores)
