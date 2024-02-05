@@ -69,14 +69,6 @@ class KubeCluster(DaskKubeCluster):
             return super()._new_worker_name(worker_number)
         return self.worker_names[worker_number]
 
-    def scale(self, n=0, memory=None, cores=None):
-        if self.worker_names is not None:
-            assert n >= len(
-                self.work_names
-            ), f"Can not scale down cluster to less than {len(self.worker_names)}\
-with static scheduling enabled. Scheduler will hang waiting to schedule job on specified workers"
-        super().scale(n, memory, cores)
-
     async def _start(self):
         self.pod_template = self._get_pod_template(self.pod_template, pod_type="worker")
         self.scheduler_pod_template = self._get_pod_template(

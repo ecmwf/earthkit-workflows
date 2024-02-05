@@ -172,14 +172,6 @@ class LocalCluster(DaskLocalCluster):
     def _new_worker_name(self, worker_number):
         # Revert to default worker names if worker_number
         # greater than provided set of names for cases of adaptive scaling
-        if self.worker_names is None or worker_number >= len(worker_number):
+        if self.worker_names is None or worker_number >= len(self.worker_names):
             return super()._new_worker_name(worker_number)
         return self.worker_names[worker_number]
-
-    def scale(self, n=0, memory=None, cores=None):
-        if self.worker_names is not None:
-            assert n >= len(
-                self.work_names
-            ), f"Can not scale down cluster to less than {len(self.worker_names)}\
-with static scheduling enabled. Scheduler will hang waiting to schedule job on specified workers"
-        super().scale(n, memory, cores)

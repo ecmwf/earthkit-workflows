@@ -3,6 +3,7 @@ import dask
 from dask.highlevelgraph import HighLevelGraph
 from dask.delayed import Delayed
 from dask.distributed import Client, as_completed, performance_report
+import functools
 
 from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
@@ -31,7 +32,7 @@ class DaskExecutor:
         If not specified then defaults to default LocalCluster
         cluster_kwargs: dict, arguments for Dask cluster (e.g n_workers, threads_per_worker
         for LocalCluster)
-        adaptive_kwards: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
+        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
         report: str, name of performance report output file
 
         Returns
@@ -47,64 +48,67 @@ class DaskExecutor:
             worker_names = list(schedule.task_allocation.keys())
             cluster_kwargs["worker_names"] = worker_names
             cluster_kwargs["n_workers"] = len(worker_names)
-            dask_graph = to_dask_graph(schedule.graph)
 
             # If task allocation specified then annotate graph and cluster with
             # worker names and priority according to the task allocation
-            def _worker_name(key: str):
-                return schedule.get_processor(key)
+            def _worker_name(task_allocation: dict, key: str):
+                for processor, tasks in task_allocation.items():
+                    if key in tasks:
+                        return processor
 
-            def _priority(key: str):
-                worker = schedule.get_processor(key)
-                return len(schedule.task_allocation(worker)) - schedule.task_allocation(
-                    worker
-                ).index(key)
+            def _priority(task_allocation: dict, key: str):
+                for processor, tasks in task_allocation.items():
+                    if key in tasks:
+                        worker = processor
+                        break
+                return len(task_allocation[worker]) - task_allocation[worker].index(key)
 
+            if len(adaptive_kwargs) > 0:
+                assert adaptive_kwargs.get("minimum", len(worker_names)) >= len(
+                    worker_names
+                ), "Minimum number of workers in adaptive cluster must be at least processors in context graph"
+                assert adaptive_kwargs.get("maximum", len(worker_names)) >= len(
+                    worker_names
+                ), "Maximum number of workers in adaptive cluster must be at least processors in context graph"
             # If cluster is adaptive then allow tasks to be scheduled in workers not specified in
             # original task allocation
-            # TODO: check adaptive minimum number of workers is at least len(worker_names)
             with dask.annotate(
-                workers=_worker_name,
-                priority=_priority,
-                allow_other_workers=(cluster._adaptive is not None),
+                workers=functools.partial(_worker_name, schedule.task_allocation),
+                priority=functools.partial(_priority, schedule.task_allocation),
+                allow_other_workers=(len(adaptive_kwargs) > 0),
             ):
-                dask_graph = HighLevelGraph.from_collections("graph", dask_graph)
-            sinks = schedule.graph.sinks
+                dask_graph = HighLevelGraph.from_collections(
+                    "graph", to_dask_graph(schedule.task_graph)
+                )
+            outputs = [x.name for x in schedule.task_graph.sinks]
         else:
             assert isinstance(schedule, Graph)
             dask_graph = to_dask_graph(schedule)
-            sinks = schedule.sinks
+            outputs = [x.name for x in schedule.sinks]
 
         cluster = create_cluster(cluster_type, cluster_kwargs, adaptive_kwargs)
-        outputs = [Delayed(x.name, dask_graph) for x in sinks]
 
         # Set up distributed client
         dask.config.set(
             {"distributed.scheduler.worker-saturation": 1.0}
         )  # Important to prevent root task overloading
-        if cluster is None:
-            client = Client(
-                n_workers=1,
-                threads_per_worker=1,
-                processes=True,
-            )
-        else:
-            client = Client(cluster)
+        client = Client(cluster)
 
         with performance_report(report):
-            future = client.compute(outputs)
+            future = client.get(dask_graph, outputs, sync=False)
 
             seq = as_completed(future)
             del future
-            results = []
+            results = {}
             # Trigger gargage collection on completed end tasks so scheduler doesn't
             # try to repeat them
             errored_tasks = 0
             for fut in seq:
                 if fut.status != "finished":
-                    print(f"Task failed with exception: {fut.exception()}")
+                    print(f"Task {fut.key} failed with exception: {fut.exception()}")
                     errored_tasks += 1
-                results.append(fut.result())
+                assert fut.key not in results
+                results[fut.key] = fut.result()
 
         client.close()
 
@@ -126,11 +130,35 @@ class DaskLocalExecutor:
         n_workers: int = 1,
         threads_per_worker: int = 1,
         processes: bool = True,
-        memory_limit: str = "5G",
+        memory_limit: str | None = "5G",
         cluster_kwargs: dict = {},
         adaptive_kwargs: dict = {},
         report: str = "performance_report.html",
     ) -> Any:
+        """
+        Execute graph with a Dask local cluster and produce a performance report of the execution.
+
+        Params
+        ------
+        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        then annotates nodes with worker and priority according to the schedule
+        n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
+        is overridden by the number of processors in schedule context graph
+        threads_per_worker: int, number of threads per Dask worker
+        processes: bool, whether to use processors (True) or threads (False). Defaults to True
+        memory_limit: str, memory limit of each Dask worker. If None, no limit is applied
+        cluster_kwargs: dict, arguments for Dask cluster
+        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
+        report: str, name of performance report output file
+
+        Returns
+        -------
+        Returns the outputs of the graph execution
+
+        Raises
+        ------
+        RuntimeError if any tasks in the graph have failed
+        """
         return DaskExecutor.execute(
             schedule,
             cluster_type="local",

@@ -42,8 +42,8 @@ def test_graph_execution(backend, payload, output_type):
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     output = DaskLocalExecutor.execute(g)
     assert len(output) == 3
-    assert output[0].shape == (2,)
-    assert np.all([isinstance(x, output_type) for x in output])
+    assert list(output.values())[0].shape == (2,)
+    assert np.all([isinstance(x, output_type) for x in output.values()])
 
 
 def test_graph_execution_jax():
@@ -57,5 +57,5 @@ def test_graph_execution_jax():
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     output = DaskLocalExecutor.execute(g, 2)
     assert len(output) == 3
-    assert output[0].shape == (2,)
-    assert np.all([isinstance(x, jax.Array) for x in output])
+    assert list(output.values())[0].shape == (2,)
+    assert np.all([isinstance(x, jax.Array) for x in output.values()])
