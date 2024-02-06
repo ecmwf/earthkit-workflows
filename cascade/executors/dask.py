@@ -17,8 +17,8 @@ class DaskExecutor:
     def execute(
         schedule: Graph | Schedule,
         cluster_type: str = "local",
-        cluster_kwargs: dict = {},
-        adaptive_kwargs: dict = {},
+        cluster_kwargs: dict = None,
+        adaptive_kwargs: dict = None,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -45,6 +45,9 @@ class DaskExecutor:
         RuntimeError if any tasks in the graph have failed
         """
 
+        if cluster_kwargs is None:
+            cluster_kwargs = {}
+
         if isinstance(schedule, Schedule):
             worker_names = list(schedule.task_allocation.keys())
             cluster_kwargs["worker_names"] = worker_names
@@ -67,7 +70,7 @@ class DaskExecutor:
                 )
                 return priority
 
-            if len(adaptive_kwargs) > 0:
+            if adaptive_kwargs is not None:
                 assert adaptive_kwargs.get("minimum", len(worker_names)) >= len(
                     worker_names
                 ), "Minimum number of workers in adaptive cluster must be at least processors in context graph"
@@ -152,8 +155,8 @@ class DaskLocalExecutor:
         threads_per_worker: int = 1,
         processes: bool = True,
         memory_limit: str | None = "5G",
-        cluster_kwargs: dict = {},
-        adaptive_kwargs: dict = {},
+        cluster_kwargs: dict = None,
+        adaptive_kwargs: dict = None,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -181,16 +184,18 @@ class DaskLocalExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
+        local_kwargs = {
+            "n_workers": n_workers,
+            "threads_per_worker": threads_per_worker,
+            "processes": processes,
+            "memory_limit": memory_limit,
+        }
+        if cluster_kwargs is not None:
+            local_kwargs.update(cluster_kwargs)
         return DaskExecutor.execute(
             schedule,
             cluster_type="local",
-            cluster_kwargs={
-                "n_workers": n_workers,
-                "threads_per_worker": threads_per_worker,
-                "processes": processes,
-                "memory_limit": memory_limit,
-                **cluster_kwargs,
-            },
+            cluster_kwargs=local_kwargs,
             adaptive_kwargs=adaptive_kwargs,
             report=report,
         )
@@ -210,8 +215,8 @@ class DaskKubeExecutor:
         namespace: str = None,
         n_workers: int = None,
         env: dict = None,
-        cluster_kwargs: dict = {},
-        adaptive_kwargs: dict = {},
+        cluster_kwargs: dict = None,
+        adaptive_kwargs: dict = None,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -239,16 +244,18 @@ class DaskKubeExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
+        kube_kwargs = {
+            "pod_template": pod_template,
+            "namespace": namespace,
+            "n_workers": n_workers,
+            "env": env,
+        }
+        if cluster_kwargs is not None:
+            kube_kwargs.update(cluster_kwargs)
         return DaskExecutor.execute(
             schedule,
             cluster_type="kube",
-            cluster_kwargs={
-                "pod_template": pod_template,
-                "namespace": namespace,
-                "n_workers": n_workers,
-                "env": env,
-                **cluster_kwargs,
-            },
+            cluster_kwargs=kube_kwargs,
             adaptive_kwargs=adaptive_kwargs,
             report=report,
         )
