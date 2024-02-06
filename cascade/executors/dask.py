@@ -3,6 +3,7 @@ import dask
 from dask.highlevelgraph import HighLevelGraph
 from dask.delayed import Delayed
 from dask.distributed import Client, as_completed, performance_report
+from dask.graph_manipulation import chunks
 import functools
 
 from cascade.transformers import to_dask_graph
@@ -49,8 +50,8 @@ class DaskExecutor:
             cluster_kwargs["worker_names"] = worker_names
             cluster_kwargs["n_workers"] = len(worker_names)
 
-            # If task allocation specified then annotate graph and cluster with
-            # worker names and priority according to the task allocation
+            # Functions for annotating tasks with workers and priority using task
+            # allocation in schedule
             def _worker_name(task_allocation: dict, key: str):
                 for processor, tasks in task_allocation.items():
                     if key in tasks:
@@ -61,7 +62,10 @@ class DaskExecutor:
                     if key in tasks:
                         worker = processor
                         break
-                return len(task_allocation[worker]) - task_allocation[worker].index(key)
+                priority = len(task_allocation[worker]) - task_allocation[worker].index(
+                    key
+                )
+                return priority
 
             if len(adaptive_kwargs) > 0:
                 assert adaptive_kwargs.get("minimum", len(worker_names)) >= len(
@@ -70,16 +74,33 @@ class DaskExecutor:
                 assert adaptive_kwargs.get("maximum", len(worker_names)) >= len(
                     worker_names
                 ), "Maximum number of workers in adaptive cluster must be at least processors in context graph"
-            # If cluster is adaptive then allow tasks to be scheduled in workers not specified in
-            # original task allocation
-            with dask.annotate(
-                workers=functools.partial(_worker_name, schedule.task_allocation),
-                priority=functools.partial(_priority, schedule.task_allocation),
-                allow_other_workers=(len(adaptive_kwargs) > 0),
-            ):
-                dask_graph = HighLevelGraph.from_collections(
-                    "graph", to_dask_graph(schedule.task_graph)
-                )
+                # If cluster is adaptive then allow tasks to be scheduled in workers not specified in
+                # original task allocation
+                with dask.annotate(
+                    workers=functools.partial(_worker_name, schedule.task_allocation),
+                    priority=functools.partial(_priority, schedule.task_allocation),
+                    allow_other_workers=True,
+                ):
+                    dask_graph = HighLevelGraph.from_collections(
+                        "graph", to_dask_graph(schedule.task_graph)
+                    )
+            else:
+                # If strictly following schedule, need to modify tasks to bind with the previous
+                # task in schedule task allocation
+                with dask.annotate(
+                    workers=functools.partial(_worker_name, schedule.task_allocation),
+                ):
+                    dask_graph = to_dask_graph(schedule.task_graph)
+                    for _, allocation in schedule.task_allocation.items():
+                        for index, task in enumerate(allocation):
+                            if index > 0:
+                                dask_graph[task] = (
+                                    chunks.bind,
+                                    dask_graph[task],
+                                    allocation[index - 1],
+                                )
+                    dask_graph = HighLevelGraph.from_collections("graph", dask_graph)
+
             outputs = [x.name for x in schedule.task_graph.sinks]
         else:
             assert isinstance(schedule, Graph)
@@ -153,7 +174,8 @@ class DaskLocalExecutor:
 
         Returns
         -------
-        Returns the outputs of the graph execution
+        Returns output of graph execution in the form of dictionary containing sink name and
+        corresponding output
 
         Raises
         ------
@@ -187,13 +209,36 @@ class DaskKubeExecutor:
         pod_template: dict = None,
         namespace: str = None,
         n_workers: int = None,
-        host: str = None,
-        port: int = None,
         env: dict = None,
         cluster_kwargs: dict = {},
         adaptive_kwargs: dict = {},
         report: str = "performance_report.html",
     ) -> Any:
+        """
+        Execute graph with a Dask Kubernetes cluster and produce a performance report of the execution.
+
+        Params
+        ------
+        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        then annotates nodes with worker and priority according to the schedule
+        pod_template: dict, Kubernetes pod template. If None, defaults to using Dask docker image
+        namespace: Kubernetes namespace in which to launch workers
+        n_workers: int, number of Dask workers to launch. If a schedule is provided, this argument
+        is overridden by the number of processors in schedule context graph
+        env: dict, environment variables to pass to worker pods
+        cluster_kwargs: dict, arguments for Dask cluster
+        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
+        report: str, name of performance report output file
+
+        Returns
+        -------
+        Returns output of graph execution in the form of dictionary containing sink name and
+        corresponding output
+
+        Raises
+        ------
+        RuntimeError if any tasks in the graph have failed
+        """
         return DaskExecutor.execute(
             schedule,
             cluster_type="kube",
@@ -201,8 +246,6 @@ class DaskKubeExecutor:
                 "pod_template": pod_template,
                 "namespace": namespace,
                 "n_workers": n_workers,
-                "host": host,
-                "port": port,
                 "env": env,
                 **cluster_kwargs,
             },
