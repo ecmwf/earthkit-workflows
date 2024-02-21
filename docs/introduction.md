@@ -23,7 +23,10 @@ which operate on the array of nodes in the graph, creating new nodes, and return
 
 The figure below shows a ``MultAction.reduce`` operation on a three-dimensional array of nodes over the `parameter`
 dimension, which returns ``MultiAction`` containing a two-dimensional array of nodes on the right-hand side.
-![image](reduce.png)
+<center>
+<img src="reduce.png" width="400"/>
+</center>
+
 Most of the methods require a ``Payload`` which specifies the function and its arguments that is being applied on the array of nodes. For example, for ``MultiAction.reduce`` the signature is 
 ```
 def reduce(self, payload: Payload, dim: str = "") -> "SingleAction | MultiAction":
