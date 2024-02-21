@@ -32,9 +32,9 @@ class MemoryUsage:
 
 class DepthFirstScheduler:
     class State:
-        def __init__(self, task_graph: Graph, context_graph: ContextGraph):
+        def __init__(self, task_graph: Graph | TaskGraph, context_graph: ContextGraph):
             if not isinstance(task_graph, TaskGraph):
-                task_graph = to_task_graph(task_graph)
+                task_graph = to_task_graph(task_graph, None)
             self.task_graph = task_graph
             self.context_graph = context_graph
             self.completed_tasks = set()
@@ -99,7 +99,23 @@ class DepthFirstScheduler:
                         self.state.eligible.pop(), processor, time
                     )
 
-    def schedule(self, task_graph: Graph, context_graph: ContextGraph):
+    def schedule(
+        self, task_graph: Graph | TaskGraph, context_graph: ContextGraph
+    ) -> Schedule:
+        """
+        Schedule tasks in task graph to workers in context graph.
+
+        Params
+        ------
+        task_graph: Graph or TaskGraph, if Graph then will perform execution of graph
+        using thread pool to determine resources in the transformation to a TaskGraph
+        context_graph: ContextGraph, containers nodes to which tasks should be assigned
+
+        Returns
+        -------
+        Schedule
+        """
+
         self.state = DepthFirstScheduler.State(task_graph, context_graph)
         self.assign_idle_processors(time=0)
         self.state.sim.run()

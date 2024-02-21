@@ -581,6 +581,7 @@ class Fluent:
         as coords in xarray.DataArray of nodes. If list, then values of coordinates
         are integers up to the dimension size
         name: str, common string to appear in the name of all source nodes
+        append_unique_index: bool, use array index in name to create unique name
 
         Return
         ------

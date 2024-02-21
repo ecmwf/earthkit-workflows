@@ -4,6 +4,12 @@ from .graph import Graph
 from .graph import Node
 
 
+class Resources:
+    def __init__(self, cost: int = 0, memory: int = 0):
+        self.cost = cost
+        self.memory = memory
+
+
 class Task(Node):
     def __init__(
         self,
@@ -13,20 +19,29 @@ class Task(Node):
         **kwargs: "Node | Node.Output",
     ):
         super().__init__(name, outputs, payload, **kwargs)
-        self.cost = 0
-        self.in_memory = 0
-        self.out_memory = 0
+        self.resources = Resources()
         self.state = None
 
     @property
+    def cost(self):
+        return self.resources.cost
+
+    @cost.setter
+    def cost(self, value: int):
+        self.resources.cost = value
+
+    @property
     def memory(self):
-        return max(self.in_memory, self.out_memory)
+        return self.resources.memory
+
+    @memory.setter
+    def memory(self, value: int):
+        self.resources.memory = value
 
     def copy(self) -> "Task":
         newnode = Task(self.name, self.outputs.copy(), self.payload, **self.inputs)
         newnode.cost = self.cost
-        newnode.in_memory = self.in_memory
-        newnode.out_memory = self.out_memory
+        newnode.memory = self.memory
         return newnode
 
 
@@ -55,7 +70,7 @@ class TaskGraph(Graph):
 
 class ExecutionGraph(TaskGraph):
     def _make_communication_task(self, source, target):
-        t = Communication(f"{source.name}-{target.name}", source, source.out_memory)
+        t = Communication(f"{source.name}-{target.name}", source, source.memory)
 
         for iname, input in target.inputs.items():
             if input.name == source:

@@ -1,7 +1,6 @@
 from typing import Any
 import dask
 from dask.highlevelgraph import HighLevelGraph
-from dask.delayed import Delayed
 from dask.distributed import Client, as_completed, performance_report
 from dask.graph_manipulation import chunks
 import functools

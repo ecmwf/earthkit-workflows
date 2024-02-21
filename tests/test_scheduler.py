@@ -2,9 +2,10 @@ import pytest
 import random
 
 from cascade.schedulers.schedule import Schedule
-from cascade.graph import Graph, Node, Sink, Graph, Transformer
-from cascade.taskgraph import Task, TaskGraph
+from cascade.graph import Graph, Graph
+from cascade.taskgraph import Resources, Task
 from cascade.contextgraph import ContextGraph
+from cascade.transformers import to_task_graph
 
 from cascade.schedulers.anneal import AnnealingScheduler
 from cascade.schedulers.depthfirst import DepthFirstScheduler
@@ -25,21 +26,11 @@ def setup_context():
     return context
 
 
-class _AssignRandomResources(Transformer):
-    def node(self, node: Node, **inputs: Node.Output) -> Task:
-        newnode = Task(node.name, node.outputs.copy(), node.payload)
-        newnode.inputs = inputs
-        newnode.cost = random.randrange(1, 100)
-        newnode.in_memory = random.randrange(1, 2)
-        newnode.out_memory = random.randrange(1, 2)
-        return newnode
-
-    def graph(self, graph: Graph, sinks: list[Sink]) -> TaskGraph:
-        return TaskGraph(sinks)
-
-
-def add_resources(graph: Graph) -> TaskGraph:
-    return _AssignRandomResources().transform(graph)
+def resource_map(graph: Graph) -> dict[str, Resources]:
+    res_map = {}
+    for node in graph.nodes():
+        res_map[node] = Resources(random.randrange(1, 100), random.randrange(1, 2))
+    return res_map
 
 
 def example_graph(num_inputs: int):
@@ -78,7 +69,8 @@ def test_valid_allocations(allocations, exp):
 def test_depth_first_scheduler():
     context = setup_context()
     graph = example_graph(5)
-    DepthFirstScheduler().schedule(add_resources(graph), context)
+    task_graph = to_task_graph(graph, resource_map(graph))
+    DepthFirstScheduler().schedule(task_graph, context)
 
 
 @pytest.mark.skip(
@@ -87,6 +79,5 @@ def test_depth_first_scheduler():
 def test_annealing_scheduler():
     context = setup_context()
     graph = example_graph(5)
-    AnnealingScheduler.schedule(
-        add_resources(graph), context, num_temp_levels=10, num_tries=10
-    )
+    task_graph = to_task_graph(graph, resource_map(graph))
+    AnnealingScheduler().schedule(task_graph, context, num_temp_levels=10, num_tries=10)

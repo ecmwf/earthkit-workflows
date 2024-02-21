@@ -3,6 +3,7 @@ import random
 import numpy as np
 
 from cascade.executors.simulate import Simulator
+from cascade.taskgraph import TaskGraph
 from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
 from .schedule import Schedule
@@ -10,10 +11,9 @@ from .depthfirst import DepthFirstScheduler
 
 
 class AnnealingScheduler:
-    @classmethod
     def schedule(
-        cls,
-        task_graph: Graph,
+        self,
+        task_graph: Graph | TaskGraph,
         context_graph: ContextGraph,
         num_temp_levels: int = 100,
         num_tries: int = 100,
@@ -27,14 +27,22 @@ class AnnealingScheduler:
         consist only of randomly picking two processors and one task in each and swapping them. Uses the
         normalised exponential form for the acceptance function.
 
-        :param num_temp_levels: number of temperature levels to iterate over
-        :param num_tries: number of iterations to perform per temperature level
-        :param num_success_cutoff: number of successful iterations at each level after which
+        Params
+        ------
+        task_graph: Graph or TaskGraph, if Graph then will perform execution of graph
+        using thread pool to determine resources in the transformation to a TaskGraph
+        context_graph: ContextGraph, containers nodes to which tasks should be assigned
+        num_temp_levels: int, number of temperature levels to iterate over
+        num_tries: int, number of iterations to perform per temperature level
+        num_success_cutoff: int, number of successful iterations at each level after which
         to proceed onto the next temperature level
-        :param init_temp: initial temperature between 0 and 1
-        :param temp_factor: factor for determining temperature of next level in the formula
+        init_temp: float, initial temperature between 0 and 1
+        temp_factor: float, factor for determining temperature of next level in the formula
             T_{i+1} = T_{i} * temp_factor, where i is the iteration index
-        :return: schedule output from annealing algorithm
+
+        Returns
+        -------
+        Schedule, output from annealing algorithm
         """
 
         # Determine initial conditions
