@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cascade-python"
+version = "0.0.1"
+description = "Cascade is a Python library for scheduling tasks on heterogeneous computing systems."
+authors = [
+  { name = "European Centre for Medium-Range Weather Forecasts (ECMWF)", email = "software.support@ecmwf.int" },
+]
+license = { text = "Apache License Version 2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "randomname",
+    "numpy",
+    "xarray",
+    "networkx",
+    "dask",
+    "dask[distributed]",
+    "bokeh",
+    "array-api-compat",
+    "bs4", 
+    "sortedcontainers", 
+    "pyvis"
+]
+
+[options]
+zip_safe = false
+include_package_data = true
+
+[project.optional-dependencies]
+tests = ["pytest"]
+kubernetes = ["dask_kubernetes"]
+lint = ["black"]
+gpu = ["jax[cpu]", "jax[cuda12_pip]", "cupy-cuda12x"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
