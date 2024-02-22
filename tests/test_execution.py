@@ -34,19 +34,19 @@ def graph(backend, payloads):
         ],
     ],
 )
-def test_graph_execution(backend, payload, output_type):
+def test_graph_execution(tmpdir, backend, payload, output_type):
     payloads = np.empty((4, 5), dtype=object)
     payloads[:] = payload
     g = graph(backend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    output = DaskLocalExecutor.execute(g)
+    output = DaskLocalExecutor.execute(g, report=f"{tmpdir}/report.html")
     assert len(output) == 3
     assert list(output.values())[0].shape == (2,)
     assert np.all([isinstance(x, output_type) for x in output.values()])
 
 
-def test_graph_execution_jax():
+def test_graph_execution_jax(tmpdir):
     jax = pytest.importorskip("jax")
     from cascade.backends.jax import JaxBackend
 
@@ -55,7 +55,7 @@ def test_graph_execution_jax():
     g = graph(JaxBackend, payloads)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    output = DaskLocalExecutor.execute(g, 2)
+    output = DaskLocalExecutor.execute(g, 2, report=f"{tmpdir}/report.html")
     assert len(output) == 3
     assert list(output.values())[0].shape == (2,)
     assert np.all([isinstance(x, jax.Array) for x in output.values()])
