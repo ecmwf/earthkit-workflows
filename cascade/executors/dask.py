@@ -133,7 +133,7 @@ class DaskExecutor:
                 assert fut.key not in results
                 results[fut.key] = fut.result()
 
-        client.close()
+        client.shutdown()
 
         if errored_tasks != 0:
             raise RuntimeError(f"{errored_tasks} task failed. Re-run required.")

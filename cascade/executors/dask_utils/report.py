@@ -68,7 +68,6 @@ class TaskStream(dict):
             "attributes"
         ]["tabs"][1]["attributes"]
         key_items = find_key_values("entries", task_stream)
-        print(key_items)
         columns = [item[0] for item in key_items]
         start_index = columns.index("start")
         name_index = columns.index("name")
