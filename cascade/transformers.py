@@ -3,7 +3,6 @@ from dask.utils import apply
 from .graph import Sink, Node, Graph, Transformer
 from .taskgraph import Resources, Task, TaskGraph, ExecutionGraph
 from .contextgraph import ContextGraph
-from .graph.copy import copy_graph
 
 
 def determine_resources(graph: Graph, num_workers: int = 1) -> dict[str, Resources]:
@@ -111,7 +110,11 @@ def to_task_graph(
     TaskGraph
     """
     if resource_map is None:
-        resource_map = determine_resources(graph)
+        # TODO: import resource meter without eccode dependence
+        # resource_map = determine_resources(graph)
+        import warnings
+        warnings.warn("Determining resources not implemented. Revert to empty resources", UserWarning)
+        resource_map = {}
     return _ToTaskGraph(resource_map).transform(graph)
 
 

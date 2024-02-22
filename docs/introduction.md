@@ -82,6 +82,8 @@ task_graph = to_taskgraph(graph, {
 Alternatively, if ``None`` is provided instead of a dictionary, the graph is executed using
 a thread pool and the CPU cost and memory are measured using a resource meter and attached to the resulting ``TaskGraph`` object. 
 
+**Currently, the feature for determining resources via execution is disabled due to dependence on ``ResourceMeter`` in pproc, which can not be imported without bringing in dependencies on eccodes**
+
 Schedulers
 ----------
 

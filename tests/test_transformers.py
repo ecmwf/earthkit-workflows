@@ -7,6 +7,7 @@ from cascade.fluent import Fluent, Payload, Node, MultiAction
 from cascade.backends.arrayapi import ArrayApiBackend
 
 
+@pytest.mark.skip("Feature currently disabled due to import eccodes dependence")
 def test_taskgraph_transform():
     payloads = np.empty((4, 5), dtype=object)
     payloads[:] = Payload(np.random.rand, [100, 100])
