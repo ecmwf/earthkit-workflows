@@ -1,20 +1,18 @@
 import xarray as xr
 import numpy as np
 from typing import Any
+import warnings
 
 from .base import BaseBackend
 
 
 class XArrayBackend(BaseBackend):
     def multi_arg_function(
-        name: str,
-        *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        name: str, *arrays: list[xr.DataArray | xr.Dataset], **method_kwargs
     ) -> xr.DataArray | xr.Dataset:
         """
         Apply named function on DataArrays or Datasets. If only a single
-        DataArrays or Datasetst hen function is applied
+        DataArrays or Datasetst then function is applied
         along an dimension specified in method_kwargs. If multiple  DataArrays
         or Datasets then these are first stacked before function is applied on the
         stack
@@ -23,22 +21,15 @@ class XArrayBackend(BaseBackend):
         ----------
         name: str, name of function to apply
         arrays: list DataArrays or Datasets to apply function on
-        stack_kwargs: dict, kwargs for stack
         method_kwargs: dict, kwargs for named function
 
         Return
         ------
         DataArray or Dataset
         """
-        if method_kwargs is None:
-            method_kwargs = {}
-
         if len(arrays) > 1:
-            if stack_kwargs is None:
-                stack_kwargs = {}
-            stack_kwargs.setdefault("dim", "**NEW**")
-            arg = XArrayBackend.stack(*arrays, **stack_kwargs)
-            method_kwargs["dim"] = stack_kwargs["dim"]
+            arg = XArrayBackend.stack(*arrays, dim="**NEW**")
+            method_kwargs["dim"] = "**NEW**"
         else:
             arg = arrays[0]
 
@@ -77,66 +68,45 @@ class XArrayBackend(BaseBackend):
 
     def mean(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "mean", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("mean", *arrays, **method_kwargs)
 
     def std(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "std", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("std", *arrays, **method_kwargs)
 
     def min(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "min", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("min", *arrays, **method_kwargs)
 
     def max(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "max", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("max", *arrays, **method_kwargs)
 
     def sum(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "sum", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("sum", *arrays, **method_kwargs)
 
     def prod(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "prod", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("prod", *arrays, **method_kwargs)
 
     def var(
         *arrays: list[xr.DataArray | xr.Dataset],
-        stack_kwargs: dict[str, Any] | None = None,
-        method_kwargs: dict[str, Any] | None = None,
+        **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        return XArrayBackend.multi_arg_function(
-            "var", *arrays, stack_kwargs=stack_kwargs, method_kwargs=method_kwargs
-        )
+        return XArrayBackend.multi_arg_function("var", *arrays, **method_kwargs)
 
     def concat(
         *arrays: list[xr.DataArray | xr.Dataset],
@@ -196,6 +166,12 @@ class XArrayBackend(BaseBackend):
         )
 
     def take(array, indices, *, axis: int, **kwargs):
+        if isinstance(array, xr.Dataset):
+            warnings.warn(
+                "Converting Dataset to DataArray for method: take", UserWarning
+            )
+            array = array.to_dataarray()
+
         if hasattr(indices, "__iter__"):
             return np.take(array, indices, axis=axis, **kwargs)
         ret = np.take(array, [indices], axis=axis, **kwargs)

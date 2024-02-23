@@ -41,24 +41,36 @@ The `Fluent` class is for defining the `SingleAction` and `MultiAction` pair tha
 
 Example usage is:
 ```
+from cascade.fluent import Fluent, SingleAction, MultiAction
+from cascade.backends.arrayapi import ArrayApiBackend
+
 fluent = Fluent(SingleAction, MultiAction, ArrayApiBackend)
 ```
 
-The ``Fluent`` class provides a ``source`` method for creating the initial node array from an array of payloads and a list of dimension names for the array. For example, 
+The ``Fluent`` class provides a ``source`` method for creating the initial node array by specifying a function and its args and kwargs. For example to create a single node that opens a xarray dataset
+```
+import xarray as xr 
+from cascade.fluent import Fluent
+from cascade.backends.xarray import XArrayBackend
+
+initial_action = Fluent(backend=XArrayBackend).source(xr.open_dataset, args=("/path/to/dataset",), kwargs={})
+```
+To create multiple nodes, at least one of the arguments to `source` either the function, args or kwargs must be a xr.DataArray. For example, 
 ```
 import numpy as np 
+from cascade.fluent import Fluent
 
-rand_payload = Payload(np.random.rand, [2, 3])
-initial_loads = [
-    [rand_payload, rand_payload], 
-    [rand_payload, rand_payload]
-]
-initial_action = fluent.source(initial_loads, ["x", "y"])
+args = [np.fromiter([(2, 3) for _ in range(2)], dtype=object) for _ in range(2)]
+initial_action = fluent.source(np.random.rand, args)
 ```
-In this case, `initial_action` would contain a (2, 2) array of nodes with dimension "x" and "y", each containing (2, 3) random numpy array. One can then construct a graph from this point using the function cascading API:
+In this case, `initial_action` would contain a (2, 2) array of nodes with dimension "x" and "y", each containing (2, 3) random numpy array. If multiple DataArrays are passed for the function, args or kwargs then they match in shape, coords and dims.
+
+One can then construct a graph from this point using the function cascading API:
 ```
+from cascade.fluent import Fluent, Payload
+
 graph = (
-    Fluent().source(initial_loads, ["x", "y"])
+    Fluent().source(np.random.rand, args)
     .mean("x")
     .minimum("y")
     .expand("z", 3, 1, 0)

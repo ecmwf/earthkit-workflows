@@ -2,7 +2,7 @@ import pytest
 import xarray as xr
 import numpy as np
 
-from cascade.fluent import Payload, Node, SingleAction, MultiAction
+from cascade.fluent import Payload, Node, SingleAction, MultiAction, Fluent
 from cascade.backends.arrayapi import ArrayApiBackend
 
 backend = ArrayApiBackend
@@ -24,6 +24,82 @@ def mock_action(shape: tuple) -> MultiAction:
     if nodes.size == 1:
         return SingleAction(None, nodes, backend)
     return MultiAction(None, nodes, backend)
+
+
+@pytest.mark.parametrize(
+    "func, args, kwargs, type",
+    [
+        [np.random.rand, (2, 3), {}, SingleAction],
+        [
+            np.random.rand,
+            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
+            {},
+            MultiAction,
+        ],
+        [
+            np.random.rand,
+            {2, 3},
+            xr.DataArray(
+                [[{"test": 2}, {"test": 3}], [{"test": 3}, {"test": 2}]],
+                dims=["x", "y"],
+            ),
+            MultiAction,
+        ],
+        [
+            xr.DataArray(
+                [[np.random.rand, np.random.rand], [np.random.rand, np.random.rand]],
+                dims=["x", "y"],
+            ),
+            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
+            {},
+            MultiAction,
+        ],
+    ],
+)
+def test_source(func, args, kwargs, type):
+    action = Fluent().source(func, args, kwargs)
+    assert isinstance(action, type)
+    if isinstance(action, MultiAction):
+        assert action.nodes.shape == (2, 2)
+
+
+@pytest.mark.parametrize(
+    "func, args, kwargs",
+    [
+        [
+            xr.DataArray(
+                [
+                    [np.random.rand, np.random.rand],
+                    [np.random.rand, np.random.rand],
+                    [np.random.rand, np.random.rand],
+                ],
+                dims=["x", "y"],
+            ),
+            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
+            {},
+        ],
+        [
+            xr.DataArray(
+                [[np.random.rand, np.random.rand], [np.random.rand, np.random.rand]],
+                dims=["x", "z"],
+            ),
+            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
+            {},
+        ],
+        [
+            xr.DataArray(
+                [[np.random.rand, np.random.rand], [np.random.rand, np.random.rand]],
+                dims=["x", "y"],
+                coords={"x": [1, 2], "y": [3, 4]},
+            ),
+            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
+            {},
+        ],
+    ],
+)
+def test_source_invalid(func, args, kwargs):
+    with pytest.raises(ValueError):
+        Fluent().source(func, args, kwargs)
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,5 @@
 import numpy as np
+import xarray as xr
 import pytest
 
 
@@ -19,8 +20,11 @@ context_graph
 task_graph = (
     Fluent()
     .source(
-        [[Payload(np.random.random, [(2, 3)]) for _ in range(6)] for _ in range(7)],
-        ["x", "y"],
+        np.random.rand,
+        xr.DataArray(
+            [np.fromiter([(2, 3) for _ in range(6)], dtype=object) for _ in range(7)],
+            dims=["x", "y"],
+        ),
     )
     .mean("x")
     .minimum("y")
@@ -42,6 +46,8 @@ def test_with_schedule(tmpdir):
     DaskLocalExecutor().execute(schedule, 2, report=f"{tmpdir}/report-schedule.html")
     report = Report(f"{tmpdir}/report-schedule.html")
     for _, tasks in report.task_stream.exclude_transfer().items():
+        print("STREAM", tasks)
+        print("ALLOCATION", schedule.task_allocation.values())
         assert tasks in list(schedule.task_allocation.values())
 
     # Adaptive with minimum number of workers less than workers in context

@@ -33,8 +33,8 @@ def test_instantiation():
 @pytest.mark.parametrize(
     ["num_inputs", "kwargs", "output_shape"],
     [
-        [1, {"method_kwargs": {"dim": "dim0"}}, (3,)],
-        [1, {"method_kwargs": {"dim": "dim1"}}, (2,)],
+        [1, {"dim": "dim0"}, (3,)],
+        [1, {"dim": "dim1"}, (2,)],
     ],
 )
 def test_multi_arg_dim(num_inputs, kwargs, output_shape):

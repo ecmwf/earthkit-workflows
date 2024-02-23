@@ -8,13 +8,12 @@ from cascade.fluent import Fluent, Payload
 from cascade.backends.arrayapi import ArrayApiBackend
 from cascade.backends.xarray import XArrayBackend
 
-input = np.random.rand(2, 3)
 
-
-def graph(backend, payloads):
+def graph(backend, func):
+    args = [np.fromiter([(2, 3) for _ in range(4)], dtype=object) for _ in range(5)]
     return (
         Fluent(backend=backend)
-        .source(payloads, ["x", "y"])
+        .source(func, xr.DataArray(args, dims=["x", "y"]))
         .mean("x")
         .minimum("y")
         .expand("z", 3, 1, 0)
@@ -24,20 +23,20 @@ def graph(backend, payloads):
 
 
 @pytest.mark.parametrize(
-    "backend, payload, output_type",
+    "backend, func, output_type",
     [
-        [ArrayApiBackend, Payload(np.asarray, [input]), np.ndarray],
+        [ArrayApiBackend, np.random.rand, np.ndarray],
         [
             XArrayBackend,
-            Payload(xr.DataArray, [input], {"dims": ["a", "b"]}),
+            lambda *x: xr.DataArray(
+                np.random.rand(*x), dims=[f"x{i}" for i in range(len(x))]
+            ),
             xr.DataArray,
         ],
     ],
 )
-def test_graph_execution(tmpdir, backend, payload, output_type):
-    payloads = np.empty((4, 5), dtype=object)
-    payloads[:] = payload
-    g = graph(backend, payloads)
+def test_graph_execution(tmpdir, backend, func, output_type):
+    g = graph(backend, func)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     output = DaskLocalExecutor.execute(g, report=f"{tmpdir}/report.html")
@@ -50,9 +49,7 @@ def test_graph_execution_jax(tmpdir):
     jax = pytest.importorskip("jax")
     from cascade.backends.jax import JaxBackend
 
-    payloads = np.empty((4, 5), dtype=object)
-    payloads[:] = Payload(jax.numpy.asarray, [input])
-    g = graph(JaxBackend, payloads)
+    g = graph(JaxBackend, lambda *x: jax.numpy.asarray(np.random.rand(*x)))
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     output = DaskLocalExecutor.execute(g, 2, report=f"{tmpdir}/report.html")

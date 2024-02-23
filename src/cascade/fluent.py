@@ -316,6 +316,48 @@ class SingleAction(Action):
         """
         return type(self).from_payload(self, payload, self.backend)
 
+    def reduce(self, payload: Payload) -> "SingleAction":
+        """
+        Reduce the underlying array inside the node using the prodvided
+        payload
+
+        Parameters
+        ----------
+        payload: Payload, payload specifying function for performing the reduction
+
+        Return
+        ------
+        SingleAction
+        """
+        return type(self).from_payload(self, payload, self.backend)
+
+    def sum(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.sum, kwargs=method_kwargs))
+
+    def mean(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs))
+
+    def std(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.std, kwargs=method_kwargs))
+
+    def maximum(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.max, kwargs=method_kwargs))
+
+    def minimum(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.min, kwargs=method_kwargs))
+
+    def subtract(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.subtract, kwargs=method_kwargs))
+
+    def add(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.add, kwargs=method_kwargs))
+
+    def divide(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.divide, kwargs=method_kwargs))
+
+    def multiply(self, **method_kwargs) -> "SingleAction":
+        return self.reduce(Payload(self.backend.multiply, kwargs=method_kwargs))
+
     def node(self) -> Node:
         return self.nodes.data[()]
 
@@ -442,7 +484,7 @@ class MultiAction(Action):
         Parameters
         ----------
         payload: Payload, payload specifying function for performing the reduction
-        dim: str, name of dimension along which to return
+        dim: str, name of dimension along which to reduce
 
         Return
         ------
@@ -490,7 +532,6 @@ class MultiAction(Action):
         dim: str, name of dimension to flatten along
         axis: int, axis of new dimension in internal data
         method_kwargs: dict, kwargs for the underlying array module stack method
-
         Return
         ------
         SingleAction or MultiAction
@@ -526,6 +567,9 @@ class MultiAction(Action):
 
     def concatenate(self, dim: str, **method_kwargs) -> "SingleAction | MultiAction":
         return self.reduce(Payload(self.backend.concat, kwargs=method_kwargs), dim)
+
+    def sum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
+        return self.reduce(Payload(self.backend.sum, kwargs=method_kwargs), dim)
 
     def mean(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
         return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
@@ -564,51 +608,63 @@ class Fluent:
         self.backend = backend
 
     def source(
-        self,
-        payloads: np.ndarray[Payload],
-        dims: list | dict,
-        name: str = "source",
-        append_unique_index: bool = True,
+        self, func: callable, args: tuple, kwargs: dict = {}
     ) -> "SingleAction | MultiAction":
         """
-        Create source nodes in graph from an array of payloads, containing
-        payload for each source node
+        Create source nodes in graph from an dataarray of payloads, containing
+        payload for each source node. If none of func, args and kwargs are a xr.DataArray
+        then returns SingleAction with Payload(func, args, kwargs). If any of func, args
+        or kwargs is a xr.DataArray then creates node array with the same shape is created.
 
         Parameters
         ----------
-        payloads: np.ndarray[Payload], containing payload for each source node
-        dims: list or dict, specifying dimension names. If dict, then used
-        as coords in xarray.DataArray of nodes. If list, then values of coordinates
-        are integers up to the dimension size
-        name: str, common string to appear in the name of all source nodes
-        append_unique_index: bool, use array index in name to create unique name
+        func: callable or xr.DataArray[callable], function or functions to apply in
+        each node
+        args: tuple or xr.DataArray[tuple], container for args or array of
+        arguments for each node
+        kwargs: dict or xr.DataArray[dict], kwargs or array of kwargs for function
+        in each node
 
         Return
         ------
         SingleAction or MultiAction
+
+        Raises
+        ------
+        ValueError, if func, args or kwargs are DataArrays with different shapes
         """
-        payloads = np.asarray(payloads)
-        if len(dims) == 0:
-            return self.single_action.from_payload(None, payloads[()], self.backend)
+        if not any([isinstance(x, xr.DataArray) for x in [func, args, kwargs]]):
+            payload = Payload(func, args, kwargs)
+            return self.single_action.from_payload(None, payload, self.backend)
 
-        assert len(dims) == len(payloads.shape)
-        if isinstance(dims, dict):
-            coords = dims
-            dims = list(coords.keys())
-        else:
-            coords = {x: np.arange(payloads.shape[i]) for i, x in enumerate(dims)}
-
+        shape = None
+        ufunc_args = []
+        for x in [func, args, kwargs]:
+            if isinstance(x, xr.DataArray):
+                if shape is None:
+                    shape = (x.shape, x.coords, x.dims)
+                elif shape != (x.shape, x.coords, x.dims):
+                    raise ValueError("Shape, dims or coords of data arrays do not match")
+                ufunc_args.append(x)
+            else:
+                ufunc_args.append(xr.DataArray(x))
+        payloads = xr.apply_ufunc(Payload, *ufunc_args, vectorize=True)
         nodes = np.empty(payloads.shape, dtype=object)
         it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+        # Ensure all source nodes have a unique name
+        node_names = set()
         for payload in it:
-            node_name = f"{name}{it.multi_index}" if append_unique_index else name
-            nodes[it.multi_index] = Node(payload[()], name=node_name)
+            name = payload[()].name()
+            if name in node_names:
+                name += str(it.multi_index)
+            node_names.add(name)
+            nodes[it.multi_index] = Node(payload[()], name=name)
         return self.multi_action(
             None,
             xr.DataArray(
                 nodes,
-                dims=dims,
-                coords=coords,
+                dims=payloads.dims,
+                coords=payloads.coords,
             ),
             self.backend,
         )

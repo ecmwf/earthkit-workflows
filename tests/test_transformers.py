@@ -26,9 +26,15 @@ def test_taskgraph_transform():
 
 
 def test_dask_transform():
-    payloads = np.empty((4, 5), dtype=object)
-    payloads[:] = Payload(np.random.rand, [2, 3])
-    example = Fluent().source(payloads, ["x", "y"]).mean("x").expand("z", 3, 1, 0)
+    args = np.array(
+        [np.fromiter([(2, 3) for _ in range(4)], dtype=object) for _ in range(5)]
+    )
+    example = (
+        Fluent()
+        .source(np.random.rand, xr.DataArray(args, dims=["x", "y"]))
+        .mean("x")
+        .expand("z", 3, 1, 0)
+    )
 
     dask_graph = to_dask_graph(example.graph())
     assert all([isinstance(x, tuple) for x in dask_graph.items()])
