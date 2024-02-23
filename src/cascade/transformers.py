@@ -1,4 +1,5 @@
 from dask.utils import apply
+from meters import metered
 
 from .graph import Sink, Node, Graph, Transformer
 from .taskgraph import Resources, Task, TaskGraph, ExecutionGraph
@@ -19,7 +20,6 @@ def determine_resources(graph: Graph, num_workers: int = 1) -> dict[str, Resourc
     -------
     dict[str, Resources], dictionary containing Resource object for each node name
     """
-    from pproc.common.resources import metered
     from .schedulers.depthfirst import DepthFirstScheduler
     from concurrent.futures import ThreadPoolExecutor
 
@@ -110,15 +110,7 @@ def to_task_graph(
     TaskGraph
     """
     if resource_map is None:
-        # TODO: import resource meter without eccode dependence
-        # resource_map = determine_resources(graph)
-        import warnings
-
-        warnings.warn(
-            "Determining resources not implemented. Revert to empty resources",
-            UserWarning,
-        )
-        resource_map = {}
+        resource_map = determine_resources(graph)
     return _ToTaskGraph(resource_map).transform(graph)
 
 

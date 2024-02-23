@@ -22,7 +22,8 @@ dependencies = [
     "array-api-compat",
     "bs4", 
     "sortedcontainers", 
-    "pyvis"
+    "pyvis",
+    "code-meters",
 ]
 
 [options]
@@ -34,6 +35,7 @@ tests = ["pytest"]
 kubernetes = ["dask_kubernetes"]
 lint = ["black"]
 gpu = ["jax[cpu]", "jax[cuda12_pip]", "cupy-cuda12x"]
+examples = ["cftime"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
