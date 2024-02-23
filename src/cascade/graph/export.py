@@ -27,7 +27,7 @@ def _deserialise_node(
     name: str,
     data: dict,
     node_factory: NodeFactory = default_node_factory,
-    **inputs: Node.Output
+    **inputs: Node.Output,
 ) -> "Node":
     payload = data.get("payload", None)
     outputs = data.get("outputs", [])

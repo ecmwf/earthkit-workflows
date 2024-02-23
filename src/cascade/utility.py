@@ -4,7 +4,7 @@ from sortedcontainers import SortedDict
 class EventLoop:
     def __init__(self):
         self.timesteps = SortedDict()
-    
+
     def add_event(self, time, callback, *args):
         if time in self.timesteps:
             self.timesteps[time].append((callback, *args))

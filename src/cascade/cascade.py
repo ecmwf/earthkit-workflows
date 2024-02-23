@@ -1,7 +1,8 @@
-GRAPHS : dict = {}
+GRAPHS: dict = {}
 
-#TODO: Determine what Cascade methods should look like in terms of
-# supporting different executors and schedulers. Do we need it? 
+
+# TODO: Determine what Cascade methods should look like in terms of
+# supporting different executors and schedulers. Do we need it?
 class Cascade:
     def graph(product, *args, **kwargs):
         if product not in GRAPHS:

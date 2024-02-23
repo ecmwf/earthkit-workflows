@@ -113,7 +113,11 @@ def to_task_graph(
         # TODO: import resource meter without eccode dependence
         # resource_map = determine_resources(graph)
         import warnings
-        warnings.warn("Determining resources not implemented. Revert to empty resources", UserWarning)
+
+        warnings.warn(
+            "Determining resources not implemented. Revert to empty resources",
+            UserWarning,
+        )
         resource_map = {}
     return _ToTaskGraph(resource_map).transform(graph)
 
