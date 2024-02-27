@@ -34,7 +34,7 @@ include_package_data = true
 tests = ["pytest"]
 kubernetes = ["dask_kubernetes"]
 lint = ["black"]
-gpu = ["jax[cpu]", "jax[cuda12_pip]", "cupy-cuda12x"]
+gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
 examples = ["cftime"]
 
 [tool.setuptools.packages.find]
