@@ -109,31 +109,32 @@ class DaskExecutor:
             dask_graph = to_dask_graph(schedule)
             outputs = [x.name for x in schedule.sinks]
 
-        cluster = create_cluster(cluster_type, cluster_kwargs, adaptive_kwargs)
-
         # Set up distributed client
         dask.config.set(
             {"distributed.scheduler.worker-saturation": 1.0}
         )  # Important to prevent root task overloading
-        client = Client(cluster)
 
-        with performance_report(report):
-            future = client.get(dask_graph, outputs, sync=False)
+        with (
+            create_cluster(cluster_type, cluster_kwargs, adaptive_kwargs) as cluster,
+            Client(cluster) as client,
+        ):
+            with performance_report(report):
+                future = client.get(dask_graph, outputs, sync=False)
 
-            seq = as_completed(future)
-            del future
-            results = {}
-            # Trigger gargage collection on completed end tasks so scheduler doesn't
-            # try to repeat them
-            errored_tasks = 0
-            for fut in seq:
-                if fut.status != "finished":
-                    print(f"Task {fut.key} failed with exception: {fut.exception()}")
-                    errored_tasks += 1
-                assert fut.key not in results
-                results[fut.key] = fut.result()
-
-        client.shutdown()
+                seq = as_completed(future)
+                del future
+                results = {}
+                # Trigger gargage collection on completed end tasks so scheduler doesn't
+                # try to repeat them
+                errored_tasks = 0
+                for fut in seq:
+                    if fut.status != "finished":
+                        print(
+                            f"Task {fut.key} failed with exception: {fut.exception()}"
+                        )
+                        errored_tasks += 1
+                    assert fut.key not in results
+                    results[fut.key] = fut.result()
 
         if errored_tasks != 0:
             raise RuntimeError(f"{errored_tasks} task failed. Re-run required.")
