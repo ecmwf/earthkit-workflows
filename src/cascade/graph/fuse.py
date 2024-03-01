@@ -46,4 +46,26 @@ class _FuseTransformer(Transformer):
 
 
 def fuse_nodes(func: FuseCallback, g: Graph) -> Graph:
+    """Fuse compatible nodes of a graph
+
+    Candidates for fusion are 4-tuples: (parent node, parent output, current
+    node, current input). One such tuple is considered only if the parent node
+    has no other child. The current node may have multiple inputs to consider.
+    In that case, they will be considered in order (after a successful fusion,
+    the callback is passed the fused node).
+
+    Parameters
+    ----------
+    func: (Node, str, Node, str) -> (Node | None)
+        Fusion callback. If ``func(parent, parent_out, current, current_in)``
+        returns a node, use it to replace the current node and its parent. If it
+        returns None, do not replace the current node.
+    g: Graph
+        Input graph
+
+    Returns
+    -------
+    Graph
+        Fused graph
+    """
     return _FuseTransformer(func).transform(g)

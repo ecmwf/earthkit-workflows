@@ -57,5 +57,24 @@ def same_payload(a: Node, b: Node):
 
 
 def deduplicate_nodes(graph: Graph, pred: PredicateType = same_payload) -> Graph:
+    """Deduplicate graph nodes
+
+    Two nodes are considered identical if:
+    - They have the same outputs
+    - They have the same inputs
+    - The predicate matches
+
+    Parameters
+    ----------
+    graph: Graph
+        Input graph
+    pred: (Node, Node) -> bool, optional
+        If set, use this predicate to compare nodes for equality.
+        If not set, compare node payloads.
+
+    Returns
+    -------
+    Graph
+        Deduplicated graph"""
     mt = _DedupTransformer(pred)
     return mt.transform(graph)

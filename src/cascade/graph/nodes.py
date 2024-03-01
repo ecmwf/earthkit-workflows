@@ -2,9 +2,38 @@ from typing import Any
 
 
 class Node:
+    """Base class for graph nodes
+
+    A node is defined with references to its actual inputs, and can have either
+    one default output, or any number of named outputs (including zero). Named
+    outputs can be accessed by attribute lookup (e.g.: ``node.output1``), and
+    any output, including the default output, can be obtained with `get_output`.
+
+    A node has the following attributes:
+    - `name`, its name (should be unique within a graph)
+    - `inputs`, a mapping between input names and outputs of other nodes
+    - `outputs`, a list of outputs
+    - `payload`, a generic payload
+
+    Parameters
+    ----------
+    name: str
+        Node name
+    outputs: list[str] | None
+        List of outputs. If None or not set, assumes the node only has one
+        default output
+    payload: Any
+        Node payload
+    **inputs: Node | Node.Output
+        Node outputs to use as inputs. If a `Node` object is passed, the input
+        will be connected to its default output.
+    """
+
     DEFAULT_OUTPUT = "__default__"
 
     class Output:
+        """Helper class to refer to node outputs"""
+
         parent: "Node"
         name: str
 
@@ -13,6 +42,7 @@ class Node:
             self.name = name
 
         def serialise(self) -> str | tuple[str, str]:
+            """Convert the reference to a serialisable type"""
             if self.name == Node.DEFAULT_OUTPUT:
                 return self.parent.name
             return self.parent.name, self.name
@@ -51,6 +81,12 @@ class Node:
         return self.get_output(name)
 
     def get_output(self, name: str | None = None) -> Output:
+        """Get an output from the node
+
+        If ``name`` is ``None``, the node is expected to have a default output,
+        which is returned. Otherwise the output with the given name is returned.
+        Raises `AttributeError` if the output does not exist.
+        """
         if name is None:
             name = Node.DEFAULT_OUTPUT
         if name in self.outputs:
@@ -63,6 +99,11 @@ class Node:
         return Node.Output(self, name)
 
     def serialise(self) -> dict:
+        """Convert the node to a serialisable value
+
+        If the payload object has a ``serialise`` method, it is called without
+        arguments to get its serialised form, otherwise the payload is assumed
+        to be serialisable as is."""
         res = {}
         res["outputs"] = self.outputs.copy()
         res["inputs"] = {name: src.serialise() for name, src in self.inputs.items()}
@@ -77,19 +118,24 @@ class Node:
         return f"<{self.__class__.__name__} {self.name!r} at {id(self):#x}>"
 
     def is_source(self) -> bool:
+        """Check whether the node is a source (i.e. has no inputs)"""
         return not self.inputs
 
     def is_processor(self) -> bool:
+        """Check whether the node is a processor (i.e. has both inputs and outputs)"""
         return bool(self.inputs) and bool(self.outputs)
 
     def is_sink(self) -> bool:
+        """Check whether the node is a sink (i.e. has no outputs)"""
         return not self.outputs
 
     def copy(self) -> "Node":
+        """Shallow copy of the node (the payload is not copied)"""
         return Node(self.name, self.outputs.copy(), self.payload, **self.inputs)
 
 
 class Source(Node):
+    """Node that acts as a source, i.e. has no inputs"""
     def __init__(
         self, name: str, outputs: list[str] | None = None, payload: Any = None
     ):
@@ -103,6 +149,7 @@ class Source(Node):
 
 
 class Processor(Node):
+    """Node that acts as a processor, i.e. has both inputs and outputs"""
     def __instancecheck__(self, instance: Any) -> bool:
         return isinstance(instance, Node) and instance.is_processor()
 
@@ -111,6 +158,7 @@ class Processor(Node):
 
 
 class Sink(Node):
+    """Node that acts as a sink, i.e. has no outputs"""
     def __init__(self, name: str, payload: Any = None, **kwargs: Node | Node.Output):
         super().__init__(name, [], payload, **kwargs)
 

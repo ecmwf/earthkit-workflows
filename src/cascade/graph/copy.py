@@ -14,4 +14,5 @@ class _Copier(Transformer):
 
 
 def copy_graph(g: Graph) -> Graph:
+    """Create a shallow copy of a whole graph (payloads are not copied)"""
     return _Copier().transform(g)
