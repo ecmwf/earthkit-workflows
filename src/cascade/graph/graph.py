@@ -4,6 +4,15 @@ from .nodes import Node, Sink, Source
 
 
 class Graph:
+    """Graph class
+
+    A graph is represented by the list of its sinks.
+
+    Parameters
+    ----------
+    sinks: list[Sink]
+        Sinks of the graph
+    """
     sinks: list[Sink]
 
     def __init__(self, sinks: list[Sink]):
@@ -49,6 +58,10 @@ class Graph:
         return self
 
     def nodes(self, forwards=False) -> Iterator[Node]:
+        """Iterate over nodes of the graph
+
+        If ``forwards`` is true, iterate in topological order. Otherwise,
+        iterate backwards starting from the sinks."""
         done: set[Node] = set()
         todo: list[Node] = [sink for sink in self.sinks]
 
@@ -81,17 +94,26 @@ class Graph:
             done.add(node)
 
     def sources(self) -> Iterator[Source]:
+        """Iterate over the sources in the graph"""
         for node in self.nodes(forwards=True):
             if node.is_source():
                 yield cast(Source, node)
 
     def get_node(self, name: str) -> Node:
+        """Get a node by name
+
+        Raises `KeyError` if not found."""
         for node in self.nodes():
             if node.name == name:
                 return node
         raise KeyError(name)
 
     def get_predecessors(self, node: Node) -> dict[str, Node | tuple[Node, str]]:
+        """Get the predecessors (parents) of a node
+
+        The result is a dict where keys are the given node's input names, and
+        values are node outputs, encoded as either the node itself (default
+        output), or (parent, output name) tuples."""
         pred = {}
         for iname, isrc in node.inputs.items():
             if isrc.name == Node.DEFAULT_OUTPUT:
@@ -101,6 +123,10 @@ class Graph:
         return pred
 
     def get_successors(self, node: Node) -> dict[str, list[tuple[Node, str]]]:
+        """Get the successors (children) of a node
+
+        The result is a dict where keys are the given node's output names, and
+        values are lists of (child, input name) tuples."""
         succ = {}
         for other in self.nodes():
             for iname, isrc in other.inputs.items():
@@ -110,6 +136,7 @@ class Graph:
         return succ
 
     def has_cycle(self) -> bool:
+        """Check whether a graph contains cycles"""
         done: set[Node] = set()
         todo: list[tuple[Node, list[Node]]] = [(sink, []) for sink in self.sinks]
 

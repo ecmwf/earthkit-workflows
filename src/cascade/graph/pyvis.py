@@ -19,6 +19,7 @@ def _make_attr_func(attr: dict | Callable[_P, dict] | None) -> Callable[_P, dict
 
 
 def node_info(node):
+    """Simple node info function showing the node inputs and outputs as node title"""
     labels = []
     inputs_s = ", ".join(inp for inp in node.inputs.keys()) if node.inputs else "None"
     labels.append(f"Input{'' if len(node.inputs) == 1 else 's'}: {inputs_s}")
@@ -29,6 +30,7 @@ def node_info(node):
 
 
 def edge_info(sname, snode, dname, dnode):
+    """Simple edge info function showing the names of the output and input as edge title"""
     return {"title": f"From: {sname}\nTo: {dname}"}
 
 
@@ -52,6 +54,27 @@ def to_pyvis(
     hierarchical_layout: bool = True,
     **kwargs: Any,
 ) -> Network:
+    """Convert a graph to a PyVis network
+
+    Parameters
+    ----------
+    graph: Graph
+        Input graph
+    node_attrs: None | dict | (Node -> dict)
+        Node attributes, or function to set per-node attributes
+    edge_attrs: None | dict | ((str, Node, str, Node) -> dict)
+        Edge attributes, or function to set per-edge attributes. The function
+        arguments are (from_output_name, from_node, to_input_name, to_node)
+    hierarchical_layout:
+        If True, request a hierarchical layout
+    **kwargs
+        Passed to the `pyvis.Network` constructor
+
+    Returns
+    -------
+    pyvis.Network
+        Output network
+    """
     node_func = _make_attr_func(node_attrs)
     edge_func = _make_attr_func(edge_attrs)
     net = Network(directed=True, **kwargs)
