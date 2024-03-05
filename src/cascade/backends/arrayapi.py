@@ -5,7 +5,7 @@ from .decorators import batchable
 
 
 class ArrayApiBackend(BaseBackend):
-    def stat_funcs(name: str, *arrays, **method_kwargs):
+    def multi_arg_funcs(name: str, *arrays, **method_kwargs):
         """
         Apply named function in array module on arrays. If arrays
         only consists of single array then function is applied
@@ -29,29 +29,29 @@ class ArrayApiBackend(BaseBackend):
         return getattr(xp, name)(xp.asarray(arrays), **method_kwargs)
 
     def mean(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("mean", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("mean", *arrays, **method_kwargs)
 
     def std(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("std", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("std", *arrays, **method_kwargs)
 
     @batchable
     def min(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("min", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("min", *arrays, **method_kwargs)
 
     @batchable
     def max(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("max", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("max", *arrays, **method_kwargs)
 
     @batchable
     def sum(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("sum", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("sum", *arrays, **method_kwargs)
 
     @batchable
     def prod(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("prod", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("prod", *arrays, **method_kwargs)
 
     def var(*arrays, **method_kwargs):
-        return ArrayApiBackend.stat_funcs("var", *arrays, **method_kwargs)
+        return ArrayApiBackend.multi_arg_funcs("var", *arrays, **method_kwargs)
 
     def stack(*arrays, axis: int = 0):
         xp = array_api_compat.array_namespace(*arrays)

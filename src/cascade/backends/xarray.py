@@ -162,6 +162,15 @@ class XArrayBackend(BaseBackend):
             "multiply", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
+    def pow(
+        *arrays: list[xr.DataArray | xr.Dataset],
+        keep_attrs: bool | str = False,
+        **method_kwargs,
+    ):
+        return XArrayBackend.two_arg_function(
+            "power", *arrays, keep_attrs=keep_attrs, **method_kwargs
+        )
+
     def divide(
         *arrays: list[xr.DataArray | xr.Dataset],
         keep_attrs: bool | str = False,

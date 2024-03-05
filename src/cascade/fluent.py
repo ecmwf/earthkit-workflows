@@ -65,6 +65,9 @@ class Payload:
     def __str__(self) -> str:
         return f"{self.name()}{self.args}{self.kwargs}"
 
+    def copy(self) -> "Payload":
+        return Payload(self.func, self.args, self.kwargs)
+
 
 def custom_hash(string: str) -> str:
     ret = hashlib.sha256()
@@ -79,6 +82,7 @@ class Node(BaseNode):
         inputs: BaseNode | tuple[BaseNode] = (),
         name: str = None,
     ):
+        payload = payload.copy()
         if isinstance(inputs, BaseNode):
             inputs = [inputs]
         # If payload doesn't have inputs, assume inputs to the function are the inputs
@@ -272,6 +276,32 @@ class Action:
 
         return self.transform(_expand, np.arange(dim_size), dim)
 
+    def __two_arg_method(
+        self, method: callable, other, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        if isinstance(other, Action):
+            return self.join(other, "**datatype**", match_coord_values=True).reduce(
+                Payload(method, kwargs=method_kwargs)
+            )
+        return self.map(
+            Payload(method, args=(Node.input_name(0), other), kwargs=method_kwargs)
+        )
+
+    def subtract(self, other, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.__two_arg_method(self.backend.subtract, other, **method_kwargs)
+
+    def divide(self, other, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.__two_arg_method(self.backend.divide, other, **method_kwargs)
+
+    def add(self, other, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.__two_arg_method(self.backend.add, other, **method_kwargs)
+
+    def multiply(self, other, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.__two_arg_method(self.backend.multiply, other, **method_kwargs)
+
+    def power(self, other, **method_kwargs) -> "SingleAction | MultiAction":
+        return self.__two_arg_method(self.backend.pow, other, **method_kwargs)
+
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
@@ -315,48 +345,6 @@ class SingleAction(Action):
         SingleAction
         """
         return type(self).from_payload(self, payload, self.backend)
-
-    def reduce(self, payload: Payload) -> "SingleAction":
-        """
-        Reduce the underlying array inside the node using the prodvided
-        payload
-
-        Parameters
-        ----------
-        payload: Payload, payload specifying function for performing the reduction
-
-        Return
-        ------
-        SingleAction
-        """
-        return type(self).from_payload(self, payload, self.backend)
-
-    def sum(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.sum, kwargs=method_kwargs))
-
-    def mean(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs))
-
-    def std(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.std, kwargs=method_kwargs))
-
-    def maximum(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.max, kwargs=method_kwargs))
-
-    def minimum(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.min, kwargs=method_kwargs))
-
-    def subtract(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.subtract, kwargs=method_kwargs))
-
-    def add(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.add, kwargs=method_kwargs))
-
-    def divide(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.divide, kwargs=method_kwargs))
-
-    def multiply(self, **method_kwargs) -> "SingleAction":
-        return self.reduce(Payload(self.backend.multiply, kwargs=method_kwargs))
 
     def node(self) -> Node:
         return self.nodes.data[()]
@@ -476,7 +464,9 @@ class MultiAction(Action):
             self.backend,
         )
 
-    def reduce(self, payload: Payload, dim: str = "") -> "SingleAction | MultiAction":
+    def reduce(
+        self, payload: Payload, dim: str = "", batch_size: int | None = None
+    ) -> "SingleAction | MultiAction":
         """
         Reduction operation across the named dimension using the provided
         function in the payload
@@ -485,39 +475,74 @@ class MultiAction(Action):
         ----------
         payload: Payload, payload specifying function for performing the reduction
         dim: str, name of dimension along which to reduce
+        batch_size: int or None, size of batches to split reduction into
 
         Return
         ------
         SingleAction or MultiAction
+
+        Raises
+        ------
+        ValueError if payload function is not batchable and batch_size is not None
         """
-        if self.nodes.ndim == 1:
-            return self.to_single(payload)
 
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
-        new_dims = [x for x in self.nodes.dims if x != dim]
-        transposed_nodes = self.nodes.transpose(dim, *new_dims)
+        if batch_size is not None:
+            if not getattr(payload.func, "batchable", False):
+                raise ValueError(
+                    f"Function {payload.func.__name__} is not batchable, but batch_size is specified"
+                )
+            if batch_size == 0 or batch_size >= self.nodes.sizes[dim]:
+                raise ValueError(
+                    f"Batch size {batch_size} is not valid for dimension {dim} with size {self.nodes.sizes[dim]}"
+                )
+
+            def _batch(action: Action, selection: list) -> Action:
+                return action.select({dim: selection}, drop=True).reduce(
+                    payload, dim=dim
+                )
+
+            lst = self.nodes.coords[dim].data
+            batched = self.transform(
+                _batch,
+                [lst[i : i + batch_size] for i in range(0, len(lst), batch_size)],
+                f"batch.{dim}",
+            )
+            dim = f"batch.{dim}"
+        else:
+            batched = self
+
+        if batched.nodes.ndim == 1:
+            return batched.to_single(payload)
+
+        new_dims = [x for x in batched.nodes.dims if x != dim]
+        transposed_nodes = batched.nodes.transpose(dim, *new_dims)
         new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
         it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
         for _ in it:
             inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
             new_nodes[it.multi_index] = Node(payload, inputs)
 
-        new_coords = {key: self.nodes.coords[key] for key in new_dims}
+        new_coords = {key: batched.nodes.coords[key] for key in new_dims}
         # Propagate scalar coords
         new_coords.update(
-            {k: v for k, v in self.nodes.coords.items() if k not in self.nodes.dims}
+            {
+                k: v
+                for k, v in batched.nodes.coords.items()
+                if k not in batched.nodes.dims
+            }
         )
-        return type(self)(
-            self,
+        return type(batched)(
+            batched,
             xr.DataArray(
                 new_nodes,
                 coords=new_coords,
                 dims=new_dims,
-                attrs=self.nodes.attrs,
+                attrs=batched.nodes.attrs,
             ),
-            self.backend,
+            batched.backend,
         )
 
     def flatten(
@@ -565,35 +590,62 @@ class MultiAction(Action):
             return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes, self.backend)
 
-    def concatenate(self, dim: str, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.concat, kwargs=method_kwargs), dim)
+    def concatenate(
+        self, dim: str, batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(self.backend.concat, kwargs=method_kwargs), dim, batch_size
+        )
 
-    def sum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.sum, kwargs=method_kwargs), dim)
+    def sum(
+        self, dim: str = "", batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(self.backend.sum, kwargs=method_kwargs), dim, batch_size
+        )
 
-    def mean(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
+    def mean(
+        self, dim: str = "", batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        if batch_size is None:
+            return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
 
-    def std(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.std, kwargs=method_kwargs), dim)
+        if len(dim) == 0:
+            dim = self.nodes.dims[0]
+        return self.sum(dim, batch_size, **method_kwargs).divide(self.nodes.sizes[dim])
 
-    def maximum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.max, kwargs=method_kwargs), dim)
+    def std(
+        self, dim: str = "", batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        if batch_size is None:
+            return self.reduce(Payload(self.backend.std, kwargs=method_kwargs), dim)
 
-    def minimum(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.min, kwargs=method_kwargs), dim)
+        if len(dim) == 0:
+            dim = self.nodes.dims[0]
+        mean_sq = self.mean(dim, batch_size, **method_kwargs).power(2)
+        norm = self.power(2).sum(dim, batch_size).divide(self.nodes.sizes[dim])
+        return norm.subtract(mean_sq).power(0.5)
 
-    def subtract(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.subtract, kwargs=method_kwargs), dim)
+    def max(
+        self, dim: str = "", batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(self.backend.max, kwargs=method_kwargs), dim, batch_size
+        )
 
-    def add(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.add, kwargs=method_kwargs), dim)
+    def min(
+        self, dim: str = "", batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(self.backend.min, kwargs=method_kwargs), dim, batch_size
+        )
 
-    def divide(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.divide, kwargs=method_kwargs), dim)
-
-    def multiply(self, dim: str = "", **method_kwargs) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(self.backend.multiply, kwargs=method_kwargs), dim)
+    def prod(
+        self, dim: str = "", batch_size: int | None = None, **method_kwargs
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(self.backend.prod, kwargs=method_kwargs), dim, batch_size
+        )
 
 
 class Fluent:
@@ -644,7 +696,9 @@ class Fluent:
                 if shape is None:
                     shape = (x.shape, x.coords, x.dims)
                 elif shape != (x.shape, x.coords, x.dims):
-                    raise ValueError("Shape, dims or coords of data arrays do not match")
+                    raise ValueError(
+                        "Shape, dims or coords of data arrays do not match"
+                    )
                 ufunc_args.append(x)
             else:
                 ufunc_args.append(xr.DataArray(x))

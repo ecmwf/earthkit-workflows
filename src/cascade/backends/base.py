@@ -83,6 +83,10 @@ class BaseBackend(ABC):
     def divide(*args, **kwargs):
         return args[0] / args[1]
 
+    @num_args(2)
+    def pow(*args, **kwargs):
+        return args[0] ** args[1]
+
     @abstractmethod
     def take(array, indices, *, axis: int, **kwargs):
         """

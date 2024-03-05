@@ -27,7 +27,7 @@ def test_multi_arg(
     ],
 )
 def test_two_arg(backend, input_generator, num_inputs, input_shape, output_shape):
-    for func in ["add", "subtract", "multiply", "divide"]:
+    for func in ["add", "subtract", "multiply", "divide", "pow"]:
         assert (
             getattr(backend, func)(*input_generator(num_inputs, input_shape)).shape
             == output_shape

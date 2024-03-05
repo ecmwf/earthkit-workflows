@@ -72,7 +72,7 @@ from cascade.fluent import Fluent, Payload
 graph = (
     Fluent().source(np.random.rand, args)
     .mean("x")
-    .minimum("y")
+    .min("y")
     .expand("z", 3, 1, 0)
     .map([Payload(lambda x, a=a: x * a) for a in range(1, 4)])
     .graph()
