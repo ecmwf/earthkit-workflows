@@ -499,7 +499,7 @@ class MultiAction(Action):
 
         batched = self
         level = 0
-        if batch_size > 1:
+        if batch_size > 1 and batch_size < batched.nodes.sizes[dim]:
             if not getattr(payload.func, "batchable", False):
                 raise ValueError(
                     f"Function {payload.func.__name__} is not batchable, but batch_size {batch_size} is specified"
