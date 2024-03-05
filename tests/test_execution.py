@@ -71,7 +71,9 @@ def test_batch_execution(tmpdir, func):
     non_batched = getattr(sources, func)("x")
     batched = getattr(sources, func)("x", batch_size=3)
     g = non_batched.subtract(batched).graph()
-    output = DaskLocalExecutor.execute(g, 2, report=f"{tmpdir}/report.html")
+    output = DaskLocalExecutor.execute(
+        deduplicate_nodes(g), 2, report=f"{tmpdir}/report.html"
+    )
     print(func, output)
     for value in output.values():
         assert np.all(value == 0)
