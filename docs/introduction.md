@@ -28,11 +28,11 @@ dimension, which returns ``MultiAction`` containing a two-dimensional array of n
 </center>
 
 Most of the methods require a ``Payload`` which specifies the function and its arguments that is being applied on the array of nodes. For example, for ``MultiAction.reduce`` the signature is 
-```
+```python
 def reduce(self, payload: Payload, dim: str = "") -> "SingleAction | MultiAction":
 ```
 where an example could be 
-```
+```python
 payload = Payload(lambda x, y, z: x**2 + y**2 + z**2)
 ```
 applied across the `parameter` dimension.
@@ -40,7 +40,7 @@ applied across the `parameter` dimension.
 The `Fluent` class is for defining the `SingleAction` and `MultiAction` pair that define the graph construction language as well as the backend for the objects contained inside the nodes. Current backends are ``ArrayApiBackend``, ``XarrayBackend``, ``JaxBackend``. 
 
 Example usage is:
-```
+```python
 from cascade.fluent import Fluent, SingleAction, MultiAction
 from cascade.backends.arrayapi import ArrayApiBackend
 
@@ -48,7 +48,7 @@ fluent = Fluent(SingleAction, MultiAction, ArrayApiBackend)
 ```
 
 The ``Fluent`` class provides a ``source`` method for creating the initial node array by specifying a function and its args and kwargs. For example to create a single node that opens a xarray dataset
-```
+```python
 import xarray as xr 
 from cascade.fluent import Fluent
 from cascade.backends.xarray import XArrayBackend
@@ -56,7 +56,7 @@ from cascade.backends.xarray import XArrayBackend
 initial_action = Fluent(backend=XArrayBackend).source(xr.open_dataset, args=("/path/to/dataset",), kwargs={})
 ```
 To create multiple nodes, at least one of the arguments to `source` either the function, args or kwargs must be a xr.DataArray. For example, 
-```
+```python
 import numpy as np 
 from cascade.fluent import Fluent
 
@@ -66,7 +66,7 @@ initial_action = fluent.source(np.random.rand, args)
 In this case, `initial_action` would contain a (2, 2) array of nodes with dimension "x" and "y", each containing (2, 3) random numpy array. If multiple DataArrays are passed for the function, args or kwargs then they match in shape, coords and dims.
 
 One can then construct a graph from this point using the function cascading API:
-```
+```python
 from cascade.fluent import Fluent, Payload
 
 graph = (
@@ -83,7 +83,7 @@ Resources
 ---------
 
 The graphs constructing using the Fluent API do not contain any annotations for resource usage of the tasks in each node. To manually attach resources to the tasks, we transform the graph into a ``TaskGraph`` object, providing a dictionary of `Resources`, containing CPU cost and memory, for each node name. 
-```
+```python
 from cascade.transformers import to_taskgraph
 from cascade.taskgraph import Resources
 
@@ -113,7 +113,7 @@ The available executors are based on the Dask distributed local executor and Kub
 **Does not currently create workers according to ``ContextGraph``** 
 
 To execute a graph using the ``DaskLocalExecutor``, do the following:
-```
+```python
 from cascade.executors.dask import DaskLocalExecutor
 
 results = DaskLocalExecutor.execute(graph, n_workers=2, threads_per_worker=1, processes=True,

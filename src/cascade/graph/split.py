@@ -33,6 +33,11 @@ class CutEdge(Generic[K]):
 
 
 class Splitter(Transformer, Generic[K]):
+    """Transformer to perform graph splitting
+
+    Subclasses can override the `cut_edge` method to control how the cut edges
+    are replaced by a sink and a source on either side.
+    """
     key: KeyFunc[K]
     cuts: list[CutEdge[K]]
     sinks: dict[K, list[Sink]]
@@ -69,6 +74,22 @@ class Splitter(Transformer, Generic[K]):
         return {k: Graph(s) for k, s in self.sinks.items()}, self.cuts
 
     def cut_edge(self, cut: CutEdge[K], sink_in: Node.Output) -> tuple[Sink, Source]:
+        """Create nodes to replace a cut edge
+
+        Parameters
+        ----------
+        cut: CutEdge
+            Edge that has been cut
+        sink_in: Output
+            Input to be connected to the sink replacing the start of the edge
+
+        Returns
+        -------
+        Sink
+            Sink to replace the start of the edge
+        Source
+            Source to replace the end of the edge
+        """
         return Sink(cut.name, input=sink_in), Source(cut.name)
 
 
@@ -78,4 +99,29 @@ SplitterType = Callable[[KeyFunc[K]], Splitter[K]]
 def split_graph(
     key: KeyFunc[K], graph: Graph, splitter: SplitterType[K] = Splitter
 ) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
+    """Split a graph according to some key
+
+    Each sub-graph in the split will consist of nodes with the same key. The key
+    type ``K`` must be hashable and support the ``==`` operator.
+
+    Sources and sinks are created by the `Splitter` class to replace cut edges.
+    The names are generated using a hash (see `CutEdge.name`). See the
+    `Splitter` class for information on how to create custom nodes instead.
+
+    Parameters
+    ----------
+    key: Node -> K
+        Callback to get the key for a given node
+    graph: Graph
+        Input graph
+    splitter: (Node -> K) -> Splitter[K]
+        Splitter class
+
+    Returns
+    -------
+    dict[K, Graph]
+        Sub-graphs corresponding to each key
+    list[CutEdge[K]]
+        List of cut edges
+    """
     return splitter(key).transform(graph)

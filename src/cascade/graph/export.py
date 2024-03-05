@@ -35,6 +35,9 @@ def _deserialise_node(
 
 
 def serialise(graph: Graph) -> dict:
+    """Convert a graph to a serialisable representation
+
+    See also `Node.serialise`"""
     data = {}
     for node in graph.nodes():
         assert node.name not in data
@@ -43,10 +46,20 @@ def serialise(graph: Graph) -> dict:
 
 
 def to_json(graph: Graph) -> str:
+    """Serialise a graph as JSON
+
+    See also `serialise`"""
     return json.dumps(serialise(graph))
 
 
 def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) -> Graph:
+    """Build a graph from a serialisable representation
+
+    An optional node factory function can be provided to create a node with the
+    given name, outputs, payload and inputs. The default factory will create
+    bare `Source`, `Processor` and `Sink` objects, depending on the presence of
+    inputs and outputs.
+    """
     deps = {}
     for name, node in data.items():
         deps[name] = []
@@ -76,4 +89,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
 
 
 def from_json(data: str) -> Graph:
+    """Build a graph from JSON
+
+    See also `deserialise`"""
     return deserialise(json.loads(data))
