@@ -492,26 +492,31 @@ class MultiAction(Action):
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
-        if batch_size > 1 and batch_size < self.nodes.sizes[dim]:
+        def _batch(action: Action, selection: dict) -> Action:
+            return action.select(selection, drop=True).reduce(
+                payload, dim=list(selection.keys())[0]
+            )
+
+        batched = self
+        level = 0
+        if batch_size > 1:
             if not getattr(payload.func, "batchable", False):
                 raise ValueError(
                     f"Function {payload.func.__name__} is not batchable, but batch_size {batch_size} is specified"
                 )
 
-            def _batch(action: Action, selection: list) -> Action:
-                return action.select({dim: selection}, drop=True).reduce(
-                    payload, dim=dim
+            while batch_size < batched.nodes.sizes[dim]:
+                lst = batched.nodes.coords[dim].data
+                batched = batched.transform(
+                    _batch,
+                    [
+                        {dim: lst[i : i + batch_size]}
+                        for i in range(0, len(lst), batch_size)
+                    ],
+                    f"batch.{level}.{dim}",
                 )
-
-            lst = self.nodes.coords[dim].data
-            batched = self.transform(
-                _batch,
-                [lst[i : i + batch_size] for i in range(0, len(lst), batch_size)],
-                f"batch.{dim}",
-            )
-            dim = f"batch.{dim}"
-        else:
-            batched = self
+                dim = f"batch.{level}.{dim}"
+                level += 1
 
         if batched.nodes.ndim == 1:
             return batched.to_single(payload)
