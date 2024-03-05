@@ -57,3 +57,8 @@ def test_two_arg_raises(backend, input_generator, num_inputs, shape):
 def test_take(backend, input_generator, args, kwargs, output_shape):
     output = backend.take(*input_generator(1), *args, **kwargs)
     assert output.shape == output_shape
+
+
+def test_batchable(backend):
+    for func in ["max", "min", "sum", "prod", "concat"]:
+        assert getattr(backend, func).batchable

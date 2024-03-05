@@ -1,6 +1,7 @@
 import array_api_compat
 
 from .base import BaseBackend
+from .decorators import batchable
 
 
 class ArrayApiBackend(BaseBackend):
@@ -33,15 +34,19 @@ class ArrayApiBackend(BaseBackend):
     def std(*arrays, **method_kwargs):
         return ArrayApiBackend.stat_funcs("std", *arrays, **method_kwargs)
 
+    @batchable
     def min(*arrays, **method_kwargs):
         return ArrayApiBackend.stat_funcs("min", *arrays, **method_kwargs)
 
+    @batchable
     def max(*arrays, **method_kwargs):
         return ArrayApiBackend.stat_funcs("max", *arrays, **method_kwargs)
 
+    @batchable
     def sum(*arrays, **method_kwargs):
         return ArrayApiBackend.stat_funcs("sum", *arrays, **method_kwargs)
 
+    @batchable
     def prod(*arrays, **method_kwargs):
         return ArrayApiBackend.stat_funcs("prod", *arrays, **method_kwargs)
 
@@ -53,6 +58,7 @@ class ArrayApiBackend(BaseBackend):
         broadcasted = xp.broadcast_arrays(*arrays)
         return xp.stack(broadcasted, axis=axis)
 
+    @batchable
     def concat(*arrays, axis: int = 0, **method_kwargs):
         xp = array_api_compat.array_namespace(*arrays)
         return xp.concat(arrays, axis=axis, **method_kwargs)
