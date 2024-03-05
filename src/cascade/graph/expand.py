@@ -62,6 +62,7 @@ class Splicer(Transformer):
     output_map: dict[str, str] | None
         Mapping from node output names to sink names
     """
+
     name: str
     inputs: dict[str, Node.Output]
     outputs: dict[str, str]

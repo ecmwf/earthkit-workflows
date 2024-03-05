@@ -38,6 +38,7 @@ class Splitter(Transformer, Generic[K]):
     Subclasses can override the `cut_edge` method to control how the cut edges
     are replaced by a sink and a source on either side.
     """
+
     key: KeyFunc[K]
     cuts: list[CutEdge[K]]
     sinks: dict[K, list[Sink]]

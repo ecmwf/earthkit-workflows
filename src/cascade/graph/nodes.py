@@ -136,6 +136,7 @@ class Node:
 
 class Source(Node):
     """Node that acts as a source, i.e. has no inputs"""
+
     def __init__(
         self, name: str, outputs: list[str] | None = None, payload: Any = None
     ):
@@ -150,6 +151,7 @@ class Source(Node):
 
 class Processor(Node):
     """Node that acts as a processor, i.e. has both inputs and outputs"""
+
     def __instancecheck__(self, instance: Any) -> bool:
         return isinstance(instance, Node) and instance.is_processor()
 
@@ -159,6 +161,7 @@ class Processor(Node):
 
 class Sink(Node):
     """Node that acts as a sink, i.e. has no outputs"""
+
     def __init__(self, name: str, payload: Any = None, **kwargs: Node | Node.Output):
         super().__init__(name, [], payload, **kwargs)
 

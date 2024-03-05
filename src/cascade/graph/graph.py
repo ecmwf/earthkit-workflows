@@ -13,6 +13,7 @@ class Graph:
     sinks: list[Sink]
         Sinks of the graph
     """
+
     sinks: list[Sink]
 
     def __init__(self, sinks: list[Sink]):
