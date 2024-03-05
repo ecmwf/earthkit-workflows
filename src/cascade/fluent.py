@@ -469,7 +469,9 @@ class MultiAction(Action):
     ) -> "SingleAction | MultiAction":
         """
         Reduction operation across the named dimension using the provided
-        function in the payload
+        function in the payload. If batch_size > 1 and less than the size
+        of the named dimension, the reduction will be computed first in
+        batches and then aggregated, otherwise no batching will be performed.
 
         Parameters
         ----------
@@ -490,14 +492,10 @@ class MultiAction(Action):
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
-        if batch_size > 0:
+        if batch_size > 1 and batch_size < self.nodes.sizes[dim]:
             if not getattr(payload.func, "batchable", False):
                 raise ValueError(
                     f"Function {payload.func.__name__} is not batchable, but batch_size {batch_size} is specified"
-                )
-            if batch_size == 1 or batch_size >= self.nodes.sizes[dim]:
-                raise ValueError(
-                    f"Batch size {batch_size} is not valid for dimension {dim} with size {self.nodes.sizes[dim]}. Must be between 2 and {self.nodes.sizes[dim] - 1}"
                 )
 
             def _batch(action: Action, selection: list) -> Action:
