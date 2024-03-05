@@ -606,21 +606,23 @@ class MultiAction(Action):
     def mean(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
-        if batch_size is None:
-            return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
-
         if len(dim) == 0:
             dim = self.nodes.dims[0]
+
+        if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
+            return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
+
         return self.sum(dim, batch_size, **method_kwargs).divide(self.nodes.sizes[dim])
 
     def std(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
-        if batch_size is None:
-            return self.reduce(Payload(self.backend.std, kwargs=method_kwargs), dim)
-
         if len(dim) == 0:
             dim = self.nodes.dims[0]
+
+        if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
+            return self.reduce(Payload(self.backend.std, kwargs=method_kwargs), dim)
+
         mean_sq = self.mean(dim, batch_size, **method_kwargs).power(2)
         norm = self.power(2).sum(dim, batch_size).divide(self.nodes.sizes[dim])
         return norm.subtract(mean_sq).power(0.5)
