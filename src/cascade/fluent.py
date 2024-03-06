@@ -493,9 +493,14 @@ class MultiAction(Action):
             dim = self.nodes.dims[0]
 
         def _batch(action: Action, selection: dict) -> Action:
-            return action.select(selection, drop=True).reduce(
-                payload, dim=list(selection.keys())[0]
-            )
+            selected = action.select(selection, drop=True)
+            dim = list(selection.keys())[0]
+            if isinstance(selected, SingleAction):
+                selected._squeeze_dimension(dim, drop=True)
+                return selected
+
+            reduced = selected.reduce(payload, dim=dim)
+            return reduced
 
         batched = self
         level = 0
