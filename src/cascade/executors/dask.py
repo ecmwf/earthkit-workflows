@@ -126,18 +126,20 @@ class DaskExecutor:
                 results = {}
                 # Trigger gargage collection on completed end tasks so scheduler doesn't
                 # try to repeat them
-                errored_tasks = 0
+                errored_tasks = []
                 for fut in seq:
                     if fut.status != "finished":
                         print(
                             f"Task {fut.key} failed with exception: {fut.exception()}"
                         )
-                        errored_tasks += 1
-                    assert fut.key not in results
-                    results[fut.key] = fut.result()
+                        errored_tasks.append(fut.key)
+                    else:
+                        assert fut.key not in results
+                        results[fut.key] = fut.result()
+                    fut.cancel()
 
-        if errored_tasks != 0:
-            raise RuntimeError(f"{errored_tasks} task failed. Re-run required.")
+        if len(errored_tasks) != 0:
+            raise RuntimeError(f"{errored_tasks} tasks failed. Re-run required.")
         return results
 
 
