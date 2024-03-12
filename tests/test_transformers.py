@@ -3,40 +3,23 @@ import xarray as xr
 import pytest
 
 from cascade.transformers import to_task_graph, to_dask_graph
-from cascade.fluent import Fluent, Payload, Node, MultiAction
+from cascade.fluent import Payload, Node, MultiAction
 from cascade.backends.arrayapi import ArrayApiBackend
+
+from helpers import mock_graph
 
 
 @pytest.mark.skip("Feature currently disabled due to import eccodes dependence")
 def test_taskgraph_transform():
-    payloads = np.empty((4, 5), dtype=object)
-    payloads[:] = Payload(np.random.rand, [100, 100])
-    graph = (
-        Fluent()
-        .source(payloads, ["x", "y"])
-        .mean("x")
-        .minimum("y")
-        .expand("z", 3, 1, 0)
-        .map([Payload(lambda x, a=a: x * a) for a in range(1, 4)])
-        .graph()
-    )
+    graph = mock_graph(ArrayApiBackend, np.random.rand)
     result = to_task_graph(graph, None)
     assert np.any([node.memory > 0 for node in result.nodes()])
     assert np.any([node.cost > 0 for node in result.nodes()])
 
 
 def test_dask_transform():
-    args = np.array(
-        [np.fromiter([(2, 3) for _ in range(4)], dtype=object) for _ in range(5)]
-    )
-    example = (
-        Fluent()
-        .source(np.random.rand, xr.DataArray(args, dims=["x", "y"]))
-        .mean("x")
-        .expand("z", 3, 1, 0)
-    )
-
-    dask_graph = to_dask_graph(example.graph())
+    graph = mock_graph(ArrayApiBackend, np.random.rand)
+    dask_graph = to_dask_graph(graph)
     assert all([isinstance(x, tuple) for x in dask_graph.items()])
 
     # If graph contains nodes with same name then check conversion

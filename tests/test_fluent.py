@@ -1,29 +1,12 @@
 import pytest
 import xarray as xr
 import numpy as np
+import dill
 
 from cascade.fluent import Payload, Node, SingleAction, MultiAction, Fluent
-from cascade.backends.arrayapi import ArrayApiBackend
+from cascade.graph import serialise, deserialise
 
-backend = ArrayApiBackend
-
-
-class MockNode(Node):
-    def __init__(self, name: str):
-        super().__init__(Payload(name))
-
-
-def mock_action(shape: tuple) -> MultiAction:
-    nodes = np.empty(shape, dtype=object)
-    it = np.nditer(nodes, flags=["multi_index", "refs_ok"])
-    for _ in it:
-        nodes[it.multi_index] = MockNode(f"{it.multi_index}")
-    nodes = xr.DataArray(
-        nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
-    )
-    if nodes.size == 1:
-        return SingleAction(None, nodes, backend)
-    return MultiAction(None, nodes, backend)
+from helpers import MockNode, backend, mock_action, mock_graph
 
 
 @pytest.mark.parametrize(
@@ -266,3 +249,16 @@ def test_select_nodes():
     action = mock_action((3, 4))
     assert isinstance(action.node({"dim_0": 0}), np.ndarray)
     assert isinstance(action.node({"dim_0": 0, "dim_1": 1}), Node)
+
+
+def test_serialisation(tmpdir):
+    graph = mock_graph(backend, np.random.rand)
+    assert len(graph.sinks) > 0
+    data = serialise(graph)
+    with open(f"{tmpdir}/graph.dill", "wb") as f:
+        dill.dump(data, f)
+
+    with open(f"{tmpdir}/graph.dill", "rb") as f:
+        read_data = dill.load(f)
+    new_graph = deserialise(read_data)
+    assert len(graph.sinks) == len(new_graph.sinks)
