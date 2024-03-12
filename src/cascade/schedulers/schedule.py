@@ -2,7 +2,7 @@ import randomname
 import datetime
 
 from cascade.contextgraph import ContextGraph
-from cascade.graph import Graph
+from cascade.graph import Graph, Node
 from cascade.graph.copy import copy_graph
 
 
@@ -47,9 +47,10 @@ class Schedule:
                     next_task = dependency_graph.get_node(p_tasks[i_task + 1])
                     key = f"inputs{len(next_task.inputs)}"
                     assert key not in next_task.inputs
-                    next_task.inputs[key] = current_task.get_output()
                     if current_task in dependency_graph.sinks:
                         dependency_graph.sinks.remove(current_task)
+                        current_task.outputs = [Node.DEFAULT_OUTPUT]
+                    next_task.inputs[key] = current_task.get_output()
                     # Check number of nodes as disconnected components may have been introduced
                     if dependency_graph.has_cycle() or len(
                         list(dependency_graph.nodes())

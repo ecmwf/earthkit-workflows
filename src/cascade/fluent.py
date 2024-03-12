@@ -133,9 +133,14 @@ class Action:
         of nodes
 
         """
-        if len(self.sinks) == 0:
-            return Graph(list(self.nodes.data.flatten()))
-        return Graph(self.sinks)
+        sinks = self.sinks
+        if len(sinks) == 0:
+            sinks = list(self.nodes.data.flatten())
+
+        for index in range(len(sinks)):
+            sinks[index] = sinks[index].copy()
+            sinks[index].outputs = []  # Ensures they are recognised as sinks
+        return Graph(sinks)
 
     def join(
         self,

@@ -132,14 +132,14 @@ class DaskExecutor:
                         print(
                             f"Task {fut.key} failed with exception: {fut.exception()}"
                         )
-                        errored_tasks.append(fut.key)
-                    else:
-                        assert fut.key not in results
-                        results[fut.key] = fut.result()
-                    fut.cancel()
+                        errored_tasks += 1
+                    assert fut.key not in results
+                    results[fut.key] = fut.result()
 
         if len(errored_tasks) != 0:
             raise RuntimeError(f"{errored_tasks} tasks failed. Re-run required.")
+        else:
+            print("All tasks completed successfully.")
         return results
 
 
