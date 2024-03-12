@@ -4,6 +4,7 @@ from dask.highlevelgraph import HighLevelGraph
 from dask.distributed import Client, as_completed, performance_report
 from dask.graph_manipulation import chunks
 import functools
+import pprint
 
 from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
@@ -196,6 +197,7 @@ class DaskLocalExecutor:
 
         check_consistency(schedule, local_kwargs, adaptive_kwargs)
         with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
+            pprint.pprint(cluster.scheduler_info)
             return DaskExecutor.execute(
                 schedule,
                 client_kwargs={"address": cluster},
@@ -258,6 +260,7 @@ class DaskKubeExecutor:
 
         check_consistency(schedule, kube_kwargs, adaptive_kwargs)
         with create_cluster("kube", kube_kwargs, adaptive_kwargs) as cluster:
+            pprint.pprint(cluster.scheduler_info)
             return DaskExecutor.execute(
                 schedule,
                 client_kwargs={"address": cluster},
