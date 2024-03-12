@@ -15,9 +15,8 @@ from .dask_utils import create_cluster
 class DaskExecutor:
     def execute(
         schedule: Graph | Schedule,
-        cluster_type: str = "local",
-        cluster_kwargs: dict = None,
-        adaptive_kwargs: dict = None,
+        client_kwargs: dict,
+        adaptive: bool = False,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -28,11 +27,8 @@ class DaskExecutor:
         ------
         schedule: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
-        cluster_type: "local" or "kube", type of Dask cluster to execute the graph on.
-        If not specified then defaults to default LocalCluster
-        cluster_kwargs: dict, arguments for Dask cluster (e.g n_workers, threads_per_worker
-        for LocalCluster)
-        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
+        client_kwargs: dict, arguments for Dask client
+        adaptive: bool, whether cluster is adative or not
         report: str, name of performance report output file
 
         Returns
@@ -43,15 +39,7 @@ class DaskExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-
-        if cluster_kwargs is None:
-            cluster_kwargs = {}
-
         if isinstance(schedule, Schedule):
-            worker_names = list(schedule.task_allocation.keys())
-            cluster_kwargs["worker_names"] = worker_names
-            cluster_kwargs["n_workers"] = len(worker_names)
-
             # Functions for annotating tasks with workers and priority using task
             # allocation in schedule
             def _worker_name(task_allocation: dict, key: str):
@@ -69,13 +57,7 @@ class DaskExecutor:
                 )
                 return priority
 
-            if adaptive_kwargs is not None:
-                assert adaptive_kwargs.get("minimum", len(worker_names)) >= len(
-                    worker_names
-                ), "Minimum number of workers in adaptive cluster must be at least processors in context graph"
-                assert adaptive_kwargs.get("maximum", len(worker_names)) >= len(
-                    worker_names
-                ), "Maximum number of workers in adaptive cluster must be at least processors in context graph"
+            if adaptive:
                 # If cluster is adaptive then allow tasks to be scheduled in workers not specified in
                 # original task allocation
                 with dask.annotate(
@@ -114,10 +96,7 @@ class DaskExecutor:
             {"distributed.scheduler.worker-saturation": 1.0}
         )  # Important to prevent root task overloading
 
-        with (
-            create_cluster(cluster_type, cluster_kwargs, adaptive_kwargs) as cluster,
-            Client(cluster) as client,
-        ):
+        with Client(**client_kwargs) as client:
             with performance_report(report):
                 future = client.get(dask_graph, outputs, sync=False)
 
@@ -141,6 +120,26 @@ class DaskExecutor:
         else:
             print("All tasks completed successfully.")
         return results
+
+
+def check_consistency(
+    schedule: Graph | Schedule,
+    cluster_kwargs: dict,
+    adaptive_kwargs: dict | None = None,
+):
+    if isinstance(schedule, Schedule):
+        worker_names = list(schedule.task_allocation.keys())
+        cluster_kwargs["worker_names"] = worker_names
+        cluster_kwargs["n_workers"] = len(worker_names)
+
+        if adaptive_kwargs is not None:
+            assert adaptive_kwargs.get("minimum", len(worker_names)) >= len(
+                worker_names
+            ), "Minimum number of workers in adaptive cluster must be at least processors in context graph"
+            assert adaptive_kwargs.get("maximum", len(worker_names)) >= len(
+                worker_names
+            ), "Maximum number of workers in adaptive cluster must be at least processors in context graph"
+        return cluster_kwargs
 
 
 class DaskLocalExecutor:
@@ -194,13 +193,15 @@ class DaskLocalExecutor:
         }
         if cluster_kwargs is not None:
             local_kwargs.update(cluster_kwargs)
-        return DaskExecutor.execute(
-            schedule,
-            cluster_type="local",
-            cluster_kwargs=local_kwargs,
-            adaptive_kwargs=adaptive_kwargs,
-            report=report,
-        )
+
+        check_consistency(schedule, local_kwargs, adaptive_kwargs)
+        with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
+            return DaskExecutor.execute(
+                schedule,
+                client_kwargs={"address": cluster},
+                adaptive=(adaptive_kwargs is not None),
+                report=report,
+            )
 
 
 class DaskKubeExecutor:
@@ -254,10 +255,54 @@ class DaskKubeExecutor:
         }
         if cluster_kwargs is not None:
             kube_kwargs.update(cluster_kwargs)
+
+        check_consistency(schedule, kube_kwargs, adaptive_kwargs)
+        with create_cluster("kube", kube_kwargs, adaptive_kwargs) as cluster:
+            return DaskExecutor.execute(
+                schedule,
+                client_kwargs={"address": cluster},
+                adaptive=(adaptive_kwargs is not None),
+                report=report,
+            )
+
+
+class DaskClientExecutor:
+    """
+    Execute graph on existing Dask cluster
+    """
+
+    @classmethod
+    def execute(
+        cls,
+        schedule: Graph | Schedule,
+        dask_scheduler_file: str,
+        adaptive: bool = False,
+        report: str = "performance_report.html",
+    ) -> Any:
+        """
+        Execute graph on an existing dask cluster, where the information for the scheduler is provided
+        in the scheduler file, and produce a performance report of the execution.
+
+        Params
+        ------
+        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        then annotates nodes with worker and priority according to the schedule
+        dask_scheduler_file: str, path to dask scheduler file
+        adaptive: bool, whether cluster is adative or not
+        report: str, name of performance report output file
+
+        Returns
+        -------
+        Returns output of graph execution in the form of dictionary containing sink name and
+        corresponding output
+
+        Raises
+        ------
+        RuntimeError if any tasks in the graph have failed
+        """
         return DaskExecutor.execute(
             schedule,
-            cluster_type="kube",
-            cluster_kwargs=kube_kwargs,
-            adaptive_kwargs=adaptive_kwargs,
+            client_kwargs={"scheduler_file": dask_scheduler_file},
+            adaptive=adaptive,
             report=report,
         )
