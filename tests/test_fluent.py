@@ -203,7 +203,7 @@ def test_flatten_expand():
         [
             (3,),
             "transform",
-            [lambda action, x: action.expand("dim_1", x), [4, 4, 4], "index"],
+            [lambda action, x: action.expand("dim_1", x), [(4,), (4,), (4,)], "index"],
             MultiAction,
             (3, 4, 3),
             1,

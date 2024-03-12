@@ -178,7 +178,7 @@ class Action:
 
         Parameters
         ----------
-        func: function with signature func(Action, arg) -> Action
+        func: function with signature func(Action, *args) -> Action
         params: list, containing different arguments to pass into func
         for generating new nodes
         dim: str or DataArray, name of dimension to join actions or xr.DataArray specifying new dimension name and
@@ -197,7 +197,7 @@ class Action:
             dim_values = dim.values
 
         for index, param in enumerate(params):
-            new_res = func(self, param)
+            new_res = func(self, *param)
             if dim_name not in new_res.nodes.coords:
                 new_res._add_dimension(dim_name, dim_values[index])
             if res is None:
@@ -271,15 +271,8 @@ class Action:
         ------
         MultiAction
         """
-
-        def _expand(action: Action, index: int) -> Action:
-            ret = action.map(
-                Payload(self.backend.take, [Node.input_name(0), index], {"axis": axis})
-            )
-            ret._add_dimension(dim, index, new_axis)
-            return ret
-
-        return self.transform(_expand, np.arange(dim_size), dim)
+        params = [(x, dim, axis, new_axis) for x in range(dim_size)]
+        return self.transform(_expand_transform, params, dim)
 
     def __two_arg_method(
         self, method: callable, other, **method_kwargs
@@ -497,16 +490,6 @@ class MultiAction(Action):
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
-        def _batch(action: Action, selection: dict) -> Action:
-            selected = action.select(selection, drop=True)
-            dim = list(selection.keys())[0]
-            if isinstance(selected, SingleAction):
-                selected._squeeze_dimension(dim, drop=True)
-                return selected
-
-            reduced = selected.reduce(payload, dim=dim)
-            return reduced
-
         batched = self
         level = 0
         if batch_size > 1 and batch_size < batched.nodes.sizes[dim]:
@@ -518,9 +501,9 @@ class MultiAction(Action):
             while batch_size < batched.nodes.sizes[dim]:
                 lst = batched.nodes.coords[dim].data
                 batched = batched.transform(
-                    _batch,
+                    _batch_transform,
                     [
-                        {dim: lst[i : i + batch_size]}
+                        ({dim: lst[i : i + batch_size]}, payload)
                         for i in range(0, len(lst), batch_size)
                     ],
                     f"batch.{level}.{dim}",
@@ -662,6 +645,27 @@ class MultiAction(Action):
         return self.reduce(
             Payload(self.backend.prod, kwargs=method_kwargs), dim, batch_size
         )
+
+
+def _batch_transform(action: Action, selection: dict, payload: Payload) -> Action:
+    selected = action.select(selection, drop=True)
+    dim = list(selection.keys())[0]
+    if isinstance(selected, SingleAction):
+        selected._squeeze_dimension(dim, drop=True)
+        return selected
+
+    reduced = selected.reduce(payload, dim=dim)
+    return reduced
+
+
+def _expand_transform(
+    action: Action, index: int, dim: str, axis: int = 0, new_axis: int = 0
+) -> Action:
+    ret = action.map(
+        Payload(action.backend.take, [Node.input_name(0), index], {"axis": axis})
+    )
+    ret._add_dimension(dim, index, new_axis)
+    return ret
 
 
 class Fluent:
