@@ -56,10 +56,6 @@ class XArrayBackend:
         ------
         AssertionError if more than two DataArrays or Datasets are passed as inputs
         """
-        assert (
-            len(arrays) == 2
-        ), f"two_arg_function {name} expects two input arguments, got {len(arrays)}"
-
         with xr.set_options(keep_attrs=keep_attrs):
             return getattr(np, name)(arrays[0], arrays[1], **method_kwargs)
 

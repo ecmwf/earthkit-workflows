@@ -21,8 +21,9 @@ def register(type, backend):
 
 
 def array_module(*arrays):
+    # Only deduce type from first element to allow for mixed types
+    # but this means the first argument needs to specify the correct module
     array_type = type(arrays[0])
-    assert all([array_type == type(arrays[x]) for x in range(1, len(arrays))])
     backend = BACKENDS.get(array_type, None)
     if backend is None:
         # Fall back on array API
@@ -149,23 +150,23 @@ class Backend:
 
     @num_args(2)
     def add(*args, **kwargs):
-        return array_module(args[0]).add(*args, **kwargs)
+        return array_module(args).add(*args, **kwargs)
 
     @num_args(2)
     def subtract(*args, **kwargs):
-        return array_module(args[0]).subtract(*args, **kwargs)
+        return array_module(args).subtract(*args, **kwargs)
 
     @num_args(2)
     def multiply(*args, **kwargs):
-        return array_module(*args).multiply(*args, **kwargs)
+        return array_module(args).multiply(*args, **kwargs)
 
     @num_args(2)
     def divide(*args, **kwargs):
-        return array_module(args[0]).divide(*args, **kwargs)
+        return array_module(args).divide(*args, **kwargs)
 
     @num_args(2)
     def pow(*args, **kwargs):
-        return array_module(args[0]).pow(*args, **kwargs)
+        return array_module(args).pow(*args, **kwargs)
 
     def take(array, indices, *, axis: int, **kwargs):
         """
