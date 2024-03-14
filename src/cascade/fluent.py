@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .graph import Graph
 from .graph import Node as BaseNode
-from .backends.arrayapi import ArrayApiBackend
+from . import backends
 
 
 @dataclass
@@ -115,12 +115,11 @@ class Node(BaseNode):
 
 
 class Action:
-    def __init__(self, previous: "Action", nodes: xr.DataArray, backend):
+    def __init__(self, previous: "Action", nodes: xr.DataArray):
         self.previous = previous
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
         self.sinks = [] if previous is None else previous.sinks.copy()
-        self.backend = backend
 
     def graph(self) -> Graph:
         """
@@ -164,7 +163,7 @@ class Action:
         if hasattr(self, "to_multi"):
             ret = self.to_multi(new_nodes)
         else:
-            ret = type(self)(self, new_nodes, self.backend)
+            ret = type(self)(self, new_nodes)
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
@@ -238,7 +237,7 @@ class Action:
             flags=["multi_index", "refs_ok"],
         )
         for node in it:
-            new_nodes[it.multi_index] = Node(Payload(self.backend.trivial), node[()])
+            new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])
 
         new_nodes = xr.DataArray(
             new_nodes,
@@ -248,7 +247,7 @@ class Action:
         )
         if hasattr(self, "to_multi"):
             return self.to_multi(new_nodes)
-        return type(self)(self, new_nodes, self.backend)
+        return type(self)(self, new_nodes)
 
     def expand(
         self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
@@ -286,19 +285,19 @@ class Action:
         )
 
     def subtract(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(self.backend.subtract, other, **method_kwargs)
+        return self.__two_arg_method(backends.subtract, other, **method_kwargs)
 
     def divide(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(self.backend.divide, other, **method_kwargs)
+        return self.__two_arg_method(backends.divide, other, **method_kwargs)
 
     def add(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(self.backend.add, other, **method_kwargs)
+        return self.__two_arg_method(backends.add, other, **method_kwargs)
 
     def multiply(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(self.backend.multiply, other, **method_kwargs)
+        return self.__two_arg_method(backends.multiply, other, **method_kwargs)
 
     def power(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(self.backend.pow, other, **method_kwargs)
+        return self.__two_arg_method(backends.pow, other, **method_kwargs)
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
@@ -312,9 +311,9 @@ class Action:
 
 
 class SingleAction(Action):
-    def __init__(self, previous: Action, node: xr.DataArray, backend):
+    def __init__(self, previous: Action, node: xr.DataArray):
         assert node.size == 1, f"Expected node size 1, got {node.size}"
-        super().__init__(previous, node, backend)
+        super().__init__(previous, node)
 
     def to_multi(self, nodes: xr.DataArray) -> "MultiAction":
         """
@@ -328,7 +327,7 @@ class SingleAction(Action):
         ------
         MultiAction
         """
-        return MultiAction(self, nodes, self.backend)
+        return MultiAction(self, nodes)
 
     def map(self, payload: Payload) -> "SingleAction":
         """
@@ -342,15 +341,13 @@ class SingleAction(Action):
         ------
         SingleAction
         """
-        return type(self).from_payload(self, payload, self.backend)
+        return type(self).from_payload(self, payload)
 
     def node(self) -> Node:
         return self.nodes.data[()]
 
     @classmethod
-    def from_payload(
-        cls, previous: Action, payload: Payload, backend
-    ) -> "SingleAction":
+    def from_payload(cls, previous: Action, payload: Payload) -> "SingleAction":
         """
         Factory for SingleAction from previous action and payload
 
@@ -378,12 +375,12 @@ class SingleAction(Action):
                 },
                 attrs=previous.nodes.attrs,
             )
-        return cls(previous, node, backend)
+        return cls(previous, node)
 
 
 class MultiAction(Action):
-    def __init__(self, previous: xr.DataArray, nodes: xr.DataArray, backend):
-        super().__init__(previous, nodes, backend)
+    def __init__(self, previous: xr.DataArray, nodes: xr.DataArray):
+        super().__init__(previous, nodes)
 
     def to_single(self, payload_or_node: Payload | xr.DataArray) -> SingleAction:
         """
@@ -399,8 +396,8 @@ class MultiAction(Action):
         SingleAction
         """
         if isinstance(payload_or_node, Payload):
-            return SingleAction.from_payload(self, payload_or_node, self.backend)
-        return SingleAction(self, payload_or_node, self.backend)
+            return SingleAction.from_payload(self, payload_or_node)
+        return SingleAction(self, payload_or_node)
 
     def node(self, criteria: dict) -> Node | np.ndarray[Node]:
         """
@@ -459,7 +456,6 @@ class MultiAction(Action):
                 dims=self.nodes.dims,
                 attrs=self.nodes.attrs,
             ),
-            self.backend,
         )
 
     def reduce(
@@ -539,7 +535,6 @@ class MultiAction(Action):
                 dims=new_dims,
                 attrs=batched.nodes.attrs,
             ),
-            batched.backend,
         )
 
     def flatten(
@@ -559,7 +554,7 @@ class MultiAction(Action):
         SingleAction or MultiAction
         """
         return self.reduce(
-            Payload(self.backend.stack, kwargs={"axis": axis, **method_kwargs}), dim
+            Payload(backends.stack, kwargs={"axis": axis, **method_kwargs}), dim
         )
 
     def select(
@@ -585,21 +580,19 @@ class MultiAction(Action):
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
         if selected_nodes.size == 1:
             return self.to_single(selected_nodes)
-        return type(self)(self, selected_nodes, self.backend)
+        return type(self)(self, selected_nodes)
 
     def concatenate(
         self, dim: str, batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
         return self.reduce(
-            Payload(self.backend.concat, kwargs=method_kwargs), dim, batch_size
+            Payload(backends.concat, kwargs=method_kwargs), dim, batch_size
         )
 
     def sum(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
-        return self.reduce(
-            Payload(self.backend.sum, kwargs=method_kwargs), dim, batch_size
-        )
+        return self.reduce(Payload(backends.sum, kwargs=method_kwargs), dim, batch_size)
 
     def mean(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
@@ -608,7 +601,7 @@ class MultiAction(Action):
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(self.backend.mean, kwargs=method_kwargs), dim)
+            return self.reduce(Payload(backends.mean, kwargs=method_kwargs), dim)
 
         return self.sum(dim, batch_size, **method_kwargs).divide(self.nodes.sizes[dim])
 
@@ -619,7 +612,7 @@ class MultiAction(Action):
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(self.backend.std, kwargs=method_kwargs), dim)
+            return self.reduce(Payload(backends.std, kwargs=method_kwargs), dim)
 
         mean_sq = self.mean(dim, batch_size, **method_kwargs).power(2)
         norm = self.power(2).sum(dim, batch_size).divide(self.nodes.sizes[dim])
@@ -628,22 +621,18 @@ class MultiAction(Action):
     def max(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
-        return self.reduce(
-            Payload(self.backend.max, kwargs=method_kwargs), dim, batch_size
-        )
+        return self.reduce(Payload(backends.max, kwargs=method_kwargs), dim, batch_size)
 
     def min(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
-        return self.reduce(
-            Payload(self.backend.min, kwargs=method_kwargs), dim, batch_size
-        )
+        return self.reduce(Payload(backends.min, kwargs=method_kwargs), dim, batch_size)
 
     def prod(
         self, dim: str = "", batch_size: int = 0, **method_kwargs
     ) -> "SingleAction | MultiAction":
         return self.reduce(
-            Payload(self.backend.prod, kwargs=method_kwargs), dim, batch_size
+            Payload(backends.prod, kwargs=method_kwargs), dim, batch_size
         )
 
 
@@ -662,7 +651,7 @@ def _expand_transform(
     action: Action, index: int, dim: str, axis: int = 0, new_axis: int = 0
 ) -> Action:
     ret = action.map(
-        Payload(action.backend.take, [Node.input_name(0), index], {"axis": axis})
+        Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
     )
     ret._add_dimension(dim, index, new_axis)
     return ret
@@ -673,11 +662,9 @@ class Fluent:
         self,
         single_action=SingleAction,
         multi_action=MultiAction,
-        backend=ArrayApiBackend,
     ):
         self.single_action = single_action
         self.multi_action = multi_action
-        self.backend = backend
 
     def source(
         self, func: callable, args: tuple, kwargs: dict = {}
@@ -707,7 +694,7 @@ class Fluent:
         """
         if not any([isinstance(x, xr.DataArray) for x in [func, args, kwargs]]):
             payload = Payload(func, args, kwargs)
-            return self.single_action.from_payload(None, payload, self.backend)
+            return self.single_action.from_payload(None, payload)
 
         shape = None
         ufunc_args = []
@@ -740,5 +727,4 @@ class Fluent:
                 dims=payloads.dims,
                 coords=payloads.coords,
             ),
-            self.backend,
         )

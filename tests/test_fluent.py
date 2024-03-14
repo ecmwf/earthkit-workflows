@@ -6,7 +6,7 @@ import dill
 from cascade.fluent import Payload, Node, SingleAction, MultiAction, Fluent
 from cascade.graph import serialise, deserialise
 
-from helpers import MockNode, backend, mock_action, mock_graph
+from helpers import MockNode, mock_action, mock_graph
 
 
 @pytest.mark.parametrize(
@@ -89,7 +89,7 @@ def test_source_invalid(func, args, kwargs):
     "previous, nodes",
     [
         [
-            SingleAction.from_payload(None, Payload("test"), backend),
+            SingleAction.from_payload(None, Payload("test")),
             xr.DataArray([MockNode("1")]),
         ],
         [None, xr.DataArray([MockNode("1"), MockNode("2")])],
@@ -98,15 +98,15 @@ def test_source_invalid(func, args, kwargs):
 def test_single_action(previous, nodes):
     if nodes.size > 1:
         with pytest.raises(Exception):
-            SingleAction(previous, nodes, backend)
+            SingleAction(previous, nodes)
     else:
-        SingleAction(previous, nodes, backend)
+        SingleAction(previous, nodes)
 
 
 @pytest.mark.parametrize(
     "payload, previous",
     [
-        [Payload("test"), SingleAction.from_payload(None, Payload("test"), backend)],
+        [Payload("test"), SingleAction.from_payload(None, Payload("test"))],
         [
             Payload("test"),
             mock_action((2, 2)),
@@ -114,7 +114,7 @@ def test_single_action(previous, nodes):
     ],
 )
 def test_single_action_from_payload(payload, previous):
-    single_action = SingleAction.from_payload(previous, payload, backend)
+    single_action = SingleAction.from_payload(previous, payload)
     assert single_action.nodes.size == 1
     assert single_action.nodes.shape == ()
     assert len(single_action.nodes.data[()].inputs) == previous.nodes.size
@@ -252,7 +252,7 @@ def test_select_nodes():
 
 
 def test_serialisation(tmpdir):
-    graph = mock_graph(backend, np.random.rand)
+    graph = mock_graph(np.random.rand)
     assert len(graph.sinks) > 0
     data = serialise(graph)
     with open(f"{tmpdir}/graph.dill", "wb") as f:

@@ -2,9 +2,6 @@ import xarray as xr
 import numpy as np
 
 from cascade.fluent import Payload, Node, SingleAction, MultiAction, Fluent
-from cascade.backends.arrayapi import ArrayApiBackend
-
-backend = ArrayApiBackend
 
 
 class MockNode(Node):
@@ -21,14 +18,14 @@ def mock_action(shape: tuple) -> MultiAction:
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
     if nodes.size == 1:
-        return SingleAction(None, nodes, backend)
-    return MultiAction(None, nodes, backend)
+        return SingleAction(None, nodes)
+    return MultiAction(None, nodes)
 
 
-def mock_graph(backend, func):
+def mock_graph(func):
     args = [np.fromiter([(100, 100) for _ in range(4)], dtype=object) for _ in range(5)]
     return (
-        Fluent(backend=backend)
+        Fluent()
         .source(func, xr.DataArray(args, dims=["x", "y"]))
         .mean("x")
         .min("y")

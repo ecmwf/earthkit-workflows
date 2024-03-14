@@ -1,13 +1,9 @@
 import xarray as xr
 import numpy as np
-from typing import Any
 import warnings
 
-from .base import BaseBackend
-from .decorators import batchable
 
-
-class XArrayBackend(BaseBackend):
+class XArrayBackend:
     def multi_arg_function(
         name: str, *arrays: list[xr.DataArray | xr.Dataset], **method_kwargs
     ) -> xr.DataArray | xr.Dataset:
@@ -79,28 +75,24 @@ class XArrayBackend(BaseBackend):
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("std", *arrays, **method_kwargs)
 
-    @batchable
     def min(
         *arrays: list[xr.DataArray | xr.Dataset],
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("min", *arrays, **method_kwargs)
 
-    @batchable
     def max(
         *arrays: list[xr.DataArray | xr.Dataset],
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("max", *arrays, **method_kwargs)
 
-    @batchable
     def sum(
         *arrays: list[xr.DataArray | xr.Dataset],
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("sum", *arrays, **method_kwargs)
 
-    @batchable
     def prod(
         *arrays: list[xr.DataArray | xr.Dataset],
         **method_kwargs,
@@ -113,7 +105,6 @@ class XArrayBackend(BaseBackend):
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("var", *arrays, **method_kwargs)
 
-    @batchable
     def concat(
         *arrays: list[xr.DataArray | xr.Dataset],
         **method_kwargs: dict,

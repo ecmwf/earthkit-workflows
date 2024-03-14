@@ -5,18 +5,15 @@ import pytest
 
 from cascade.executors.dask import DaskLocalExecutor
 from cascade.fluent import Fluent
-from cascade.backends.arrayapi import ArrayApiBackend
-from cascade.backends.xarray import XArrayBackend
 
 from helpers import mock_graph
 
 
 @pytest.mark.parametrize(
-    "backend, func, output_type",
+    "func, output_type",
     [
-        [ArrayApiBackend, np.random.rand, np.ndarray],
+        [np.random.rand, np.ndarray],
         [
-            XArrayBackend,
             lambda *x: xr.DataArray(
                 np.random.rand(*x), dims=[f"x{i}" for i in range(len(x))]
             ),
@@ -24,8 +21,8 @@ from helpers import mock_graph
         ],
     ],
 )
-def test_graph_execution(tmpdir, backend, func, output_type):
-    g = mock_graph(backend, func)
+def test_graph_execution(tmpdir, func, output_type):
+    g = mock_graph(func)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     output = DaskLocalExecutor.execute(g, report=f"{tmpdir}/report.html")
@@ -38,7 +35,7 @@ def test_graph_execution(tmpdir, backend, func, output_type):
 def test_graph_execution_jax(tmpdir):
     jax = pytest.importorskip("jax")
 
-    g = mock_graph(ArrayApiBackend, lambda *x: jax.numpy.asarray(np.random.rand(*x)))
+    g = mock_graph(lambda *x: jax.numpy.asarray(np.random.rand(*x)))
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     output = DaskLocalExecutor.execute(g, 2, report=f"{tmpdir}/report.html")
@@ -52,7 +49,7 @@ def test_graph_execution_jax(tmpdir):
 )
 def test_batch_execution(tmpdir, func):
     args = [np.fromiter([(1, 100) for _ in range(4)], dtype=object) for _ in range(5)]
-    sources = Fluent(backend=ArrayApiBackend).source(
+    sources = Fluent().source(
         np.random.randint, xr.DataArray(args, dims=["x", "y"]), {"size": (2, 3)}
     )
 

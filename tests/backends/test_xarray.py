@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 import xarray as xr
 
-from cascade.backends.xarray import XArrayBackend
+from cascade import backends
 
 from generic_tests import *
 
@@ -17,17 +17,8 @@ def inputs(number: int, shape=(2, 3)):
 
 
 @pytest.fixture
-def backend():
-    return XArrayBackend
-
-
-@pytest.fixture
 def input_generator():
     return inputs
-
-
-def test_instantiation():
-    XArrayBackend()
 
 
 @pytest.mark.parametrize(
@@ -40,8 +31,7 @@ def test_instantiation():
 def test_multi_arg_dim(num_inputs, kwargs, output_shape):
     for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
         assert (
-            getattr(XArrayBackend, func)(*inputs(num_inputs), **kwargs).shape
-            == output_shape
+            getattr(backends, func)(*inputs(num_inputs), **kwargs).shape == output_shape
         )
 
 
@@ -54,29 +44,29 @@ def test_concatenate():
 
     # Without dim
     with pytest.raises(Exception):
-        XArrayBackend.concat(*input)
+        backends.concat(*input)
 
     # With dim
-    assert XArrayBackend.concat(*input, dim="dim1").shape == (2, 11)
-    assert XArrayBackend.concat(*inputs(1), dim="dim1").shape == (2, 3)
+    assert backends.concat(*input, dim="dim1").shape == (2, 11)
+    assert backends.concat(*inputs(1), dim="dim1").shape == (2, 3)
 
 
 def test_stack():
     input = inputs(3) + inputs(2, (2,))
 
-    x = XArrayBackend.stack(*input, dim="NEW")
+    x = backends.stack(*input, dim="NEW")
     assert x.shape == (5, 2, 3)
     assert not np.any(np.isnan(x))
 
     # Without dim
     with pytest.raises(Exception):
-        XArrayBackend.stack(*input)
+        backends.stack(*input)
 
     # With existing dim
     with pytest.raises(Exception):
-        XArrayBackend.stack(*input, dim="dim0")
+        backends.stack(*input, dim="dim0")
 
     # With dim and axis
-    y = XArrayBackend.stack(*input, axis=2, dim="NEW")
+    y = backends.stack(*input, axis=2, dim="NEW")
     assert np.all(x.transpose("dim0", "dim1", "NEW") == y)
-    assert XArrayBackend.stack(*inputs(1), axis=0, dim="NEW").shape == (1, 2, 3)
+    assert backends.stack(*inputs(1), axis=0, dim="NEW").shape == (1, 2, 3)
