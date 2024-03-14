@@ -97,16 +97,18 @@ class DaskExecutor:
             {"distributed.scheduler.worker-saturation": 1.0}
         )  # Important to prevent root task overloading
 
+        results = {}
+        errored_tasks = 0
         with Client(**client_kwargs) as client:
             with performance_report(report):
                 future = client.get(dask_graph, outputs, sync=False)
 
                 seq = as_completed(future)
                 del future
-                results = {}
+
                 # Trigger gargage collection on completed end tasks so scheduler doesn't
                 # try to repeat them
-                errored_tasks = []
+
                 for fut in seq:
                     if fut.status != "finished":
                         print(
@@ -116,7 +118,7 @@ class DaskExecutor:
                     assert fut.key not in results
                     results[fut.key] = fut.result()
 
-        if len(errored_tasks) != 0:
+        if errored_tasks != 0:
             raise RuntimeError(f"{errored_tasks} tasks failed. Re-run required.")
         else:
             print("All tasks completed successfully.")
