@@ -1,18 +1,33 @@
 import functools
 import xarray as xr
-import array_api_compat
+import warnings
 
 from .xarray import XArrayBackend
+from .arrayapi import ArrayAPIBackend
 
 BACKENDS = {
     xr.DataArray: XArrayBackend,
     xr.Dataset: XArrayBackend,
+    "default": ArrayAPIBackend,
 }
 
 
 def register(type, backend):
-    assert type not in BACKENDS
+    if type in BACKENDS:
+        warnings.warn(
+            f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}."
+        )
     BACKENDS[type] = backend
+
+
+def array_module(*arrays):
+    array_type = type(arrays[0])
+    assert all([array_type == type(arrays[x]) for x in range(1, len(arrays))])
+    backend = BACKENDS.get(array_type, None)
+    if backend is None:
+        # Fall back on array API
+        backend = BACKENDS["default"]
+    return backend
 
 
 def __getattr__(name: str) -> callable:
@@ -20,8 +35,6 @@ def __getattr__(name: str) -> callable:
 
         def f(*args, **kwargs):
             backend = array_module(*args)
-            if backend is None:
-                backend = array_api_compat.array_namespace(*args)
             return getattr(backend, name)(*args, **kwargs)
 
         f.__name__ = name
@@ -71,85 +84,35 @@ def batchable(func: callable) -> callable:
     return func
 
 
-def _xp_multi_args(name: str, *args, **kwargs):
-    xp = array_api_compat.array_namespace(*args)
-    if len(args) > 1:
-        kwargs["axis"] = 0
-    else:
-        args = args[0]
-    return getattr(xp, name)(xp.asarray(args), **kwargs)
-
-
-def array_module(*arrays):
-    array_type = type(arrays[0])
-    assert all([array_type == type(arrays[x]) for x in range(1, len(arrays))])
-    return BACKENDS.get(array_type, None)
-
-
 class Backend:
     def trivial(arg):
         return arg
 
     def mean(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.mean(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("mean", *args, **kwargs)
+        return array_module(*args).mean(*args, **kwargs)
 
     def std(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.std(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("std", *args, **kwargs)
+        return array_module(*args).std(*args, **kwargs)
 
     @batchable
     def max(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.max(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("max", *args, **kwargs)
+        return array_module(*args).max(*args, **kwargs)
 
     @batchable
     def min(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.min(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("min", *args, **kwargs)
+        return array_module(*args).min(*args, **kwargs)
 
     @batchable
     def sum(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.sum(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("sum", *args, **kwargs)
+        return array_module(*args).sum(*args, **kwargs)
 
     @batchable
     def prod(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.prod(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("prod", *args, **kwargs)
+        return array_module(*args).prod(*args, **kwargs)
 
     @batchable
     def var(*args, **kwargs):
-        module = array_module(*args)
-        if module is not None:
-            return module.var(*args, **kwargs)
-
-        # Fall back on array api
-        return _xp_multi_args("var", *args, **kwargs)
+        return array_module(*args).var(*args, **kwargs)
 
     def stack(*args, axis: int | None = None, **kwargs):
         """
@@ -166,13 +129,7 @@ class Backend:
         ------
         Array
         """
-        module = array_module(*args)
-        if module is not None:
-            return module.stack(*args, axis=axis, **kwargs)
-
-        xp = array_api_compat.array_namespace(*args)
-        broadcasted = xp.broadcast_arrays(*args)
-        return xp.stack(broadcasted, axis=axis)
+        return array_module(*args).stack(*args, axis=axis, **kwargs)
 
     @batchable
     def concat(*args, **kwargs):
@@ -188,47 +145,27 @@ class Backend:
         ------
         Array
         """
-        module = array_module(*args)
-        if module is not None:
-            return module.concat(*args, **kwargs)
-
-        xp = array_api_compat.array_namespace(*args)
-        return xp.concat(args, **kwargs)
+        return array_module(*args).concat(*args, **kwargs)
 
     @num_args(2)
     def add(*args, **kwargs):
-        module = array_module(args[0])
-        if module is not None:
-            return module.add(*args, **kwargs)
-        return args[0] + args[1]
+        return array_module(args[0]).add(*args, **kwargs)
 
     @num_args(2)
     def subtract(*args, **kwargs):
-        module = array_module(args[0])
-        if module is not None:
-            return module.subtract(*args, **kwargs)
-        return args[0] - args[1]
+        return array_module(args[0]).subtract(*args, **kwargs)
 
     @num_args(2)
     def multiply(*args, **kwargs):
-        module = array_module(args[0])
-        if module is not None:
-            return module.multiply(*args, **kwargs)
-        return args[0] * args[1]
+        return array_module(*args).multiply(*args, **kwargs)
 
     @num_args(2)
     def divide(*args, **kwargs):
-        module = array_module(args[0])
-        if module is not None:
-            return module.divide(*args, **kwargs)
-        return args[0] / args[1]
+        return array_module(args[0]).divide(*args, **kwargs)
 
     @num_args(2)
     def pow(*args, **kwargs):
-        module = array_module(args[0])
-        if module is not None:
-            return module.pow(*args, **kwargs)
-        return args[0] ** args[1]
+        return array_module(args[0]).pow(*args, **kwargs)
 
     def take(array, indices, *, axis: int, **kwargs):
         """
@@ -248,13 +185,4 @@ class Backend:
         ------
         Array
         """
-        module = array_module(array)
-        if module is not None:
-            return module.take(array, indices, axis=axis, **kwargs)
-
-        xp = array_api_compat.array_namespace(array)
-
-        if hasattr(indices, "__iter__"):
-            return xp.take(array, indices, axis=axis, **kwargs)
-        ret = xp.take(array, [indices], axis=axis, **kwargs)
-        return xp.squeeze(ret, axis=axis)
+        return array_module(array).take(array, indices, axis=axis, **kwargs)
