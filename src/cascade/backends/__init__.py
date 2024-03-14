@@ -150,23 +150,23 @@ class Backend:
 
     @num_args(2)
     def add(*args, **kwargs):
-        return array_module(args).add(*args, **kwargs)
+        return array_module(*args).add(*args, **kwargs)
 
     @num_args(2)
     def subtract(*args, **kwargs):
-        return array_module(args).subtract(*args, **kwargs)
+        return array_module(*args).subtract(*args, **kwargs)
 
     @num_args(2)
     def multiply(*args, **kwargs):
-        return array_module(args).multiply(*args, **kwargs)
+        return array_module(*args).multiply(*args, **kwargs)
 
     @num_args(2)
     def divide(*args, **kwargs):
-        return array_module(args).divide(*args, **kwargs)
+        return array_module(*args).divide(*args, **kwargs)
 
     @num_args(2)
     def pow(*args, **kwargs):
-        return array_module(args).pow(*args, **kwargs)
+        return array_module(*args).pow(*args, **kwargs)
 
     def take(array, indices, *, axis: int, **kwargs):
         """
