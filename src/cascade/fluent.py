@@ -459,7 +459,11 @@ class MultiAction(Action):
         )
 
     def reduce(
-        self, payload: Payload, dim: str = "", batch_size: int = 0
+        self,
+        payload: Payload,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
     ) -> "SingleAction | MultiAction":
         """
         Reduction operation across the named dimension using the provided
@@ -473,6 +477,8 @@ class MultiAction(Action):
         dim: str, name of dimension along which to reduce
         batch_size: int, size of batches to split reduction into. If 0,
         computation is not batched
+        keep_dim: bool, whether to keep the reduced dimension in the result. Dimension
+        is kept in the original axis position
 
         Return
         ------
@@ -527,7 +533,7 @@ class MultiAction(Action):
                 if k not in batched.nodes.dims
             }
         )
-        return type(batched)(
+        result = type(batched)(
             batched,
             xr.DataArray(
                 new_nodes,
@@ -536,6 +542,12 @@ class MultiAction(Action):
                 attrs=batched.nodes.attrs,
             ),
         )
+        if keep_dim:
+            axis = self.nodes.dims.index(dim)
+            result._add_dimension(
+                dim, f"{self.nodes.coords[dim][0]}-{self.nodes.coords[dim][-1]}", axis
+            )
+        return result
 
     def flatten(
         self, dim: str = "", axis: int = 0, **method_kwargs
@@ -583,30 +595,53 @@ class MultiAction(Action):
         return type(self)(self, selected_nodes)
 
     def concatenate(
-        self, dim: str, batch_size: int = 0, **method_kwargs
+        self, dim: str, batch_size: int = 0, keep_dim: bool = False, **method_kwargs
     ) -> "SingleAction | MultiAction":
+        if self.nodes.sizes[dim] == 1:
+            # no-op
+            if not keep_dim:
+                self._squeeze_dimension(dim)
+            return self
         return self.reduce(
-            Payload(backends.concat, kwargs=method_kwargs), dim, batch_size
+            Payload(backends.concat, kwargs=method_kwargs), dim, batch_size, keep_dim
         )
 
     def sum(
-        self, dim: str = "", batch_size: int = 0, **method_kwargs
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        **method_kwargs,
     ) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.sum, kwargs=method_kwargs), dim, batch_size)
+        return self.reduce(
+            Payload(backends.sum, kwargs=method_kwargs), dim, batch_size, keep_dim
+        )
 
     def mean(
-        self, dim: str = "", batch_size: int = 0, **method_kwargs
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        **method_kwargs,
     ) -> "SingleAction | MultiAction":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(backends.mean, kwargs=method_kwargs), dim)
+            return self.reduce(
+                Payload(backends.mean, kwargs=method_kwargs), dim, keep_dim
+            )
 
-        return self.sum(dim, batch_size, **method_kwargs).divide(self.nodes.sizes[dim])
+        return self.sum(dim, batch_size, keep_dim, **method_kwargs).divide(
+            self.nodes.sizes[dim]
+        )
 
     def std(
-        self, dim: str = "", batch_size: int = 0, **method_kwargs
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        **method_kwargs,
     ) -> "SingleAction | MultiAction":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
@@ -614,25 +649,43 @@ class MultiAction(Action):
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
             return self.reduce(Payload(backends.std, kwargs=method_kwargs), dim)
 
-        mean_sq = self.mean(dim, batch_size, **method_kwargs).power(2)
-        norm = self.power(2).sum(dim, batch_size).divide(self.nodes.sizes[dim])
+        mean_sq = self.mean(dim, batch_size, keep_dim, **method_kwargs).power(2)
+        norm = (
+            self.power(2).sum(dim, batch_size, keep_dim).divide(self.nodes.sizes[dim])
+        )
         return norm.subtract(mean_sq).power(0.5)
 
     def max(
-        self, dim: str = "", batch_size: int = 0, **method_kwargs
-    ) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.max, kwargs=method_kwargs), dim, batch_size)
-
-    def min(
-        self, dim: str = "", batch_size: int = 0, **method_kwargs
-    ) -> "SingleAction | MultiAction":
-        return self.reduce(Payload(backends.min, kwargs=method_kwargs), dim, batch_size)
-
-    def prod(
-        self, dim: str = "", batch_size: int = 0, **method_kwargs
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        **method_kwargs,
     ) -> "SingleAction | MultiAction":
         return self.reduce(
-            Payload(backends.prod, kwargs=method_kwargs), dim, batch_size
+            Payload(backends.max, kwargs=method_kwargs), dim, batch_size, keep_dim
+        )
+
+    def min(
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        **method_kwargs,
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(backends.min, kwargs=method_kwargs), dim, batch_size, keep_dim
+        )
+
+    def prod(
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        **method_kwargs,
+    ) -> "SingleAction | MultiAction":
+        return self.reduce(
+            Payload(backends.prod, kwargs=method_kwargs), dim, batch_size, keep_dim
         )
 
 
