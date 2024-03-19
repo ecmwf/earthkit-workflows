@@ -5,7 +5,13 @@ from .graph import Node
 
 
 class Resources:
-    def __init__(self, cost: int = 0, memory: int = 0):
+    def __init__(self, cost: float = 0, memory: float = 0):
+        """
+        Params
+        ------
+            cost: int, for duration of task in ms
+            memory: int for memory usage in MB
+        """
         self.cost = cost
         self.memory = memory
 

@@ -31,6 +31,18 @@ def test_graph_execution(tmpdir, func, output_type):
     assert np.all([isinstance(x, output_type) for x in output.values()])
 
 
+def test_graph_benchmark(tmpdir):
+    g = mock_graph(np.random.rand)
+
+    os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
+    graph = DaskLocalExecutor.benchmark(
+        g, 2, report=f"{tmpdir}/report.html", mem_report=f"{tmpdir}/mem.csv"
+    )
+    resources = np.asarray([[node.cost, node.memory] for node in graph.nodes()])
+    assert not np.all(resources[:, 0] == 0)
+    assert not np.all(resources[:, 1] == 0)
+
+
 @pytest.mark.skip("Need new Array API Compat release with JAX helpers")
 def test_graph_execution_jax(tmpdir):
     jax = pytest.importorskip("jax")

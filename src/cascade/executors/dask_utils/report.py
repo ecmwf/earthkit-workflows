@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 import json
 import re
+import csv
 from dataclasses import dataclass
 
 
@@ -23,10 +24,15 @@ def find_key_values(key, dic):
 
 
 def search(function_str, text):
-    return re.search(function_str, text).group(1)
+    res = re.search(function_str, text)
+    if res is not None:
+        res = res.group(1)
+    return res
 
 
 def duration_in_sec(duration_str):
+    if "us" in duration_str:
+        return float(duration_str.rstrip("us")) / 1000000
     if "ms" in duration_str:
         return float(duration_str.rstrip("ms")) / 1000
     try:
@@ -46,14 +52,16 @@ class Summary:
         self.compute_time = duration_in_sec(
             search("; compute time:(.+?) &", report_body)
         )
-        self.transfer_time = duration_in_sec(
-            search("; transfer time:(.+?) &", report_body)
-        )
+        transfer = search("; transfer time:(.+?) &", report_body)
+        if transfer is not None:
+            self.transfer_time = duration_in_sec(transfer)
+        else:
+            self.transfer_time = 0
         self.workers = int(search("; Workers:(.+?) &", report_body))
         self.memory = search("; Memory:(.+?) &", report_body)
 
 
-class TaskStream(dict):
+class TaskStream:
     @dataclass
     class Task:
         start: float
@@ -75,10 +83,12 @@ class TaskStream(dict):
         duration_index = columns.index("duration")
         worker_thread_index = columns.index("worker_thread")
 
+        self._stream = {}
+        self._task_info = {}
         for index, worker in enumerate(key_items[columns.index("worker")][1]):
-            self.setdefault(worker, [])
+            self._stream.setdefault(worker, [])
             name = key_items[name_index][1][index]
-            if "transfer" in name:
+            if TaskStream.is_transfer(name):
                 task_name = name
             else:
                 task_name = (
@@ -87,23 +97,33 @@ class TaskStream(dict):
                     .replace("&gt;", ">")
                 )
 
-            self[worker].append(
-                TaskStream.Task(
-                    key_items[start_index][1][index],
-                    key_items[duration_index][1][index],
-                    task_name,
-                    worker,
-                    key_items[worker_thread_index][1][index],
-                )
+            self._stream[worker].append(task_name)
+            assert task_name not in self._task_info
+            self._task_info[task_name] = TaskStream.Task(
+                key_items[start_index][1][index],
+                key_items[duration_index][1][index],
+                task_name,
+                worker,
+                key_items[worker_thread_index][1][index],
             )
 
-    def exclude_transfer(self):
+    def is_transfer(task_name: str) -> bool:
+        return "transfer-" in task_name
+
+    def stream(self, exclude_transfer: bool = True) -> dict:
+        if not exclude_transfer:
+            return self._stream
         new_task_stream = {}
-        for worker, tasks in self.items():
-            new_task_stream[worker] = [
-                x.name for x in tasks if "transfer-" not in x.name
-            ]
+        for worker, tasks in self._stream.items():
+            new_task_stream[worker] = [x for x in tasks if "transfer-" not in x]
         return new_task_stream
+
+    def task_info(self, exclude_transer: bool = True) -> dict:
+        if not exclude_transer:
+            return self._task_info
+        return {
+            k: v for k, v in self._task_info.items() if not TaskStream.is_transfer(k)
+        }
 
 
 class Report:
@@ -116,3 +136,21 @@ class Report:
             soup = BeautifulSoup(fp, "html.parser")
         self.summary = Summary(soup.body.script.string)
         self.task_stream = TaskStream(soup.body.script.string)
+
+
+class MemoryReport:
+    @dataclass
+    class TaskMemory:
+        min: float  # Min memory in MB
+        max: float  # Max memory in MB
+
+    def __init__(self, report_csv: str):
+        self.usage = {}
+        with open(report_csv) as file:
+            reader = csv.reader(file)
+            for row in reader:
+                if row[0] == "task_key":
+                    continue
+                self.usage[row[0]] = MemoryReport.TaskMemory(
+                    float(row[1]), float(row[2])
+                )

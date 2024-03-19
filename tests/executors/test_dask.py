@@ -9,7 +9,6 @@ from cascade.schedulers.depthfirst import DepthFirstScheduler
 from cascade.fluent import Fluent, Payload
 from cascade.contextgraph import ContextGraph
 
-
 context_graph = ContextGraph()
 context_graph.add_node("worker_1", type="CPU", speed=10, memory=40)
 context_graph.add_node("worker_2", type="CPU", speed=10, memory=20)
@@ -45,7 +44,7 @@ def test_with_schedule(tmpdir):
     # in schedule
     DaskLocalExecutor().execute(schedule, 2, report=f"{tmpdir}/report-schedule.html")
     report = Report(f"{tmpdir}/report-schedule.html")
-    for _, tasks in report.task_stream.exclude_transfer().items():
+    for _, tasks in report.task_stream.stream(True).items():
         print("STREAM", tasks)
         print("ALLOCATION", schedule.task_allocation.values())
         assert tasks in list(schedule.task_allocation.values())
@@ -70,6 +69,6 @@ def test_with_schedule_adaptive(tmpdir):
     assert np.any(
         [
             tasks not in list(schedule.task_allocation.values())
-            for tasks in report.task_stream.exclude_transfer().values()
+            for tasks in report.task_stream.stream(True).values()
         ]
     )

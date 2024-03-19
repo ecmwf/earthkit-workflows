@@ -25,6 +25,7 @@ dependencies = [
     "pyvis",
     "code-meters",
     "dill",
+    "dask_memusage",
 ]
 
 [options]

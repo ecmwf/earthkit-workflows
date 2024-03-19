@@ -5,12 +5,15 @@ from dask.distributed import Client, as_completed, performance_report
 from dask.graph_manipulation import chunks
 import functools
 import pprint
+import dask_memusage
 
-from cascade.transformers import to_dask_graph
+from cascade.transformers import to_dask_graph, to_task_graph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
+from cascade.taskgraph import Resources
 
 from .dask_utils import create_cluster
+from .dask_utils.report import Report, MemoryReport
 
 
 class DaskExecutor:
@@ -145,6 +148,14 @@ def check_consistency(
         return cluster_kwargs
 
 
+def reports_to_resources(report: Report, mem_report: MemoryReport):
+    resource_map = {}
+    for task in report.task_stream.task_info(True).values():
+        memory = mem_report.usage[task.name].max
+        resource_map[task.name] = Resources(task.duration_in_ms, memory)
+    return resource_map
+
+
 class DaskLocalExecutor:
     """
     Convenience class for DaskExecutor using LocalCluster exposing most
@@ -206,6 +217,47 @@ class DaskLocalExecutor:
                 adaptive=(adaptive_kwargs is not None),
                 report=report,
             )
+
+    @classmethod
+    def benchmark(
+        cls,
+        schedule: Graph | Schedule,
+        n_workers: int = 1,
+        memory_limit: str | None = "5G",
+        cluster_kwargs: dict = None,
+        adaptive_kwargs: dict = None,
+        report: str = "performance_report.html",
+        mem_report: str = "mem_usage.csv",
+    ) -> Graph:
+        local_kwargs = {
+            "n_workers": n_workers,
+            "threads_per_worker": 1,
+            "processes": True,
+            "memory_limit": memory_limit,
+        }
+        if cluster_kwargs is not None:
+            local_kwargs.update(cluster_kwargs)
+
+        check_consistency(schedule, local_kwargs, adaptive_kwargs)
+        with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
+            pprint.pprint(cluster.scheduler_info)
+            dask_memusage.install(cluster.scheduler, mem_report)
+            DaskExecutor.execute(
+                schedule,
+                client_kwargs={"address": cluster},
+                adaptive=(adaptive_kwargs is not None),
+                report=report,
+            )
+
+        rep = Report(report)
+        mem_rep = MemoryReport(mem_report)
+        resource_map = reports_to_resources(rep, mem_rep)
+
+        if isinstance(schedule, Schedule):
+            graph = schedule.task_graph
+        else:
+            graph = schedule
+        return to_task_graph(graph, resource_map)
 
 
 class DaskKubeExecutor:
@@ -311,3 +363,24 @@ class DaskClientExecutor:
             adaptive=adaptive,
             report=report,
         )
+
+    @classmethod
+    def benchmark(
+        cls,
+        schedule: Graph | Schedule,
+        dask_scheduler_file: str,
+        mem_report: str,
+        adaptive: bool = False,
+        report: str = "performance_report.html",
+    ) -> Graph:
+        cls.execute(schedule, dask_scheduler_file, adaptive, report)
+
+        rep = Report(report)
+        mem_rep = MemoryReport(mem_report)
+        resource_map = reports_to_resources(rep, mem_rep)
+
+        if isinstance(schedule, Schedule):
+            graph = schedule.task_graph
+        else:
+            graph = schedule
+        return to_task_graph(graph, resource_map)
