@@ -35,10 +35,13 @@ def test_graph_benchmark(tmpdir):
     g = mock_graph(np.random.rand)
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    graph = DaskLocalExecutor.benchmark(
+    resource_map = DaskLocalExecutor.benchmark(
         g, 2, report=f"{tmpdir}/report.html", mem_report=f"{tmpdir}/mem.csv"
     )
-    resources = np.asarray([[node.cost, node.memory] for node in graph.nodes()])
+    assert np.all([x.name in resource_map for x in g.nodes()])
+    resources = np.asarray(
+        [[resource_map[x.name].cost, resource_map[x.name].memory] for x in g.nodes()]
+    )
     assert not np.all(resources[:, 0] == 0)
     assert not np.all(resources[:, 1] == 0)
 
