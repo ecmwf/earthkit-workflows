@@ -6,8 +6,9 @@ from dask.graph_manipulation import chunks
 import functools
 import pprint
 import dask_memusage
+import numpy as np
 
-from cascade.transformers import to_dask_graph, to_task_graph
+from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
 from cascade.taskgraph import Resources
@@ -150,9 +151,10 @@ def check_consistency(
 
 def reports_to_resources(report: Report, mem_report: MemoryReport):
     resource_map = {}
-    for task in report.task_stream.task_info(True).values():
-        memory = mem_report.usage[task.name].max
-        resource_map[task.name] = Resources(task.duration_in_ms, memory)
+    for name, tasks in report.task_stream.task_info(True).items():
+        memory = mem_report.usage[name].max
+        duration = np.mean([task.duration_in_ms for task in tasks])
+        resource_map[name] = Resources(duration, memory)
     return resource_map
 
 
