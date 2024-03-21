@@ -3,7 +3,7 @@ import xarray as xr
 import pytest
 
 from cascade.transformers import to_task_graph, to_dask_graph
-from cascade.fluent import Payload, Node, MultiAction
+from cascade.fluent import Payload, Node, Action
 
 from helpers import mock_graph
 
@@ -24,6 +24,6 @@ def test_dask_transform():
     # If graph contains nodes with same name then check conversion
     # to dask causes raise
     node = Node(Payload(np.random.rand, [2, 3]))
-    graph = MultiAction(None, xr.DataArray([node, node], dims=["x"])).mean("x").graph
+    graph = Action(None, xr.DataArray([node, node], dims=["x"])).mean("x").graph
     with pytest.raises(Exception):
         to_dask_graph(graph)

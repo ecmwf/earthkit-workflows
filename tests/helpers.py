@@ -1,7 +1,7 @@
 import xarray as xr
 import numpy as np
 
-from cascade.fluent import Payload, Node, SingleAction, MultiAction, Fluent
+from cascade.fluent import Payload, Node, Action, Fluent
 
 
 class MockNode(Node):
@@ -9,7 +9,7 @@ class MockNode(Node):
         super().__init__(Payload(name))
 
 
-def mock_action(shape: tuple) -> MultiAction:
+def mock_action(shape: tuple) -> Action:
     nodes = np.empty(shape, dtype=object)
     it = np.nditer(nodes, flags=["multi_index", "refs_ok"])
     for _ in it:
@@ -17,9 +17,7 @@ def mock_action(shape: tuple) -> MultiAction:
     nodes = xr.DataArray(
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
-    if nodes.size == 1:
-        return SingleAction(None, nodes)
-    return MultiAction(None, nodes)
+    return Action(None, nodes)
 
 
 def mock_graph(func):

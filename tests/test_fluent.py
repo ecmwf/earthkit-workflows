@@ -3,21 +3,21 @@ import xarray as xr
 import numpy as np
 import dill
 
-from cascade.fluent import Payload, Node, SingleAction, MultiAction, Fluent
+from cascade.fluent import Payload, Node, Action, Fluent
 from cascade.graph import serialise, deserialise
 
 from helpers import MockNode, mock_action, mock_graph
 
 
 @pytest.mark.parametrize(
-    "func, args, kwargs, type",
+    "func, args, kwargs, shape",
     [
-        [np.random.rand, (2, 3), {}, SingleAction],
+        [np.random.rand, (2, 3), {}, ()],
         [
             np.random.rand,
             xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
             {},
-            MultiAction,
+            (2, 2),
         ],
         [
             np.random.rand,
@@ -26,7 +26,7 @@ from helpers import MockNode, mock_action, mock_graph
                 [[{"test": 2}, {"test": 3}], [{"test": 3}, {"test": 2}]],
                 dims=["x", "y"],
             ),
-            MultiAction,
+            (2, 2),
         ],
         [
             xr.DataArray(
@@ -35,15 +35,13 @@ from helpers import MockNode, mock_action, mock_graph
             ),
             xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
             {},
-            MultiAction,
+            (2, 2),
         ],
     ],
 )
-def test_source(func, args, kwargs, type):
+def test_source(func, args, kwargs, shape):
     action = Fluent().source(func, args, kwargs)
-    assert isinstance(action, type)
-    if isinstance(action, MultiAction):
-        assert action.nodes.shape == (2, 2)
+    assert action.nodes.shape == shape
 
 
 @pytest.mark.parametrize(
@@ -85,41 +83,6 @@ def test_source_invalid(func, args, kwargs):
         Fluent().source(func, args, kwargs)
 
 
-@pytest.mark.parametrize(
-    "previous, nodes",
-    [
-        [
-            SingleAction.from_payload(None, Payload("test")),
-            xr.DataArray([MockNode("1")]),
-        ],
-        [None, xr.DataArray([MockNode("1"), MockNode("2")])],
-    ],
-)
-def test_single_action(previous, nodes):
-    if nodes.size > 1:
-        with pytest.raises(Exception):
-            SingleAction(previous, nodes)
-    else:
-        SingleAction(previous, nodes)
-
-
-@pytest.mark.parametrize(
-    "payload, previous",
-    [
-        [Payload("test"), SingleAction.from_payload(None, Payload("test"))],
-        [
-            Payload("test"),
-            mock_action((2, 2)),
-        ],
-    ],
-)
-def test_single_action_from_payload(payload, previous):
-    single_action = SingleAction.from_payload(previous, payload)
-    assert single_action.nodes.size == 1
-    assert single_action.nodes.shape == ()
-    assert len(single_action.nodes.data[()].inputs) == previous.nodes.size
-
-
 def test_broadcast():
     input_action = mock_action((2, 3))
 
@@ -127,7 +90,6 @@ def test_broadcast():
         input_action.broadcast(mock_action((3, 3)))
 
     output_action = input_action.broadcast(mock_action((2, 3, 3)))
-    assert type(output_action) == MultiAction
     assert output_action.nodes.shape == (2, 3, 3)
     assert len(output_action.nodes.data.item(0).inputs) == 1
     it = np.nditer(output_action.nodes, flags=["multi_index", "refs_ok"])
@@ -149,7 +111,6 @@ def test_flatten_expand():
     assert len(action1.nodes.data.item(0).inputs) == 3
 
     action2 = action1.flatten(dim="dim_0")
-    assert type(action2) == SingleAction
     assert len(action2.nodes.data.item(0).inputs) == 2
 
     with pytest.raises(Exception):
@@ -165,19 +126,18 @@ def test_flatten_expand():
 
 
 @pytest.mark.parametrize(
-    "input_nodes_shape, func, inputs, output_type, output_nodes_shape, node_inputs",
+    "input_nodes_shape, func, inputs, output_nodes_shape, node_inputs",
     [
-        [(3, 4), "map", [Payload("test")], MultiAction, (3, 4), 1],
-        [(3, 4, 5), "reduce", [Payload("func")], MultiAction, (4, 5), 3],
+        [(3, 4), "map", [Payload("test")], (3, 4), 1],
+        [(3, 4, 5), "reduce", [Payload("func")], (4, 5), 3],
         [
             (3, 4, 5),
             "reduce",
             [Payload("func"), "dim_1"],
-            MultiAction,
             (3, 5),
             4,
         ],
-        [(3,), "reduce", [Payload("func")], SingleAction, (), 3],
+        [(3,), "reduce", [Payload("func")], (), 3],
         [
             (3,),
             "join",
@@ -185,7 +145,6 @@ def test_flatten_expand():
                 mock_action((1,)),
                 "dim_0",
             ],
-            MultiAction,
             (4,),
             0,
         ],
@@ -196,7 +155,6 @@ def test_flatten_expand():
                 mock_action((3,)),
                 "data_type",
             ],
-            MultiAction,
             (2, 3),
             0,
         ],
@@ -204,26 +162,23 @@ def test_flatten_expand():
             (3,),
             "transform",
             [lambda action, x: action.expand("dim_1", x), [(4,), (4,), (4,)], "index"],
-            MultiAction,
             (3, 4, 3),
             1,
         ],
-        [(3, 4), "select", [{"dim_0": 1}], MultiAction, (4,), 0],
-        [(3,), "select", [{"dim_0": 1}], SingleAction, (), 0],
+        [(3, 4), "select", [{"dim_0": 1}], (4,), 0],
+        [(3,), "select", [{"dim_0": 1}], (), 0],
     ],
 )
 def test_multi_action(
     input_nodes_shape,
     func,
     inputs,
-    output_type,
     output_nodes_shape,
     node_inputs,
 ):
     input_action = mock_action(input_nodes_shape)
 
     output_action = getattr(input_action, func)(*inputs)
-    assert type(output_action) == output_type
     assert output_action.nodes.shape == output_nodes_shape
     assert len(output_action.nodes.data.item(0).inputs) == node_inputs
 

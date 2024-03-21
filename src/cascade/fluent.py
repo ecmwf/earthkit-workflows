@@ -17,7 +17,7 @@ class Payload:
 
     func: callable
     args: list = None
-    kwargs: dict = field(default_factory=dict)
+    kwargs: dict = None
 
     def has_args(self) -> bool:
         """
@@ -47,7 +47,8 @@ class Payload:
         tuple, containing function, arguments and kwargs
         """
         assert self.has_args()
-        return (self.func, self.args, self.kwargs)
+        kwargs = self.kwargs if self.kwargs is not None else {}
+        return (self.func, self.args, kwargs)
 
     def name(self) -> str:
         """
@@ -160,10 +161,7 @@ class Action:
             coords="minimal",
             join="exact",
         )
-        if hasattr(self, "to_multi"):
-            ret = self.to_multi(new_nodes)
-        else:
-            ret = type(self)(self, new_nodes)
+        ret = type(self)(self, new_nodes)
         ret.sinks = self.sinks + other_action.sinks
         return ret
 
@@ -185,7 +183,7 @@ class Action:
 
         Return
         ------
-        SingleAction or MultiAction
+        Action
         """
         res = None
         if isinstance(dim, str):
@@ -219,7 +217,7 @@ class Action:
 
         Return
         ------
-        MultiAction
+        Action
         """
         # Ensure coordinates in existing dimensions match, otherwise obtain NaNs
         for key, values in other_action.nodes.coords.items():
@@ -245,8 +243,6 @@ class Action:
             dims=broadcasted_nodes.dims,
             attrs=self.nodes.attrs,
         )
-        if hasattr(self, "to_multi"):
-            return self.to_multi(new_nodes)
         return type(self)(self, new_nodes)
 
     def expand(
@@ -268,152 +264,12 @@ class Action:
 
         Return
         ------
-        MultiAction
+        Action
         """
         params = [(x, dim, axis, new_axis) for x in range(dim_size)]
         return self.transform(_expand_transform, params, dim)
 
-    def __two_arg_method(
-        self, method: callable, other, **method_kwargs
-    ) -> "SingleAction | MultiAction":
-        if isinstance(other, Action):
-            return self.join(other, "**datatype**", match_coord_values=True).reduce(
-                Payload(method, kwargs=method_kwargs)
-            )
-        return self.map(
-            Payload(method, args=(Node.input_name(0), other), kwargs=method_kwargs)
-        )
-
-    def subtract(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(backends.subtract, other, **method_kwargs)
-
-    def divide(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(backends.divide, other, **method_kwargs)
-
-    def add(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(backends.add, other, **method_kwargs)
-
-    def multiply(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(backends.multiply, other, **method_kwargs)
-
-    def power(self, other, **method_kwargs) -> "SingleAction | MultiAction":
-        return self.__two_arg_method(backends.pow, other, **method_kwargs)
-
-    def add_attributes(self, attrs: dict):
-        self.nodes.attrs.update(attrs)
-
-    def _add_dimension(self, name: str, value: float, axis: int = 0):
-        self.nodes = self.nodes.expand_dims({name: [value]}, axis)
-
-    def _squeeze_dimension(self, dim_name: str, drop: bool = False):
-        if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
-            self.nodes = self.nodes.squeeze(dim_name, drop=drop)
-
-
-class SingleAction(Action):
-    def __init__(self, previous: Action, node: xr.DataArray):
-        assert node.size == 1, f"Expected node size 1, got {node.size}"
-        super().__init__(previous, node)
-
-    def to_multi(self, nodes: xr.DataArray) -> "MultiAction":
-        """
-        Conversion from SingleAction to MultiAction
-
-        Parameters
-        ----------
-        nodes: xr.DataArray[Node], new nodes for constructing MultiAction
-
-        Return
-        ------
-        MultiAction
-        """
-        return MultiAction(self, nodes)
-
-    def map(self, payload: Payload) -> "SingleAction":
-        """
-        Create new action from applying payload to node
-
-        Parameters
-        ----------
-        payload: Payload
-
-        Return
-        ------
-        SingleAction
-        """
-        return type(self).from_payload(self, payload)
-
-    def node(self) -> Node:
-        return self.nodes.data[()]
-
-    @classmethod
-    def from_payload(cls, previous: Action, payload: Payload) -> "SingleAction":
-        """
-        Factory for SingleAction from previous action and payload
-
-        Parameters
-        ----------
-        previous: Action that precedes action to be constructed
-        payload: Payload for node in new action
-
-        Return
-        ------
-        SingleAction
-        """
-        if previous is None:
-            node = xr.DataArray(Node(payload))
-        else:
-            node = xr.DataArray(
-                Node(
-                    payload,
-                    previous.nodes.data.flatten(),
-                ),
-                coords={
-                    k: v
-                    for k, v in previous.nodes.coords.items()
-                    if k not in previous.nodes.dims
-                },
-                attrs=previous.nodes.attrs,
-            )
-        return cls(previous, node)
-
-
-class MultiAction(Action):
-    def __init__(self, previous: xr.DataArray, nodes: xr.DataArray):
-        super().__init__(previous, nodes)
-
-    def to_single(self, payload_or_node: Payload | xr.DataArray) -> SingleAction:
-        """
-        Conversion from MultiAction to SingleAction
-
-        Parameters
-        ----------
-        payload_or_node: Payload or xr.DataArray[Node] for constructing
-        SingleAction
-
-        Return
-        ------
-        SingleAction
-        """
-        if isinstance(payload_or_node, Payload):
-            return SingleAction.from_payload(self, payload_or_node)
-        return SingleAction(self, payload_or_node)
-
-    def node(self, criteria: dict) -> Node | np.ndarray[Node]:
-        """
-        Get nodes matching selection criteria from action
-
-        Parameters
-        ----------
-        criteria: dict, key-value pairs specifying selection criteria
-
-        Return
-        ------
-        Node or np.ndarray[Node]
-        """
-        return self.nodes.sel(**criteria, drop=True).data[()]
-
-    def map(self, payload: Payload | np.ndarray[Payload]) -> "MultiAction":
+    def map(self, payload: Payload | np.ndarray[Payload]) -> "Action":
         """
         Apply specified payload on all nodes. If argument is an array of payloads,
         this must be the same size as the array of nodes and each node gets a
@@ -464,7 +320,7 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-    ) -> "SingleAction | MultiAction":
+    ) -> "Action":
         """
         Reduction operation across the named dimension using the provided
         function in the payload. If batch_size > 1 and less than the size
@@ -482,7 +338,7 @@ class MultiAction(Action):
 
         Return
         ------
-        SingleAction or MultiAction
+        Action
 
         Raises
         ------
@@ -512,9 +368,6 @@ class MultiAction(Action):
                 )
                 dim = f"batch.{level}.{dim}"
                 level += 1
-
-        if batched.nodes.ndim == 1:
-            return batched.to_single(payload)
 
         new_dims = [x for x in batched.nodes.dims if x != dim]
         transposed_nodes = batched.nodes.transpose(dim, *new_dims)
@@ -550,8 +403,8 @@ class MultiAction(Action):
         return result
 
     def flatten(
-        self, dim: str = "", axis: int = 0, **method_kwargs
-    ) -> "SingleAction | MultiAction":
+        self, dim: str = "", axis: int = 0, method_kwargs: dict | None = None
+    ) -> "Action":
         """
         Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
@@ -563,15 +416,15 @@ class MultiAction(Action):
         method_kwargs: dict, kwargs for the underlying array module stack method
         Return
         ------
-        SingleAction or MultiAction
+        Action
         """
+        if method_kwargs is None:
+            method_kwargs = {}
         return self.reduce(
             Payload(backends.stack, kwargs={"axis": axis, **method_kwargs}), dim
         )
 
-    def select(
-        self, criteria: dict, drop: bool = False
-    ) -> "SingleAction | MultiAction":
+    def select(self, criteria: dict, drop: bool = False) -> "Action":
         """
         Create action contaning nodes match selection criteria
 
@@ -582,21 +435,29 @@ class MultiAction(Action):
 
         Return
         ------
-        SingleAction or MultiAction
+        Action
         """
-        if any([key not in self.nodes.dims for key in criteria.keys()]):
-            raise NotImplementedError(
-                f"Unknown coordinate in criteria {criteria}. Existing dimensions {self.nodes.dims}"
-            )
-
+        keys = list(criteria.keys())
+        for key in keys:
+            if key not in self.nodes.dims:
+                if self.nodes.coords.get(key, None) == criteria[key]:
+                    criteria.pop(key)
+                else:
+                    raise NotImplementedError(
+                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims} and coords {self.nodes.coords}"
+                    )
+        if len(criteria) == 0:
+            return self
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
-        if selected_nodes.size == 1:
-            return self.to_single(selected_nodes)
         return type(self)(self, selected_nodes)
 
     def concatenate(
-        self, dim: str, batch_size: int = 0, keep_dim: bool = False, **method_kwargs
-    ) -> "SingleAction | MultiAction":
+        self,
+        dim: str,
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         if self.nodes.sizes[dim] == 1:
             # no-op
             if not keep_dim:
@@ -611,8 +472,8 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        **method_kwargs,
-    ) -> "SingleAction | MultiAction":
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         return self.reduce(
             Payload(backends.sum, kwargs=method_kwargs), dim, batch_size, keep_dim
         )
@@ -622,8 +483,8 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        **method_kwargs,
-    ) -> "SingleAction | MultiAction":
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
@@ -632,7 +493,7 @@ class MultiAction(Action):
                 Payload(backends.mean, kwargs=method_kwargs), dim, keep_dim
             )
 
-        return self.sum(dim, batch_size, keep_dim, **method_kwargs).divide(
+        return self.sum(dim, batch_size, keep_dim, method_kwargs=method_kwargs).divide(
             self.nodes.sizes[dim]
         )
 
@@ -641,15 +502,17 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        **method_kwargs,
-    ) -> "SingleAction | MultiAction":
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
             return self.reduce(Payload(backends.std, kwargs=method_kwargs), dim)
 
-        mean_sq = self.mean(dim, batch_size, keep_dim, **method_kwargs).power(2)
+        mean_sq = self.mean(
+            dim, batch_size, keep_dim, method_kwargs=method_kwargs
+        ).power(2)
         norm = (
             self.power(2).sum(dim, batch_size, keep_dim).divide(self.nodes.sizes[dim])
         )
@@ -660,8 +523,8 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        **method_kwargs,
-    ) -> "SingleAction | MultiAction":
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         return self.reduce(
             Payload(backends.max, kwargs=method_kwargs), dim, batch_size, keep_dim
         )
@@ -671,8 +534,8 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        **method_kwargs,
-    ) -> "SingleAction | MultiAction":
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         return self.reduce(
             Payload(backends.min, kwargs=method_kwargs), dim, batch_size, keep_dim
         )
@@ -682,17 +545,82 @@ class MultiAction(Action):
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        **method_kwargs,
-    ) -> "SingleAction | MultiAction":
+        method_kwargs: dict | None = None,
+    ) -> "Action":
         return self.reduce(
             Payload(backends.prod, kwargs=method_kwargs), dim, batch_size, keep_dim
         )
+
+    def __two_arg_method(
+        self,
+        method: callable,
+        other: "Action | float",
+        method_kwargs: dict | None = None,
+    ) -> "Action":
+        if isinstance(other, Action):
+            return self.join(other, "**datatype**", match_coord_values=True).reduce(
+                Payload(method, kwargs=method_kwargs)
+            )
+        return self.map(
+            Payload(method, args=(Node.input_name(0), other), kwargs=method_kwargs)
+        )
+
+    def subtract(
+        self, other: "Action | float", method_kwargs: dict | None = None
+    ) -> "Action":
+        return self.__two_arg_method(backends.subtract, other, method_kwargs)
+
+    def divide(
+        self, other: "Action | float", method_kwargs: dict | None = None
+    ) -> "Action":
+        return self.__two_arg_method(backends.divide, other, method_kwargs)
+
+    def add(
+        self, other: "Action | float", method_kwargs: dict | None = None
+    ) -> "Action":
+        return self.__two_arg_method(backends.add, other, method_kwargs)
+
+    def multiply(
+        self, other: "Action | float", method_kwargs: dict | None = None
+    ) -> "Action":
+        return self.__two_arg_method(backends.multiply, other, method_kwargs)
+
+    def power(
+        self, other: "Action | float", method_kwargs: dict | None = None
+    ) -> "Action":
+        return self.__two_arg_method(backends.pow, other, method_kwargs)
+
+    def add_attributes(self, attrs: dict):
+        self.nodes.attrs.update(attrs)
+
+    def _add_dimension(self, name: str, value: float, axis: int = 0):
+        self.nodes = self.nodes.expand_dims({name: [value]}, axis)
+
+    def _squeeze_dimension(self, dim_name: str, drop: bool = False):
+        if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
+            self.nodes = self.nodes.squeeze(dim_name, drop=drop)
+
+    def node(self, criteria: dict) -> Node | np.ndarray[Node]:
+        """
+        Get nodes matching selection criteria from action
+
+        Parameters
+        ----------
+        criteria: dict, key-value pairs specifying selection criteria
+
+        Return
+        ------
+        Node or np.ndarray[Node]
+        """
+        return self.nodes.sel(**criteria, drop=True).data[()]
 
 
 def _batch_transform(action: Action, selection: dict, payload: Payload) -> Action:
     selected = action.select(selection, drop=True)
     dim = list(selection.keys())[0]
-    if isinstance(selected, SingleAction):
+    if dim not in selected.nodes.dims:
+        return selected
+    if selected.nodes.sizes[dim] == 1:
         selected._squeeze_dimension(dim, drop=True)
         return selected
 
@@ -713,19 +641,15 @@ def _expand_transform(
 class Fluent:
     def __init__(
         self,
-        single_action=SingleAction,
-        multi_action=MultiAction,
+        action=Action,
     ):
-        self.single_action = single_action
-        self.multi_action = multi_action
+        self.action = action
 
-    def source(
-        self, func: callable, args: tuple, kwargs: dict = {}
-    ) -> "SingleAction | MultiAction":
+    def source(self, func: callable, args: tuple, kwargs: dict = {}) -> "Action":
         """
         Create source nodes in graph from an dataarray of payloads, containing
         payload for each source node. If none of func, args and kwargs are a xr.DataArray
-        then returns SingleAction with Payload(func, args, kwargs). If any of func, args
+        then returns Action with Payload(func, args, kwargs). If any of func, args
         or kwargs is a xr.DataArray then creates node array with the same shape is created.
 
         Parameters
@@ -739,16 +663,12 @@ class Fluent:
 
         Return
         ------
-        SingleAction or MultiAction
+        Action
 
         Raises
         ------
         ValueError, if func, args or kwargs are DataArrays with different shapes
         """
-        if not any([isinstance(x, xr.DataArray) for x in [func, args, kwargs]]):
-            payload = Payload(func, args, kwargs)
-            return self.single_action.from_payload(None, payload)
-
         shape = None
         ufunc_args = []
         for x in [func, args, kwargs]:
@@ -773,7 +693,7 @@ class Fluent:
                 name += str(it.multi_index)
             node_names.add(name)
             nodes[it.multi_index] = Node(payload[()], name=name)
-        return self.multi_action(
+        return self.action(
             None,
             xr.DataArray(
                 nodes,
