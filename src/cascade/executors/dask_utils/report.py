@@ -98,13 +98,15 @@ class TaskStream:
                 )
 
             self._stream[worker].append(task_name)
-            assert task_name not in self._task_info
-            self._task_info[task_name] = TaskStream.Task(
-                key_items[start_index][1][index],
-                key_items[duration_index][1][index],
-                task_name,
-                worker,
-                key_items[worker_thread_index][1][index],
+            self._task_info.setdefault(task_name, [])
+            self._task_info[task_name].append(
+                TaskStream.Task(
+                    key_items[start_index][1][index],
+                    key_items[duration_index][1][index],
+                    task_name,
+                    worker,
+                    key_items[worker_thread_index][1][index],
+                )
             )
 
     def is_transfer(task_name: str) -> bool:
@@ -151,6 +153,8 @@ class MemoryReport:
             for row in reader:
                 if row[0] == "task_key":
                     continue
+                if row[0] in self.usage:
+                    raise ValueError(f"Duplicate task key {row[0]}")
                 self.usage[row[0]] = MemoryReport.TaskMemory(
                     float(row[1]), float(row[2])
                 )
