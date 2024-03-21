@@ -152,7 +152,7 @@ def check_consistency(
 def reports_to_resources(report: Report, mem_report: MemoryReport):
     resource_map = {}
     for name, tasks in report.task_stream.task_info(True).items():
-        memory = mem_report.usage[name].max
+        memory = np.max([task.max for task in mem_report.usage[name]])
         duration = np.mean([task.duration_in_ms for task in tasks])
         resource_map[name] = Resources(duration, memory)
     return resource_map

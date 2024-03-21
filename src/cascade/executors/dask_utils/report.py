@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 import json
 import re
 import csv
+import numpy as np
 from dataclasses import dataclass
 
 
@@ -31,18 +32,17 @@ def search(function_str, text):
 
 
 def duration_in_sec(duration_str):
-    if "us" in duration_str:
-        return float(duration_str.rstrip("us")) / 1000000
-    if "ms" in duration_str:
-        return float(duration_str.rstrip("ms")) / 1000
-    try:
-        strip_s = duration_str.rstrip("s")
-        duration = float(strip_s)
-    except ValueError:
-        assert "m" in strip_s
-        minutes, seconds = map(float, strip_s.split("m"))
-        duration = 60 * minutes + seconds
-    return duration
+    remaining = duration_str
+    times = []
+    for unit in ["hr", "m", "s", "ms", "us"]:
+        if unit in remaining:
+            time, next = remaining.split(unit)
+            if not time.endswith(("m", "u")) and not next.startswith("s"):
+                times.append(float(time))
+                remaining = next
+                continue
+        times.append(0)
+    return np.multiply(times, [60 * 60, 60, 1, 1 / 1000, 1 / 1000000]).sum()
 
 
 class Summary:
@@ -153,8 +153,7 @@ class MemoryReport:
             for row in reader:
                 if row[0] == "task_key":
                     continue
-                if row[0] in self.usage:
-                    raise ValueError(f"Duplicate task key {row[0]}")
-                self.usage[row[0]] = MemoryReport.TaskMemory(
+                self.usage.setdefault(row[0], [])
+                self.usage[row[0]].append(MemoryReport.TaskMemory(
                     float(row[1]), float(row[2])
-                )
+                ))

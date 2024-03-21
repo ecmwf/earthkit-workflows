@@ -4,7 +4,7 @@ import pytest
 
 
 from cascade.executors.dask import DaskLocalExecutor
-from cascade.executors.dask_utils.report import Report
+from cascade.executors.dask_utils.report import Report, duration_in_sec
 from cascade.schedulers.depthfirst import DepthFirstScheduler
 from cascade.fluent import Fluent, Payload
 from cascade.contextgraph import ContextGraph
@@ -72,3 +72,14 @@ def test_with_schedule_adaptive(tmpdir):
             for tasks in report.task_stream.stream(True).values()
         ]
     )
+
+
+@pytest.mark.parametrize("duration_str, result", [
+    ["3hr 22m", 12120.0],
+    ["275.64 s", 275.64], 
+    ["48m 5s", 2885.0], 
+    ["48us", 0.000048],
+    ["48ms", 0.048],
+    ])
+def test_duration_conversion(duration_str, result):
+    assert duration_in_sec(duration_str) == result
