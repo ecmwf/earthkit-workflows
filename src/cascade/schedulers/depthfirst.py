@@ -40,7 +40,17 @@ class DepthFirstScheduler:
             self.completed_tasks = set()
             self.task_allocation = {p.name: [] for p in self.context_graph}
             self.memory_usage = {p.name: MemoryUsage() for p in self.context_graph}
-            self.eligible = list(self.task_graph.sources())
+
+            # Sort sinks by total compute cost
+            sinks = self.task_graph.sinks[:]
+            sinks.sort(key=lambda x: self.task_graph.accumulated_cost(x))
+            self.eligible = []
+            for sink in sinks:
+                tmp_graph = Graph([sink])
+                for src in tmp_graph.sources():
+                    if src not in self.eligible:
+                        self.eligible.append(src)
+            self.eligible.reverse()
             self.sim = EventLoop()
 
     def __init__(self):
@@ -67,21 +77,12 @@ class DepthFirstScheduler:
 
     def update_memory_usage(self, processor) -> float:
         for task in self.state.memory_usage[processor.name].current_tasks():
-            successors = self.state.task_graph.successors(task)
-            if all(
-                [
-                    x in self.state.completed_tasks or x in self.state.eligible
-                    for x in successors
-                ]
-            ):
+            if task.name in self.state.completed_tasks:
                 self.state.memory_usage[processor.name].remove_task(task)
 
         return self.state.memory_usage[processor.name].memory
 
     def assign_idle_processors(self, time):
-        # Sort next tasks
-        self.state.eligible.sort(key=lambda x: (x.cost, len(x.inputs)))
-
         # Assign idle processors
         for processor in self.state.context_graph:
             new_mem_usage = self.update_memory_usage(processor)
@@ -90,13 +91,16 @@ class DepthFirstScheduler:
                 or self.state.task_allocation[processor.name][-1]
                 in self.state.completed_tasks
             ):
-                if (
-                    len(self.state.eligible) > 0
-                    and (new_mem_usage + self.state.eligible[0].memory)
-                    < processor.memory
-                ):
+                pop_index = None
+                # Take from back so newly added dependents get picked off first
+                for index in range(len(self.state.eligible) - 1, -1, -1):
+                    if (new_mem_usage + self.state.eligible[index].memory) < processor.memory:
+                        pop_index = index 
+                        break 
+
+                if pop_index is not None:
                     self.assign_task_to_processor(
-                        self.state.eligible.pop(), processor, time
+                        self.state.eligible.pop(pop_index), processor, time
                     )
 
     def schedule(
@@ -122,9 +126,8 @@ class DepthFirstScheduler:
         print(
             f"Finished {len(self.state.completed_tasks)} tasks out of {len(list(self.state.task_graph.nodes()))}"
         )
-        assert len(self.state.completed_tasks) == len(
-            list(self.state.task_graph.nodes())
-        )
+        if len(self.state.completed_tasks) != len(list(self.state.task_graph.nodes())):
+            raise RuntimeError("Scheduler failed to complete all tasks.")
 
         return Schedule(
             self.state.task_graph, self.state.context_graph, self.state.task_allocation

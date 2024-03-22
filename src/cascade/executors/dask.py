@@ -96,11 +96,6 @@ class DaskExecutor:
             dask_graph = to_dask_graph(schedule)
             outputs = [x.name for x in schedule.sinks]
 
-        # Set up distributed client
-        dask.config.set(
-            {"distributed.scheduler.worker-saturation": 1.0}
-        )  # Important to prevent root task overloading
-
         results = {}
         errored_tasks = 0
         with Client(**client_kwargs) as client:

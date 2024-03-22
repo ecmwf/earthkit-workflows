@@ -1,7 +1,7 @@
 from typing import Any
 
 from .graph import Graph
-from .graph import Node
+from .graph import Node, Sink
 
 
 class Resources:
@@ -59,6 +59,12 @@ class Communication(Node):
 
 
 class TaskGraph(Graph):
+    def __init__(self, sinks: list[Sink]):
+        super().__init__(sinks)
+        self._accumulated_cost = {}
+        for task in self.nodes(forwards=True):
+            self._accumulated_cost[task] = self.accumulated_cost(task)
+
     def predecessors(self, task) -> list[Task]:
         return [
             x if isinstance(x, Task) else x[0]
@@ -73,6 +79,17 @@ class TaskGraph(Graph):
             for input in node.inputs.values():
                 yield input.parent, node
 
+    def accumulated_cost(self, task: Task) -> float:
+        if task in self._accumulated_cost:
+            return self._accumulated_cost[task]
+        
+        cost = task.cost
+        for predecessors in self.predecessors(task):
+            if predecessors in self._accumulated_cost:
+                cost += self._accumulated_cost[predecessors]
+            else:
+                cost += self.accumulated_cost(predecessors)
+        return cost
 
 class ExecutionGraph(TaskGraph):
     def _make_communication_task(self, source, target):
