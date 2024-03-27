@@ -94,9 +94,11 @@ class DepthFirstScheduler:
                 pop_index = None
                 # Take from back so newly added dependents get picked off first
                 for index in range(len(self.state.eligible) - 1, -1, -1):
-                    if (new_mem_usage + self.state.eligible[index].memory) < processor.memory:
-                        pop_index = index 
-                        break 
+                    if (
+                        new_mem_usage + self.state.eligible[index].memory
+                    ) < processor.memory:
+                        pop_index = index
+                        break
 
                 if pop_index is not None:
                     self.assign_task_to_processor(

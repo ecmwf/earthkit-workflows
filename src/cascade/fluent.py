@@ -402,9 +402,7 @@ class Action:
             )
         return result
 
-    def flatten(
-        self, dim: str = "", axis: int = 0, method_kwargs: dict | None = None
-    ) -> "Action":
+    def flatten(self, dim: str = "", axis: int = 0, **kwargs) -> "Action":
         """
         Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
@@ -413,15 +411,13 @@ class Action:
         ----------
         dim: str, name of dimension to flatten along
         axis: int, axis of new dimension in internal data
-        method_kwargs: dict, kwargs for the underlying array module stack method
+        kwargs: kwargs for the underlying array module stack method
         Return
         ------
         Action
         """
-        if method_kwargs is None:
-            method_kwargs = {}
         return self.reduce(
-            Payload(backends.stack, kwargs={"axis": axis, **method_kwargs}), dim
+            Payload(backends.stack, kwargs={"axis": axis, **kwargs}), dim
         )
 
     def select(self, criteria: dict, drop: bool = False) -> "Action":
@@ -452,11 +448,7 @@ class Action:
         return type(self)(self, selected_nodes)
 
     def concatenate(
-        self,
-        dim: str,
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str, batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         if self.nodes.sizes[dim] == 1:
             # no-op
@@ -464,131 +456,90 @@ class Action:
                 self._squeeze_dimension(dim)
             return self
         return self.reduce(
-            Payload(backends.concat, kwargs=method_kwargs), dim, batch_size, keep_dim
+            Payload(backends.concat, kwargs=kwargs), dim, batch_size, keep_dim
         )
 
     def sum(
-        self,
-        dim: str = "",
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         return self.reduce(
-            Payload(backends.sum, kwargs=method_kwargs), dim, batch_size, keep_dim
+            Payload(backends.sum, kwargs=kwargs), dim, batch_size, keep_dim
         )
 
     def mean(
-        self,
-        dim: str = "",
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(
-                Payload(backends.mean, kwargs=method_kwargs), dim, keep_dim
-            )
+            return self.reduce(Payload(backends.mean, kwargs=kwargs), dim, keep_dim)
 
-        return self.sum(dim, batch_size, keep_dim, method_kwargs=method_kwargs).divide(
+        return self.sum(dim, batch_size, keep_dim, **kwargs).divide(
             self.nodes.sizes[dim]
         )
 
     def std(
-        self,
-        dim: str = "",
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(backends.std, kwargs=method_kwargs), dim)
+            return self.reduce(Payload(backends.std, kwargs=kwargs), dim)
 
-        mean_sq = self.mean(
-            dim, batch_size, keep_dim, method_kwargs=method_kwargs
-        ).power(2)
+        mean_sq = self.mean(dim, batch_size, keep_dim, **kwargs).power(2)
         norm = (
             self.power(2).sum(dim, batch_size, keep_dim).divide(self.nodes.sizes[dim])
         )
         return norm.subtract(mean_sq).power(0.5)
 
     def max(
-        self,
-        dim: str = "",
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         return self.reduce(
-            Payload(backends.max, kwargs=method_kwargs), dim, batch_size, keep_dim
+            Payload(backends.max, kwargs=kwargs), dim, batch_size, keep_dim
         )
 
     def min(
-        self,
-        dim: str = "",
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         return self.reduce(
-            Payload(backends.min, kwargs=method_kwargs), dim, batch_size, keep_dim
+            Payload(backends.min, kwargs=kwargs), dim, batch_size, keep_dim
         )
 
     def prod(
-        self,
-        dim: str = "",
-        batch_size: int = 0,
-        keep_dim: bool = False,
-        method_kwargs: dict | None = None,
+        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, **kwargs
     ) -> "Action":
         return self.reduce(
-            Payload(backends.prod, kwargs=method_kwargs), dim, batch_size, keep_dim
+            Payload(backends.prod, kwargs=kwargs), dim, batch_size, keep_dim
         )
 
     def __two_arg_method(
-        self,
-        method: callable,
-        other: "Action | float",
-        method_kwargs: dict | None = None,
+        self, method: callable, other: "Action | float", **kwargs
     ) -> "Action":
         if isinstance(other, Action):
             return self.join(other, "**datatype**", match_coord_values=True).reduce(
-                Payload(method, kwargs=method_kwargs)
+                Payload(method, kwargs=kwargs)
             )
         return self.map(
-            Payload(method, args=(Node.input_name(0), other), kwargs=method_kwargs)
+            Payload(method, args=(Node.input_name(0), other), kwargs=kwargs)
         )
 
-    def subtract(
-        self, other: "Action | float", method_kwargs: dict | None = None
-    ) -> "Action":
-        return self.__two_arg_method(backends.subtract, other, method_kwargs)
+    def subtract(self, other: "Action | float", **kwargs) -> "Action":
+        return self.__two_arg_method(backends.subtract, other, **kwargs)
 
-    def divide(
-        self, other: "Action | float", method_kwargs: dict | None = None
-    ) -> "Action":
-        return self.__two_arg_method(backends.divide, other, method_kwargs)
+    def divide(self, other: "Action | float", **kwargs) -> "Action":
+        return self.__two_arg_method(backends.divide, other, **kwargs)
 
-    def add(
-        self, other: "Action | float", method_kwargs: dict | None = None
-    ) -> "Action":
-        return self.__two_arg_method(backends.add, other, method_kwargs)
+    def add(self, other: "Action | float", **kwargs) -> "Action":
+        return self.__two_arg_method(backends.add, other, **kwargs)
 
-    def multiply(
-        self, other: "Action | float", method_kwargs: dict | None = None
-    ) -> "Action":
-        return self.__two_arg_method(backends.multiply, other, method_kwargs)
+    def multiply(self, other: "Action | float", **kwargs) -> "Action":
+        return self.__two_arg_method(backends.multiply, other, **kwargs)
 
-    def power(
-        self, other: "Action | float", method_kwargs: dict | None = None
-    ) -> "Action":
-        return self.__two_arg_method(backends.pow, other, method_kwargs)
+    def power(self, other: "Action | float", **kwargs) -> "Action":
+        return self.__two_arg_method(backends.pow, other, **kwargs)
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)

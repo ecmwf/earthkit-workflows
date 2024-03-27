@@ -8,7 +8,7 @@ def create_cluster(
     dask.config.set(
         {
             "distributed.scheduler.worker-saturation": 1.0,
-            "distributed.scheduler.worker-ttl": "20 minutes"
+            "distributed.scheduler.worker-ttl": "20 minutes",
         }
     )  # Important to prevent root task overloading
 

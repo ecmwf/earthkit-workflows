@@ -82,7 +82,7 @@ class TaskGraph(Graph):
     def accumulated_cost(self, task: Task) -> float:
         if task in self._accumulated_cost:
             return self._accumulated_cost[task]
-        
+
         cost = task.cost
         for predecessors in self.predecessors(task):
             if predecessors in self._accumulated_cost:
@@ -90,6 +90,7 @@ class TaskGraph(Graph):
             else:
                 cost += self.accumulated_cost(predecessors)
         return cost
+
 
 class ExecutionGraph(TaskGraph):
     def _make_communication_task(self, source, target):

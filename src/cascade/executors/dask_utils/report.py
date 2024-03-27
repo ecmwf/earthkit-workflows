@@ -154,6 +154,6 @@ class MemoryReport:
                 if row[0] == "task_key":
                     continue
                 self.usage.setdefault(row[0], [])
-                self.usage[row[0]].append(MemoryReport.TaskMemory(
-                    float(row[1]), float(row[2])
-                ))
+                self.usage[row[0]].append(
+                    MemoryReport.TaskMemory(float(row[1]), float(row[2]))
+                )

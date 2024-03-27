@@ -10,8 +10,8 @@ from cascade.fluent import Fluent, Payload
 from cascade.contextgraph import ContextGraph
 
 context_graph = ContextGraph()
-context_graph.add_node("worker_1", type="CPU", speed=10, memory=40)
-context_graph.add_node("worker_2", type="CPU", speed=10, memory=20)
+context_graph.add_node("worker_1", type="CPU", speed=10, memory=400)
+context_graph.add_node("worker_2", type="CPU", speed=10, memory=200)
 context_graph.add_edge("worker_1", "worker_2", bandwidth=0.1, latency=1)
 context_graph
 
@@ -74,12 +74,15 @@ def test_with_schedule_adaptive(tmpdir):
     )
 
 
-@pytest.mark.parametrize("duration_str, result", [
-    ["3hr 22m", 12120.0],
-    ["275.64 s", 275.64], 
-    ["48m 5s", 2885.0], 
-    ["48us", 0.000048],
-    ["48ms", 0.048],
-    ])
+@pytest.mark.parametrize(
+    "duration_str, result",
+    [
+        ["3hr 22m", 12120.0],
+        ["275.64 s", 275.64],
+        ["48m 5s", 2885.0],
+        ["48us", 0.000048],
+        ["48ms", 0.048],
+    ],
+)
 def test_duration_conversion(duration_str, result):
     assert duration_in_sec(duration_str) == result

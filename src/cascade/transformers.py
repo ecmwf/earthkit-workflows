@@ -47,7 +47,10 @@ def determine_resources(graph: Graph, num_workers: int = 1) -> dict[str, Resourc
             for task_name, future in futures.items():
                 if future.done():
                     meter, output = future.result()
-                    resources[task_name] = Resources(meter.elapsed_cpu, meter.mem)
+                    # Convert memory to MB
+                    resources[task_name] = Resources(
+                        meter.elapsed_cpu, meter.mem / 10**6
+                    )
 
                     task = task_graph.get_node(task_name)
                     # Pass output to arguments in payloads requiring it
