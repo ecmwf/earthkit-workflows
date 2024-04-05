@@ -2,22 +2,25 @@ import numpy as np
 import xarray as xr
 import functools
 import hashlib
-from dataclasses import dataclass, field
+import copy
 
 from .graph import Graph
 from .graph import Node as BaseNode
 from . import backends
 
 
-@dataclass
 class Payload:
     """
     Class for detailing function, args and kwargs to be computing in a graph node
     """
 
-    func: callable
-    args: list = None
-    kwargs: dict = None
+    def __init__(self, func, args: list | None = None, kwargs: dict | None = None):
+        self.func = func
+        self.args = args
+        if kwargs is None:
+            self.kwargs = {}
+        else:
+            self.kwargs = copy.deepcopy(kwargs)
 
     def has_args(self) -> bool:
         """
@@ -37,7 +40,8 @@ class Payload:
         ------
         AssertionError if arguments already exist
         """
-        assert not self.has_args()
+        if self.has_args():
+            raise ValueError("Arguments already set")
         self.args = args
 
     def to_tuple(self) -> tuple:
@@ -46,9 +50,9 @@ class Payload:
         ------
         tuple, containing function, arguments and kwargs
         """
-        assert self.has_args()
-        kwargs = self.kwargs if self.kwargs is not None else {}
-        return (self.func, self.args, kwargs)
+        if not self.has_args():
+            raise ValueError("Arguments not set")
+        return (self.func, self.args, self.kwargs)
 
     def name(self) -> str:
         """
@@ -113,6 +117,9 @@ class Node(BaseNode):
     @staticmethod
     def input_name(index: int):
         return f"input{index}"
+
+    def __str__(self) -> str:
+        return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
 
 
 class Action:
@@ -490,7 +497,9 @@ class Action:
 
         mean_sq = self.mean(dim, batch_size, keep_dim, **kwargs).power(2)
         norm = (
-            self.power(2).sum(dim, batch_size, keep_dim).divide(self.nodes.sizes[dim])
+            self.power(2)
+            .sum(dim, batch_size, keep_dim, **kwargs)
+            .divide(self.nodes.sizes[dim])
         )
         return norm.subtract(mean_sq).power(0.5)
 

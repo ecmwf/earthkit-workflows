@@ -3,10 +3,21 @@ import xarray as xr
 import numpy as np
 import dill
 
-from cascade.fluent import Payload, Node, Action, Fluent
+from cascade.fluent import Payload, Node, Fluent, custom_hash
 from cascade.graph import serialise, deserialise
 
-from helpers import MockNode, mock_action, mock_graph
+from helpers import mock_action, mock_graph
+
+
+def test_payload():
+    payload = Payload(np.random.rand, (2, 3, 4))
+    hash1 = custom_hash(f"{payload}")
+    payload2 = Payload(np.random.rand, (2, 3, 4), {})
+    hash2 = custom_hash(f"{payload2}")
+    payload3 = Payload(np.random.rand, (2, 3, 4), {"test": 1})
+    hash3 = custom_hash(f"{payload3}")
+    assert hash1 == hash2
+    assert hash1 != hash3
 
 
 @pytest.mark.parametrize(
