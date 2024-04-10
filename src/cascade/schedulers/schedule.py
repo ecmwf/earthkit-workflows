@@ -57,3 +57,18 @@ class Schedule:
                     ) != len(list(task_graph.nodes())):
                         return False
         return True
+
+    def successors(self, task: Node) -> list[Node]:
+        """
+        Determines the next tasks to be executed after the given task,
+        taking into account direct dependences in the task graph and
+        also the task allocation.
+        """
+        task_worker = self.get_processor(task.name)
+        successors = self.task_graph.successors(task)
+        next = self.task_allocation[task_worker].index(task.name) + 1
+        if next < len(self.task_allocation[task_worker]):
+            successors.append(
+                self.task_graph.get_node(self.task_allocation[task_worker][next])
+            )
+        return successors

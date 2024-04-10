@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import randomname
 import datetime
 
-from cascade.contextgraph import Communicator
+from cascade.contextgraph import Communicator, Processor
 from cascade.taskgraph import Task, Communication
 from cascade.utility import EventLoop
 from cascade.transformers import to_execution_graph
@@ -104,10 +104,9 @@ class Simulator:
             for _, _, ctx in self.context_graph.edges(data=True):
                 ctx["obj"].state = CommunicatorState()
 
-    def __init__(self):
-        self.state = None
-
-    def assign_task_to_processor(self, task, processor, start_time):
+    def _assign_task_to_processor(
+        state: "Simulator.State", task: Task, processor: Processor, start_time: float
+    ):
         # print(f"Task {task.name} assigned to processor {processor.name} at time {start_time}")
         processor.state.idle_time += start_time - processor.state.end_time
         processor.state.current_task = task
@@ -120,41 +119,47 @@ class Simulator:
             )
         processor.state.end_time = task.state.end_time
         processor.state.next_task_index += 1
-        self.state.sim.add_event(task.state.end_time, self.on_task_complete, task)
+        state.sim.add_event(
+            task.state.end_time, Simulator._on_task_complete, state, task
+        )
         # print(f"Task {task.name} will finish at time {task.state.end_time}")
 
-    def on_task_complete(self, time, task):
+    def _on_task_complete(time: float, state: "Simulator.State", task: Task):
         # print(f"Task {task.name} completed at time {time}")
         task.state.finished = True
-        self.state.ntasks_complete += 1
+        state.ntasks_complete += 1
 
         if isinstance(task, Task):
-            processor = self.state.schedule.get_processor(task.name)
-            self.state.context_graph.node_dict[processor].state.current_task = None
+            processor = state.schedule.get_processor(task.name)
+            state.context_graph.node_dict[processor].state.current_task = None
         else:
             communicator = task.state.communicator
             communicator.state.current_task = None
 
-        self.assign_idle_processors_and_communicators(time)
+        Simulator._assign_idle_processors_and_communicators(state, time)
 
-    def is_task_eligible(self, task):
-        return all(t.state.finished for t in self.state.task_graph.predecessors(task))
+    def _is_task_eligible(state: "Simulator.State", task: Task):
+        return all(t.state.finished for t in state.task_graph.predecessors(task))
 
-    def assign_idle_processors_and_communicators(self, time):
-        for processor in self.state.context_graph:
+    def _assign_idle_processors_and_communicators(
+        state: "Simulator.State", time: float
+    ):
+        for processor in state.context_graph:
             if processor.state.current_task is None:
                 if processor.state.next_task_index >= len(
-                    self.state.schedule.task_allocation[processor.name]
+                    state.schedule.task_allocation[processor.name]
                 ):
                     continue
-                next_task_name = self.state.schedule.task_allocation[processor.name][
+                next_task_name = state.schedule.task_allocation[processor.name][
                     processor.state.next_task_index
                 ]
-                next_task = self.state.task_graph.get_node(next_task_name)
-                if self.is_task_eligible(next_task):
-                    self.assign_task_to_processor(next_task, processor, time)
+                next_task = state.task_graph.get_node(next_task_name)
+                if Simulator._is_task_eligible(state, next_task):
+                    Simulator._assign_task_to_processor(
+                        state, next_task, processor, time
+                    )
 
-        for _, _, communicator in self.state.context_graph.edges(data=True):
+        for _, _, communicator in state.context_graph.edges(data=True):
             communicator = communicator["obj"]
             if communicator.state.current_task is None:
                 # Check all tasks, because communications are not ordered
@@ -163,39 +168,39 @@ class Simulator:
                         break
                     if task.state.finished:
                         continue
-                    if self.is_task_eligible(task):
-                        self.assign_task_to_processor(task, communicator, time)
+                    if Simulator._is_task_eligible(state, task):
+                        Simulator._assign_task_to_processor(
+                            state, task, communicator, time
+                        )
 
     def execute(
-        self, schedule: Schedule, with_communication: bool = False
+        schedule: Schedule, *, with_communication: bool = False
     ) -> ExecutionReport:
-        self.state = Simulator.State(schedule)
+        state = Simulator.State(schedule)
 
         if with_communication:
-            for start, end in self.state.task_graph.edges():
-                start_processor = self.state.context_graph.node_dict[
+            for start, end in state.task_graph.edges():
+                start_processor = state.context_graph.node_dict[
                     schedule.get_processor(start.name)
                 ]
-                end_processor = self.state.context_graph.node_dict[
+                end_processor = state.context_graph.node_dict[
                     schedule.get_processor(end.name)
                 ]
                 if start_processor != end_processor:
-                    t = self.state.task_graph._make_communication_task(start, end)
+                    t = state.task_graph._make_communication_task(start, end)
                     t.state = CommunicationState()
                     # find the communicator which can handle this communication
-                    ctx = self.state.context_graph.get_edge_data(
+                    ctx = state.context_graph.get_edge_data(
                         start_processor, end_processor
                     )["obj"]
                     t.state.communicator = ctx
                     ctx.state.tasks.append(t)
-                    self.state.total_tasks += 1
+                    state.total_tasks += 1
 
-        self.assign_idle_processors_and_communicators(time=0)
-        self.state.sim.run()
+        Simulator._assign_idle_processors_and_communicators(state, time=0)
+        state.sim.run()
 
         # print(f"Finished {self.ntasks_complete} tasks out of {self.total_tasks}")
-        assert self.state.ntasks_complete == self.state.total_tasks
+        assert state.ntasks_complete == state.total_tasks
 
-        return ExecutionReport(
-            self.state.schedule, self.state.task_graph, self.state.context_graph
-        )
+        return ExecutionReport(state.schedule, state.task_graph, state.context_graph)

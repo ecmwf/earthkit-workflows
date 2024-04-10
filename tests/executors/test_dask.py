@@ -34,7 +34,7 @@ task_graph = (
 
 
 def test_without_schedule(tmpdir):
-    DaskLocalExecutor().execute(task_graph, report=f"{tmpdir}/report-no-schedule.html")
+    DaskLocalExecutor.execute(task_graph, report=f"{tmpdir}/report-no-schedule.html")
 
 
 def test_with_schedule(tmpdir):
@@ -42,24 +42,22 @@ def test_with_schedule(tmpdir):
 
     # Parse performance report to check task stream is the same as task allocation
     # in schedule
-    DaskLocalExecutor().execute(schedule, 2, report=f"{tmpdir}/report-schedule.html")
+    DaskLocalExecutor.execute(schedule, 2, report=f"{tmpdir}/report-schedule.html")
     report = Report(f"{tmpdir}/report-schedule.html")
     for _, tasks in report.task_stream.stream(True).items():
-        print("STREAM", tasks)
-        print("ALLOCATION", schedule.task_allocation.values())
         assert tasks in list(schedule.task_allocation.values())
 
     # Adaptive with minimum number of workers less than workers in context
     # should raise error
     with pytest.raises(AssertionError):
-        DaskLocalExecutor().execute(schedule, adaptive_kwargs={"minimum": 0})
-        DaskLocalExecutor().execute(schedule, adaptive_kwargs={"maximum": 1})
+        DaskLocalExecutor.execute(schedule, adaptive_kwargs={"minimum": 0})
+        DaskLocalExecutor.execute(schedule, adaptive_kwargs={"maximum": 1})
 
 
 def test_with_schedule_adaptive(tmpdir):
     schedule = DepthFirstScheduler().schedule(task_graph, context_graph)
 
-    DaskLocalExecutor().execute(
+    DaskLocalExecutor.execute(
         schedule,
         2,
         report=f"{tmpdir}/report-adaptive.html",

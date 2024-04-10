@@ -159,9 +159,7 @@ class DaskLocalExecutor:
     common configuration arguments
     """
 
-    @classmethod
     def execute(
-        cls,
         schedule: Graph | Schedule,
         n_workers: int = 1,
         threads_per_worker: int = 1,
@@ -215,9 +213,7 @@ class DaskLocalExecutor:
                 report=report,
             )
 
-    @classmethod
     def benchmark(
-        cls,
         schedule: Graph | Schedule,
         n_workers: int = 1,
         memory_limit: str | None = "5G",
@@ -282,9 +278,7 @@ class DaskKubeExecutor:
     common configuration arguments
     """
 
-    @classmethod
     def execute(
-        cls,
         schedule: Graph | Schedule,
         pod_template: dict = None,
         namespace: str = None,
@@ -344,9 +338,7 @@ class DaskClientExecutor:
     Execute graph on existing Dask cluster
     """
 
-    @classmethod
     def execute(
-        cls,
         schedule: Graph | Schedule,
         dask_scheduler_file: str,
         adaptive: bool = False,
@@ -380,9 +372,7 @@ class DaskClientExecutor:
             report=report,
         )
 
-    @classmethod
     def benchmark(
-        cls,
         schedule: Graph | Schedule,
         dask_scheduler_file: str,
         mem_report: str,
@@ -411,7 +401,7 @@ class DaskClientExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        cls.execute(schedule, dask_scheduler_file, adaptive, report)
+        DaskClientExecutor.execute(schedule, dask_scheduler_file, adaptive, report)
 
         rep = Report(report)
         mem_rep = MemoryReport(mem_report)

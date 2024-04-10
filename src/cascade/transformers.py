@@ -1,85 +1,8 @@
 from dask.utils import apply
-from meters import metered
 
 from .graph import Sink, Node, Graph, Transformer
 from .taskgraph import Resources, Task, TaskGraph, ExecutionGraph
-from .contextgraph import ContextGraph
-
-
-def determine_resources(graph: Graph, num_workers: int = 1) -> dict[str, Resources]:
-    """
-    Determines CPU and memory resources used by tasks in graph by executing the
-    task graph using a thread pool.
-
-    Params
-    ------
-    graph: Graph, task graph to determine resources for
-    num_workers: int, number of threads in thread pool. Default is 1.
-
-    Returns
-    -------
-    dict[str, Resources], dictionary containing Resource object for each node name
-    """
-    from .schedulers.depthfirst import DepthFirstScheduler
-    from concurrent.futures import ThreadPoolExecutor
-
-    task_graph = to_task_graph(graph, {})
-    context = ContextGraph()
-    for index in range(num_workers):
-        context.add_node(f"cpu_{index}", type="CPU", speed=500, memory=500)
-    schedule = DepthFirstScheduler().schedule(task_graph, context)
-
-    resources = {}
-    futures = {}
-    ready = (x[0] for x in schedule.task_allocation.values())
-    completed_tasks = []
-    with ThreadPoolExecutor(num_workers) as executor:
-        while len(completed_tasks) != len(list(graph.nodes())):
-            for task_name in ready:
-                task = task_graph.get_node(task_name)
-                payload = task.payload
-                futures[task_name] = executor.submit(
-                    metered(return_meter=True)(payload[0]), *payload[1], **payload[2]
-                )
-            ready = set()
-
-            new_futures = {}
-            for task_name, future in futures.items():
-                if future.done():
-                    meter, output = future.result()
-                    # Convert memory to MB
-                    resources[task_name] = Resources(
-                        meter.elapsed_cpu, meter.mem / 10**6
-                    )
-
-                    task = task_graph.get_node(task_name)
-                    # Pass output to arguments in payloads requiring it
-                    successors = task_graph.successors(task)
-                    for successor in successors:
-                        assert not isinstance(
-                            successor.payload, str
-                        ), f"Payload can not be str. Got {successor.payload}"
-
-                        task_ready = True
-                        for iname, input in successor.inputs.items():
-                            if input.parent == task:
-                                successor.payload = tuple(
-                                    output if (isinstance(x, str) and x == iname) else x
-                                    for x in successor.payload
-                                )
-                            else:
-                                if input.parent.name not in completed_tasks:
-                                    task_ready = False
-                        if task_ready:
-                            ready.add(successor.name)
-
-                    task.payload = None
-                    completed_tasks.append(task_name)
-                else:
-                    new_futures[task_name] = future
-            future = new_futures
-
-    return resources
+from .executors.processpool import ProcessPoolExecutor
 
 
 class _ToTaskGraph(Transformer):
@@ -113,7 +36,7 @@ def to_task_graph(
     TaskGraph
     """
     if resource_map is None:
-        resource_map = determine_resources(graph)
+        resource_map = ProcessPoolExecutor.benchmark(graph)
     return _ToTaskGraph(resource_map).transform(graph)
 
 
