@@ -40,7 +40,9 @@ class WorkerPool:
             process.start()
 
         self.result_handler = threading.Thread(
-            target=WorkerPool._handle_results, args=(self._outqueue,)
+            name="Result Handler",
+            target=WorkerPool._handle_results,
+            args=(self._outqueue,),
         )
         self.result_handler.start()
 
@@ -78,11 +80,15 @@ class WorkerPool:
             if p.exitcode is None:
                 p.terminate()
 
+        handler_alive = self.result_handler.is_alive()
         self.result_handler.join()
 
         for p in self._pool:
             if p.is_alive():
                 p.join()
+
+        if not handler_alive:
+            raise Exception("Result Hander thread died during execution")
 
     def __enter__(self):
         return self
