@@ -49,7 +49,7 @@ def test_with_schedule(tmpdir):
 
     # Adaptive with minimum number of workers less than workers in context
     # should raise error
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         DaskLocalExecutor.execute(schedule, adaptive_kwargs={"minimum": 0})
         DaskLocalExecutor.execute(schedule, adaptive_kwargs={"maximum": 1})
 

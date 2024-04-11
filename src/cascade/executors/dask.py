@@ -71,7 +71,7 @@ class DaskExecutor:
                     allow_other_workers=True,
                 ):
                     dask_graph = HighLevelGraph.from_collections(
-                        "graph", to_dask_graph(schedule.task_graph)
+                        "graph", to_dask_graph(schedule)
                     )
             else:
                 # If strictly following schedule, need to modify tasks to bind with the previous
@@ -79,7 +79,7 @@ class DaskExecutor:
                 with dask.annotate(
                     workers=functools.partial(_worker_name, schedule.task_allocation),
                 ):
-                    dask_graph = to_dask_graph(schedule.task_graph)
+                    dask_graph = to_dask_graph(schedule)
                     for _, allocation in schedule.task_allocation.items():
                         for index, task in enumerate(allocation):
                             if index > 0:
@@ -90,17 +90,20 @@ class DaskExecutor:
                                 )
                     dask_graph = HighLevelGraph.from_collections("graph", dask_graph)
 
-            outputs = [x.name for x in schedule.task_graph.sinks]
-        else:
-            assert isinstance(schedule, Graph)
+        elif isinstance(schedule, Graph):
             dask_graph = to_dask_graph(schedule)
-            outputs = [x.name for x in schedule.sinks]
+        else:
+            raise ValueError(
+                "Invalid input, schedule must be of type Graph or Schedule"
+            )
 
         results = {}
         errored_tasks = 0
         with Client(**client_kwargs) as client:
             with performance_report(report):
-                future = client.get(dask_graph, outputs, sync=False)
+                future = client.get(
+                    dask_graph, [x.name for x in schedule.sinks], sync=False
+                )
 
                 seq = as_completed(future)
                 del future
@@ -114,7 +117,6 @@ class DaskExecutor:
                             f"Task {fut.key} failed with exception: {fut.exception()}"
                         )
                         errored_tasks += 1
-                    assert fut.key not in results
                     results[fut.key] = fut.result()
 
         if errored_tasks != 0:
@@ -125,23 +127,26 @@ class DaskExecutor:
 
 
 def check_consistency(
-    schedule: Graph | Schedule,
+    graph: Graph,
     cluster_kwargs: dict,
     adaptive_kwargs: dict | None = None,
 ):
-    if isinstance(schedule, Schedule):
-        worker_names = list(schedule.task_allocation.keys())
-        cluster_kwargs["worker_names"] = worker_names
-        cluster_kwargs["n_workers"] = len(worker_names)
+    if not isinstance(graph, Schedule):
+        return
 
-        if adaptive_kwargs is not None:
-            assert adaptive_kwargs.get("minimum", len(worker_names)) >= len(
-                worker_names
-            ), "Minimum number of workers in adaptive cluster must be at least processors in context graph"
-            assert adaptive_kwargs.get("maximum", len(worker_names)) >= len(
-                worker_names
-            ), "Maximum number of workers in adaptive cluster must be at least processors in context graph"
-        return cluster_kwargs
+    worker_names = list(graph.task_allocation.keys())
+    cluster_kwargs["worker_names"] = worker_names
+    cluster_kwargs["n_workers"] = len(worker_names)
+
+    if adaptive_kwargs is not None:
+        if adaptive_kwargs.get("minimum", len(worker_names)) < len(worker_names):
+            raise ValueError(
+                "Minimum number of workers in adaptive cluster must be at least processors in context graph"
+            )
+        elif adaptive_kwargs.get("maximum", len(worker_names)) < len(worker_names):
+            raise ValueError(
+                "Maximum number of workers in adaptive cluster must be at least processors in context graph"
+            )
 
 
 def reports_to_resources(report: Report, mem_report: MemoryReport):
@@ -160,7 +165,7 @@ class DaskLocalExecutor:
     """
 
     def execute(
-        schedule: Graph | Schedule,
+        graph: Graph,
         n_workers: int = 1,
         threads_per_worker: int = 1,
         processes: bool = True,
@@ -174,7 +179,7 @@ class DaskLocalExecutor:
 
         Params
         ------
-        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
         n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
         is overridden by the number of processors in schedule context graph
@@ -203,18 +208,18 @@ class DaskLocalExecutor:
         if cluster_kwargs is not None:
             local_kwargs.update(cluster_kwargs)
 
-        check_consistency(schedule, local_kwargs, adaptive_kwargs)
+        check_consistency(graph, local_kwargs, adaptive_kwargs)
         with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return DaskExecutor.execute(
-                schedule,
+                graph,
                 client_kwargs={"address": cluster},
                 adaptive=(adaptive_kwargs is not None),
                 report=report,
             )
 
     def benchmark(
-        schedule: Graph | Schedule,
+        graph: Graph,
         n_workers: int = 1,
         memory_limit: str | None = "5G",
         cluster_kwargs: dict = None,
@@ -229,7 +234,7 @@ class DaskLocalExecutor:
 
         Params
         ------
-        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
         n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
         is overridden by the number of processors in schedule context graph
@@ -256,12 +261,12 @@ class DaskLocalExecutor:
         if cluster_kwargs is not None:
             local_kwargs.update(cluster_kwargs)
 
-        check_consistency(schedule, local_kwargs, adaptive_kwargs)
+        check_consistency(graph, local_kwargs, adaptive_kwargs)
         with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
             pprint.pprint(cluster.scheduler_info)
             dask_memusage.install(cluster.scheduler, mem_report)
             DaskExecutor.execute(
-                schedule,
+                graph,
                 client_kwargs={"address": cluster},
                 adaptive=(adaptive_kwargs is not None),
                 report=report,
@@ -279,7 +284,7 @@ class DaskKubeExecutor:
     """
 
     def execute(
-        schedule: Graph | Schedule,
+        graph: Graph,
         pod_template: dict = None,
         namespace: str = None,
         n_workers: int = None,
@@ -293,7 +298,7 @@ class DaskKubeExecutor:
 
         Params
         ------
-        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
         pod_template: dict, Kubernetes pod template. If None, defaults to using Dask docker image
         namespace: Kubernetes namespace in which to launch workers
@@ -322,11 +327,11 @@ class DaskKubeExecutor:
         if cluster_kwargs is not None:
             kube_kwargs.update(cluster_kwargs)
 
-        check_consistency(schedule, kube_kwargs, adaptive_kwargs)
+        check_consistency(graph, kube_kwargs, adaptive_kwargs)
         with create_cluster("kube", kube_kwargs, adaptive_kwargs) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return DaskExecutor.execute(
-                schedule,
+                graph,
                 client_kwargs={"address": cluster},
                 adaptive=(adaptive_kwargs is not None),
                 report=report,
@@ -339,7 +344,7 @@ class DaskClientExecutor:
     """
 
     def execute(
-        schedule: Graph | Schedule,
+        graph: Graph,
         dask_scheduler_file: str,
         adaptive: bool = False,
         report: str = "performance_report.html",
@@ -350,7 +355,7 @@ class DaskClientExecutor:
 
         Params
         ------
-        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
         dask_scheduler_file: str, path to dask scheduler file
         adaptive: bool, whether cluster is adative or not
@@ -366,14 +371,14 @@ class DaskClientExecutor:
         RuntimeError if any tasks in the graph have failed
         """
         return DaskExecutor.execute(
-            schedule,
+            graph,
             client_kwargs={"scheduler_file": dask_scheduler_file},
             adaptive=adaptive,
             report=report,
         )
 
     def benchmark(
-        schedule: Graph | Schedule,
+        graph: Graph,
         dask_scheduler_file: str,
         mem_report: str,
         adaptive: bool = False,
@@ -386,7 +391,7 @@ class DaskClientExecutor:
 
         Params
         ------
-        schedule: Graph or Schedule, task graph to execute. If schedule is provided
+        graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
         dask_scheduler_file: str, path to dask scheduler file
         adaptive: bool, whether cluster is adative or not
@@ -401,7 +406,7 @@ class DaskClientExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        DaskClientExecutor.execute(schedule, dask_scheduler_file, adaptive, report)
+        DaskClientExecutor.execute(graph, dask_scheduler_file, adaptive, report)
 
         rep = Report(report)
         mem_rep = MemoryReport(mem_report)

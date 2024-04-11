@@ -1,6 +1,6 @@
 import numpy as np
 
-from cascade.utility import EventLoop
+from cascade.utility import EventLoop, successors, predecessors
 from cascade.taskgraph import Task, TaskGraph
 from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
@@ -66,11 +66,11 @@ class DepthFirstScheduler:
     def on_task_complete(self, time, task):
         # print(f"Task {task.name} completed at time {time} by processor {processor.name}")
         self.state.completed_tasks.add(task.name)
-        successors = self.state.task_graph.successors(task)
+        children = successors(self.state.task_graph, task)
 
-        for dependent in successors:
-            predecessors = self.state.task_graph.predecessors(dependent)
-            if all(t.name in self.state.completed_tasks for t in predecessors):
+        for dependent in children:
+            parents = predecessors(self.state.task_graph, dependent)
+            if all(t.name in self.state.completed_tasks for t in parents):
                 self.state.eligible.append(dependent)
 
         self.assign_idle_processors(time)

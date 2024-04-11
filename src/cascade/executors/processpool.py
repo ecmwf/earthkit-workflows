@@ -4,6 +4,7 @@ import threading
 from typing import Any
 
 from meters import metered
+from cascade.utility import successors
 from cascade.schedulers.schedule import Schedule
 from cascade.graph import Graph, Node
 from cascade.taskgraph import Resources
@@ -90,17 +91,14 @@ class WorkerPool:
         if not handler_alive:
             raise Exception("Result Hander thread died during execution")
 
+    def is_running(self) -> bool:
+        return self.result_handler.is_alive()
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.terminate()
-
-
-def successors(graph: Graph | Schedule, task: Node) -> list[Node]:
-    if isinstance(graph, Graph):
-        return [x[0] for x in sum(graph.get_successors(task).values(), [])]
-    return graph.successors(task)
 
 
 class ProcessPoolExecutor:
@@ -110,19 +108,9 @@ class ProcessPoolExecutor:
             self.results = mp.Manager().dict()
             self.resources = {}
 
-        def eligible(self, schedule: Schedule | Graph) -> set[Node]:
-            if isinstance(schedule, Schedule):
-                sources = set(
-                    schedule.task_graph.get_node(x[0])
-                    for x in schedule.task_allocation.values()
-                )
-                graph = schedule.task_graph
-            else:
-                sources = set(x for x in schedule.nodes() if x.is_source())
-                graph = schedule
-
+        def eligible(self, graph: Graph) -> set[Node]:
             if len(self.pending) == 0 and len(self.results) == 0:
-                return sources
+                return set(graph.sources())
 
             # Determine next tasks ready for submission
             ready = set()
@@ -131,7 +119,7 @@ class ProcessPoolExecutor:
                 task_name = self.pending[index]
                 task = graph.get_node(task_name)
                 if task_name in self.results:
-                    next_tasks = successors(schedule, task)
+                    next_tasks = successors(graph, task)
                     for next in next_tasks:
                         task_ready = True
                         for input in next.inputs.values():
@@ -174,13 +162,13 @@ class ProcessPoolExecutor:
 
     def _execute_schedule(schedule: Schedule):
         state = ProcessPoolExecutor.State()
-        workers = list(schedule.task_allocation.keys())
-        num_nodes = len(list(schedule.task_graph.nodes()))
+        workers = schedule.processors()
+        num_nodes = len(list(schedule.nodes()))
         with WorkerPool(workers) as executor:
-            while len(state.results) != num_nodes:
+            while len(state.results) != num_nodes and executor.is_running():
                 for task in state.eligible(schedule):
                     executor.submit(
-                        schedule.get_processor(task.name),
+                        schedule.processor(task.name),
                         execute_task,
                         [
                             state.results,
@@ -205,7 +193,7 @@ class ProcessPoolExecutor:
                         ),
                     )
                     state.pending.append(task.name)
-                state.clear_cache(schedule.task_graph)
+                state.clear_cache(schedule)
         return state
 
     def _execute_graph(graph: Graph, *, n_workers: int = 1):
@@ -241,16 +229,15 @@ class ProcessPoolExecutor:
             state.clear_cache(graph)
         return state
 
-    def _execute(schedule: Schedule | Graph, **kwargs):
-        if isinstance(schedule, Schedule):
-            return ProcessPoolExecutor._execute_schedule(schedule, **kwargs)
-        return ProcessPoolExecutor._execute_graph(schedule, **kwargs)
+    def _execute(graph: Graph, **kwargs):
+        if isinstance(graph, Schedule):
+            return ProcessPoolExecutor._execute_schedule(graph, **kwargs)
+        return ProcessPoolExecutor._execute_graph(graph, **kwargs)
 
-    def execute(schedule: Schedule | Graph, **kwargs) -> dict[str, Any]:
-        state = ProcessPoolExecutor._execute(schedule, **kwargs)
-        graph = schedule.task_graph if isinstance(schedule, Schedule) else schedule
+    def execute(graph: Graph, **kwargs) -> dict[str, Any]:
+        state = ProcessPoolExecutor._execute(graph, **kwargs)
         return {sink.name: state.results[sink.name] for sink in graph.sinks}
 
-    def benchmark(schedule: Schedule | Graph, **kwargs) -> dict[str, Resources]:
-        state = ProcessPoolExecutor._execute(schedule, **kwargs)
+    def benchmark(graph: Graph, **kwargs) -> dict[str, Resources]:
+        state = ProcessPoolExecutor._execute(graph, **kwargs)
         return state.resources
