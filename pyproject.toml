@@ -12,7 +12,6 @@ authors = [
 license = { text = "Apache License Version 2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "randomname",
     "numpy",
     "xarray",
     "networkx",

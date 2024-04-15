@@ -1,9 +1,9 @@
-import randomname
 import networkx as nx
+from typing import Iterator
 
 
 class Processor:
-    def __init__(self, name, type, speed, memory):
+    def __init__(self, name: str, type: str, speed: float, memory: float):
         self.name = name
         self.type = type
         self.speed = speed
@@ -15,12 +15,14 @@ class Processor:
 
 
 class Communicator:
-    def __init__(self, source, target, bandwidth, latency):
-        self.source = source
-        self.target = target
+    def __init__(
+        self, source: Processor, target: Processor, bandwidth: float, latency: float
+    ):
+        self.source = source.name
+        self.target = target.name
         self.bandwidth = bandwidth
         self.latency = latency
-        self.name = randomname.get_name()
+        self.name = f"{self.source}-{self.target}"
 
     def __hash__(self) -> int:
         return hash(self.source + self.target + str(self.bandwidth) + str(self.latency))
@@ -31,13 +33,41 @@ class ContextGraph(nx.Graph):
         self.node_dict = {}
         super().__init__(**attr)
 
-    def add_node(self, name, type, speed, memory):
+    def add_node(self, name: str, type: str, speed: float, memory: float):
         ex = Processor(name, type, speed, memory)
         self.node_dict[ex.name] = ex
-        return super().add_node(ex)
+        super().add_node(ex)
 
-    def add_edge(self, u_of_edge, v_of_edge, bandwidth, latency):
+    def add_edge(
+        self, u_of_edge: str, v_of_edge: str, bandwidth: float, latency: float
+    ):
         u_of_edge = self.node_dict[u_of_edge]
         v_of_edge = self.node_dict[v_of_edge]
         c = Communicator(u_of_edge, v_of_edge, bandwidth, latency)
-        return super().add_edge(u_of_edge, v_of_edge, obj=c)
+        super().add_edge(u_of_edge, v_of_edge, obj=c)
+
+    def communicator(self, u_of_edge: str, v_of_edge: str) -> Communicator:
+        """
+        Get communicator for edge
+
+        Params
+        ------
+        u_of_edge: str, source processor name
+        v_of_edge: str, target processor name
+
+        Returns
+        -------
+        Communicator for edge
+        """
+        return super().get_edge_data(u_of_edge, v_of_edge)["obj"]
+
+    def communicators(self) -> Iterator[Communicator]:
+        """
+        Iterator over communicators in edges of graphs
+
+        Returns
+        -------
+        Iterator[Communicator]
+        """
+        for _, _, communicator in self.edges(data=True):
+            yield communicator["obj"]

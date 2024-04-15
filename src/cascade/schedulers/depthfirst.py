@@ -1,112 +1,74 @@
-import numpy as np
+import functools
+from dataclasses import dataclass
 
-from cascade.utility import EventLoop, successors, predecessors
 from cascade.taskgraph import Task, TaskGraph
 from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
 from cascade.transformers import to_task_graph
 from .schedule import Schedule
+from .simulate import ExecutionState, ContextState, Simulator
 
 
-class MemoryUsage:
+class DepthFirstScheduler(Simulator):
     def __init__(self):
-        self.tasks_in_memory: list[Task] = []
+        super().__init__()
+        self.task_allocation = {}
 
-    @property
-    def memory(self) -> float:
-        return np.sum([t.memory for t in self.tasks_in_memory])
+    def reset_state(self):
+        super().reset_state()
+        self.task_allocation = {}
 
-    def remove_task(self, task: Task):
-        self.tasks_in_memory.remove(task)
-
-    def add_task(self, task: Task):
-        if task not in self.tasks_in_memory:
-            self.tasks_in_memory.append(task)
-
-    def current_tasks(self) -> list[Task]:
-        return self.tasks_in_memory[:]
-
-    def __repr__(self) -> str:
-        return f"Memory:{self.memory},Tasks:{self.tasks_in_memory}"
-
-
-class DepthFirstScheduler:
-    class State:
-        def __init__(self, task_graph: Graph | TaskGraph, context_graph: ContextGraph):
-            if not isinstance(task_graph, TaskGraph):
-                task_graph = to_task_graph(task_graph, None)
-            self.task_graph = task_graph
-            self.context_graph = context_graph
-            self.completed_tasks = set()
-            self.task_allocation = {p.name: [] for p in self.context_graph}
-            self.memory_usage = {p.name: MemoryUsage() for p in self.context_graph}
-
-            # Sort sinks by total compute cost
-            sinks = self.task_graph.sinks[:]
-            sinks.sort(key=lambda x: self.task_graph.accumulated_cost(x))
-            self.eligible = []
-            for sink in sinks:
-                tmp_graph = Graph([sink])
-                for src in tmp_graph.sources():
-                    if src not in self.eligible:
-                        self.eligible.append(src)
-            self.eligible.reverse()
-            self.sim = EventLoop()
-
-    def __init__(self):
-        self.state = None
-
-    def assign_task_to_processor(self, task, processor, start_time):
-        # print(f"Task {task.name} assigned to processor {processor.name} at time {start_time}")
-        self.state.task_allocation[processor.name].append(task.name)
-        end_time = start_time + task.cost / processor.speed
-        self.state.memory_usage[processor.name].add_task(task)
-        self.state.sim.add_event(end_time, self.on_task_complete, task)
-
-    def on_task_complete(self, time, task):
-        # print(f"Task {task.name} completed at time {time} by processor {processor.name}")
-        self.state.completed_tasks.add(task.name)
-        children = successors(self.state.task_graph, task)
-
-        for dependent in children:
-            parents = predecessors(self.state.task_graph, dependent)
-            if all(t.name in self.state.completed_tasks for t in parents):
-                self.state.eligible.append(dependent)
-
-        self.assign_idle_processors(time)
-
-    def update_memory_usage(self, processor) -> float:
-        for task in self.state.memory_usage[processor.name].current_tasks():
-            if task.name in self.state.completed_tasks:
-                self.state.memory_usage[processor.name].remove_task(task)
-
-        return self.state.memory_usage[processor.name].memory
-
-    def assign_idle_processors(self, time):
-        # Assign idle processors
-        for processor in self.state.context_graph:
-            new_mem_usage = self.update_memory_usage(processor)
-            if (
-                len(self.state.task_allocation[processor.name]) == 0
-                or self.state.task_allocation[processor.name][-1]
-                in self.state.completed_tasks
+    def assign_eligible_tasks(
+        self, time: float, execution_state: ExecutionState, context_state: ContextState
+    ):
+        context_state.update(self.completed_tasks)
+        for processor in context_state.idle_processors():
+            mem_usage = processor.state.memory_usage.memory
+            pop_index = None
+            # Take from back so newly added dependents get picked off first
+            for index in range(
+                len(self.eligible[Simulator.DEFAULT_PROCESSOR]) - 1, -1, -1
             ):
-                pop_index = None
-                # Take from back so newly added dependents get picked off first
-                for index in range(len(self.state.eligible) - 1, -1, -1):
-                    if (
-                        new_mem_usage + self.state.eligible[index].memory
-                    ) < processor.memory:
-                        pop_index = index
-                        break
+                if (
+                    mem_usage + self.eligible[Simulator.DEFAULT_PROCESSOR][index].memory
+                ) < processor.memory:
+                    pop_index = index
+                    break
 
-                if pop_index is not None:
-                    self.assign_task_to_processor(
-                        self.state.eligible.pop(pop_index), processor, time
-                    )
+            if pop_index is not None:
+                next_task = self.eligible[Simulator.DEFAULT_PROCESSOR].pop(pop_index)
+                self.task_allocation.setdefault(processor.name, []).append(
+                    next_task.name
+                )
+                context_state.assign_task_to_processor(
+                    next_task,
+                    processor,
+                    time,
+                    functools.partial(
+                        self.on_task_complete,
+                        execution_state,
+                        context_state,
+                        next_task,
+                        processor,
+                    ),
+                )
+
+    def initialise_eligible_tasks(self, graph: TaskGraph) -> list[Task]:
+        # Sort sinks by total compute cost
+        sinks = graph.sinks[:]
+        sinks.sort(key=lambda x: graph.accumulated_cost(x))
+        self.eligible[Simulator.DEFAULT_PROCESSOR] = []
+        for sink in sinks:
+            tmp_graph = Graph([sink])
+            for src in tmp_graph.sources():
+                if src not in self.eligible[Simulator.DEFAULT_PROCESSOR]:
+                    self.eligible[Simulator.DEFAULT_PROCESSOR].append(src)
+        self.eligible[Simulator.DEFAULT_PROCESSOR].reverse()
 
     def schedule(
-        self, task_graph: Graph | TaskGraph, context_graph: ContextGraph
+        self,
+        task_graph: Graph | TaskGraph,
+        context_graph: ContextGraph,
     ) -> Schedule:
         """
         Schedule tasks in task graph to workers in context graph.
@@ -122,15 +84,11 @@ class DepthFirstScheduler:
         Schedule
         """
 
-        self.state = DepthFirstScheduler.State(task_graph, context_graph)
-        self.assign_idle_processors(time=0)
-        self.state.sim.run()
-        print(
-            f"Finished {len(self.state.completed_tasks)} tasks out of {len(list(self.state.task_graph.nodes()))}"
+        if not isinstance(task_graph, TaskGraph):
+            task_graph = to_task_graph(task_graph, None)
+        super().execute(
+            task_graph,
+            context_graph=context_graph,
+            with_communication=False,
         )
-        if len(self.state.completed_tasks) != len(list(self.state.task_graph.nodes())):
-            raise RuntimeError("Scheduler failed to complete all tasks.")
-
-        return Schedule(
-            self.state.task_graph, self.state.context_graph, self.state.task_allocation
-        )
+        return Schedule(task_graph, context_graph, self.task_allocation)

@@ -41,17 +41,22 @@ def to_task_graph(
 
 
 class _ToExecutionGraph(Transformer):
+
+    def __init__(self, state: callable = None):
+        self.state = state
+
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        newnode = node.copy()
+        newnode = Task(node.name, node.outputs.copy(), node.payload)
         newnode.inputs = inputs
+        newnode.state = self.state() if self.state is not None else None
         return newnode
 
     def graph(self, graph: Graph, sinks: list[Sink]) -> ExecutionGraph:
         return ExecutionGraph(sinks)
 
 
-def to_execution_graph(graph: Graph) -> ExecutionGraph:
-    return _ToExecutionGraph().transform(graph)
+def to_execution_graph(graph: Graph, state: callable = None) -> ExecutionGraph:
+    return _ToExecutionGraph(state).transform(graph)
 
 
 class _ToDaskGraph(Transformer):

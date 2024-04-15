@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Iterator
 
 from .graph import Graph
 from .graph import Node, Sink
@@ -23,10 +23,13 @@ class Task(Node):
         name: str,
         outputs: list[str] | None = None,
         payload: Any = None,
+        resources: Resources = None,
         **kwargs: "Node | Node.Output",
     ):
         super().__init__(name, outputs, payload, **kwargs)
-        self.resources = Resources()
+        if resources is None:
+            resources = Resources()
+        self.resources = resources
         self.state = None
 
     @property
@@ -53,7 +56,7 @@ class Task(Node):
 
 
 class Communication(Node):
-    def __init__(self, name, source, size):
+    def __init__(self, name: str, source: Node | Node.Output, size: float):
         super().__init__(name, payload=None, input=source)
         self.size = size
         self.state = None
@@ -66,12 +69,30 @@ class TaskGraph(Graph):
         for task in self.nodes(forwards=True):
             self._accumulated_cost[task] = self.accumulated_cost(task)
 
-    def edges(self):
+    def edges(self) -> Iterator[tuple[Node, Node]]:
+        """
+        Iterator over all node pairs connected by an edge in the graph.
+
+        Returns
+        -------
+        Iterator[Node, Node]
+        """
         for node in self.nodes():
             for input in node.inputs.values():
                 yield input.parent, node
 
     def accumulated_cost(self, task: Task) -> float:
+        """
+        Calculate the accumulated cost of a task, using the cost of all its predecessors.
+
+        Params
+        ------
+        task: Task
+
+        Returns
+        -------
+        float, accumulated cost of task
+        """
         if task in self._accumulated_cost:
             return self._accumulated_cost[task]
 
@@ -85,11 +106,14 @@ class TaskGraph(Graph):
 
 
 class ExecutionGraph(TaskGraph):
-    def _make_communication_task(self, source, target):
+    def _make_communication_task(
+        self, source: Node, target: Node, state: callable = None
+    ):
         t = Communication(f"{source.name}-{target.name}", source, source.memory)
+        t.state = state() if state is not None else None
 
         for iname, input in target.inputs.items():
-            if input.name == source:
+            if input.parent.name == source.name:
                 target.inputs[iname] = t.get_output()
                 break
         return t
