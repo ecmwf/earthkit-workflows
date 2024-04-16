@@ -10,31 +10,20 @@ from cascade.graph import Graph, Node
 from cascade.taskgraph import Resources
 
 
-def execute_task(results, function, args, kwargs):
-    extracted_args = [results[arg] if arg in results else arg for arg in args]
-    return function(*extracted_args, **kwargs)
-
-
-def worker(inqueue: mp.SimpleQueue, outqueue: mp.SimpleQueue):
-    while True:
-        next = inqueue.get()
-        if next is None:
-            return
-
-        fn, args, kwargs, callback, error_callback = next
-        try:
-            result = (True, fn(*args, **kwargs))
-        except Exception as e:
-            result = (False, e)
-        outqueue.put((result, callback, error_callback))
-
-
 class WorkerPool:
+    """
+    Process pool with named workers that allows submission of tasks to specific workers.
+    Results from execution of submitted tasks are handled by a user specified callback on
+    successful completion and an error callback on failure.
+    """
+
     def __init__(self, workers: list[str]):
         self._inqueues = {name: mp.SimpleQueue() for name in workers}
         self._outqueue = mp.SimpleQueue()
         self._pool = [
-            mp.Process(target=worker, args=(self._inqueues[name], self._outqueue))
+            mp.Process(
+                target=WorkerPool._worker, args=(self._inqueues[name], self._outqueue)
+            )
             for name in workers
         ]
         for process in self._pool:
@@ -47,18 +36,18 @@ class WorkerPool:
         )
         self.result_handler.start()
 
-    def submit(
-        self,
-        worker: str,
-        fn: callable,
-        args: list,
-        kwargs: dict | None = None,
-        callback=None,
-        error_callback=None,
-    ):
-        if kwargs is None:
-            kwargs = {}
-        self._inqueues[worker].put((fn, args, kwargs, callback, error_callback))
+    def _worker(inqueue: mp.SimpleQueue, outqueue: mp.SimpleQueue):
+        while True:
+            next = inqueue.get()
+            if next is None:
+                return
+
+            fn, args, kwargs, callback, error_callback = next
+            try:
+                result = (True, fn(*args, **kwargs))
+            except Exception as e:
+                result = (False, e)
+            outqueue.put((result, callback, error_callback))
 
     def _handle_results(outqueue: mp.SimpleQueue):
         while True:
@@ -72,6 +61,38 @@ class WorkerPool:
             else:
                 error_callback(result[1])
 
+    def submit(
+        self,
+        worker: str,
+        fn: callable,
+        args: list,
+        kwargs: dict | None = None,
+        callback=None,
+        error_callback=None,
+    ):
+        """
+        Submit task to be run on a specific worker in the pool.
+
+        Params
+        ------
+        worker: str, name of worker to run task
+        fn: callable, function to be executed
+        args: list, arguments to be passed to function
+        kwargs: dict, keyword arguments to be passed to function
+        callback: callable, function to be called on successful completion of task
+        error_callback: callable, function to be called on failure of task
+
+        Raises
+        ------
+        Exception: if WorkerPool is not running
+        """
+        if not self.is_running():
+            raise Exception("WorkerPool result handler is not running")
+
+        if kwargs is None:
+            kwargs = {}
+        self._inqueues[worker].put((fn, args, kwargs, callback, error_callback))
+
     def terminate(self):
         for inqueue in self._inqueues.values():
             inqueue.put(None)
@@ -81,17 +102,16 @@ class WorkerPool:
             if p.exitcode is None:
                 p.terminate()
 
-        handler_alive = self.result_handler.is_alive()
         self.result_handler.join()
 
         for p in self._pool:
             if p.is_alive():
                 p.join()
 
-        if not handler_alive:
-            raise Exception("Result Hander thread died during execution")
-
     def is_running(self) -> bool:
+        """
+        Returns True if result handler thread in WorkerPool is running, False otherwise.
+        """
         return self.result_handler.is_alive()
 
     def __enter__(self):
@@ -102,6 +122,13 @@ class WorkerPool:
 
 
 class ProcessPoolExecutor:
+    """
+    Executor for executing and benchmarking graphs or schedules using a process pool.
+    When executing a graph, the number of workers in the pool is determined by the
+    n_workers parameter. When executing a schedule, the number of workers is determined
+    by the number of processors in the schedule context graph.
+    """
+
     class State:
         def __init__(self):
             self.pending = []
@@ -109,6 +136,17 @@ class ProcessPoolExecutor:
             self.resources = {}
 
         def eligible(self, graph: Graph) -> set[Node]:
+            """
+            Determines the next set of tasks that are ready for submission.
+
+            Params
+            ------
+            graph: Graph or Schedule, task graph to be executed
+
+            Returns
+            -------
+            set[Node]: set of tasks ready for submission
+            """
             if len(self.pending) == 0 and len(self.results) == 0:
                 return set(graph.sources())
 
@@ -132,46 +170,97 @@ class ProcessPoolExecutor:
                     index += 1
             return ready
 
-        def clear_cache(self, task_graph: Graph):
+        def clear_cache(self, graph: Graph):
+            """
+            Remove results from completed tasks which do not correspond to sinks
+            and are no longer required by child tasks.
+
+            Params
+            ------
+            graph: Graph or Schedule, task graph to be executed
+            """
             tasks = list(self.results.keys())
             for task_name in tasks:
                 if self.results[task_name] is not None:
-                    task = task_graph.get_node(task_name)
+                    task = graph.get_node(task_name)
                     if (
-                        all(
-                            [
-                                x.name in self.results
-                                for x in successors(task_graph, task)
-                            ]
-                        )
-                        and task not in task_graph.sinks
+                        all([x.name in self.results for x in successors(graph, task)])
+                        and task not in graph.sinks
                     ):
                         self.results[task_name] = None
 
-    def _on_task_complete(state: "ProcessPoolExecutor.State", task_name: str, result):
-        if task_name in state.results:
+    def __init__(self, n_workers: int = 1):
+        self.state = None
+        self.n_workers = n_workers
+
+    def reset_state(self):
+        self.state = ProcessPoolExecutor.State()
+
+    def _on_task_complete(self, task_name: str, result: Any):
+        """
+        Callback function to be executed on successful completion of task, storing
+        results and resources in the state.
+
+        Params
+        ------
+        state: ProcessPoolExecutor.State, state of the executor
+        task_name: str, name of task that was completed
+        result: Any, result of the completed task
+        """
+        if task_name in self.state.results:
             raise ValueError(f"Task {task_name} already completed")
         meter, result = result
-        state.results[task_name] = result
+        self.state.results[task_name] = result
         # Convert memory to MB
-        state.resources[task_name] = Resources(meter.elapsed_cpu, meter.mem / 10**6)
+        self.state.resources[task_name] = Resources(
+            meter.elapsed_cpu, meter.mem / 10**6
+        )
 
-    def _on_task_error(task_name: str, result):
-        error, result = result
-        raise Exception(error)
+    def _on_task_error(task_name: str, error):
+        """
+        Callback function to be executed on failure of task.
 
-    def _execute_schedule(schedule: Schedule):
-        state = ProcessPoolExecutor.State()
+        Params
+        ------
+        task_name: str, name of task that failed
+        error: error returned by task
+
+        Raises
+        ------
+        Exception: error returned by task
+        """
+        raise Exception(f"Error in task {task_name}: {error}")
+
+    def _execute_task(
+        results: dict[str, Any], function: callable, args: list, kwargs: dict
+    ):
+        extracted_args = [results[arg] if arg in results else arg for arg in args]
+        return function(*extracted_args, **kwargs)
+
+    def _execute_schedule(self, schedule: Schedule):
+        """
+        Execute task graph in schedule according to task allocation using WorkerPool.
+
+        Params
+        ------
+        schedule: Schedule, task graph to be executed
+
+
+        Raises
+        ------
+        Exception: if WorkerPool is not running
+        """
+        self.reset_state()
         workers = schedule.processors()
         num_nodes = len(list(schedule.nodes()))
         with WorkerPool(workers) as executor:
-            while len(state.results) != num_nodes and executor.is_running():
-                for task in state.eligible(schedule):
+            while len(self.state.results) != num_nodes:
+                for task in self.state.eligible(schedule):
                     executor.submit(
                         schedule.processor(task.name),
-                        execute_task,
+                        ProcessPoolExecutor._execute_task,
                         [
-                            state.results,
+                            self.state.results,
                             metered(return_meter=True)(task.payload[0]),
                             [
                                 (
@@ -184,27 +273,33 @@ class ProcessPoolExecutor:
                             task.payload[2],
                         ],
                         callback=functools.partial(
-                            ProcessPoolExecutor._on_task_complete,
-                            state,
+                            self._on_task_complete,
                             task.name,
                         ),
                         error_callback=functools.partial(
                             ProcessPoolExecutor._on_task_error, task.name
                         ),
                     )
-                    state.pending.append(task.name)
-                state.clear_cache(schedule)
-        return state
+                    self.state.pending.append(task.name)
+                self.state.clear_cache(schedule)
 
-    def _execute_graph(graph: Graph, *, n_workers: int = 1):
-        state = ProcessPoolExecutor.State()
-        with mp.Pool(n_workers) as executor:
-            while len(state.results) != len(list(graph.nodes())):
-                for task in state.eligible(graph):
+    def _execute_graph(self, graph: Graph):
+        """
+        Execute task graph using multiprocessing process pool.
+
+        Params
+        ------
+        graph: Graph, task graph to be executed
+        n_workers: int, number of workers in the process pool. Default is 1
+        """
+        self.reset_state()
+        with mp.Pool(self.n_workers) as executor:
+            while len(self.state.results) != len(list(graph.nodes())):
+                for task in self.state.eligible(graph):
                     executor.apply_async(
-                        execute_task,
+                        ProcessPoolExecutor._execute_task,
                         [
-                            state.results,
+                            self.state.results,
                             metered(return_meter=True)(task.payload[0]),
                             [
                                 (
@@ -217,27 +312,46 @@ class ProcessPoolExecutor:
                             task.payload[2],
                         ],
                         callback=functools.partial(
-                            ProcessPoolExecutor._on_task_complete,
-                            state,
+                            self._on_task_complete,
                             task.name,
                         ),
                         error_callback=functools.partial(
                             ProcessPoolExecutor._on_task_error, task.name
                         ),
                     )
-                    state.pending.append(task.name)
-            state.clear_cache(graph)
-        return state
+                    self.state.pending.append(task.name)
+                self.state.clear_cache(graph)
 
-    def _execute(graph: Graph, **kwargs):
+    def execute(self, graph: Graph) -> dict[str, Any]:
+        """
+        Execute graph or schedule using a pool of worker processes.
+
+        Params
+        ------
+        graph: Graph or Schedule, task graph to be executed
+
+        Returns
+        -------
+        dict[str, Any]: results of the sinks in the graph
+        """
         if isinstance(graph, Schedule):
-            return ProcessPoolExecutor._execute_schedule(graph, **kwargs)
-        return ProcessPoolExecutor._execute_graph(graph, **kwargs)
+            self._execute_schedule(graph)
+        self._execute_graph(graph)
+        return {sink.name: self.state.results[sink.name] for sink in graph.sinks}
 
-    def execute(graph: Graph, **kwargs) -> dict[str, Any]:
-        state = ProcessPoolExecutor._execute(graph, **kwargs)
-        return {sink.name: state.results[sink.name] for sink in graph.sinks}
+    def benchmark(self, graph: Graph) -> dict[str, Resources]:
+        """
+        Benchmark graph or schedule using a pool of worker processes.
 
-    def benchmark(graph: Graph, **kwargs) -> dict[str, Resources]:
-        state = ProcessPoolExecutor._execute(graph, **kwargs)
-        return state.resources
+        Params
+        ------
+        graph: Graph or Schedule, task graph to be executed
+
+        Returns
+        -------
+        dict[str, Resources]: resources used by each task in the graph
+        """
+        if isinstance(graph, Schedule):
+            self._execute_schedule(graph)
+        self._execute_graph(graph)
+        return self.state.resources

@@ -36,7 +36,7 @@ def to_task_graph(
     TaskGraph
     """
     if resource_map is None:
-        resource_map = ProcessPoolExecutor.benchmark(graph)
+        resource_map = ProcessPoolExecutor().benchmark(graph)
     return _ToTaskGraph(resource_map).transform(graph)
 
 

@@ -7,6 +7,7 @@ import functools
 import pprint
 import dask_memusage
 import numpy as np
+import warnings
 
 from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
@@ -162,16 +163,40 @@ class DaskLocalExecutor:
     """
     Convenience class for DaskExecutor using LocalCluster exposing most
     common configuration arguments
+
+    Options exposed:
+        n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
+        is overridden by the number of processors in schedule context graph
+        threads_per_worker: int, number of threads per Dask worker
+        processes: bool, whether to use processors (True) or threads (False). Defaults to True
+        memory_limit: str, memory limit of each Dask worker. If None, no limit is applied
+        cluster_kwargs: dict, arguments for Dask cluster
+        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
     """
 
-    def execute(
-        graph: Graph,
+    def __init__(
+        self,
         n_workers: int = 1,
         threads_per_worker: int = 1,
         processes: bool = True,
         memory_limit: str | None = "5G",
         cluster_kwargs: dict = None,
         adaptive_kwargs: dict = None,
+    ):
+        self.adaptive_kwargs = adaptive_kwargs
+        self.cluster_kwargs = {
+            "n_workers": n_workers,
+            "threads_per_worker": threads_per_worker,
+            "processes": processes,
+            "memory_limit": memory_limit,
+        }
+        if cluster_kwargs is not None:
+            self.cluster_kwargs.update(cluster_kwargs)
+
+    def execute(
+        self,
+        graph: Graph,
+        *,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -181,13 +206,6 @@ class DaskLocalExecutor:
         ------
         graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
-        n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
-        is overridden by the number of processors in schedule context graph
-        threads_per_worker: int, number of threads per Dask worker
-        processes: bool, whether to use processors (True) or threads (False). Defaults to True
-        memory_limit: str, memory limit of each Dask worker. If None, no limit is applied
-        cluster_kwargs: dict, arguments for Dask cluster
-        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
         report: str, name of performance report output file
 
         Returns
@@ -199,31 +217,22 @@ class DaskLocalExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        local_kwargs = {
-            "n_workers": n_workers,
-            "threads_per_worker": threads_per_worker,
-            "processes": processes,
-            "memory_limit": memory_limit,
-        }
-        if cluster_kwargs is not None:
-            local_kwargs.update(cluster_kwargs)
-
-        check_consistency(graph, local_kwargs, adaptive_kwargs)
-        with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
+        check_consistency(graph, self.cluster_kwargs, self.adaptive_kwargs)
+        with create_cluster(
+            "local", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return DaskExecutor.execute(
                 graph,
                 client_kwargs={"address": cluster},
-                adaptive=(adaptive_kwargs is not None),
+                adaptive=(self.adaptive_kwargs is not None),
                 report=report,
             )
 
     def benchmark(
+        self,
         graph: Graph,
-        n_workers: int = 1,
-        memory_limit: str | None = "5G",
-        cluster_kwargs: dict = None,
-        adaptive_kwargs: dict = None,
+        *,
         report: str = "performance_report.html",
         mem_report: str = "mem_usage.csv",
     ) -> dict[str, Resources]:
@@ -252,23 +261,21 @@ class DaskLocalExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        local_kwargs = {
-            "n_workers": n_workers,
-            "threads_per_worker": 1,
-            "processes": True,
-            "memory_limit": memory_limit,
-        }
-        if cluster_kwargs is not None:
-            local_kwargs.update(cluster_kwargs)
+        if self.cluster_kwargs.get("threads_per_worker") != 1:
+            warnings.warn(
+                "Benchmarking with threads_per_worker > 1 may not be accurate"
+            )
 
-        check_consistency(graph, local_kwargs, adaptive_kwargs)
-        with create_cluster("local", local_kwargs, adaptive_kwargs) as cluster:
+        check_consistency(graph, self.cluster_kwargs, self.adaptive_kwargs)
+        with create_cluster(
+            "local", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             dask_memusage.install(cluster.scheduler, mem_report)
             DaskExecutor.execute(
                 graph,
                 client_kwargs={"address": cluster},
-                adaptive=(adaptive_kwargs is not None),
+                adaptive=(self.adaptive_kwargs is not None),
                 report=report,
             )
 
@@ -281,16 +288,40 @@ class DaskKubeExecutor:
     """
     Convenience class for DaskExecutor using KubeCluster exposing most
     common configuration arguments
+
+    Options exposed:
+        pod_template: dict, Kubernetes pod template. If None, defaults to using Dask docker image
+        namespace: Kubernetes namespace in which to launch workers
+        n_workers: int, number of Dask workers to launch. If a schedule is provided, this argument
+        is overridden by the number of processors in schedule context graph
+        env: dict, environment variables to pass to worker pods
+        cluster_kwargs: dict, arguments for Dask cluster
+        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
     """
 
-    def execute(
-        graph: Graph,
+    def __init__(
+        self,
         pod_template: dict = None,
         namespace: str = None,
         n_workers: int = None,
         env: dict = None,
         cluster_kwargs: dict = None,
         adaptive_kwargs: dict = None,
+    ):
+        self.cluster_kwargs = {
+            "pod_template": pod_template,
+            "namespace": namespace,
+            "n_workers": n_workers,
+            "env": env,
+        }
+        if cluster_kwargs is not None:
+            self.cluster_kwargs.update(cluster_kwargs)
+        self.adaptive_kwargs = adaptive_kwargs
+
+    def execute(
+        self,
+        graph: Graph,
+        *,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -300,13 +331,6 @@ class DaskKubeExecutor:
         ------
         graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
-        pod_template: dict, Kubernetes pod template. If None, defaults to using Dask docker image
-        namespace: Kubernetes namespace in which to launch workers
-        n_workers: int, number of Dask workers to launch. If a schedule is provided, this argument
-        is overridden by the number of processors in schedule context graph
-        env: dict, environment variables to pass to worker pods
-        cluster_kwargs: dict, arguments for Dask cluster
-        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
         report: str, name of performance report output file
 
         Returns
@@ -318,35 +342,33 @@ class DaskKubeExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        kube_kwargs = {
-            "pod_template": pod_template,
-            "namespace": namespace,
-            "n_workers": n_workers,
-            "env": env,
-        }
-        if cluster_kwargs is not None:
-            kube_kwargs.update(cluster_kwargs)
-
-        check_consistency(graph, kube_kwargs, adaptive_kwargs)
-        with create_cluster("kube", kube_kwargs, adaptive_kwargs) as cluster:
+        check_consistency(graph, self.cluster_kwargs, self.adaptive_kwargs)
+        with create_cluster(
+            "kube", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return DaskExecutor.execute(
                 graph,
                 client_kwargs={"address": cluster},
-                adaptive=(adaptive_kwargs is not None),
+                adaptive=(self.adaptive_kwargs is not None),
                 report=report,
             )
 
 
 class DaskClientExecutor:
     """
-    Execute graph on existing Dask cluster
+    Execute graph on existing Dask cluster, where the information for the scheduler is provided
+    in the scheduler file
     """
 
+    def __init__(self, dask_scheduler_file: str, adaptive: bool = False):
+        self.dask_scheduler_file = dask_scheduler_file
+        self.adaptive = adaptive
+
     def execute(
+        self,
         graph: Graph,
-        dask_scheduler_file: str,
-        adaptive: bool = False,
+        *,
         report: str = "performance_report.html",
     ) -> Any:
         """
@@ -372,16 +394,16 @@ class DaskClientExecutor:
         """
         return DaskExecutor.execute(
             graph,
-            client_kwargs={"scheduler_file": dask_scheduler_file},
-            adaptive=adaptive,
+            client_kwargs={"scheduler_file": self.dask_scheduler_file},
+            adaptive=self.adaptive,
             report=report,
         )
 
     def benchmark(
+        self,
         graph: Graph,
-        dask_scheduler_file: str,
+        *,
         mem_report: str,
-        adaptive: bool = False,
         report: str = "performance_report.html",
     ) -> dict[str, Resources]:
         """
@@ -406,7 +428,7 @@ class DaskClientExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        DaskClientExecutor.execute(graph, dask_scheduler_file, adaptive, report)
+        DaskClientExecutor.execute(graph, report)
 
         rep = Report(report)
         mem_rep = MemoryReport(mem_report)

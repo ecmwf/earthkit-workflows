@@ -1,4 +1,3 @@
-import time
 import pytest
 
 from cascade.executors.processpool import ProcessPoolExecutor, WorkerPool
@@ -7,15 +6,16 @@ from cascade.schedulers.depthfirst import DepthFirstScheduler
 from execution_utils import execution_context
 
 
-def test_without_schedule(execution_context):
-    task_graph, _ = execution_context
-    ProcessPoolExecutor.execute(task_graph, n_workers=2)
-
-
-def test_with_schedule(execution_context):
+@pytest.mark.parametrize("schedule, kwargs", [[False, {"n_workers": 2}], [True, {}]])
+def test_processpool(execution_context, schedule, kwargs):
     task_graph, context_graph = execution_context
-    schedule = DepthFirstScheduler().schedule(task_graph, context_graph)
-    ProcessPoolExecutor.execute(schedule)
+    if schedule:
+        task_graph = DepthFirstScheduler().schedule(task_graph, context_graph)
+    executor = ProcessPoolExecutor(**kwargs)
+    results = executor.execute(task_graph)
+    assert all([x.name in results for x in task_graph.sinks])
+    resources = executor.benchmark(task_graph)
+    assert all([x.name in resources for x in task_graph.nodes()])
 
 
 @pytest.mark.parametrize(
@@ -27,7 +27,7 @@ def test_workerpool(func, args, callback):
 
     with pytest.raises(Exception):
         with WorkerPool(["worker-1", "worker-2"]) as executor:
-            executor.submit(
-                "worker-1", func, args, callback=callback, error_callback=on_error
-            )
-            time.sleep(1)
+            while True:
+                executor.submit(
+                    "worker-1", func, args, callback=callback, error_callback=on_error
+                )
