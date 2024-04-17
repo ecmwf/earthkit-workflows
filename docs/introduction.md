@@ -9,8 +9,7 @@ Cascade has three main components:
 Fluent
 ------
 
-The function cascading API for constructing graphs consists of a pair of classes ``SingleAction`` and ``MultiAction``
-which contain low level methods such as:
+The function cascading API for constructing graphs consists low level methods such as:
 - ``reduce``
 - ``join`` 
 - ``broadcast``
@@ -21,15 +20,15 @@ which contain low level methods such as:
 
 which operate on the array of nodes in the graph, creating new nodes, and return another action object. 
 
-The figure below shows a ``MultAction.reduce`` operation on a three-dimensional array of nodes over the `parameter`
-dimension, which returns ``MultiAction`` containing a two-dimensional array of nodes on the right-hand side.
+The figure below shows a ``Action.reduce`` operation on a three-dimensional array of nodes over the `parameter`
+dimension, which returns ``Action`` containing a two-dimensional array of nodes on the right-hand side.
 <center>
 <img src="reduce.png" width="400"/>
 </center>
 
-Most of the methods require a ``Payload`` which specifies the function and its arguments that is being applied on the array of nodes. For example, for ``MultiAction.reduce`` the signature is 
+Most of the methods require a ``Payload`` which specifies the function and its arguments that is being applied on the array of nodes. For example, for ``Action.reduce`` the signature is 
 ```python
-def reduce(self, payload: Payload, dim: str = "") -> "SingleAction | MultiAction":
+def reduce(self, payload: Payload, dim: str = "") -> "Action":
 ```
 where an example could be 
 ```python
@@ -37,23 +36,21 @@ payload = Payload(lambda x, y, z: x**2 + y**2 + z**2)
 ```
 applied across the `parameter` dimension.
 
-The `Fluent` class is for defining the `SingleAction` and `MultiAction` pair that define the graph construction language as well as the backend for the objects contained inside the nodes. Current backends are ``ArrayApiBackend``, ``XarrayBackend``, ``JaxBackend``. 
+The `Fluent` class is for defining the `Action` that defines the graph construction language. 
 
 Example usage is:
 ```python
-from cascade.fluent import Fluent, SingleAction, MultiAction
-from cascade.backends.arrayapi import ArrayApiBackend
+from cascade.fluent import Fluent, Action
 
-fluent = Fluent(SingleAction, MultiAction, ArrayApiBackend)
+fluent = Fluent(Action)
 ```
 
 The ``Fluent`` class provides a ``source`` method for creating the initial node array by specifying a function and its args and kwargs. For example to create a single node that opens a xarray dataset
 ```python
 import xarray as xr 
 from cascade.fluent import Fluent
-from cascade.backends.xarray import XArrayBackend
 
-initial_action = Fluent(backend=XArrayBackend).source(xr.open_dataset, args=("/path/to/dataset",), kwargs={})
+initial_action = Fluent().source(xr.open_dataset, args=("/path/to/dataset",), kwargs={})
 ```
 To create multiple nodes, at least one of the arguments to `source` either the function, args or kwargs must be a xr.DataArray. For example, 
 ```python
@@ -116,8 +113,8 @@ To execute a graph using the ``DaskLocalExecutor``, do the following:
 ```python
 from cascade.executors.dask import DaskLocalExecutor
 
-results = DaskLocalExecutor.execute(graph, n_workers=2, threads_per_worker=1, processes=True,
-    memory_limit="10G)
+results = DaskLocalExecutor(n_workers=2, threads_per_worker=1, processes=True,
+    memory_limit="10G").execute(graph)
 ```
 The ``graph`` variable can be ``Graph`` or a ``Schedule``. If a ``Schedule`` is provided, then the 
 executor will modify the task graph in order for Dask to execute it according to the predefined 
