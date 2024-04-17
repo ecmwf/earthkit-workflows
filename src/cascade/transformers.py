@@ -47,6 +47,8 @@ class _ToExecutionGraph(Transformer):
 
     def node(self, node: Node, **inputs: Node.Output) -> Task:
         newnode = Task(node.name, node.outputs.copy(), node.payload)
+        if isinstance(node, Task):
+            newnode.resources = node.resources
         newnode.inputs = inputs
         newnode.state = self.state() if self.state is not None else None
         return newnode

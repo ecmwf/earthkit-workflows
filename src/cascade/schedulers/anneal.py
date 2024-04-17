@@ -118,6 +118,7 @@ class AnnealingScheduler:
         self,
         task_graph: Graph | TaskGraph,
         context_graph: ContextGraph,
+        benchmark: bool = True,
     ) -> Schedule:
         """
         Create schedule using simulated annealing to minimise execution cost, determined by simulating the
@@ -130,6 +131,7 @@ class AnnealingScheduler:
         task_graph: Graph or TaskGraph, if Graph then will perform execution of graph
         using thread pool to determine resources in the transformation to a TaskGraph
         context_graph: ContextGraph, containers nodes to which tasks should be assigned
+        benchmark: bool, whether to benchmark the task graph before scheduling
 
         Returns
         -------
@@ -137,7 +139,7 @@ class AnnealingScheduler:
         """
         # Determine initial conditions
         scheduler = DepthFirstScheduler()
-        schedule = scheduler.schedule(task_graph, context_graph)
+        schedule = scheduler.schedule(task_graph, context_graph, benchmark)
         initial_cost = self.cost_function(schedule)
         previous_cost = initial_cost
 
