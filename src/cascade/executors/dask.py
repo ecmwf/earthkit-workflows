@@ -428,7 +428,7 @@ class DaskClientExecutor:
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        DaskClientExecutor.execute(graph, report)
+        self.execute(graph, report)
 
         rep = Report(report)
         mem_rep = MemoryReport(mem_report)
