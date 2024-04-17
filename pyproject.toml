@@ -25,6 +25,7 @@ dependencies = [
     "code-meters",
     "dill",
     "dask_memusage",
+    "multiprocess"
 ]
 
 [options]
