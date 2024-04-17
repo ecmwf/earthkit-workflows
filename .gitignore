@@ -7,3 +7,6 @@
 *.prof
 *.idx
 .mypy_cache
+venv
+.venv
+cascade.code-workspace
