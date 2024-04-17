@@ -1,6 +1,7 @@
 from .graph import Graph
 from .graph.pyvis import to_pyvis, node_info, edge_info
 
+
 def node_info_ext(node):
     info = node_info(node)
     info["color"] = "#648FFF"
@@ -44,5 +45,7 @@ def visualise(g: Graph, dest: str, **kwargs):
     IFrame
         Jupyter IFrame to visualise the graph
     """
-    gv = to_pyvis(g, notebook=True, node_attrs=node_info_ext, edge_attrs=edge_info, **kwargs)
+    gv = to_pyvis(
+        g, notebook=True, node_attrs=node_info_ext, edge_attrs=edge_info, **kwargs
+    )
     return gv.show(dest)
