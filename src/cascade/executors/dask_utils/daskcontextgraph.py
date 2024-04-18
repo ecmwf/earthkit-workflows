@@ -50,10 +50,6 @@ def create_dask_context_graph(client):
     print("Context graph")
     print(context_graph)
 
-    # import networkx as nx
-    # import matplotlib.pyplot
-    # fig = matplotlib.pyplot.figure()
-    # nx.draw(context_graph, with_labels=True, font_weight='bold', ax=fig.add_subplot())
-    # fig.savefig("context_graph.png")
+    # context_graph.visualise("contextgraph.html")
 
     return context_graph

@@ -71,3 +71,7 @@ class ContextGraph(nx.Graph):
         """
         for _, _, communicator in self.edges(data=True):
             yield communicator["obj"]
+
+    def visualise(self, dest: str = "contextgraph.html"):
+        from cascade.visualise import visualise_contextgraph
+        visualise_contextgraph(self, dest)
