@@ -17,7 +17,7 @@ from schedule_utils import context, example_graph
 def resource_map(graph: Graph) -> dict[str, Resources]:
     res_map = {}
     for node in graph.nodes():
-        res_map[node] = Resources(random.randrange(1, 100), random.randrange(1, 2))
+        res_map[node.name] = Resources(random.randrange(1, 100), random.randrange(1, 2))
     return res_map
 
 
