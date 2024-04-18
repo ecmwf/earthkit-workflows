@@ -1,5 +1,10 @@
+from typing import Callable
+
+from pyvis.network import Network
+
+from .contextgraph import ContextGraph, Processor, Communicator
 from .graph import Graph
-from .graph.pyvis import to_pyvis, node_info, edge_info
+from .graph.pyvis import _make_attr_func, to_pyvis, node_info, edge_info
 
 
 def node_info_ext(node):
@@ -48,4 +53,47 @@ def visualise(g: Graph, dest: str, **kwargs):
     gv = to_pyvis(
         g, notebook=True, node_attrs=node_info_ext, edge_attrs=edge_info, **kwargs
     )
+    return gv.show(dest)
+
+
+def cg_proc_info(proc: Processor) -> dict:
+    return {"title": f"Type: {proc.type}\nSpeed: {proc.speed}\nMemory: {proc.memory}"}
+
+
+def cg_comm_info(comm: Communicator) -> dict:
+    return {
+        "title": f"From: {comm.source}\nTo: {comm.target}\nBandwidth: {comm.bandwidth}\nLatency: {comm.latency}"
+    }
+
+
+def visualise_contextgraph(
+    g: ContextGraph,
+    dest: str,
+    proc_attrs: dict | Callable[[Processor], dict] | None = cg_proc_info,
+    comm_attrs: dict | Callable[[Communicator], dict] | None = cg_comm_info,
+    **kwargs,
+):
+    """Visualise a context graph with PyVis
+
+    Parameters
+    ----------
+    g: ContextGraph
+        Input context graph
+    dest: str
+        Path to the generated HTML file
+    **kwargs
+        Passed to the `pyvis.Network` constructor
+
+    Returns
+    -------
+    IFrame
+        Jupyter IFrame to visualise the graph
+    """
+    proc_func = _make_attr_func(proc_attrs)
+    comm_func = _make_attr_func(comm_attrs)
+    gv = Network(directed=True, notebook=True, **kwargs)
+    for proc in g.nodes:
+        gv.add_node(proc.name, **proc_func(proc))
+    for comm in g.communicators():
+        gv.add_edge(comm.source, comm.target, **comm_func(comm))
     return gv.show(dest)
