@@ -598,66 +598,29 @@ def _expand_transform(
     return ret
 
 
-class Fluent:
-    def __init__(
-        self,
-        action=Action,
-    ):
-        self.action = action
+def from_source(
+    payloads_list: tuple, 
+    dims: list = None, 
+    coords: dict = {}, 
+    action = Action
+) -> Action:
 
-    def source(self, func: callable, args: tuple, kwargs: dict = {}) -> "Action":
-        """
-        Create source nodes in graph from an dataarray of payloads, containing
-        payload for each source node. If none of func, args and kwargs are a xr.DataArray
-        then returns Action with Payload(func, args, kwargs). If any of func, args
-        or kwargs is a xr.DataArray then creates node array with the same shape is created.
-
-        Parameters
-        ----------
-        func: callable or xr.DataArray[callable], function or functions to apply in
-        each node
-        args: tuple or xr.DataArray[tuple], container for args or array of
-        arguments for each node
-        kwargs: dict or xr.DataArray[dict], kwargs or array of kwargs for function
-        in each node
-
-        Return
-        ------
-        Action
-
-        Raises
-        ------
-        ValueError, if func, args or kwargs are DataArrays with different shapes
-        """
-        shape = None
-        ufunc_args = []
-        for x in [func, args, kwargs]:
-            if isinstance(x, xr.DataArray):
-                if shape is None:
-                    shape = (x.shape, x.coords, x.dims)
-                elif shape != (x.shape, x.coords, x.dims):
-                    raise ValueError(
-                        "Shape, dims or coords of data arrays do not match"
-                    )
-                ufunc_args.append(x)
-            else:
-                ufunc_args.append(xr.DataArray(x))
-        payloads = xr.apply_ufunc(Payload, *ufunc_args, vectorize=True)
-        nodes = np.empty(payloads.shape, dtype=object)
-        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
-        # Ensure all source nodes have a unique name
-        node_names = set()
-        for payload in it:
-            name = payload[()].name()
-            if name in node_names:
-                name += str(it.multi_index)
-            node_names.add(name)
-            nodes[it.multi_index] = Node(payload[()], name=name)
-        return self.action(
-            None,
-            xr.DataArray(
-                nodes,
-                dims=payloads.dims,
-                coords=payloads.coords,
-            ),
-        )
+    payloads = xr.DataArray(payloads_list, dims=dims, coords=coords)
+    nodes = np.empty(payloads.shape, dtype=object)
+    it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+    # Ensure all source nodes have a unique name
+    node_names = set()
+    for payload in it:
+        name = payload[()].name()
+        if name in node_names:
+            name += str(it.multi_index)
+        node_names.add(name)
+        nodes[it.multi_index] = Node(payload[()], name=name)
+    return action(
+        None,
+        xr.DataArray(
+            nodes,
+            dims=payloads.dims,
+            coords=payloads.coords,
+        ),
+    )

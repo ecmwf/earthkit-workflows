@@ -1,33 +1,51 @@
+
 from .graph import Graph
-from .graph import deduplicate_nodes
 from .contextgraph import ContextGraph
 from .schedulers.depthfirst import DepthFirstScheduler
 from .schedulers.schedule import Schedule
 from .executors.dask import DaskLocalExecutor
-
-GRAPHS: dict = {}
+from .visualise import visualise
 
 
 class Cascade:
-    def graph(product, *args, **kwargs) -> Graph:
-        if product not in GRAPHS:
-            raise Exception(f"No graph for '{product}' registered")
-        return GRAPHS[product](*args, **kwargs)
 
-    def merge(*graphs) -> Graph:
-        sinks = []
-        for graph in graphs:
-            sinks.extend(graph.sinks)
-        total_graph = Graph(sinks)
-        return deduplicate_nodes(total_graph)
+    def __init__(self, graph, schedule: Schedule = None):
+        self._graph = graph
+        self._schedule = schedule
+    
+    @classmethod
+    def from_actions(cls, actions):
+        graph = Graph([])
+        for action in actions:
+            graph += action.graph()
+        return cls(graph)
+    
+    @classmethod
+    def from_serialised(cls, serialised):
+        return NotImplementedError
+    
+    def serialise(self):
+        return NotImplementedError
+    
+    def visualise(self, *args, **kwargs):
+        return visualise(self._graph, *args, **kwargs)
+    
+    def schedule(self, context: ContextGraph = None) -> Schedule:
+        self._schedule = DepthFirstScheduler().schedule(self._graph, context)
+        return self._schedule
 
-    def schedule(graph: Graph, context: ContextGraph) -> Schedule:
-        return DepthFirstScheduler().schedule(graph, context)
+    def execute(self, *args, **kwargs):
+        # if self._schedule is None:
+        #     self.schedule()
+        return DaskLocalExecutor(*args, **kwargs).execute(self._graph)
+    
+    def __add__(self, other: "Cascade") -> "Cascade":
+        if not isinstance(other, Cascade):
+            return NotImplemented
+        return Cascade(self.graph + other.graph)
 
-    def execute(schedule: Schedule):
-        return DaskLocalExecutor().execute(schedule)
-
-
-def register_graph(name: str, func):
-    assert name not in GRAPHS
-    GRAPHS[name] = func
+    def __iadd__(self, other: "Cascade") -> "Cascade":
+        if not isinstance(other, Cascade):
+            return NotImplemented
+        self._graph += other._graph
+        self._schedule = None  # doesn't make sense to have a schedule after merging
