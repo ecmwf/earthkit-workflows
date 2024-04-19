@@ -25,7 +25,8 @@ dependencies = [
     "code-meters",
     "dill",
     "dask_memusage",
-    "multiprocess"
+    "multiprocess",
+    "memray"
 ]
 
 [project.optional-dependencies]
