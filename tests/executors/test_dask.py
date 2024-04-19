@@ -62,3 +62,7 @@ def test_with_schedule_adaptive(tmpdir, execution_context):
 )
 def test_duration_conversion(duration_str, result):
     assert duration_in_sec(duration_str) == result
+
+
+def test_generate_context_graph():
+    DaskLocalExecutor(n_workers=4).create_context_graph()
