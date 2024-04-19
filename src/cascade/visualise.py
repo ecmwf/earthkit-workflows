@@ -5,6 +5,7 @@ from pyvis.network import Network
 from .contextgraph import ContextGraph, Processor, Communicator
 from .graph import Graph, Node
 from .graph.pyvis import _make_attr_func, to_pyvis, node_info, edge_info
+from .taskgraph import Task
 
 
 def node_info_ext(node):
@@ -28,6 +29,9 @@ def node_info_ext(node):
         if kwargs:
             t.append("Keyword arguments:")
             t.extend(f"- {k!r}: {v!r}" for k, v in kwargs.items())
+        if isinstance(node, Task):
+            t.append(f"Cost: {node.cost}")
+            t.append(f"Memory: {node.memory}")
         info["title"] = "\n".join(t)
 
     return info
