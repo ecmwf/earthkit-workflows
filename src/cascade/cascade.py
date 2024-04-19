@@ -38,7 +38,19 @@ class Cascade:
         # if self._schedule is None:
         #     self.schedule()
         return DaskLocalExecutor(*args, **kwargs).execute(self._graph)
-    
+
+    def benchmark(
+            self, report: str = "performance_report.html",
+            mem_report: str = "mem_usage.csv",
+            *args, **kwargs
+        ):
+        # if self._schedule is None:
+        #     self.schedule()
+        return (
+            DaskLocalExecutor(*args, **kwargs)
+            .benchmark(self._graph, report=report, mem_report=mem_report)
+        )
+
     def __add__(self, other: "Cascade") -> "Cascade":
         if not isinstance(other, Cascade):
             return NotImplemented
