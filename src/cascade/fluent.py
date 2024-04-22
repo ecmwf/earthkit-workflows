@@ -123,30 +123,20 @@ class Node(BaseNode):
 
 
 class Action:
-    def __init__(self, previous: "Action", nodes: xr.DataArray):
-        self.previous = previous
+    def __init__(self, nodes: xr.DataArray):
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
-        self.sinks = [] if previous is None else previous.sinks.copy()
 
     def graph(self) -> Graph:
         """
-        Creates graph from sinks. If list of sinks is empty then uses the
-        list of nodes.
+        Creates graph from the nodes of the action.
 
         Return
         ------
-        Graph instance constructed from list of sinks, or if empty, list
-        of nodes
+        Graph instance constructed from list of nodes
 
         """
-        sinks = self.sinks
-        if len(sinks) == 0:
-            sinks = list(self.nodes.data.flatten())
-
-        for index in range(len(sinks)):
-            sinks[index] = sinks[index].copy()
-            sinks[index].outputs = []  # Ensures they are recognised as sinks
+        sinks = list(self.nodes.data.flatten())
         return Graph(sinks)
 
     def join(
@@ -168,8 +158,7 @@ class Action:
             coords="minimal",
             join="exact",
         )
-        ret = type(self)(self, new_nodes)
-        ret.sinks = self.sinks + other_action.sinks
+        ret = type(self)(new_nodes)
         return ret
 
     def transform(
@@ -250,7 +239,7 @@ class Action:
             dims=broadcasted_nodes.dims,
             attrs=self.nodes.attrs,
         )
-        return type(self)(self, new_nodes)
+        return type(self)(new_nodes)
 
     def expand(
         self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
@@ -312,7 +301,6 @@ class Action:
                 node_payload = payload[it.multi_index]
             new_nodes[it.multi_index] = Node(node_payload, node[()])
         return type(self)(
-            self,
             xr.DataArray(
                 new_nodes,
                 coords=self.nodes.coords,
@@ -394,7 +382,6 @@ class Action:
             }
         )
         result = type(batched)(
-            batched,
             xr.DataArray(
                 new_nodes,
                 coords=new_coords,
@@ -452,7 +439,7 @@ class Action:
         if len(criteria) == 0:
             return self
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
-        return type(self)(self, selected_nodes)
+        return type(self)(selected_nodes)
 
     def concatenate(
         self, dim: str, batch_size: int = 0, keep_dim: bool = False, **kwargs
@@ -601,7 +588,7 @@ def _expand_transform(
 def from_source(
     payloads_list: tuple, 
     dims: list = None, 
-    coords: dict = {}, 
+    coords: dict = None, 
     action = Action
 ) -> Action:
 
@@ -617,7 +604,6 @@ def from_source(
         node_names.add(name)
         nodes[it.multi_index] = Node(payload[()], name=name)
     return action(
-        None,
         xr.DataArray(
             nodes,
             dims=payloads.dims,

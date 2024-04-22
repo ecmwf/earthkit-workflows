@@ -34,10 +34,17 @@ class Cascade:
         self._schedule = DepthFirstScheduler().schedule(self._graph, context)
         return self._schedule
 
-    def execute(self, *args, **kwargs):
-        # if self._schedule is None:
-        #     self.schedule()
-        return DaskLocalExecutor(*args, **kwargs).execute(self._graph)
+    def execute(self, schedule=None, *args, **kwargs):
+        if schedule is not None:
+            input = schedule
+        elif self._schedule is not None:
+            input = self._schedule
+        else:
+            input = self._graph
+        return DaskLocalExecutor(*args, **kwargs).execute(input)
+    
+    def benchmark(self, *args, **kwargs):
+        return DaskLocalExecutor(*args, **kwargs).benchmark(self._graph)
     
     def __add__(self, other: "Cascade") -> "Cascade":
         if not isinstance(other, Cascade):
