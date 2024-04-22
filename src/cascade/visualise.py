@@ -3,8 +3,9 @@ from typing import Callable
 from pyvis.network import Network
 
 from .contextgraph import ContextGraph, Processor, Communicator
-from .graph import Graph
+from .graph import Graph, Node
 from .graph.pyvis import _make_attr_func, to_pyvis, node_info, edge_info
+from .taskgraph import Task
 
 
 def node_info_ext(node):
@@ -28,12 +29,22 @@ def node_info_ext(node):
         if kwargs:
             t.append("Keyword arguments:")
             t.extend(f"- {k!r}: {v!r}" for k, v in kwargs.items())
+        if isinstance(node, Task):
+            t.append(f"Cost: {node.cost}")
+            t.append(f"Memory: {node.memory}")
         info["title"] = "\n".join(t)
 
     return info
 
 
-def visualise(g: Graph, dest: str, **kwargs):
+def visualise(
+    g: Graph,
+    dest: str,
+    node_attrs: dict | Callable[[Node], dict] | None = node_info_ext,
+    edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = edge_info,
+    hierarchical_layout: bool = True,
+    **kwargs,
+):
     """Visualise a graph with PyVis
 
     Parameters
@@ -51,7 +62,12 @@ def visualise(g: Graph, dest: str, **kwargs):
         Jupyter IFrame to visualise the graph
     """
     gv = to_pyvis(
-        g, notebook=True, node_attrs=node_info_ext, edge_attrs=edge_info, **kwargs
+        g,
+        notebook=True,
+        node_attrs=node_attrs,
+        edge_attrs=edge_attrs,
+        hierarchical_layout=hierarchical_layout,
+        **kwargs,
     )
     return gv.show(dest)
 
