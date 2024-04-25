@@ -1,4 +1,3 @@
-
 from .graph import Graph
 from .contextgraph import ContextGraph
 from .schedulers.depthfirst import DepthFirstScheduler
@@ -12,24 +11,24 @@ class Cascade:
     def __init__(self, graph, schedule: Schedule = None):
         self._graph = graph
         self._schedule = schedule
-    
+
     @classmethod
     def from_actions(cls, actions):
         graph = Graph([])
         for action in actions:
             graph += action.graph()
         return cls(graph)
-    
+
     @classmethod
     def from_serialised(cls, serialised):
         return NotImplementedError
-    
+
     def serialise(self):
         return NotImplementedError
-    
+
     def visualise(self, *args, **kwargs):
         return visualise(self._graph, *args, **kwargs)
-    
+
     def schedule(self, context: ContextGraph = None) -> Schedule:
         self._schedule = DepthFirstScheduler().schedule(self._graph, context)
         return self._schedule
@@ -42,10 +41,10 @@ class Cascade:
         else:
             input = self._graph
         return DaskLocalExecutor(*args, **kwargs).execute(input)
-    
+
     def benchmark(self, *args, **kwargs):
         return DaskLocalExecutor(*args, **kwargs).benchmark(self._graph)
-    
+
     def __add__(self, other: "Cascade") -> "Cascade":
         if not isinstance(other, Cascade):
             return NotImplemented

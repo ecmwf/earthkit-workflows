@@ -15,11 +15,13 @@ def _wrap_task(node: Node, path: pathlib.Path) -> Node:
     assert isinstance(node.payload, tuple)
     assert len(node.payload) == 3
     func = node.payload[0]
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         with Tracker(path, native_traces=True):
             result = func(*args, **kwargs)
         return result
+
     wrapped = node.copy()
     wrapped.payload = (wrapper,) + node.payload[1:]
     return wrapped
@@ -52,7 +54,9 @@ class _ReadProfiles(Transformer):
             warnings.warn(f"Could not read {path!r}: {e!s}", RuntimeWarning)
             return task
         with reader:
-            task.cost = (reader.metadata.end_time - reader.metadata.start_time).total_seconds()
+            task.cost = (
+                reader.metadata.end_time - reader.metadata.start_time
+            ).total_seconds()
             task.memory = reader.metadata.peak_memory
         return task
 
@@ -60,7 +64,9 @@ class _ReadProfiles(Transformer):
         return graph.__class__(sinks)
 
 
-def profile(graph: Graph, base_path: os.PathLike, *args, **kwargs) -> tuple[object, Graph]:
+def profile(
+    graph: Graph, base_path: os.PathLike, *args, **kwargs
+) -> tuple[object, Graph]:
     base_path = pathlib.Path(base_path)
     base_path.mkdir(parents=True, exist_ok=True)
     wrapped_graph = _AddProfiler(base_path).transform(graph)

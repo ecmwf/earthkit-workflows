@@ -128,7 +128,6 @@ class DaskExecutor:
         else:
             print("All tasks completed successfully.")
         return results
-    
 
     def create_context_graph(client_kwargs: dict) -> ContextGraph:
         with Client(**client_kwargs) as client:
@@ -295,9 +294,8 @@ class DaskLocalExecutor(Executor):
         with create_cluster(
             "local", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
-            return DaskExecutor.create_context_graph(
-                client_kwargs={"address": cluster}
-            )
+            return DaskExecutor.create_context_graph(client_kwargs={"address": cluster})
+
 
 class DaskKubeExecutor(Executor):
     """
@@ -368,14 +366,12 @@ class DaskKubeExecutor(Executor):
                 adaptive=(self.adaptive_kwargs is not None),
                 report=report,
             )
-        
+
     def create_context_graph(self) -> ContextGraph:
         with create_cluster(
             "kube", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
-            return DaskExecutor.create_context_graph(
-                client_kwargs={"address": cluster}
-            )
+            return DaskExecutor.create_context_graph(client_kwargs={"address": cluster})
 
 
 class DaskClientExecutor(Executor):
@@ -456,6 +452,6 @@ class DaskClientExecutor(Executor):
         rep = Report(report)
         mem_rep = MemoryReport(mem_report)
         return reports_to_resources(rep, mem_rep)
-    
+
     def create_context_graph(self) -> ContextGraph:
         raise NotImplementedError()

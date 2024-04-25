@@ -586,10 +586,7 @@ def _expand_transform(
 
 
 def from_source(
-    payloads_list: tuple, 
-    dims: list = None, 
-    coords: dict = None, 
-    action = Action
+    payloads_list: tuple, dims: list = None, coords: dict = None, action=Action
 ) -> Action:
 
     payloads = xr.DataArray(payloads_list, dims=dims, coords=coords)
