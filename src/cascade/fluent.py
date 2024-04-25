@@ -3,6 +3,7 @@ import xarray as xr
 import functools
 import hashlib
 import copy
+from typing import Callable
 
 from .graph import Graph
 from .graph import Node as BaseNode
@@ -15,7 +16,7 @@ class Payload:
     """
 
     def __init__(
-        self, func: callable, args: list | None = None, kwargs: dict | None = None
+        self, func: Callable, args: list | None = None, kwargs: dict | None = None
     ):
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
@@ -90,11 +91,14 @@ def custom_hash(string: str) -> str:
 class Node(BaseNode):
     def __init__(
         self,
-        payload: Payload,
+        payload: Callable | Payload,
         inputs: BaseNode | tuple[BaseNode] = (),
         name: str = None,
     ):
-        payload = payload.copy()
+        if not isinstance(payload, Payload):
+            payload = Payload(payload)
+        else:
+            payload = payload.copy()
         if isinstance(inputs, BaseNode):
             inputs = [inputs]
         # If payload doesn't have inputs, assume inputs to the function are the inputs
@@ -172,7 +176,7 @@ class Action:
         return ret
 
     def transform(
-        self, func: callable, params: list, dim: str | xr.DataArray
+        self, func: Callable, params: list, dim: str | xr.DataArray
     ) -> "Action":
         """
         Create new nodes by applying function on action with different
@@ -275,7 +279,7 @@ class Action:
         params = [(x, dim, axis, new_axis) for x in range(dim_size)]
         return self.transform(_expand_transform, params, dim)
 
-    def map(self, payload: Payload | np.ndarray[Payload]) -> "Action":
+    def map(self, payload: Callable | np.ndarray[Callable]) -> "Action":
         """
         Apply specified payload on all nodes. If argument is an array of payloads,
         this must be the same size as the array of nodes and each node gets a
@@ -283,7 +287,7 @@ class Action:
 
         Parameters
         ----------
-        payload: Payload or array of Payloads
+        payload: function or array of functions
 
         Return
         ------
@@ -296,7 +300,7 @@ class Action:
         AssertionError if the shape of the payload array does not match the shape of the
         array of nodes
         """
-        if not isinstance(payload, Payload):
+        if not isinstance(payload, (Callable, Payload)):
             payload = np.asarray(payload)
             assert (
                 payload.shape == self.nodes.shape
@@ -307,7 +311,7 @@ class Action:
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
         node_payload = payload
         for node in it:
-            if not isinstance(payload, Payload):
+            if not isinstance(payload, (Callable, Payload)):
                 node_payload = payload[it.multi_index]
             new_nodes[it.multi_index] = Node(node_payload, node[()])
         return type(self)(
@@ -321,7 +325,7 @@ class Action:
 
     def reduce(
         self,
-        payload: Payload,
+        payload: Callable,
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
@@ -334,7 +338,7 @@ class Action:
 
         Parameters
         ----------
-        payload: Payload, payload specifying function for performing the reduction
+        payload: function for performing the reduction
         dim: str, name of dimension along which to reduce
         batch_size: int, size of batches to split reduction into. If 0,
         computation is not batched
@@ -355,6 +359,8 @@ class Action:
 
         batched = self
         level = 0
+        if not isinstance(payload, Payload):
+            payload = Payload(payload)
         if batch_size > 1 and batch_size < batched.nodes.sizes[dim]:
             if not getattr(payload.func, "batchable", False):
                 raise ValueError(
@@ -522,7 +528,7 @@ class Action:
         )
 
     def __two_arg_method(
-        self, method: callable, other: "Action | float", **kwargs
+        self, method: Callable, other: "Action | float", **kwargs
     ) -> "Action":
         if isinstance(other, Action):
             return self.join(other, "**datatype**", match_coord_values=True).reduce(
@@ -572,7 +578,9 @@ class Action:
         return self.nodes.sel(**criteria, drop=True).data[()]
 
 
-def _batch_transform(action: Action, selection: dict, payload: Payload) -> Action:
+def _batch_transform(
+    action: Action, selection: dict, payload: Callable | Payload
+) -> Action:
     selected = action.select(selection, drop=True)
     dim = list(selection.keys())[0]
     if dim not in selected.nodes.dims:
@@ -596,7 +604,10 @@ def _expand_transform(
 
 
 def from_source(
-    payloads_list: tuple, dims: list = None, coords: dict = None, action=Action
+    payloads_list: np.ndarray[Callable],
+    dims: list = None,
+    coords: dict = None,
+    action=Action,
 ) -> Action:
 
     payloads = xr.DataArray(payloads_list, dims=dims, coords=coords)
