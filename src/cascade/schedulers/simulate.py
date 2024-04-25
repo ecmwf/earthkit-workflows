@@ -247,9 +247,11 @@ class Simulator:
                         else Simulator.DEFAULT_PROCESSOR
                     )
                     if processor == Simulator.DEFAULT_PROCESSOR:
-                        self.eligible.setdefault(
+                        eligible_tasks = self.eligible.setdefault(
                             Simulator.DEFAULT_PROCESSOR, []
-                        ).append(next_task)
+                        )
+                        if next_task not in eligible_tasks:
+                            eligible_tasks.append(next_task)
                     else:
                         if processor in self.eligible:
                             raise RuntimeError(

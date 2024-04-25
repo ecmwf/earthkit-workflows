@@ -69,7 +69,7 @@ class DepthFirstScheduler(Simulator):
         self,
         task_graph: Graph | TaskGraph,
         context_graph: ContextGraph,
-        benchmark: bool = True
+        benchmark: bool = True,
     ) -> Schedule:
         """
         Schedule tasks in task graph to workers in context graph.

@@ -234,7 +234,10 @@ class ProcessPoolExecutor:
     def _execute_task(
         results: dict[str, Any], function: callable, args: list, kwargs: dict
     ):
-        extracted_args = [results[arg] if arg in results else arg for arg in args]
+        extracted_args = [
+            results[arg] if isinstance(arg, str) and arg in results else arg
+            for arg in args
+        ]
         return function(*extracted_args, **kwargs)
 
     def _execute_schedule(self, schedule: Schedule):
@@ -265,7 +268,7 @@ class ProcessPoolExecutor:
                             [
                                 (
                                     task.inputs[arg].parent.name
-                                    if arg in task.inputs
+                                    if isinstance(arg, str) and arg in task.inputs
                                     else arg
                                 )
                                 for arg in task.payload[1]
@@ -304,7 +307,7 @@ class ProcessPoolExecutor:
                             [
                                 (
                                     task.inputs[arg].parent.name
-                                    if arg in task.inputs
+                                    if isinstance(arg, str) and arg in task.inputs
                                     else arg
                                 )
                                 for arg in task.payload[1]

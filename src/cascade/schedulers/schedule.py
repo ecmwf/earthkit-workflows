@@ -71,6 +71,13 @@ class Schedule(Graph):
         for allocations in task_allocation.values():
             all_allocated_tasks.update(allocations)
         if len(list(task_graph.nodes())) != len(all_allocated_tasks):
+            print(
+                "Not all tasks are allocated. Task graph has",
+                len(list(task_graph.nodes())),
+                "tasks, but only",
+                len(all_allocated_tasks),
+                "are allocated.",
+            )
             return False
 
         new_graph = copy_graph(task_graph)
@@ -87,9 +94,13 @@ class Schedule(Graph):
                         current_task.outputs = [Node.DEFAULT_OUTPUT]
                     next_task.inputs[f"input{index}"] = current_task.get_output()
                     # Check number of nodes as disconnected components may have been introduced
-                    if new_graph.has_cycle() or len(list(new_graph.nodes())) != len(
-                        list(task_graph.nodes())
-                    ):
+                    if new_graph.has_cycle():
+                        print(
+                            f"Schedule has dependency cycle with task {current_task.name}. Task allocation: \n {task_allocation}"
+                        )
+                        return False
+                    if len(list(new_graph.nodes())) != len(list(task_graph.nodes())):
+                        print("Schedule has disconnected components.")
                         return False
         return True
 
