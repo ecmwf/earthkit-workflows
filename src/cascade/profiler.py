@@ -5,7 +5,7 @@ import warnings
 
 from memray import FileReader, Tracker
 
-from .executors.dask import DaskLocalExecutor
+from .executors.executor import Executor
 from .fluent import Node
 from .graph import Graph, Transformer
 from .taskgraph import Task
@@ -65,11 +65,11 @@ class _ReadProfiles(Transformer):
 
 
 def profile(
-    graph: Graph, base_path: os.PathLike, *args, **kwargs
+    graph: Graph, base_path: os.PathLike, executor: Executor
 ) -> tuple[object, Graph]:
     base_path = pathlib.Path(base_path)
     base_path.mkdir(parents=True, exist_ok=True)
     wrapped_graph = _AddProfiler(base_path).transform(graph)
-    result = DaskLocalExecutor(*args, **kwargs).execute(wrapped_graph)
+    result = executor.execute(wrapped_graph)
     annotated_graph = _ReadProfiles(base_path).transform(graph)
     return result, annotated_graph

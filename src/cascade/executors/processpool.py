@@ -339,22 +339,6 @@ class ProcessPoolExecutor:
         """
         if isinstance(graph, Schedule):
             self._execute_schedule(graph)
-        self._execute_graph(graph)
+        else:
+            self._execute_graph(graph)
         return {sink.name: self.state.results[sink.name] for sink in graph.sinks}
-
-    def benchmark(self, graph: Graph) -> dict[str, Resources]:
-        """
-        Benchmark graph or schedule using a pool of worker processes.
-
-        Params
-        ------
-        graph: Graph or Schedule, task graph to be executed
-
-        Returns
-        -------
-        dict[str, Resources]: resources used by each task in the graph
-        """
-        if isinstance(graph, Schedule):
-            self._execute_schedule(graph)
-        self._execute_graph(graph)
-        return self.state.resources

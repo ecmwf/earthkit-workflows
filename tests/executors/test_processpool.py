@@ -14,8 +14,6 @@ def test_processpool(execution_context, schedule, kwargs):
     executor = ProcessPoolExecutor(**kwargs)
     results = executor.execute(task_graph)
     assert all([x.name in results for x in task_graph.sinks])
-    resources = executor.benchmark(task_graph)
-    assert all([x.name in resources for x in task_graph.nodes()])
 
 
 @pytest.mark.parametrize(

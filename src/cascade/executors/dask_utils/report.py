@@ -277,22 +277,3 @@ class Report:
             soup = BeautifulSoup(fp, "html.parser")
         self.summary = Summary(soup.body.script.string)
         self.task_stream = TaskStream(soup.body.script.string)
-
-
-class MemoryReport:
-    @dataclass
-    class TaskMemory:
-        min: float  # Min memory in MB
-        max: float  # Max memory in MB
-
-    def __init__(self, report_csv: str):
-        self.usage = {}
-        with open(report_csv) as file:
-            reader = csv.reader(file)
-            for row in reader:
-                if row[0] == "task_key":
-                    continue
-                self.usage.setdefault(row[0], [])
-                self.usage[row[0]].append(
-                    MemoryReport.TaskMemory(float(row[1]), float(row[2]))
-                )

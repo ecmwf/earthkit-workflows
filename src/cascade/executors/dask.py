@@ -5,9 +5,7 @@ from dask.distributed import Client, as_completed, performance_report
 from dask.graph_manipulation import chunks
 import functools
 import pprint
-import dask_memusage
-import numpy as np
-import warnings
+from contextlib import nullcontext
 
 from cascade.contextgraph import ContextGraph
 from cascade.executors.dask_utils import daskcontextgraph
@@ -15,123 +13,116 @@ from cascade.executors.executor import Executor
 from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
-from cascade.taskgraph import Resources
 
 from .dask_utils import create_cluster
-from .dask_utils.report import Report, MemoryReport
 
 
-class DaskExecutor:
-    def execute(
-        schedule: Graph | Schedule,
-        client_kwargs: dict,
-        adaptive: bool = False,
-        report: str = "performance_report.html",
-    ) -> Any:
-        """
-        Execute graph with a Dask cluster, e.g. LocalCluster or KubeCluster, and
-        produce a performance report of the execution.
+def execute(
+    schedule: Graph | Schedule,
+    client_kwargs: dict,
+    adaptive: bool = False,
+    report: str = "",
+) -> Any:
+    """
+    Execute graph with a Dask cluster, e.g. LocalCluster or KubeCluster, and
+    produce a performance report of the execution.
 
-        Params
-        ------
-        schedule: Graph or Schedule, task graph to execute. If schedule is provided
-        then annotates nodes with worker and priority according to the schedule
-        client_kwargs: dict, arguments for Dask client
-        adaptive: bool, whether cluster is adative or not
-        report: str, name of performance report output file
+    Params
+    ------
+    schedule: Graph or Schedule, task graph to execute. If schedule is provided
+    then annotates nodes with worker and priority according to the schedule
+    client_kwargs: dict, arguments for Dask client
+    adaptive: bool, whether cluster is adative or not
+    report: str, name of performance report output file. If empty, no report is generated
 
-        Returns
-        -------
-        Returns the outputs of the graph execution
+    Returns
+    -------
+    Returns the outputs of the graph execution
 
-        Raises
-        ------
-        RuntimeError if any tasks in the graph have failed
-        """
-        if isinstance(schedule, Schedule):
-            # Functions for annotating tasks with workers and priority using task
-            # allocation in schedule
-            def _worker_name(task_allocation: dict, key: str):
-                for processor, tasks in task_allocation.items():
-                    if key in tasks:
-                        return processor
+    Raises
+    ------
+    RuntimeError if any tasks in the graph have failed
+    """
+    if isinstance(schedule, Schedule):
+        # Functions for annotating tasks with workers and priority using task
+        # allocation in schedule
+        def _worker_name(task_allocation: dict, key: str):
+            for processor, tasks in task_allocation.items():
+                if key in tasks:
+                    return processor
 
-            def _priority(task_allocation: dict, key: str):
-                for processor, tasks in task_allocation.items():
-                    if key in tasks:
-                        worker = processor
-                        break
-                priority = len(task_allocation[worker]) - task_allocation[worker].index(
-                    key
+        def _priority(task_allocation: dict, key: str):
+            for processor, tasks in task_allocation.items():
+                if key in tasks:
+                    worker = processor
+                    break
+            priority = len(task_allocation[worker]) - task_allocation[worker].index(key)
+            return priority
+
+        if adaptive:
+            # If cluster is adaptive then allow tasks to be scheduled in workers not specified in
+            # original task allocation
+            with dask.annotate(
+                workers=functools.partial(_worker_name, schedule.task_allocation),
+                priority=functools.partial(_priority, schedule.task_allocation),
+                allow_other_workers=True,
+            ):
+                dask_graph = HighLevelGraph.from_collections(
+                    "graph", to_dask_graph(schedule)
                 )
-                return priority
-
-            if adaptive:
-                # If cluster is adaptive then allow tasks to be scheduled in workers not specified in
-                # original task allocation
-                with dask.annotate(
-                    workers=functools.partial(_worker_name, schedule.task_allocation),
-                    priority=functools.partial(_priority, schedule.task_allocation),
-                    allow_other_workers=True,
-                ):
-                    dask_graph = HighLevelGraph.from_collections(
-                        "graph", to_dask_graph(schedule)
-                    )
-            else:
-                # If strictly following schedule, need to modify tasks to bind with the previous
-                # task in schedule task allocation
-                with dask.annotate(
-                    workers=functools.partial(_worker_name, schedule.task_allocation),
-                ):
-                    dask_graph = to_dask_graph(schedule)
-                    for _, allocation in schedule.task_allocation.items():
-                        for index, task in enumerate(allocation):
-                            if index > 0:
-                                dask_graph[task] = (
-                                    chunks.bind,
-                                    dask_graph[task],
-                                    allocation[index - 1],
-                                )
-                    dask_graph = HighLevelGraph.from_collections("graph", dask_graph)
-
-        elif isinstance(schedule, Graph):
-            dask_graph = to_dask_graph(schedule)
         else:
-            raise ValueError(
-                "Invalid input, schedule must be of type Graph or Schedule"
+            # If strictly following schedule, need to modify tasks to bind with the previous
+            # task in schedule task allocation
+            with dask.annotate(
+                workers=functools.partial(_worker_name, schedule.task_allocation),
+            ):
+                dask_graph = to_dask_graph(schedule)
+                for _, allocation in schedule.task_allocation.items():
+                    for index, task in enumerate(allocation):
+                        if index > 0:
+                            dask_graph[task] = (
+                                chunks.bind,
+                                dask_graph[task],
+                                allocation[index - 1],
+                            )
+                dask_graph = HighLevelGraph.from_collections("graph", dask_graph)
+
+    elif isinstance(schedule, Graph):
+        dask_graph = to_dask_graph(schedule)
+    else:
+        raise ValueError("Invalid input, schedule must be of type Graph or Schedule")
+
+    results = {}
+    errored_tasks = 0
+    context = nullcontext() if report == "" else performance_report(report)
+    with Client(**client_kwargs) as client:
+        with context:
+            future = client.get(
+                dask_graph, [x.name for x in schedule.sinks], sync=False
             )
 
-        results = {}
-        errored_tasks = 0
-        with Client(**client_kwargs) as client:
-            with performance_report(report):
-                future = client.get(
-                    dask_graph, [x.name for x in schedule.sinks], sync=False
-                )
+            seq = as_completed(future)
+            del future
 
-                seq = as_completed(future)
-                del future
+            # Trigger gargage collection on completed end tasks so scheduler doesn't
+            # try to repeat them
 
-                # Trigger gargage collection on completed end tasks so scheduler doesn't
-                # try to repeat them
+            for fut in seq:
+                if fut.status != "finished":
+                    print(f"Task {fut.key} failed with exception: {fut.exception()}")
+                    errored_tasks += 1
+                results[fut.key] = fut.result()
 
-                for fut in seq:
-                    if fut.status != "finished":
-                        print(
-                            f"Task {fut.key} failed with exception: {fut.exception()}"
-                        )
-                        errored_tasks += 1
-                    results[fut.key] = fut.result()
+    if errored_tasks != 0:
+        raise RuntimeError(f"{errored_tasks} tasks failed. Re-run required.")
+    else:
+        print("All tasks completed successfully.")
+    return results
 
-        if errored_tasks != 0:
-            raise RuntimeError(f"{errored_tasks} tasks failed. Re-run required.")
-        else:
-            print("All tasks completed successfully.")
-        return results
 
-    def create_context_graph(client_kwargs: dict) -> ContextGraph:
-        with Client(**client_kwargs) as client:
-            return daskcontextgraph.create_dask_context_graph(client)
+def create_context_graph(client_kwargs: dict) -> ContextGraph:
+    with Client(**client_kwargs) as client:
+        return daskcontextgraph.create_dask_context_graph(client)
 
 
 def check_consistency(
@@ -155,15 +146,6 @@ def check_consistency(
             raise ValueError(
                 "Maximum number of workers in adaptive cluster must be at least processors in context graph"
             )
-
-
-def reports_to_resources(report: Report, mem_report: MemoryReport):
-    resource_map = {}
-    for name, tasks in report.task_stream.task_info(True).items():
-        memory = np.max([task.max for task in mem_report.usage[name]])
-        duration = np.mean([task.duration_in_ms for task in tasks])
-        resource_map[name] = Resources(duration, memory)
-    return resource_map
 
 
 class DaskLocalExecutor(Executor):
@@ -204,7 +186,7 @@ class DaskLocalExecutor(Executor):
         self,
         graph: Graph,
         *,
-        report: str = "performance_report.html",
+        report: str = "",
     ) -> Any:
         """
         Execute graph with a Dask local cluster and produce a performance report of the execution.
@@ -213,7 +195,7 @@ class DaskLocalExecutor(Executor):
         ------
         graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
-        report: str, name of performance report output file
+        report: str, name of performance report output file. If empty, no report is generated
 
         Returns
         -------
@@ -229,72 +211,18 @@ class DaskLocalExecutor(Executor):
             "local", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
             pprint.pprint(cluster.scheduler_info)
-            return DaskExecutor.execute(
+            return execute(
                 graph,
                 client_kwargs={"address": cluster},
                 adaptive=(self.adaptive_kwargs is not None),
                 report=report,
             )
-
-    def benchmark(
-        self,
-        graph: Graph,
-        *,
-        report: str = "performance_report.html",
-        mem_report: str = "mem_usage.csv",
-    ) -> dict[str, Resources]:
-        """
-        Benchmark graph with a Dask local cluster. Resources in terms of compute time and memory
-        usage for each task is extracted from the Dask performance report of the execution and the
-        csv file generated by dask_memusage.
-
-        Params
-        ------
-        graph: Graph or Schedule, task graph to execute. If schedule is provided
-        then annotates nodes with worker and priority according to the schedule
-        n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
-        is overridden by the number of processors in schedule context graph
-        memory_limit: str, memory limit of each Dask worker. If None, no limit is applied
-        cluster_kwargs: dict, arguments for Dask cluster
-        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
-        report: str, name of performance report output file
-        mem_report: str, name of memory usage report output file
-
-        Returns
-        -------
-        Returns dictionary of task name and resources
-
-        Raises
-        ------
-        RuntimeError if any tasks in the graph have failed
-        """
-        if self.cluster_kwargs.get("threads_per_worker") != 1:
-            warnings.warn(
-                "Benchmarking with threads_per_worker > 1 may not be accurate"
-            )
-
-        check_consistency(graph, self.cluster_kwargs, self.adaptive_kwargs)
-        with create_cluster(
-            "local", self.cluster_kwargs, self.adaptive_kwargs
-        ) as cluster:
-            pprint.pprint(cluster.scheduler_info)
-            dask_memusage.install(cluster.scheduler, mem_report)
-            DaskExecutor.execute(
-                graph,
-                client_kwargs={"address": cluster},
-                adaptive=(self.adaptive_kwargs is not None),
-                report=report,
-            )
-
-        rep = Report(report)
-        mem_rep = MemoryReport(mem_report)
-        return reports_to_resources(rep, mem_rep)
 
     def create_context_graph(self) -> ContextGraph:
         with create_cluster(
             "local", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
-            return DaskExecutor.create_context_graph(client_kwargs={"address": cluster})
+            return create_context_graph(client_kwargs={"address": cluster})
 
 
 class DaskKubeExecutor(Executor):
@@ -335,7 +263,7 @@ class DaskKubeExecutor(Executor):
         self,
         graph: Graph,
         *,
-        report: str = "performance_report.html",
+        report: str = "",
     ) -> Any:
         """
         Execute graph with a Dask Kubernetes cluster and produce a performance report of the execution.
@@ -344,7 +272,7 @@ class DaskKubeExecutor(Executor):
         ------
         graph: Graph or Schedule, task graph to execute. If schedule is provided
         then annotates nodes with worker and priority according to the schedule
-        report: str, name of performance report output file
+        report: str, name of performance report output file. If empty, no report is generated
 
         Returns
         -------
@@ -360,7 +288,7 @@ class DaskKubeExecutor(Executor):
             "kube", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
             pprint.pprint(cluster.scheduler_info)
-            return DaskExecutor.execute(
+            return execute(
                 graph,
                 client_kwargs={"address": cluster},
                 adaptive=(self.adaptive_kwargs is not None),
@@ -371,7 +299,7 @@ class DaskKubeExecutor(Executor):
         with create_cluster(
             "kube", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
-            return DaskExecutor.create_context_graph(client_kwargs={"address": cluster})
+            return create_context_graph(client_kwargs={"address": cluster})
 
 
 class DaskClientExecutor(Executor):
@@ -388,7 +316,7 @@ class DaskClientExecutor(Executor):
         self,
         graph: Graph,
         *,
-        report: str = "performance_report.html",
+        report: str = "",
     ) -> Any:
         """
         Execute graph on an existing dask cluster, where the information for the scheduler is provided
@@ -400,7 +328,7 @@ class DaskClientExecutor(Executor):
         then annotates nodes with worker and priority according to the schedule
         dask_scheduler_file: str, path to dask scheduler file
         adaptive: bool, whether cluster is adative or not
-        report: str, name of performance report output file
+        report: str, name of performance report output file. If empty, no report is generated
 
         Returns
         -------
@@ -411,49 +339,14 @@ class DaskClientExecutor(Executor):
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        return DaskExecutor.execute(
+        return execute(
             graph,
             client_kwargs={"scheduler_file": self.dask_scheduler_file},
             adaptive=self.adaptive,
             report=report,
         )
 
-    def benchmark(
-        self,
-        graph: Graph,
-        *,
-        mem_report: str,
-        report: str = "performance_report.html",
-    ) -> dict[str, Resources]:
-        """
-        Benchmark graph with a Dask client cluster. Resources in terms of compute time and memory
-        usage for each task is extracted from the Dask performance report of the execution and the
-        csv file generated by dask_memusage.
-
-        Params
-        ------
-        graph: Graph or Schedule, task graph to execute. If schedule is provided
-        then annotates nodes with worker and priority according to the schedule
-        dask_scheduler_file: str, path to dask scheduler file
-        adaptive: bool, whether cluster is adative or not
-        report: str, name of performance report output file
-        mem_report: str, name of memory usage report output file
-
-        Returns
-        -------
-        Returns dictionary of task name and resources
-
-        Raises
-        ------
-        RuntimeError if any tasks in the graph have failed
-        """
-        self.execute(graph, report=report)
-
-        rep = Report(report)
-        mem_rep = MemoryReport(mem_report)
-        return reports_to_resources(rep, mem_rep)
-
     def create_context_graph(self) -> ContextGraph:
-        return DaskExecutor.create_context_graph(
+        return create_context_graph(
             client_kwargs={"scheduler_file": self.dask_scheduler_file}
         )

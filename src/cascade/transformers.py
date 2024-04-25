@@ -19,24 +19,19 @@ class _ToTaskGraph(Transformer):
         return TaskGraph(sinks)
 
 
-def to_task_graph(
-    graph: Graph, resource_map: dict[str, Resources] | None = {}
-) -> TaskGraph:
+def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> TaskGraph:
     """
     Transform graph into task graph, with resource allocation for each task.
 
     Params
     ------
     graph: Graph to transform
-    resource_map: dict or None, if None then resources are determined from executing graph
-    using thread pool
+    resource_map: dict of resources for each task
 
     Returns
     -------
     TaskGraph
     """
-    if resource_map is None:
-        resource_map = ProcessPoolExecutor().benchmark(graph)
     return _ToTaskGraph(resource_map).transform(graph)
 
 

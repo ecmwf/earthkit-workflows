@@ -15,9 +15,5 @@ class Executor(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def benchmark(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
-        raise NotImplementedError
-
-    @abc.abstractmethod
     def create_context_graph(self) -> ContextGraph:
         raise NotImplementedError

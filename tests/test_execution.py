@@ -5,7 +5,8 @@ import pytest
 import functools
 
 from cascade.executors.dask import DaskLocalExecutor
-from cascade.fluent import from_source, Payload
+from cascade.fluent import from_source
+from cascade.profiler import profile
 
 from helpers import mock_graph
 
@@ -36,15 +37,11 @@ def test_graph_benchmark(tmpdir):
     g = mock_graph(functools.partial(np.random.rand, 100, 100))
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    resource_map = DaskLocalExecutor(n_workers=2).benchmark(
-        g, report=f"{tmpdir}/report.html", mem_report=f"{tmpdir}/mem.csv"
-    )
-    assert np.all([x.name in resource_map for x in g.nodes()])
-    resources = np.asarray(
-        [[resource_map[x.name].cost, resource_map[x.name].memory] for x in g.nodes()]
-    )
-    assert not np.all(resources[:, 0] == 0)
-    assert not np.all(resources[:, 1] == 0)
+    executor = DaskLocalExecutor(n_workers=2)
+    _, annotated_graph = profile(g, tmpdir, executor)
+    for node in annotated_graph.nodes():
+        assert node.cost > 0
+        assert node.memory > 0
 
 
 @pytest.mark.skip("Need new Array API Compat release with JAX helpers")

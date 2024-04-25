@@ -3,17 +3,10 @@ import xarray as xr
 import pytest
 import functools
 
-from cascade.transformers import to_task_graph, to_dask_graph
+from cascade.transformers import to_dask_graph
 from cascade.fluent import Payload, Node, Action
 
 from helpers import mock_graph
-
-
-def test_taskgraph_transform():
-    graph = mock_graph(functools.partial(np.random.rand, 100, 100))
-    result = to_task_graph(graph, None)
-    assert np.any([node.memory > 0 for node in result.nodes()])
-    assert np.any([node.cost > 0 for node in result.nodes()])
 
 
 def test_dask_transform():
