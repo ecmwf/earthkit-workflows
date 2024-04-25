@@ -68,7 +68,7 @@ def fetch_worker_info(dask_worker):
     # We can also do a communication here to benchmark to each other process perhaps
     return {
         "name": dask_worker.name,
-        "memory_total": psutil.virtual_memory().total / (1024**3),  # GB
+        "memory_total": dask_worker.memory_manager.memory_limit / (1024**3),  # GB
         "cpu_count": psutil.cpu_count(logical=False),
         "cpu_speed": psutil.cpu_freq().current if psutil.cpu_freq() else 0,  # MHz
         "hostname": socket.gethostname(),

@@ -14,13 +14,22 @@ class Payload:
     Class for detailing function, args and kwargs to be computing in a graph node
     """
 
-    def __init__(self, func, args: list | None = None, kwargs: dict | None = None):
-        self.func = func
-        self.args = args
-        if kwargs is None:
-            self.kwargs = {}
+    def __init__(
+        self, func: callable, args: list | None = None, kwargs: dict | None = None
+    ):
+        if isinstance(func, functools.partial):
+            if args is not None or kwargs is not None:
+                raise ValueError("Partial function should not have args or kwargs")
+            self.func = func.func
+            self.args = func.args
+            self.kwargs = func.keywords
         else:
-            self.kwargs = copy.deepcopy(kwargs)
+            self.func = func
+            self.args = args
+            if kwargs is None:
+                self.kwargs = {}
+            else:
+                self.kwargs = copy.deepcopy(kwargs)
 
     def has_args(self) -> bool:
         """
@@ -63,8 +72,6 @@ class Payload:
         """
         if hasattr(self.func, "__name__"):
             return self.func.__name__
-        if isinstance(self.func, functools.partial):
-            return f"{self.func.func.__name__}@{'/'.join(map(str, self.func.args))}"
         return ""
 
     def __str__(self) -> str:
@@ -137,6 +144,9 @@ class Action:
 
         """
         sinks = list(self.nodes.data.flatten())
+        for index in range(len(sinks)):
+            sinks[index] = sinks[index].copy()
+            sinks[index].outputs = []  # Ensures they are recognised as sinks
         return Graph(sinks)
 
     def join(
@@ -594,12 +604,16 @@ def from_source(
     it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
     # Ensure all source nodes have a unique name
     node_names = set()
-    for payload in it:
-        name = payload[()].name()
+    for item in it:
+        if not isinstance(item[()], Payload):
+            payload = Payload(item[()])
+        else:
+            payload = item[()]
+        name = payload.name()
         if name in node_names:
             name += str(it.multi_index)
         node_names.add(name)
-        nodes[it.multi_index] = Node(payload[()], name=name)
+        nodes[it.multi_index] = Node(payload, name=name)
     return action(
         xr.DataArray(
             nodes,

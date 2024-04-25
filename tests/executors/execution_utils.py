@@ -1,8 +1,9 @@
 import pytest
 import xarray as xr
 import numpy as np
+import functools
 
-from cascade.fluent import Fluent, Payload
+from cascade.fluent import from_source, Payload
 from cascade.contextgraph import ContextGraph
 
 
@@ -15,16 +16,15 @@ def execution_context():
     context_graph
 
     task_graph = (
-        Fluent()
-        .source(
-            np.random.rand,
-            xr.DataArray(
-                [
-                    np.fromiter([(2, 3) for _ in range(6)], dtype=object)
-                    for _ in range(7)
-                ],
-                dims=["x", "y"],
-            ),
+        from_source(
+            [
+                np.fromiter(
+                    [functools.partial(np.random.rand, 2, 3) for _ in range(6)],
+                    dtype=object,
+                )
+                for _ in range(7)
+            ],
+            ["x", "y"],
         )
         .mean("x")
         .min("y")

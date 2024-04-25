@@ -454,4 +454,6 @@ class DaskClientExecutor(Executor):
         return reports_to_resources(rep, mem_rep)
 
     def create_context_graph(self) -> ContextGraph:
-        raise NotImplementedError()
+        return DaskExecutor.create_context_graph(
+            client_kwargs={"scheduler_file": self.dask_scheduler_file}
+        )

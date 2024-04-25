@@ -1,7 +1,7 @@
 import xarray as xr
 import numpy as np
 
-from cascade.fluent import Payload, Node, Action, Fluent
+from cascade.fluent import Payload, Node, Action, from_source
 
 
 class MockNode(Node):
@@ -17,14 +17,13 @@ def mock_action(shape: tuple) -> Action:
     nodes = xr.DataArray(
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
-    return Action(None, nodes)
+    return Action(nodes)
 
 
 def mock_graph(func):
-    args = [np.fromiter([(100, 100) for _ in range(4)], dtype=object) for _ in range(5)]
+    args = [np.fromiter([func for _ in range(4)], dtype=object) for _ in range(5)]
     return (
-        Fluent()
-        .source(func, xr.DataArray(args, dims=["x", "y"]))
+        from_source(args, ["x", "y"])
         .mean("x")
         .min("y")
         .expand("z", 3, 1, 0)
