@@ -28,16 +28,17 @@ dependencies = [
     "multiprocess"
 ]
 
-[options]
-zip_safe = false
-include_package_data = true
-
 [project.optional-dependencies]
 tests = ["pytest"]
 kubernetes = ["dask_kubernetes"]
 lint = ["black"]
 gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
 examples = ["cftime"]
+profiling = ["memray"]
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
 
 [tool.setuptools.packages.find]
 where = ["src"]

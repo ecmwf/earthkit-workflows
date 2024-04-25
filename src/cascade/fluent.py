@@ -123,30 +123,20 @@ class Node(BaseNode):
 
 
 class Action:
-    def __init__(self, previous: "Action", nodes: xr.DataArray):
-        self.previous = previous
+    def __init__(self, nodes: xr.DataArray):
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
-        self.sinks = [] if previous is None else previous.sinks.copy()
 
     def graph(self) -> Graph:
         """
-        Creates graph from sinks. If list of sinks is empty then uses the
-        list of nodes.
+        Creates graph from the nodes of the action.
 
         Return
         ------
-        Graph instance constructed from list of sinks, or if empty, list
-        of nodes
+        Graph instance constructed from list of nodes
 
         """
-        sinks = self.sinks
-        if len(sinks) == 0:
-            sinks = list(self.nodes.data.flatten())
-
-        for index in range(len(sinks)):
-            sinks[index] = sinks[index].copy()
-            sinks[index].outputs = []  # Ensures they are recognised as sinks
+        sinks = list(self.nodes.data.flatten())
         return Graph(sinks)
 
     def join(
@@ -168,8 +158,7 @@ class Action:
             coords="minimal",
             join="exact",
         )
-        ret = type(self)(self, new_nodes)
-        ret.sinks = self.sinks + other_action.sinks
+        ret = type(self)(new_nodes)
         return ret
 
     def transform(
@@ -250,7 +239,7 @@ class Action:
             dims=broadcasted_nodes.dims,
             attrs=self.nodes.attrs,
         )
-        return type(self)(self, new_nodes)
+        return type(self)(new_nodes)
 
     def expand(
         self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
@@ -312,7 +301,6 @@ class Action:
                 node_payload = payload[it.multi_index]
             new_nodes[it.multi_index] = Node(node_payload, node[()])
         return type(self)(
-            self,
             xr.DataArray(
                 new_nodes,
                 coords=self.nodes.coords,
@@ -394,7 +382,6 @@ class Action:
             }
         )
         result = type(batched)(
-            batched,
             xr.DataArray(
                 new_nodes,
                 coords=new_coords,
@@ -452,7 +439,7 @@ class Action:
         if len(criteria) == 0:
             return self
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
-        return type(self)(self, selected_nodes)
+        return type(self)(selected_nodes)
 
     def concatenate(
         self, dim: str, batch_size: int = 0, keep_dim: bool = False, **kwargs
@@ -598,66 +585,28 @@ def _expand_transform(
     return ret
 
 
-class Fluent:
-    def __init__(
-        self,
-        action=Action,
-    ):
-        self.action = action
+def from_source(
+    payloads_list: tuple, 
+    dims: list = None, 
+    coords: dict = None, 
+    action = Action
+) -> Action:
 
-    def source(self, func: callable, args: tuple, kwargs: dict = {}) -> "Action":
-        """
-        Create source nodes in graph from an dataarray of payloads, containing
-        payload for each source node. If none of func, args and kwargs are a xr.DataArray
-        then returns Action with Payload(func, args, kwargs). If any of func, args
-        or kwargs is a xr.DataArray then creates node array with the same shape is created.
-
-        Parameters
-        ----------
-        func: callable or xr.DataArray[callable], function or functions to apply in
-        each node
-        args: tuple or xr.DataArray[tuple], container for args or array of
-        arguments for each node
-        kwargs: dict or xr.DataArray[dict], kwargs or array of kwargs for function
-        in each node
-
-        Return
-        ------
-        Action
-
-        Raises
-        ------
-        ValueError, if func, args or kwargs are DataArrays with different shapes
-        """
-        shape = None
-        ufunc_args = []
-        for x in [func, args, kwargs]:
-            if isinstance(x, xr.DataArray):
-                if shape is None:
-                    shape = (x.shape, x.coords, x.dims)
-                elif shape != (x.shape, x.coords, x.dims):
-                    raise ValueError(
-                        "Shape, dims or coords of data arrays do not match"
-                    )
-                ufunc_args.append(x)
-            else:
-                ufunc_args.append(xr.DataArray(x))
-        payloads = xr.apply_ufunc(Payload, *ufunc_args, vectorize=True)
-        nodes = np.empty(payloads.shape, dtype=object)
-        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
-        # Ensure all source nodes have a unique name
-        node_names = set()
-        for payload in it:
-            name = payload[()].name()
-            if name in node_names:
-                name += str(it.multi_index)
-            node_names.add(name)
-            nodes[it.multi_index] = Node(payload[()], name=name)
-        return self.action(
-            None,
-            xr.DataArray(
-                nodes,
-                dims=payloads.dims,
-                coords=payloads.coords,
-            ),
-        )
+    payloads = xr.DataArray(payloads_list, dims=dims, coords=coords)
+    nodes = np.empty(payloads.shape, dtype=object)
+    it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+    # Ensure all source nodes have a unique name
+    node_names = set()
+    for payload in it:
+        name = payload[()].name()
+        if name in node_names:
+            name += str(it.multi_index)
+        node_names.add(name)
+        nodes[it.multi_index] = Node(payload[()], name=name)
+    return action(
+        xr.DataArray(
+            nodes,
+            dims=payloads.dims,
+            coords=payloads.coords,
+        ),
+    )

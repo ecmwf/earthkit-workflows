@@ -9,6 +9,9 @@ import dask_memusage
 import numpy as np
 import warnings
 
+from cascade.contextgraph import ContextGraph
+from cascade.executors.dask_utils import daskcontextgraph
+from cascade.executors.executor import Executor
 from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
@@ -125,6 +128,11 @@ class DaskExecutor:
         else:
             print("All tasks completed successfully.")
         return results
+    
+
+    def create_context_graph(client_kwargs: dict) -> ContextGraph:
+        with Client(**client_kwargs) as client:
+            return daskcontextgraph.create_dask_context_graph(client)
 
 
 def check_consistency(
@@ -159,7 +167,7 @@ def reports_to_resources(report: Report, mem_report: MemoryReport):
     return resource_map
 
 
-class DaskLocalExecutor:
+class DaskLocalExecutor(Executor):
     """
     Convenience class for DaskExecutor using LocalCluster exposing most
     common configuration arguments
@@ -283,8 +291,15 @@ class DaskLocalExecutor:
         mem_rep = MemoryReport(mem_report)
         return reports_to_resources(rep, mem_rep)
 
+    def create_context_graph(self) -> ContextGraph:
+        with create_cluster(
+            "local", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
+            return DaskExecutor.create_context_graph(
+                client_kwargs={"address": cluster}
+            )
 
-class DaskKubeExecutor:
+class DaskKubeExecutor(Executor):
     """
     Convenience class for DaskExecutor using KubeCluster exposing most
     common configuration arguments
@@ -353,9 +368,17 @@ class DaskKubeExecutor:
                 adaptive=(self.adaptive_kwargs is not None),
                 report=report,
             )
+        
+    def create_context_graph(self) -> ContextGraph:
+        with create_cluster(
+            "kube", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
+            return DaskExecutor.create_context_graph(
+                client_kwargs={"address": cluster}
+            )
 
 
-class DaskClientExecutor:
+class DaskClientExecutor(Executor):
     """
     Execute graph on existing Dask cluster, where the information for the scheduler is provided
     in the scheduler file
@@ -433,3 +456,6 @@ class DaskClientExecutor:
         rep = Report(report)
         mem_rep = MemoryReport(mem_report)
         return reports_to_resources(rep, mem_rep)
+    
+    def create_context_graph(self) -> ContextGraph:
+        raise NotImplementedError()

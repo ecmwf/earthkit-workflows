@@ -160,3 +160,7 @@ def test_task_stream_transfer(task_stream, blocking_transfer_time, transfer_time
     stream = MockTaskStream({"worker": task_stream}, 0.0, 350.0)
     assert stream.transfer_time() == {"worker": blocking_transfer_time}
     assert stream.transfer_time(blocking=False) == {"worker": transfer_time}
+
+
+def test_generate_context_graph():
+    DaskLocalExecutor(n_workers=4).create_context_graph()
