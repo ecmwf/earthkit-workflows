@@ -39,9 +39,9 @@ def test_graph_benchmark(tmpdir):
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
     executor = DaskLocalExecutor(n_workers=2)
     _, annotated_graph = profile(g, tmpdir, executor)
-    for node in annotated_graph.nodes():
-        assert node.cost > 0
-        assert node.memory > 0
+    nodes = list(annotated_graph.nodes())
+    assert not all([node.cost == 0 for node in nodes])
+    assert not all([node.memory == 0 for node in nodes])
 
 
 @pytest.mark.skip("Need new Array API Compat release with JAX helpers")

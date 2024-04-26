@@ -32,7 +32,9 @@ def test_with_schedule(tmpdir, execution_context):
         schedule, report=f"{tmpdir}/report-schedule.html"
     )
     report = Report(f"{tmpdir}/report-schedule.html")
-    for _, tasks in report.task_stream.stream(True).items():
+    for tasks in report.task_stream.stream(True).values():
+        print("STREAM", [t.name for t in tasks])
+        print("ALLOCATION", list(schedule.task_allocation.values()))
         assert [t.name for t in tasks] in list(schedule.task_allocation.values())
 
     # Adaptive with minimum number of workers less than workers in context
