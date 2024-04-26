@@ -86,3 +86,4 @@ class Cascade:
         self._graph += other._graph
         self._graph = deduplicate_nodes(self._graph)
         self._schedule = None  # doesn't make sense to have a schedule after merging
+        return self
