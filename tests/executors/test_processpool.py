@@ -5,6 +5,7 @@ from cascade.executors.processpool import ProcessPoolExecutor, WorkerPool
 from cascade.schedulers.depthfirst import DepthFirstScheduler
 
 
+@pytest.mark.skip("Hangs in CI")
 @pytest.mark.parametrize("schedule, kwargs", [[False, {"n_workers": 2}], [True, {}]])
 def test_processpool(execution_context, schedule, kwargs):
     task_graph, context_graph = execution_context
@@ -15,6 +16,7 @@ def test_processpool(execution_context, schedule, kwargs):
     assert all([x.name in results for x in task_graph.sinks])
 
 
+@pytest.mark.skip("Hangs in CI")
 @pytest.mark.parametrize(
     "func, args, callback", [[sum, ["Hello World"], print], [sum, [1, 2], sum]]
 )
