@@ -31,7 +31,7 @@ dependencies = [
 [project.optional-dependencies]
 tests = ["pytest"]
 kubernetes = ["dask_kubernetes"]
-lint = ["black"]
+lint = ["black", "isort"]
 gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
 examples = ["cftime"]
 profiling = ["memray"]
