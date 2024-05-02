@@ -1,18 +1,19 @@
-from typing import Any
-import dask
-from dask.highlevelgraph import HighLevelGraph
-from dask.distributed import Client, as_completed, performance_report
-from dask.graph_manipulation import chunks
 import functools
 import pprint
 from contextlib import nullcontext
+from typing import Any
+
+import dask
+from dask.distributed import Client, as_completed, performance_report
+from dask.graph_manipulation import chunks
+from dask.highlevelgraph import HighLevelGraph
 
 from cascade.contextgraph import ContextGraph
 from cascade.executors.dask_utils import daskcontextgraph
 from cascade.executors.executor import Executor
-from cascade.transformers import to_dask_graph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
+from cascade.transformers import to_dask_graph
 
 from .dask_utils import create_cluster
 

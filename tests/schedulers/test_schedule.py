@@ -1,9 +1,9 @@
-import pytest
 from contextlib import nullcontext as does_not_raise
 
-from cascade.schedulers.schedule import Schedule
-
+import pytest
 from schedule_utils import context, example_graph
+
+from cascade.schedulers.schedule import Schedule
 
 
 @pytest.mark.parametrize(

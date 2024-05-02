@@ -1,9 +1,8 @@
 import pytest
+from execution_utils import execution_context
 
 from cascade.executors.processpool import ProcessPoolExecutor, WorkerPool
 from cascade.schedulers.depthfirst import DepthFirstScheduler
-
-from execution_utils import execution_context
 
 
 @pytest.mark.parametrize("schedule, kwargs", [[False, {"n_workers": 2}], [True, {}]])

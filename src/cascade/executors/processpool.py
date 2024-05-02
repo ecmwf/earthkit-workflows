@@ -1,13 +1,14 @@
-import multiprocess as mp
 import functools
 import threading
 from typing import Any
 
+import multiprocess as mp
 from meters import metered
-from cascade.utility import successors
-from cascade.schedulers.schedule import Schedule
+
 from cascade.graph import Graph, Node
+from cascade.schedulers.schedule import Schedule
 from cascade.taskgraph import Resources
+from cascade.utility import successors
 
 
 class WorkerPool:

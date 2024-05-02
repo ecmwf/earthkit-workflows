@@ -1,13 +1,14 @@
-import numpy as np
-import xarray as xr
+import copy
 import functools
 import hashlib
-import copy
 from typing import Callable
 
+import numpy as np
+import xarray as xr
+
+from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
-from . import backends
 
 
 class Payload:

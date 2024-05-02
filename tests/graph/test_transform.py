@@ -1,8 +1,8 @@
 from typing import Any
 
-from cascade.graph import Graph, Node, Processor, Source, Sink, Transformer
-from cascade.graph.samplegraphs import empty, linear, disconnected, simple, multi
-
+from cascade.graph import Graph, Node, Processor, Sink, Source, Transformer
+from cascade.graph.samplegraphs import (disconnected, empty, linear, multi,
+                                        simple)
 
 D = Node.DEFAULT_OUTPUT
 

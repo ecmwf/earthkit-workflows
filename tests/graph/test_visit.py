@@ -1,5 +1,6 @@
-from cascade.graph import Graph, Node, Processor, Source, Sink, Visitor
-from cascade.graph.samplegraphs import empty, linear, disconnected, simple, multi
+from cascade.graph import Graph, Node, Processor, Sink, Source, Visitor
+from cascade.graph.samplegraphs import (disconnected, empty, linear, multi,
+                                        simple)
 
 
 class Lister(Visitor):

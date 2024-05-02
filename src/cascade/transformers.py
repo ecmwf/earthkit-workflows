@@ -1,8 +1,8 @@
 from dask.utils import apply
 
-from .graph import Sink, Node, Graph, Transformer
-from .taskgraph import Resources, Task, TaskGraph, ExecutionGraph
 from .executors.processpool import ProcessPoolExecutor
+from .graph import Graph, Node, Sink, Transformer
+from .taskgraph import ExecutionGraph, Resources, Task, TaskGraph
 
 
 class _ToTaskGraph(Transformer):

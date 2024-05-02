@@ -1,17 +1,16 @@
-import pytest
 import random
 from contextlib import nullcontext as does_not_raise
 
-from cascade.schedulers.schedule import Schedule
-from cascade.graph import Graph, Graph
-from cascade.taskgraph import Resources, Task
-from cascade.contextgraph import ContextGraph
-from cascade.transformers import to_task_graph
+import pytest
+from schedule_utils import context, example_graph
 
+from cascade.contextgraph import ContextGraph
+from cascade.graph import Graph
 from cascade.schedulers.anneal import AnnealingScheduler
 from cascade.schedulers.depthfirst import DepthFirstScheduler
-
-from schedule_utils import context, example_graph
+from cascade.schedulers.schedule import Schedule
+from cascade.taskgraph import Resources, Task
+from cascade.transformers import to_task_graph
 
 
 def resource_map(graph: Graph) -> dict[str, Resources]:

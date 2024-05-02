@@ -1,13 +1,15 @@
 import copy
 import random
+
 import numpy as np
 
-from cascade.taskgraph import TaskGraph
-from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
+from cascade.graph import Graph
+from cascade.taskgraph import TaskGraph
+
+from .depthfirst import DepthFirstScheduler
 from .schedule import Schedule
 from .simulate import Simulator
-from .depthfirst import DepthFirstScheduler
 
 
 class AnnealingScheduler:

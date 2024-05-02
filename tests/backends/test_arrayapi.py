@@ -1,9 +1,8 @@
-import pytest
 import numpy as np
+import pytest
+from generic_tests import *
 
 from cascade import backends
-
-from generic_tests import *
 
 
 def inputs(num_inputs: int, input_shape=(2, 3)):

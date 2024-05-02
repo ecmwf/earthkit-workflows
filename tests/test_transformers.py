@@ -1,12 +1,12 @@
-import numpy as np
-import xarray as xr
-import pytest
 import functools
 
-from cascade.transformers import to_dask_graph
-from cascade.fluent import Payload, Node, Action
-
+import numpy as np
+import pytest
+import xarray as xr
 from helpers import mock_graph
+
+from cascade.fluent import Action, Node, Payload
+from cascade.transformers import to_dask_graph
 
 
 def test_dask_transform():

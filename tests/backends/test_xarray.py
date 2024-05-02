@@ -1,10 +1,9 @@
-import pytest
 import numpy as np
+import pytest
 import xarray as xr
+from generic_tests import *
 
 from cascade import backends
-
-from generic_tests import *
 
 
 def inputs(number: int, shape=(2, 3)):

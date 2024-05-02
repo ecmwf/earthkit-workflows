@@ -2,17 +2,14 @@ import getpass
 import os
 import uuid
 
-import kubernetes
 import dask
+import kubernetes
 from dask_kubernetes.classic import KubeCluster as DaskKubeCluster
-from dask_kubernetes.classic.kubecluster import Pod, Worker, Scheduler
+from dask_kubernetes.classic.kubecluster import Pod, Scheduler, Worker
 from dask_kubernetes.common.auth import ClusterAuth
-from dask_kubernetes.common.objects import clean_pod_template
-from dask_kubernetes.common.utils import (
-    escape,
-    get_current_namespace,
-)
 from dask_kubernetes.common.networking import get_scheduler_address
+from dask_kubernetes.common.objects import clean_pod_template
+from dask_kubernetes.common.utils import escape, get_current_namespace
 
 
 class KubeCluster(DaskKubeCluster):

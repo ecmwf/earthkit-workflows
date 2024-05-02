@@ -1,13 +1,13 @@
-import psutil
+import asyncio
 import socket
 import time
 
-from cascade.contextgraph import ContextGraph
-
+import psutil
+from dask.distributed import get_worker
 # from dask.distributed import connect
 from distributed.comm import connect, listen
-from dask.distributed import get_worker
-import asyncio
+
+from cascade.contextgraph import ContextGraph
 
 
 class NetworkBenchmark:

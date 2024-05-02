@@ -1,13 +1,13 @@
-import pytest
-import xarray as xr
-import numpy as np
-import dill
 import functools
 
-from cascade.fluent import Payload, Node, from_source, custom_hash
-from cascade.graph import serialise, deserialise
-
+import dill
+import numpy as np
+import pytest
+import xarray as xr
 from helpers import mock_action, mock_graph
+
+from cascade.fluent import Node, Payload, custom_hash, from_source
+from cascade.graph import deserialise, serialise
 
 
 def test_payload():

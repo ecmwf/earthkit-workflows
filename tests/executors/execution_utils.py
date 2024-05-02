@@ -1,10 +1,11 @@
-import pytest
-import xarray as xr
-import numpy as np
 import functools
 
-from cascade.fluent import from_source, Payload
+import numpy as np
+import pytest
+import xarray as xr
+
 from cascade.contextgraph import ContextGraph
+from cascade.fluent import Payload, from_source
 
 
 @pytest.fixture

@@ -1,20 +1,15 @@
-import pytest
 from contextlib import nullcontext as does_not_raise
 
-from cascade.taskgraph import Task, Communication, Resources
-from cascade.contextgraph import Processor, ContextGraph
-from cascade.transformers import to_task_graph
+import pytest
+from schedule_utils import context, example_graph
+
+from cascade.contextgraph import ContextGraph, Processor
 from cascade.schedulers.depthfirst import DepthFirstScheduler
 from cascade.schedulers.schedule import Schedule
-from cascade.schedulers.simulate import (
-    TaskState,
-    CommunicatorState,
-    ContextState,
-    ExecutionState,
-    Simulator,
-)
-
-from schedule_utils import context, example_graph
+from cascade.schedulers.simulate import (CommunicatorState, ContextState,
+                                         ExecutionState, Simulator, TaskState)
+from cascade.taskgraph import Communication, Resources, Task
+from cascade.transformers import to_task_graph
 
 
 @pytest.mark.parametrize(

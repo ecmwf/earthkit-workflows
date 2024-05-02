@@ -1,4 +1,5 @@
 from dataclasses import astuple
+
 from cascade.graph import Node, serialise, split_graph
 from cascade.graph.samplegraphs import disconnected, multi
 

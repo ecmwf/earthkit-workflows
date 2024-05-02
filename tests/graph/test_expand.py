@@ -1,16 +1,7 @@
-from cascade.graph import (
-    expand_graph,
-    serialise,
-    Graph,
-    Node,
-    Processor,
-    Sink,
-    Source,
-    Splicer,
-)
+from cascade.graph import (Graph, Node, Processor, Sink, Source, Splicer,
+                           expand_graph, serialise)
 from cascade.graph.expand import _Subgraph
 from cascade.graph.samplegraphs import disconnected, linear, multi, simple
-
 
 D = Node.DEFAULT_OUTPUT
 

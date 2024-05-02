@@ -1,5 +1,6 @@
-import networkx as nx
 from typing import Iterator
+
+import networkx as nx
 
 
 class Processor:

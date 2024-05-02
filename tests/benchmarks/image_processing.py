@@ -1,11 +1,13 @@
-from cascade.fluent import Fluent, Payload
-from cascade.cascade import Cascade
-import xarray as xr
-import numpy as np
-from cascade.visualise import visualise
-import matplotlib.pyplot as plt
 import io
+
+import matplotlib.pyplot as plt
+import numpy as np
+import xarray as xr
 from PIL import Image
+
+from cascade.cascade import Cascade
+from cascade.fluent import Fluent, Payload
+from cascade.visualise import visualise
 
 
 def mandelbrot(c, max_iter):
