@@ -1,5 +1,11 @@
-from .graph import Graph
-from .graph.pyvis import to_pyvis, node_info, edge_info
+from typing import Callable
+
+from pyvis.network import Network
+
+from .contextgraph import Communicator, ContextGraph, Processor
+from .graph import Graph, Node
+from .graph.pyvis import _make_attr_func, edge_info, node_info, to_pyvis
+from .taskgraph import Task
 
 
 def node_info_ext(node):
@@ -23,12 +29,22 @@ def node_info_ext(node):
         if kwargs:
             t.append("Keyword arguments:")
             t.extend(f"- {k!r}: {v!r}" for k, v in kwargs.items())
+        if isinstance(node, Task):
+            t.append(f"Cost: {node.cost}")
+            t.append(f"Memory: {node.memory}")
         info["title"] = "\n".join(t)
 
     return info
 
 
-def visualise(g: Graph, dest: str, **kwargs):
+def visualise(
+    g: Graph,
+    dest: str,
+    node_attrs: dict | Callable[[Node], dict] | None = node_info_ext,
+    edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = edge_info,
+    hierarchical_layout: bool = True,
+    **kwargs,
+):
     """Visualise a graph with PyVis
 
     Parameters
@@ -46,6 +62,54 @@ def visualise(g: Graph, dest: str, **kwargs):
         Jupyter IFrame to visualise the graph
     """
     gv = to_pyvis(
-        g, notebook=True, node_attrs=node_info_ext, edge_attrs=edge_info, **kwargs
+        g,
+        notebook=True,
+        node_attrs=node_attrs,
+        edge_attrs=edge_attrs,
+        hierarchical_layout=hierarchical_layout,
+        **kwargs,
     )
+    return gv.show(dest)
+
+
+def cg_proc_info(proc: Processor) -> dict:
+    return {"title": f"Type: {proc.type}\nSpeed: {proc.speed}\nMemory: {proc.memory}"}
+
+
+def cg_comm_info(comm: Communicator) -> dict:
+    return {
+        "title": f"From: {comm.source}\nTo: {comm.target}\nBandwidth: {comm.bandwidth}\nLatency: {comm.latency}"
+    }
+
+
+def visualise_contextgraph(
+    g: ContextGraph,
+    dest: str,
+    proc_attrs: dict | Callable[[Processor], dict] | None = cg_proc_info,
+    comm_attrs: dict | Callable[[Communicator], dict] | None = cg_comm_info,
+    **kwargs,
+):
+    """Visualise a context graph with PyVis
+
+    Parameters
+    ----------
+    g: ContextGraph
+        Input context graph
+    dest: str
+        Path to the generated HTML file
+    **kwargs
+        Passed to the `pyvis.Network` constructor
+
+    Returns
+    -------
+    IFrame
+        Jupyter IFrame to visualise the graph
+    """
+    proc_func = _make_attr_func(proc_attrs)
+    comm_func = _make_attr_func(comm_attrs)
+    gv = Network(directed=True, notebook=True, **kwargs)
+    for proc in g.nodes:
+        gv.add_node(proc.name, **proc_func(proc))
+    for comm in g.communicators():
+        gv.add_edge(comm.source, comm.target, **comm_func(comm))
     return gv.show(dest)

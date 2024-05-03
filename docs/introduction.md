@@ -2,7 +2,7 @@ Introduction
 ============
 
 Cascade has three main components:
-- **Fluent** defines the language for constructing task graphs and the accompanying backend objects the graph operations on
+- **Action** defines the language for constructing task graphs and the accompanying backend objects the graph operations on
 - **Schedulers** for scheduling the task graphs based on task resource requirements
 - **Executors** for executing the task graph 
 
@@ -26,52 +26,47 @@ dimension, which returns ``Action`` containing a two-dimensional array of nodes 
 <img src="reduce.png" width="400"/>
 </center>
 
-Most of the methods require a ``Payload`` which specifies the function and its arguments that is being applied on the array of nodes. For example, for ``Action.reduce`` the signature is 
+Most of the methods require a ``Callable`` which specifies the function to be applied on the array of nodes. For example, for ``Action.reduce`` the signature is 
 ```python
-def reduce(self, payload: Payload, dim: str = "") -> "Action":
+def reduce(self, payload: Callable, dim: str = "") -> "Action":
 ```
 where an example could be 
 ```python
-payload = Payload(lambda x, y, z: x**2 + y**2 + z**2)
+payload = lambda x, y, z: x**2 + y**2 + z**2
 ```
 applied across the `parameter` dimension.
 
-The `Fluent` class is for defining the `Action` that defines the graph construction language. 
 
-Example usage is:
-```python
-from cascade.fluent import Fluent, Action
-
-fluent = Fluent(Action)
-```
-
-The ``Fluent`` class provides a ``source`` method for creating the initial node array by specifying a function and its args and kwargs. For example to create a single node that opens a xarray dataset
+The ``fluent`` module provides a ``from_source`` method for creating the initial node array by specifying an array of functions. For example to create a single node that opens a xarray dataset
 ```python
 import xarray as xr 
-from cascade.fluent import Fluent
+import functools
+from cascade.fluent import from_source
 
-initial_action = Fluent().source(xr.open_dataset, args=("/path/to/dataset",), kwargs={})
+func = functools.partial(xr.open_dataset, "/path/to/dataset")
+initial_action = from_source(func)
 ```
-To create multiple nodes, at least one of the arguments to `source` either the function, args or kwargs must be a xr.DataArray. For example, 
+To create multiple nodes, supply an array of functions to be executed in each node, and optionally dims and coordinates for labelling the axis of the node array. For example, 
 ```python
 import numpy as np 
-from cascade.fluent import Fluent
+import functools
+from cascade.fluent import from_source
 
-args = [np.fromiter([(2, 3) for _ in range(2)], dtype=object) for _ in range(2)]
-initial_action = fluent.source(np.random.rand, args)
+func = functools(np.random.rand, 2, 3)
+initial_action = from_source(np.full((2, 2), func), dims=["x", "y"])
 ```
-In this case, `initial_action` would contain a (2, 2) array of nodes with dimension "x" and "y", each containing (2, 3) random numpy array. If multiple DataArrays are passed for the function, args or kwargs then they match in shape, coords and dims.
+In this case, `initial_action` would contain a (2, 2) array of nodes with dimension "x" and "y", each containing (2, 3) random numpy array. 
 
 One can then construct a graph from this point using the function cascading API:
 ```python
-from cascade.fluent import Fluent, Payload
+from cascade.fluent import from_source
 
 graph = (
-    Fluent().source(np.random.rand, args)
+    from_source(np.full((2, 2), func), dims=["x", "y"])
     .mean("x")
     .min("y")
     .expand("z", 3, 1, 0)
-    .map([Payload(lambda x, a=a: x * a) for a in range(1, 4)])
+    .map([lambda x, a=a: x * a for a in range(1, 4)])
     .graph()
 )
 ```
@@ -79,7 +74,7 @@ graph = (
 Resources 
 ---------
 
-The graphs constructing using the Fluent API do not contain any annotations for resource usage of the tasks in each node. To manually attach resources to the tasks, we transform the graph into a ``TaskGraph`` object, providing a dictionary of `Resources`, containing CPU cost and memory, for each node name. 
+The graphs constructing using the Casacde API do not contain any annotations for resource usage of the tasks in each node. To manually attach resources to the tasks, we transform the graph into a ``TaskGraph`` object, providing a dictionary of `Resources`, containing CPU cost and memory, for each node name. 
 ```python
 from cascade.transformers import to_taskgraph
 from cascade.taskgraph import Resources
@@ -88,9 +83,15 @@ task_graph = to_taskgraph(graph, {
     x.name: Resources(100, 50) for x in graph.nodes()
 })
 ```
-Alternatively, if ``None`` is provided instead of a dictionary, the graph is executed using
-a thread pool and the CPU cost and memory are measured using a resource meter and attached to the resulting ``TaskGraph`` object. 
+Alternatively, the graph can be executed and profiled to determine the duration and memory requirements of each task using memray.
+```python
+from cascade.profiler import profile 
+from cascade.executors.dask import LocalDaskExecutor
 
+executor = LocalDaskExecutor()
+results, annotated_graph = profile(graph, "/path/to/memfiles/dir/", executor)
+```
+The profiling returns the results of the graph execution as well as a `TaskGraph` containing the nodes of the original graph annotated with the duration and memory usage profiled.
 
 Schedulers
 ----------

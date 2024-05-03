@@ -1,6 +1,7 @@
+from payload_utils import add_payload
+
 from cascade.graph import Node, deserialise, serialise
 from cascade.graph.samplegraphs import empty, linear, multi, simple
-from payload_utils import add_payload
 
 D = Node.DEFAULT_OUTPUT
 

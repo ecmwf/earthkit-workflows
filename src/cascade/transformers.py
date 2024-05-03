@@ -1,8 +1,7 @@
 from dask.utils import apply
 
-from .graph import Sink, Node, Graph, Transformer
-from .taskgraph import Resources, Task, TaskGraph, ExecutionGraph
-from .executors.processpool import ProcessPoolExecutor
+from .graph import Graph, Node, Sink, Transformer
+from .taskgraph import ExecutionGraph, Resources, Task, TaskGraph
 
 
 class _ToTaskGraph(Transformer):
@@ -19,24 +18,19 @@ class _ToTaskGraph(Transformer):
         return TaskGraph(sinks)
 
 
-def to_task_graph(
-    graph: Graph, resource_map: dict[str, Resources] | None = {}
-) -> TaskGraph:
+def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> TaskGraph:
     """
     Transform graph into task graph, with resource allocation for each task.
 
     Params
     ------
     graph: Graph to transform
-    resource_map: dict or None, if None then resources are determined from executing graph
-    using thread pool
+    resource_map: dict of resources for each task
 
     Returns
     -------
     TaskGraph
     """
-    if resource_map is None:
-        resource_map = ProcessPoolExecutor().benchmark(graph)
     return _ToTaskGraph(resource_map).transform(graph)
 
 

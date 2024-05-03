@@ -6,7 +6,6 @@ from pyvis.network import Network
 from .graph import Graph
 from .nodes import Node
 
-
 _P = ParamSpec("_P")
 
 

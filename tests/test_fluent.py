@@ -1,12 +1,12 @@
-import pytest
-import xarray as xr
-import numpy as np
+import functools
+
 import dill
-
-from cascade.fluent import Payload, Node, Fluent, custom_hash
-from cascade.graph import serialise, deserialise
-
+import numpy as np
+import pytest
 from helpers import mock_action, mock_graph
+
+from cascade.fluent import Node, Payload, custom_hash, from_source
+from cascade.graph import deserialise, serialise
 
 
 def test_payload():
@@ -21,77 +21,76 @@ def test_payload():
 
 
 @pytest.mark.parametrize(
-    "func, args, kwargs, shape",
+    "payloads, dims, coords, shape",
     [
-        [np.random.rand, (2, 3), {}, ()],
+        [functools.partial(np.random.rand, 2, 3), None, None, ()],
         [
-            np.random.rand,
-            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
-            {},
-            (2, 2),
-        ],
-        [
-            np.random.rand,
-            {2, 3},
-            xr.DataArray(
-                [[{"test": 2}, {"test": 3}], [{"test": 3}, {"test": 2}]],
-                dims=["x", "y"],
-            ),
-            (2, 2),
-        ],
-        [
-            xr.DataArray(
-                [[np.random.rand, np.random.rand], [np.random.rand, np.random.rand]],
-                dims=["x", "y"],
-            ),
-            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
-            {},
+            [
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+            ],
+            ["x", "y"],
+            {"x": [0, 1], "y": [1, 2]},
             (2, 2),
         ],
     ],
 )
-def test_source(func, args, kwargs, shape):
-    action = Fluent().source(func, args, kwargs)
+def test_source(payloads, dims, coords, shape):
+    action = from_source(payloads, dims, coords)
     assert action.nodes.shape == shape
 
 
 @pytest.mark.parametrize(
-    "func, args, kwargs",
+    "payloads, dims, coords",
     [
         [
-            xr.DataArray(
+            [
                 [
-                    [np.random.rand, np.random.rand],
-                    [np.random.rand, np.random.rand],
-                    [np.random.rand, np.random.rand],
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
                 ],
-                dims=["x", "y"],
-            ),
-            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
-            {},
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+            ],
+            ["x"],
+            None,
         ],
         [
-            xr.DataArray(
-                [[np.random.rand, np.random.rand], [np.random.rand, np.random.rand]],
-                dims=["x", "z"],
-            ),
-            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
-            {},
-        ],
-        [
-            xr.DataArray(
-                [[np.random.rand, np.random.rand], [np.random.rand, np.random.rand]],
-                dims=["x", "y"],
-                coords={"x": [1, 2], "y": [3, 4]},
-            ),
-            xr.DataArray([[{2, 3}, {2, 3}], [{2, 3}, {2, 3}]], dims=["x", "y"]),
-            {},
+            [
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+                [
+                    functools.partial(np.random.rand, 2, 3),
+                    functools.partial(np.random.rand, 2, 3),
+                ],
+            ],
+            None,
+            {"x": [1, 2], "y": [3, 4]},
         ],
     ],
+    ids=["invalid_dims", "invalid_coords"],
 )
-def test_source_invalid(func, args, kwargs):
+def test_source_invalid(payloads, dims, coords):
     with pytest.raises(ValueError):
-        Fluent().source(func, args, kwargs)
+        from_source(payloads, dims, coords)
 
 
 def test_broadcast():
@@ -218,7 +217,7 @@ def test_select_nodes():
 
 
 def test_serialisation(tmpdir):
-    graph = mock_graph(np.random.rand)
+    graph = mock_graph(functools.partial(np.random.rand, 100, 100))
     assert len(graph.sinks) > 0
     data = serialise(graph)
     with open(f"{tmpdir}/graph.dill", "wb") as f:

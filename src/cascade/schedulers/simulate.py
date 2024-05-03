@@ -1,13 +1,15 @@
 import copy
 import functools
 from dataclasses import dataclass
+
 import numpy as np
 
-from cascade.utility import EventLoop, successors, predecessors
-from cascade.taskgraph import Task, Communication, TaskGraph
+from cascade.contextgraph import Communicator, ContextGraph, Processor
 from cascade.graph import Graph
-from cascade.contextgraph import Processor, Communicator, ContextGraph
+from cascade.taskgraph import Communication, Task, TaskGraph
 from cascade.transformers import to_execution_graph
+from cascade.utility import EventLoop, predecessors, successors
+
 from .schedule import Schedule
 
 
@@ -247,9 +249,11 @@ class Simulator:
                         else Simulator.DEFAULT_PROCESSOR
                     )
                     if processor == Simulator.DEFAULT_PROCESSOR:
-                        self.eligible.setdefault(
+                        eligible_tasks = self.eligible.setdefault(
                             Simulator.DEFAULT_PROCESSOR, []
-                        ).append(next_task)
+                        )
+                        if next_task not in eligible_tasks:
+                            eligible_tasks.append(next_task)
                     else:
                         if processor in self.eligible:
                             raise RuntimeError(
@@ -359,7 +363,8 @@ class Simulator:
 
         if len(self.completed_tasks) != execution_state.total_tasks:
             raise RuntimeError(
-                f"Failed to complete all tasks. Completed {len(self.completed_tasks)} out of {execution_state.total_tasks}."
+                f"Failed to complete all tasks. Completed {len(self.completed_tasks)}"
+                + f"out of {execution_state.total_tasks}."
             )
         return execution_state, context_state
 

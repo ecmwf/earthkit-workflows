@@ -1,12 +1,12 @@
 import functools
-from dataclasses import dataclass
 
-from cascade.taskgraph import Task, TaskGraph
-from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
+from cascade.graph import Graph
+from cascade.taskgraph import Task, TaskGraph
 from cascade.transformers import to_task_graph
+
 from .schedule import Schedule
-from .simulate import ExecutionState, ContextState, Simulator
+from .simulate import ContextState, ExecutionState, Simulator
 
 
 class DepthFirstScheduler(Simulator):
@@ -69,7 +69,6 @@ class DepthFirstScheduler(Simulator):
         self,
         task_graph: Graph | TaskGraph,
         context_graph: ContextGraph,
-        benchmark: bool = True
     ) -> Schedule:
         """
         Schedule tasks in task graph to workers in context graph.
@@ -79,7 +78,6 @@ class DepthFirstScheduler(Simulator):
         task_graph: Graph or TaskGraph, if Graph then will perform execution of graph
         using thread pool to determine resources in the transformation to a TaskGraph
         context_graph: ContextGraph, containers nodes to which tasks should be assigned
-        benchmark: bool, whether to benchmark the task graph before scheduling
 
         Returns
         -------
@@ -87,8 +85,7 @@ class DepthFirstScheduler(Simulator):
         """
 
         if not isinstance(task_graph, TaskGraph):
-            resources = None if benchmark else {}
-            task_graph = to_task_graph(task_graph, resources)
+            task_graph = to_task_graph(task_graph)
         super().execute(
             task_graph,
             context_graph=context_graph,

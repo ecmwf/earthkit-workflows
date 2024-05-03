@@ -1,16 +1,15 @@
 from cascade.graph import (
-    expand_graph,
-    serialise,
     Graph,
     Node,
     Processor,
     Sink,
     Source,
     Splicer,
+    expand_graph,
+    serialise,
 )
 from cascade.graph.expand import _Subgraph
 from cascade.graph.samplegraphs import disconnected, linear, multi, simple
-
 
 D = Node.DEFAULT_OUTPUT
 
@@ -143,7 +142,7 @@ def test_expand_multi():
         }
 
         exp[f"process-0.reader-{i}"] = {
-            "inputs": {f"input": f"reader-{i}.writer"},
+            "inputs": {"input": f"reader-{i}.writer"},
             "outputs": [D],
         }
     for i in range(NO1):
