@@ -77,17 +77,17 @@ def test_nofuse_comb():
     gf = fuse_nodes(fuse_accum, g)
     assert serialise(gf) == {
         **{f"reader-{i}": {"inputs": {}, "outputs": [D]} for i in range(N)},
-        f"accum-4": {
+        "accum-4": {
             "inputs": {f"input{i}": f"reader-{i}" for i in range(4)},
             "outputs": [D],
         },
-        f"accum-5": {
+        "accum-5": {
             "inputs": {
                 "input0": "accum-4",
                 **{f"input{i-3}": f"reader-{i}" for i in range(4, N)},
             },
             "outputs": [D],
         },
-        "writer": {"inputs": {"input": f"accum-5"}, "outputs": []},
-        "writer-1": {"inputs": {"input": f"accum-4"}, "outputs": []},
+        "writer": {"inputs": {"input": "accum-5"}, "outputs": []},
+        "writer-1": {"inputs": {"input": "accum-4"}, "outputs": []},
     }

@@ -6,7 +6,7 @@ import psutil
 from dask.distributed import get_worker
 
 # from dask.distributed import connect
-from distributed.comm import connect, listen
+from distributed.comm import connect
 
 from cascade.contextgraph import ContextGraph
 
@@ -46,7 +46,8 @@ class NetworkBenchmark:
             pure=False,
         )
         # time.sleep(0.01)
-        # I don't think this is safe, if the sender runs before the receiver then the handler won't be in place, but I'm not sure.
+        # I don't think this is safe, if the sender runs before the receiver then the
+        # handler won't be in place, but I'm not sure.
         s = dask_client.submit(
             NetworkBenchmark.benchmark_send,
             receiver,
@@ -127,7 +128,8 @@ def create_dask_context_graph(client):
                             10 * 1024 * 1024,
                         )
                         print(
-                            f"Bandwidth: {bandwidth} MiB/s between worker {workers[i]['name']} and worker {workers[j]['name']}"
+                            f"Bandwidth: {bandwidth} MiB/s between worker {workers[i]['name']}"
+                            + f"and worker {workers[j]['name']}"
                         )
                         context_graph.add_edge(
                             workers[i]["name"],

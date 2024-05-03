@@ -303,9 +303,10 @@ class Action:
         """
         if not isinstance(payload, (Callable, Payload)):
             payload = np.asarray(payload)
-            assert (
-                payload.shape == self.nodes.shape
-            ), f"For unique payloads for each node, payload shape {payload.shape} must match node array shape {self.nodes.shape}"
+            assert payload.shape == self.nodes.shape, (
+                f"For unique payloads for each node, payload shape {payload.shape}"
+                f"must match node array shape {self.nodes.shape}"
+            )
 
         # Applies operation to every node, keeping node array structure
         new_nodes = np.empty(self.nodes.shape, dtype=object)
@@ -373,7 +374,7 @@ class Action:
                 batched = batched.transform(
                     _batch_transform,
                     [
-                        ({dim: lst[i : i + batch_size]}, payload)
+                        ({dim: lst[i : i + batch_size]}, payload)  # noqa: E203
                         for i in range(0, len(lst), batch_size)
                     ],
                     f"batch.{level}.{dim}",
@@ -451,7 +452,8 @@ class Action:
                     criteria.pop(key)
                 else:
                     raise NotImplementedError(
-                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims} and coords {self.nodes.coords}"
+                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims}"
+                        + f"and coords {self.nodes.coords}"
                     )
         if len(criteria) == 0:
             return self

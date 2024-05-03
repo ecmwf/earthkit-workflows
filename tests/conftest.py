@@ -1,22 +1,27 @@
-import functools
-
-import numpy as np
 import pytest
-import xarray as xr
+import functools
+import numpy as np
 
 from cascade.contextgraph import ContextGraph
 from cascade.fluent import Payload, from_source
 
 
 @pytest.fixture
-def execution_context():
-    context_graph = ContextGraph()
-    context_graph.add_node("worker_1", type="CPU", speed=10, memory=400)
-    context_graph.add_node("worker_2", type="CPU", speed=10, memory=200)
-    context_graph.add_edge("worker_1", "worker_2", bandwidth=0.1, latency=1)
-    context_graph
+def context_graph():
+    cont_graph = ContextGraph()
+    cont_graph.add_node("worker_1", type="CPU", speed=10, memory=400)
+    cont_graph.add_node("worker_2", type="CPU", speed=10, memory=200)
+    cont_graph.add_node("worker_3", type="CPU", speed=10, memory=200)
+    cont_graph.add_edge("worker_1", "worker_2", bandwidth=0.1, latency=1)
+    cont_graph.add_edge("worker_2", "worker_3", bandwidth=0.1, latency=1)
+    cont_graph.add_edge("worker_1", "worker_3", bandwidth=0.1, latency=1)
+    cont_graph
+    return cont_graph
 
-    task_graph = (
+
+@pytest.fixture
+def task_graph():
+    return (
         from_source(
             [
                 np.fromiter(
@@ -33,5 +38,3 @@ def execution_context():
         .map([Payload(lambda x, a=a: x * a) for a in range(1, 4)])
         .graph()
     )
-
-    return task_graph, context_graph

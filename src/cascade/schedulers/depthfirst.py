@@ -1,5 +1,4 @@
 import functools
-from dataclasses import dataclass
 
 from cascade.contextgraph import ContextGraph
 from cascade.graph import Graph

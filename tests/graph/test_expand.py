@@ -142,7 +142,7 @@ def test_expand_multi():
         }
 
         exp[f"process-0.reader-{i}"] = {
-            "inputs": {f"input": f"reader-{i}.writer"},
+            "inputs": {"input": f"reader-{i}.writer"},
             "outputs": [D],
         }
     for i in range(NO1):

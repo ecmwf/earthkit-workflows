@@ -363,7 +363,8 @@ class Simulator:
 
         if len(self.completed_tasks) != execution_state.total_tasks:
             raise RuntimeError(
-                f"Failed to complete all tasks. Completed {len(self.completed_tasks)} out of {execution_state.total_tasks}."
+                f"Failed to complete all tasks. Completed {len(self.completed_tasks)}"
+                + f"out of {execution_state.total_tasks}."
             )
         return execution_state, context_state
 

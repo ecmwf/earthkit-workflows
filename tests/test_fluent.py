@@ -3,7 +3,6 @@ import functools
 import dill
 import numpy as np
 import pytest
-import xarray as xr
 from helpers import mock_action, mock_graph
 
 from cascade.fluent import Node, Payload, custom_hash, from_source

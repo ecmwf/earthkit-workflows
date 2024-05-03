@@ -2,7 +2,6 @@ import io
 
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
 from PIL import Image
 
 from cascade.cascade import Cascade

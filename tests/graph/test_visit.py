@@ -13,9 +13,9 @@ class Lister(Visitor):
 
 
 def gnames(g: Graph) -> list[str]:
-    l = Lister()
-    l.visit(g)
-    return [n.name for n in l.nodes]
+    lis = Lister()
+    lis.visit(g)
+    return [n.name for n in lis.nodes]
 
 
 def test_visit_empty():

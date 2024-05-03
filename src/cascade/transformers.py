@@ -1,6 +1,5 @@
 from dask.utils import apply
 
-from .executors.processpool import ProcessPoolExecutor
 from .graph import Graph, Node, Sink, Transformer
 from .taskgraph import ExecutionGraph, Resources, Task, TaskGraph
 

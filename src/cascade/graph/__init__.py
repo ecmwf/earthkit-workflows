@@ -9,3 +9,25 @@ from .rename import join_namespaced, rename_nodes
 from .split import split_graph
 from .transform import Transformer
 from .visit import Visitor
+
+__all__ = [
+    "Graph",
+    "Node",
+    "Processor",
+    "Sink",
+    "Source",
+    "Transformer",
+    "Visitor",
+    "copy_graph",
+    "deduplicate_nodes",
+    "expand_graph",
+    "fuse_nodes",
+    "join_namespaced",
+    "rename_nodes",
+    "split_graph",
+    "Splicer",
+    "deserialise",
+    "from_json",
+    "serialise",
+    "to_json",
+]

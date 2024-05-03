@@ -1,5 +1,4 @@
 import pytest
-from execution_utils import execution_context
 
 from cascade.executors.processpool import ProcessPoolExecutor, WorkerPool
 from cascade.schedulers.depthfirst import DepthFirstScheduler
@@ -7,8 +6,7 @@ from cascade.schedulers.depthfirst import DepthFirstScheduler
 
 @pytest.mark.skip("Hangs in CI")
 @pytest.mark.parametrize("schedule, kwargs", [[False, {"n_workers": 2}], [True, {}]])
-def test_processpool(execution_context, schedule, kwargs):
-    task_graph, context_graph = execution_context
+def test_processpool(task_graph, context_graph, schedule, kwargs):
     if schedule:
         task_graph = DepthFirstScheduler().schedule(task_graph, context_graph)
     executor = ProcessPoolExecutor(**kwargs)
