@@ -5,15 +5,20 @@ from .utility import predecessors
 
 
 class Resources:
-    def __init__(self, cost: float = 0, memory: float = 0):
-        """
-        Params
-        ------
-            cost: int, for duration of task in ms
-            memory: int for memory usage in MB
-        """
-        self.cost = cost
+    """
+    Record resources used by a task.
+
+    Params
+    ------
+    duration: int, for duration of task in seconds
+    memory: int for memory usage in MiB
+    cpu_cycles: int, for cpu cycles used
+    """
+
+    def __init__(self, duration: float = 0, memory: float = 0, cpu_cycles: int = 0):
+        self.duration = duration
         self.memory = memory
+        self.cpu_cycles = cpu_cycles
 
 
 class Task(Node):
@@ -32,12 +37,12 @@ class Task(Node):
         self.state = None
 
     @property
-    def cost(self):
-        return self.resources.cost
+    def duration(self):
+        return self.resources.duration
 
-    @cost.setter
-    def cost(self, value: int):
-        self.resources.cost = value
+    @duration.setter
+    def duration(self, value: int):
+        self.resources.duration = value
 
     @property
     def memory(self):
@@ -47,14 +52,32 @@ class Task(Node):
     def memory(self, value: int):
         self.resources.memory = value
 
+    @property
+    def cpu_cycles(self):
+        return self.resources.cpu_cycles
+
+    @cpu_cycles.setter
+    def cpu_cycles(self, value: int):
+        self.resources.cpu_cycles = value
+
     def copy(self) -> "Task":
-        newnode = Task(self.name, self.outputs.copy(), self.payload, **self.inputs)
-        newnode.cost = self.cost
-        newnode.memory = self.memory
+        newnode = Task(
+            self.name, self.outputs.copy(), self.payload, self.resources, **self.inputs
+        )
         return newnode
 
 
 class Communication(Node):
+    """
+    Communication task, representing data transfer between tasks.
+
+    Params
+    ------
+    name: str, name of task
+    source: Node, source of transfer task
+    size: float, size of transfer in MiB
+    """
+
     def __init__(self, name: str, source: Node | Node.Output, size: float):
         super().__init__(name, payload=None, input=source)
         self.size = size
@@ -64,9 +87,9 @@ class Communication(Node):
 class TaskGraph(Graph):
     def __init__(self, sinks: list[Sink]):
         super().__init__(sinks)
-        self._accumulated_cost = {}
+        self._accumulated_duration = {}
         for task in self.nodes(forwards=True):
-            self._accumulated_cost[task] = self.accumulated_cost(task)
+            self._accumulated_duration[task] = self.accumulated_duration(task)
 
     def edges(self) -> Iterator[tuple[Node, Node]]:
         """
@@ -80,9 +103,10 @@ class TaskGraph(Graph):
             for input in node.inputs.values():
                 yield input.parent, node
 
-    def accumulated_cost(self, task: Task) -> float:
+    def accumulated_duration(self, task: Task) -> float:
         """
-        Calculate the accumulated cost of a task, using the cost of all its predecessors.
+        Calculate the accumulated duration of a task, using the duration of all its
+        predecessors.
 
         Params
         ------
@@ -90,18 +114,18 @@ class TaskGraph(Graph):
 
         Returns
         -------
-        float, accumulated cost of task
+        float, accumulated duration of task in seconds
         """
-        if task in self._accumulated_cost:
-            return self._accumulated_cost[task]
+        if task in self._accumulated_duration:
+            return self._accumulated_duration[task]
 
-        cost = task.cost
+        duration = task.duration
         for child in predecessors(self, task):
-            if child in self._accumulated_cost:
-                cost += self._accumulated_cost[child]
+            if child in self._accumulated_duration:
+                duration += self._accumulated_duration[child]
             else:
-                cost += self.accumulated_cost(child)
-        return cost
+                duration += self._accumulated_duration(child)
+        return duration
 
 
 class ExecutionGraph(TaskGraph):

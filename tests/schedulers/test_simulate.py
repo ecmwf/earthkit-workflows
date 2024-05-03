@@ -24,7 +24,7 @@ from cascade.transformers import to_task_graph
             Task(name="task", payload="task", resources=Resources(10, 10)),
             TaskState,
             "worker_1",
-            1,
+            10,
         ],
         [
             Communication(name="comm", source=Task("input"), size=10),

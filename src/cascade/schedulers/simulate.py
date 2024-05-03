@@ -96,7 +96,7 @@ class ContextState:
         processor.state.current_task = task
         task.state.start_time = start_time
         if isinstance(task, Task) and isinstance(processor, Processor):
-            task.state.end_time = start_time + task.cost / processor.speed
+            task.state.end_time = start_time + task.duration
         elif isinstance(task, Communication) and isinstance(processor, Communicator):
             task.state.end_time = (
                 start_time + task.size / processor.bandwidth + processor.latency
