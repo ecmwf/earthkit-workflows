@@ -16,7 +16,8 @@ class AnnealingScheduler:
     """
     Simulated annealing scheduler to determine optimal schedule for a given task graph and context graph.
     Configurable options for each instance are:
-        cost_function: callable[[Schedule], float], function to determine cost of schedule
+        cost_function: callable[[Schedule], float], function to determine cost of schedule. Cost should be
+        positive with minimum at 0.
         num_temp_levels: int, number of temperature levels to iterate over
         num_tries: int, number of iterations to perform per temperature level
         num_success_cutoff: int, number of successful iterations at each level after which
@@ -141,6 +142,9 @@ class AnnealingScheduler:
         scheduler = DepthFirstScheduler()
         schedule = scheduler.schedule(task_graph, context_graph)
         initial_cost = self.cost_function(schedule)
+        if initial_cost == 0:
+            return schedule
+
         previous_cost = initial_cost
 
         temp = self.init_temp
