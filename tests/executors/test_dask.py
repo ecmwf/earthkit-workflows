@@ -84,7 +84,7 @@ def test_task_stream():
         0.0,
         350.0,
     )
-    assert stream.wall_time() == 350.0
+    assert stream.wall_time() == 0.35
     assert not stream.is_enclosed("worker1", tasks[0])
     assert stream.is_enclosed("worker1", tasks[1])
     assert not stream.is_enclosed("worker1", tasks[2])
@@ -98,7 +98,7 @@ def test_task_stream():
                 TaskStream.Task(0, 100, "t1", "worker1", "thread1"),
                 TaskStream.Task(150, 100, "t2", "worker1", "thread1"),
             ],
-            150.0,
+            0.15,
         ],
         [
             [
@@ -106,14 +106,14 @@ def test_task_stream():
                 TaskStream.Task(175, 25, "t3", "worker1", "thread1"),
                 TaskStream.Task(275, 25, "t4", "worker1", "thread1"),
             ],
-            225.0,
+            0.225,
         ],
         [
             [
                 TaskStream.Task(275, 25, "t4", "worker1", "thread1"),
                 TaskStream.Task(290, 60, "t4", "worker1", "thread1"),
             ],
-            275.0,
+            0.275,
         ],
     ],
     ids=["non-overlapping", "enclosed", "overlapping"],
@@ -131,8 +131,8 @@ def test_task_stream_idle(task_stream, idle_time):
                 TaskStream.Task(0, 100, "t1", "worker1", "thread1"),
                 TaskStream.Task(150, 100, "transfer-t1", "worker1", "thread1"),
             ],
-            100.0,
-            100.0,
+            0.1,
+            0.1,
         ],
         [
             [
@@ -141,15 +141,15 @@ def test_task_stream_idle(task_stream, idle_time):
                 TaskStream.Task(275, 25, "t2", "worker1", "thread1"),
             ],
             0.0,
-            25.0,
+            0.025,
         ],
         [
             [
                 TaskStream.Task(275, 25, "t1", "worker1", "thread1"),
                 TaskStream.Task(290, 60, "transfer-t1", "worker1", "thread1"),
             ],
-            50.0,
-            60.0,
+            0.05,
+            0.06,
         ],
     ],
     ids=["blocking", "enclosed", "overlapping"],

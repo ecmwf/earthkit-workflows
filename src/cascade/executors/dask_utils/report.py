@@ -125,7 +125,10 @@ class TaskStream:
         )
 
     def wall_time(self) -> float:
-        return self.end - self.start
+        """
+        Total wall time of task stream in seconds
+        """
+        return (self.end - self.start) / 1000
 
     def stream(
         self, exclude_transfer: bool = True
@@ -159,14 +162,15 @@ class TaskStream:
 
     def idle_time(self, percentage: bool = False) -> dict[str, float]:
         """
-        Idle time for each worker, either as a absolute value in ms or as a
+        Idle time for each worker, either as a absolute value in seconds or as a
         percentage of total time. Idle time is time when worker is not executing tasks
         or transferring data. Note, extracting idle times from Dask Performance Report
         does not give times matching those displayed in the Dask dashboard.
 
         Params
         ------
-        percentage: bool, where to return percentages of total time or absolute values in ms
+        percentage: bool, where to return percentages of total time or absolute values in
+        seconds
 
         Returns
         -------
@@ -193,6 +197,8 @@ class TaskStream:
 
             # Add on idle time after last completing task
             idle += self.end - max(x.end for x in self._stream[worker])
+            # Convert to seconds
+            idle /= 1000
             worker_stats[worker] = idle * 100 / self.wall_time() if percentage else idle
         return worker_stats
 
@@ -200,13 +206,13 @@ class TaskStream:
         self, percentage: bool = False, blocking: bool = True
     ) -> dict[str, float]:
         """
-        Time spent on data transfer for each worker, either as a absolute value in ms or as a
+        Time spent on data transfer for each worker, either as a absolute value in seconds or as a
         percentage of total time. For each worker, the total time spent in blocking data transfer
         is returned if blocking is True.
 
         Params
         ------
-        percentage: bool, where to return percentages of total time or absolute values in ms
+        percentage: bool, where to return percentages of total time or absolute values in seconds
         blocking: bool, where to return only blocking transfer time. If False, time spent on all data
         transfer tasks is returned.
 
@@ -237,6 +243,8 @@ class TaskStream:
                     if next is not None and next.start < task.end:
                         blocking_time -= task.end - next.start
             transfer = blocking_time if blocking else total_time
+            # Convert to seconds
+            transfer /= 1000
             worker_stats[worker] = (
                 transfer * 100 / self.wall_time() if percentage else transfer
             )
@@ -244,12 +252,12 @@ class TaskStream:
 
     def stats(self, percentage: bool = True) -> tuple[float, float]:
         """
-        Statistics on time (ms) or percentage of time spent across all workers being idle or on
+        Statistics on time (seconds) or percentage of time spent across all workers being idle or on
         blocking data transfer.
 
         Params
         ------
-        percentage: bool, where to return percentages of total time or absolute values in ms
+        percentage: bool, where to return percentages of total time or absolute values in seconds
 
         Returns
         -------

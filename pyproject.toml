@@ -22,7 +22,6 @@ dependencies = [
     "bs4", 
     "sortedcontainers", 
     "pyvis",
-    "code-meters",
     "dill",
     "multiprocess",
     "memray",

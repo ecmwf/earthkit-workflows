@@ -40,7 +40,7 @@ def test_graph_benchmark(tmpdir):
     executor = DaskLocalExecutor(n_workers=2)
     _, annotated_graph = profile(g, tmpdir, executor)
     nodes = list(annotated_graph.nodes())
-    assert not all([node.cost == 0 for node in nodes])
+    assert not all([node.duration == 0 for node in nodes])
     assert not all([node.memory == 0 for node in nodes])
 
 

@@ -30,7 +30,7 @@ def node_info_ext(node):
             t.append("Keyword arguments:")
             t.extend(f"- {k!r}: {v!r}" for k, v in kwargs.items())
         if isinstance(node, Task):
-            t.append(f"Cost: {node.cost}")
+            t.append(f"Duration: {node.duration}")
             t.append(f"Memory: {node.memory}")
         info["title"] = "\n".join(t)
 

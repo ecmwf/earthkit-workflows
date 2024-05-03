@@ -54,9 +54,9 @@ class DepthFirstScheduler(Simulator):
                 )
 
     def initialise_eligible_tasks(self, graph: TaskGraph) -> list[Task]:
-        # Sort sinks by total compute cost
+        # Sort sinks by total duration
         sinks = graph.sinks[:]
-        sinks.sort(key=lambda x: graph.accumulated_cost(x))
+        sinks.sort(key=lambda x: graph.accumulated_duration(x))
         self.eligible[Simulator.DEFAULT_PROCESSOR] = []
         for sink in sinks:
             tmp_graph = Graph([sink])

@@ -54,10 +54,10 @@ class _ReadProfiles(Transformer):
             warnings.warn(f"Could not read {path!r}: {e!s}", RuntimeWarning)
             return task
         with reader:
-            task.cost = (
+            task.duration = (
                 reader.metadata.end_time - reader.metadata.start_time
             ).total_seconds()
-            task.memory = reader.metadata.peak_memory
+            task.memory = reader.metadata.peak_memory / (1024**2)  # Convert to MiB
         return task
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
