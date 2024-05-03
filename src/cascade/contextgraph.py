@@ -1,13 +1,17 @@
-import networkx as nx
 from typing import Iterator
+
+import networkx as nx
 
 
 class Processor:
-    def __init__(self, name: str, type: str, speed: float, memory: float):
+    def __init__(
+        self, name: str, type: str, speed: float, memory: float, uri: str = None
+    ):
         self.name = name
         self.type = type
         self.speed = speed
         self.memory = memory
+        self.uri = uri
         # host, port, etc.
 
     def __hash__(self) -> int:
@@ -33,8 +37,10 @@ class ContextGraph(nx.Graph):
         self.node_dict = {}
         super().__init__(**attr)
 
-    def add_node(self, name: str, type: str, speed: float, memory: float):
-        ex = Processor(name, type, speed, memory)
+    def add_node(
+        self, name: str, type: str, speed: float, memory: float, uri: str = None
+    ):
+        ex = Processor(name, type, speed, memory, uri)
         self.node_dict[ex.name] = ex
         super().add_node(ex)
 
@@ -71,3 +77,8 @@ class ContextGraph(nx.Graph):
         """
         for _, _, communicator in self.edges(data=True):
             yield communicator["obj"]
+
+    def visualise(self, dest: str = "contextgraph.html"):
+        from cascade.visualise import visualise_contextgraph
+
+        visualise_contextgraph(self, dest)

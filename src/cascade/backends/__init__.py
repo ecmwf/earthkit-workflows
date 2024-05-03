@@ -1,9 +1,10 @@
 import functools
-import xarray as xr
 import warnings
 
-from .xarray import XArrayBackend
+import xarray as xr
+
 from .arrayapi import ArrayAPIBackend
+from .xarray import XArrayBackend
 
 BACKENDS = {
     xr.DataArray: XArrayBackend,

@@ -1,7 +1,6 @@
 from typing import Any, Iterator
 
-from .graph import Graph
-from .graph import Node, Sink
+from .graph import Graph, Node, Sink
 from .utility import predecessors
 
 

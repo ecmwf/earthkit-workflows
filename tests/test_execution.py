@@ -1,20 +1,22 @@
+import functools
 import os
+
 import numpy as np
-import xarray as xr
 import pytest
+import xarray as xr
+from helpers import mock_graph
 
 from cascade.executors.dask import DaskLocalExecutor
-from cascade.fluent import Fluent
-
-from helpers import mock_graph
+from cascade.fluent import from_source
+from cascade.profiler import profile
 
 
 @pytest.mark.parametrize(
     "func, output_type",
     [
-        [np.random.rand, np.ndarray],
+        [functools.partial(np.random.rand, 100, 100), np.ndarray],
         [
-            lambda *x: xr.DataArray(
+            lambda x=[100, 100]: xr.DataArray(
                 np.random.rand(*x), dims=[f"x{i}" for i in range(len(x))]
             ),
             xr.DataArray,
@@ -32,18 +34,14 @@ def test_graph_execution(tmpdir, func, output_type):
 
 
 def test_graph_benchmark(tmpdir):
-    g = mock_graph(np.random.rand)
+    g = mock_graph(functools.partial(np.random.rand, 100, 100))
 
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    resource_map = DaskLocalExecutor(n_workers=2).benchmark(
-        g, report=f"{tmpdir}/report.html", mem_report=f"{tmpdir}/mem.csv"
-    )
-    assert np.all([x.name in resource_map for x in g.nodes()])
-    resources = np.asarray(
-        [[resource_map[x.name].cost, resource_map[x.name].memory] for x in g.nodes()]
-    )
-    assert not np.all(resources[:, 0] == 0)
-    assert not np.all(resources[:, 1] == 0)
+    executor = DaskLocalExecutor(n_workers=2)
+    _, annotated_graph = profile(g, tmpdir, executor)
+    nodes = list(annotated_graph.nodes())
+    assert not all([node.cost == 0 for node in nodes])
+    assert not all([node.memory == 0 for node in nodes])
 
 
 @pytest.mark.skip("Need new Array API Compat release with JAX helpers")
@@ -63,10 +61,17 @@ def test_graph_execution_jax(tmpdir):
     "func", ["mean", "std", "min", "max", "sum", "prod", "concatenate"]
 )
 def test_batch_execution(tmpdir, func):
-    args = [np.fromiter([(1, 100) for _ in range(4)], dtype=object) for _ in range(5)]
-    sources = Fluent().source(
-        np.random.randint, xr.DataArray(args, dims=["x", "y"]), {"size": (2, 3)}
-    )
+    funcs = [
+        np.fromiter(
+            [
+                functools.partial(np.random.randint, 1, 100, size=(2, 3))
+                for _ in range(4)
+            ],
+            dtype=object,
+        )
+        for _ in range(5)
+    ]
+    sources = from_source(funcs, ["x", "y"])
 
     non_batched = getattr(sources, func)("x")
     assert len(list(non_batched.graph().nodes())) == 24

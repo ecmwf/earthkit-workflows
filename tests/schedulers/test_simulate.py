@@ -1,20 +1,20 @@
-import pytest
 from contextlib import nullcontext as does_not_raise
 
-from cascade.taskgraph import Task, Communication, Resources
-from cascade.contextgraph import Processor, ContextGraph
-from cascade.transformers import to_task_graph
+import pytest
+from schedule_utils import example_graph
+
+from cascade.contextgraph import ContextGraph, Processor
 from cascade.schedulers.depthfirst import DepthFirstScheduler
 from cascade.schedulers.schedule import Schedule
 from cascade.schedulers.simulate import (
-    TaskState,
     CommunicatorState,
     ContextState,
     ExecutionState,
     Simulator,
+    TaskState,
 )
-
-from schedule_utils import context, example_graph
+from cascade.taskgraph import Communication, Resources, Task
+from cascade.transformers import to_task_graph
 
 
 @pytest.mark.parametrize(
@@ -23,19 +23,19 @@ from schedule_utils import context, example_graph
         [
             Task(name="task", payload="task", resources=Resources(10, 10)),
             TaskState,
-            "gpu_1",
+            "worker_1",
             1,
         ],
         [
             Communication(name="comm", source=Task("input"), size=10),
             CommunicatorState,
-            "gpu_1-gpu_2",
+            "worker_1-worker_2",
             101,
         ],
     ],
 )
-def test_context_state(context, task, state, processor, end_time):
-    context_state = ContextState(context)
+def test_context_state(context_graph, task, state, processor, end_time):
+    context_state = ContextState(context_graph)
     task.state = state()
     processor = (
         context_state.processor(processor)
@@ -81,11 +81,11 @@ def test_execution_state():
         [True, False, does_not_raise(), 11],
     ],
 )
-def test_simulator(context, schedule, with_communication, expectation, num_tasks):
+def test_simulator(context_graph, schedule, with_communication, expectation, num_tasks):
     task_graph = to_task_graph(example_graph(5), {})
-    kwargs = {"context_graph": context, "with_communication": with_communication}
+    kwargs = {"context_graph": context_graph, "with_communication": with_communication}
     if schedule:
-        task_graph = DepthFirstScheduler().schedule(task_graph, context)
+        task_graph = DepthFirstScheduler().schedule(task_graph, context_graph)
         kwargs.pop("context_graph")
     with expectation:
         execution_state, _ = Simulator().execute(task_graph, **kwargs)

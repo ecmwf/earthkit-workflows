@@ -1,4 +1,4 @@
-from cascade.graph import join_namespaced, rename_nodes, serialise, Node
+from cascade.graph import Node, join_namespaced, rename_nodes, serialise
 from cascade.graph.samplegraphs import disconnected, linear, multi, simple
 
 D = Node.DEFAULT_OUTPUT

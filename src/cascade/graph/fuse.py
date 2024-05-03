@@ -5,7 +5,6 @@ from .graph import Graph
 from .nodes import Node, Sink
 from .transform import Transformer
 
-
 FuseCallback = Callable[[Node, str, Node, str], Node | None]
 
 

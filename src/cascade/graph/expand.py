@@ -1,7 +1,7 @@
 from typing import Callable
 
 from .graph import Graph
-from .nodes import Node, Processor, Source, Sink
+from .nodes import Node, Processor, Sink, Source
 from .transform import Transformer
 
 

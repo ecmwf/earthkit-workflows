@@ -1,5 +1,5 @@
 from .graph import Graph
-from .nodes import Node, Source, Processor, Sink
+from .nodes import Node, Processor, Sink, Source
 
 
 class Visitor:

@@ -1,9 +1,9 @@
-import pytest
 from contextlib import nullcontext as does_not_raise
 
-from cascade.schedulers.schedule import Schedule
+import pytest
+from schedule_utils import example_graph
 
-from schedule_utils import context, example_graph
+from cascade.schedulers.schedule import Schedule
 
 
 @pytest.mark.parametrize(
@@ -23,8 +23,8 @@ from schedule_utils import context, example_graph
         ],
     ],
 )
-def test_valid_allocations(context, allocations, expectation):
+def test_valid_allocations(context_graph, allocations, expectation):
     task_graph = example_graph(2)
     assert not task_graph.has_cycle()
     with expectation:
-        Schedule(task_graph, context, allocations)
+        Schedule(task_graph, context_graph, allocations)
