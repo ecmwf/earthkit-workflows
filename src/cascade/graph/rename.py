@@ -6,7 +6,6 @@ from .graph import Graph
 from .nodes import Node
 from .transform import Transformer
 
-
 RenamerFunc = Callable[[str], str]
 
 

@@ -1,5 +1,5 @@
-from dask.distributed import SpecCluster
 import dask
+from dask.distributed import SpecCluster
 
 
 def create_cluster(

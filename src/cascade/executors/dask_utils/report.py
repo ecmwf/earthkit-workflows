@@ -1,9 +1,8 @@
-from bs4 import BeautifulSoup
 import json
 import re
-import csv
+
 import numpy as np
-from dataclasses import dataclass
+from bs4 import BeautifulSoup
 
 
 def find_key_values(key, dic):

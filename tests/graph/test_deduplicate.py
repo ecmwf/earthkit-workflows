@@ -1,17 +1,16 @@
+from payload_utils import add_payload
+
 from cascade.graph import (
-    expand_graph,
-    deduplicate_nodes,
-    serialise,
     Graph,
     Node,
     Processor,
     Sink,
     Source,
+    deduplicate_nodes,
+    expand_graph,
+    serialise,
 )
 from cascade.graph.samplegraphs import disconnected, simple
-
-from payload_utils import add_payload
-
 
 D = Node.DEFAULT_OUTPUT
 

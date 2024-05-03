@@ -10,14 +10,15 @@ class Schedule(Graph):
     ):
         if not Schedule.valid_allocations(task_graph, task_allocation):
             raise ValueError(
-                "Task graph and task allocation combination results in dependency cycle, or not all tasks have been allocated"
+                "Task graph and task allocation combination results in dependency cycle,"
+                + "or not all tasks have been allocated"
             )
         super().__init__(task_graph.sinks)
         self.context_graph = context_graph
         self.task_allocation = task_allocation
 
     def __repr__(self) -> str:
-        str = f"============= Schedule =============\n"
+        str = "============= Schedule =============\n"
         for name, tasks in self.task_allocation.items():
             str += f"Processor {name}:\n"
             str += " → ".join(task for task in tasks) + "\n"
@@ -96,7 +97,8 @@ class Schedule(Graph):
                     # Check number of nodes as disconnected components may have been introduced
                     if new_graph.has_cycle():
                         print(
-                            f"Schedule has dependency cycle with task {current_task.name}. Task allocation: \n {task_allocation}"
+                            f"Schedule has dependency cycle with task {current_task.name}."
+                            + f"Task allocation: \n {task_allocation}"
                         )
                         return False
                     if len(list(new_graph.nodes())) != len(list(task_graph.nodes())):

@@ -1,5 +1,5 @@
-from cascade.graph import Graph, Node, Processor, Source, Sink, Visitor
-from cascade.graph.samplegraphs import empty, linear, disconnected, simple, multi
+from cascade.graph import Graph, Node, Processor, Sink, Source, Visitor
+from cascade.graph.samplegraphs import disconnected, empty, linear, multi, simple
 
 
 class Lister(Visitor):
@@ -13,9 +13,9 @@ class Lister(Visitor):
 
 
 def gnames(g: Graph) -> list[str]:
-    l = Lister()
-    l.visit(g)
-    return [n.name for n in l.nodes]
+    lis = Lister()
+    lis.visit(g)
+    return [n.name for n in lis.nodes]
 
 
 def test_visit_empty():

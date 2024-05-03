@@ -1,15 +1,16 @@
 import os
+
 import dill
 
-from .graph import Graph, deduplicate_nodes
-from .graph.export import serialise, deserialise
 from .contextgraph import ContextGraph
+from .executors.dask import DaskLocalExecutor
+from .executors.executor import Executor
+from .graph import Graph, deduplicate_nodes
+from .graph.export import deserialise, serialise
+from .profiler import profile
 from .schedulers.depthfirst import DepthFirstScheduler
 from .schedulers.schedule import Schedule
-from .executors.executor import Executor
-from .executors.dask import DaskLocalExecutor
 from .visualise import visualise
-from .profiler import profile
 
 
 class Cascade:

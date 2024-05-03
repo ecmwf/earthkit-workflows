@@ -1,12 +1,12 @@
 import functools
-from dataclasses import dataclass
 
-from cascade.taskgraph import Task, TaskGraph
-from cascade.graph import Graph
 from cascade.contextgraph import ContextGraph
+from cascade.graph import Graph
+from cascade.taskgraph import Task, TaskGraph
 from cascade.transformers import to_task_graph
+
 from .schedule import Schedule
-from .simulate import ExecutionState, ContextState, Simulator
+from .simulate import ContextState, ExecutionState, Simulator
 
 
 class DepthFirstScheduler(Simulator):

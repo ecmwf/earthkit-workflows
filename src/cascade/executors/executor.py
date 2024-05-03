@@ -1,8 +1,9 @@
+import abc
 from typing import Any
+
 from cascade.contextgraph import ContextGraph
 from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
-import abc
 
 
 class Executor(abc.ABC):

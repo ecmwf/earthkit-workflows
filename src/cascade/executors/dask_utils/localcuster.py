@@ -1,14 +1,13 @@
 import logging
-import warnings
-import toolz
 import math
+import warnings
 
-
+import toolz
 from dask.distributed import LocalCluster as DaskLocalCluster
-from dask.distributed import Worker, Nanny, Scheduler, SpecCluster, Security
-from dask.system import CPU_COUNT
+from dask.distributed import Nanny, Scheduler, Security, SpecCluster, Worker
 from dask.distributed.deploy.utils import nprocesses_nthreads
 from dask.distributed.worker_memory import parse_memory_limit
+from dask.system import CPU_COUNT
 
 logger = logging.getLogger("local")
 

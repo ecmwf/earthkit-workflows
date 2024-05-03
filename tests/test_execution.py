@@ -1,14 +1,14 @@
-import os
-import numpy as np
-import xarray as xr
-import pytest
 import functools
+import os
+
+import numpy as np
+import pytest
+import xarray as xr
+from helpers import mock_graph
 
 from cascade.executors.dask import DaskLocalExecutor
 from cascade.fluent import from_source
 from cascade.profiler import profile
-
-from helpers import mock_graph
 
 
 @pytest.mark.parametrize(
