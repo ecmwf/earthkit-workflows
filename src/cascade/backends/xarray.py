@@ -107,7 +107,9 @@ class XArrayBackend:
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
         dim = method_kwargs.pop("dim")
-        assert np.any([dim in a.dims for a in arrays]), "Concat must be used on existing dimensions only. Try stack instead."
+        assert np.any(
+            [dim in a.dims for a in arrays]
+        ), "Concat must be used on existing dimensions only. Try stack instead."
         return xr.concat(arrays, dim=dim, **method_kwargs)
 
     def stack(
@@ -116,7 +118,9 @@ class XArrayBackend:
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
         dim = method_kwargs.pop("dim")
-        assert not np.any([dim in a.dims for a in arrays]), "Stack must be used on non-existing dimensions only. Try concat instead."
+        assert not np.any(
+            [dim in a.dims for a in arrays]
+        ), "Stack must be used on non-existing dimensions only. Try concat instead."
 
         ret = xr.concat(arrays, dim=dim, **method_kwargs)
         if axis is not None and axis != 0:

@@ -414,7 +414,9 @@ class Action:
             )
         return result
 
-    def flatten(self, dim: str = "", axis: int = 0, backend_kwargs: dict = {}) -> "Action":
+    def flatten(
+        self, dim: str = "", axis: int = 0, backend_kwargs: dict = {}
+    ) -> "Action":
         """
         Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
@@ -461,38 +463,67 @@ class Action:
         return type(self)(selected_nodes)
 
     def concatenate(
-        self, dim: str, batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str,
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
-        return _combine_nodes(self, 'concat', dim, batch_size, keep_dim, backend_kwargs)
+        return _combine_nodes(self, "concat", dim, batch_size, keep_dim, backend_kwargs)
 
     def stack(
-        self, dim: str, batch_size: int = 0, keep_dim: bool = False,
-        axis: int = 0, backend_kwargs: dict = {},
+        self,
+        dim: str,
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        axis: int = 0,
+        backend_kwargs: dict = {},
     ) -> "Action":
-        return _combine_nodes(self, 'stack', dim, batch_size, keep_dim, backend_kwargs={"axis": axis, **backend_kwargs})
+        return _combine_nodes(
+            self,
+            "stack",
+            dim,
+            batch_size,
+            keep_dim,
+            backend_kwargs={"axis": axis, **backend_kwargs},
+        )
 
     def sum(
-        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
             Payload(backends.sum, kwargs=backend_kwargs), dim, batch_size, keep_dim
         )
 
     def mean(
-        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(backends.mean, kwargs=backend_kwargs), dim, keep_dim)
+            return self.reduce(
+                Payload(backends.mean, kwargs=backend_kwargs), dim, keep_dim
+            )
 
         return self.sum(dim, batch_size, keep_dim, **backend_kwargs).divide(
             self.nodes.sizes[dim]
         )
 
     def std(
-        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
         if len(dim) == 0:
             dim = self.nodes.dims[0]
@@ -509,21 +540,33 @@ class Action:
         return norm.subtract(mean_sq).power(0.5)
 
     def max(
-        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
             Payload(backends.max, kwargs=backend_kwargs), dim, batch_size, keep_dim
         )
 
     def min(
-        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
             Payload(backends.min, kwargs=backend_kwargs), dim, batch_size, keep_dim
         )
 
     def prod(
-        self, dim: str = "", batch_size: int = 0, keep_dim: bool = False, backend_kwargs: dict = {},
+        self,
+        dim: str = "",
+        batch_size: int = 0,
+        keep_dim: bool = False,
+        backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
             Payload(backends.prod, kwargs=backend_kwargs), dim, batch_size, keep_dim
@@ -606,7 +649,11 @@ def _expand_transform(
 
 
 def _combine_nodes(
-    action: Action, backend_method: str, dim: str, batch_size: int = 0, keep_dim: bool = False,
+    action: Action,
+    backend_method: str,
+    dim: str,
+    batch_size: int = 0,
+    keep_dim: bool = False,
     backend_kwargs: dict = {},
 ) -> Action:
     if action.nodes.sizes[dim] == 1:
@@ -615,7 +662,10 @@ def _combine_nodes(
             action._squeeze_dimension(dim)
         return action
     return action.reduce(
-        Payload(getattr(backends, backend_method), kwargs=backend_kwargs), dim, batch_size, keep_dim
+        Payload(getattr(backends, backend_method), kwargs=backend_kwargs),
+        dim,
+        batch_size,
+        keep_dim,
     )
 
 
