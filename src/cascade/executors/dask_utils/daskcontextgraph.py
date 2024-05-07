@@ -4,8 +4,6 @@ import time
 
 import psutil
 from dask.distributed import get_worker
-
-# from dask.distributed import connect
 from distributed.comm import connect
 
 from cascade.contextgraph import ContextGraph
@@ -15,39 +13,44 @@ class NetworkBenchmark:
 
     async def benchmark_send(target, size):
         comm = await connect(target)
-        # print(comm.same_host)
         start = time.time()
         await comm.write({"op": "on_benchmark", "data": b"x" * size})
         comm.close()
         return start
 
-    async def benchmark_recv(source, size):
-
-        event = asyncio.Event()
+    async def register_handler(size):
+        worker = get_worker()
+        worker._benchmark_event = asyncio.Event()
 
         def on_benchmark(data):
             assert len(data) == size
-            event.set()
+            worker._benchmark_event.set()
 
-        worker = get_worker()
         worker.handlers["on_benchmark"] = on_benchmark
-        await event.wait()
-        worker.handlers.pop("on_benchmark")
+
+    async def benchmark_recv():
+        worker = get_worker()
+        await worker._benchmark_event.wait()
         end = time.time()
+        worker.handlers.pop("on_benchmark")
+        del worker._benchmark_event
         return end
 
     def run(dask_client, sender, receiver, size):
 
-        r = dask_client.submit(
-            NetworkBenchmark.benchmark_recv,
-            sender,
+        reg = dask_client.submit(
+            NetworkBenchmark.register_handler,
             size,
             workers=[receiver],
             pure=False,
         )
-        # time.sleep(0.01)
-        # I don't think this is safe, if the sender runs before the receiver then the
-        # handler won't be in place, but I'm not sure.
+        reg.result()
+
+        r = dask_client.submit(
+            NetworkBenchmark.benchmark_recv,
+            workers=[receiver],
+            pure=False,
+        )
         s = dask_client.submit(
             NetworkBenchmark.benchmark_send,
             receiver,
@@ -55,7 +58,6 @@ class NetworkBenchmark:
             workers=[sender],
             pure=False,
         )
-        # time.sleep(0.01)
 
         start = s.result()
         end = r.result()
