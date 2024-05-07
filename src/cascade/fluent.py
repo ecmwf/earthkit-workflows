@@ -573,7 +573,7 @@ class Action:
         )
 
     def __two_arg_method(
-        self, method: Callable, other: "Action | float", **kwargs
+        self, method: Callable, other: "Action | float", kwargs
     ) -> "Action":
         if isinstance(other, Action):
             return self.join(other, "**datatype**", match_coord_values=True).reduce(
@@ -583,20 +583,20 @@ class Action:
             Payload(method, args=(Node.input_name(0), other), kwargs=kwargs)
         )
 
-    def subtract(self, other: "Action | float", **backend_kwargs) -> "Action":
-        return self.__two_arg_method(backends.subtract, other, **backend_kwargs)
+    def subtract(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
+        return self.__two_arg_method(backends.subtract, other, backend_kwargs)
 
-    def divide(self, other: "Action | float", **backend_kwargs) -> "Action":
-        return self.__two_arg_method(backends.divide, other, **backend_kwargs)
+    def divide(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
+        return self.__two_arg_method(backends.divide, other, backend_kwargs)
 
-    def add(self, other: "Action | float", **backend_kwargs) -> "Action":
-        return self.__two_arg_method(backends.add, other, **backend_kwargs)
+    def add(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
+        return self.__two_arg_method(backends.add, other, backend_kwargs)
 
-    def multiply(self, other: "Action | float", **backend_kwargs) -> "Action":
-        return self.__two_arg_method(backends.multiply, other, **backend_kwargs)
+    def multiply(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
+        return self.__two_arg_method(backends.multiply, other, backend_kwargs)
 
-    def power(self, other: "Action | float", **backend_kwargs) -> "Action":
-        return self.__two_arg_method(backends.pow, other, **backend_kwargs)
+    def power(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
+        return self.__two_arg_method(backends.pow, other, backend_kwargs)
 
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
