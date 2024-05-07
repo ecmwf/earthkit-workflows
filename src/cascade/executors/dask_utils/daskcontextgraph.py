@@ -18,7 +18,7 @@ class NetworkBenchmark:
         comm.close()
         return start
 
-    async def register_handler(size):
+    def register_handler(size):
         worker = get_worker()
         worker._benchmark_event = asyncio.Event()
 
@@ -97,11 +97,11 @@ def create_dask_context_graph(client):
 
     # Group workers by hostname
     host_groups = {}
-    for worker, info in worker_info.items():
+    for info in worker_info.values():
         host_groups.setdefault(info["hostname"], []).append(info)
 
     # Connect workers within the same host
-    for host, workers in host_groups.items():
+    for workers in host_groups.values():
         for i in range(len(workers)):
             for j in range(i + 1, len(workers)):
                 bandwidth = NetworkBenchmark.run(
@@ -125,28 +125,20 @@ def create_dask_context_graph(client):
                     for worker2 in workers2:
                         bandwidth = NetworkBenchmark.run(
                             client,
-                            workers[i]["uri"],
-                            workers[j]["uri"],
+                            worker1["uri"],
+                            worker2["uri"],
                             10 * 1024 * 1024,
                         )
                         print(
-                            f"Bandwidth: {bandwidth} MiB/s between worker {workers[i]['name']}"
-                            + f"and worker {workers[j]['name']}"
+                            f"Bandwidth: {bandwidth} MiB/s between worker {worker1['name']}"
+                            + f" and worker {worker2['name']}"
                         )
                         context_graph.add_edge(
-                            workers[i]["name"],
-                            workers[j]["name"],
+                            worker1["name"],
+                            worker2["name"],
                             bandwidth=bandwidth,
                             latency=0,
                         )
 
-    # for sender in worker_info.keys():
-    #     for receiver in worker_info.keys():
-    #         if sender != receiver:
-    #             NetworkBenchmark.run(client, sender, receiver, 1000)
-
     print(context_graph)
-
-    # context_graph.visualise("contextgraph.html")
-
     return context_graph
