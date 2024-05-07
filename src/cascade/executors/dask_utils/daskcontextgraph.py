@@ -118,27 +118,31 @@ def create_dask_context_graph(client):
                 )
 
     # And across different hosts
-    for host1, workers1 in host_groups.items():
-        for host2, workers2 in host_groups.items():
-            if host1 != host2:
-                for worker1 in workers1:
-                    for worker2 in workers2:
-                        bandwidth = NetworkBenchmark.run(
-                            client,
-                            worker1["uri"],
-                            worker2["uri"],
-                            10 * 1024 * 1024,
-                        )
-                        print(
-                            f"Bandwidth: {bandwidth} MiB/s between worker {worker1['name']}"
-                            + f" and worker {worker2['name']}"
-                        )
-                        context_graph.add_edge(
-                            worker1["name"],
-                            worker2["name"],
-                            bandwidth=bandwidth,
-                            latency=0,
-                        )
+    hosts = list(host_groups.keys())
+    for i in range(len(hosts)):
+        host1 = hosts[i]
+        workers1 = host_groups[host1]
+        for j in range(i + 1, len(hosts)):
+            host2 = hosts[j]
+            workers2 = host_groups[host2]
+            for worker1 in workers1:
+                for worker2 in workers2:
+                    bandwidth = NetworkBenchmark.run(
+                        client,
+                        worker1["uri"],
+                        worker2["uri"],
+                        10 * 1024 * 1024,
+                    )
+                    print(
+                        f"Bandwidth: {bandwidth} MiB/s between worker {worker1['name']}"
+                        + f" and worker {worker2['name']}"
+                    )
+                    context_graph.add_edge(
+                        worker1["name"],
+                        worker2["name"],
+                        bandwidth=bandwidth,
+                        latency=0,
+                    )
 
     print(context_graph)
     return context_graph
