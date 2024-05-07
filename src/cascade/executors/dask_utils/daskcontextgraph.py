@@ -4,8 +4,6 @@ import time
 
 import psutil
 from dask.distributed import get_worker
-
-# from dask.distributed import connect
 from distributed.comm import connect
 
 from cascade.contextgraph import ContextGraph
@@ -15,39 +13,44 @@ class NetworkBenchmark:
 
     async def benchmark_send(target, size):
         comm = await connect(target)
-        # print(comm.same_host)
         start = time.time()
         await comm.write({"op": "on_benchmark", "data": b"x" * size})
         comm.close()
         return start
 
-    async def benchmark_recv(source, size):
-
-        event = asyncio.Event()
+    def register_handler(size):
+        worker = get_worker()
+        worker._benchmark_event = asyncio.Event()
 
         def on_benchmark(data):
             assert len(data) == size
-            event.set()
+            worker._benchmark_event.set()
 
-        worker = get_worker()
         worker.handlers["on_benchmark"] = on_benchmark
-        await event.wait()
-        worker.handlers.pop("on_benchmark")
+
+    async def benchmark_recv():
+        worker = get_worker()
+        await worker._benchmark_event.wait()
         end = time.time()
+        worker.handlers.pop("on_benchmark")
+        del worker._benchmark_event
         return end
 
     def run(dask_client, sender, receiver, size):
 
-        r = dask_client.submit(
-            NetworkBenchmark.benchmark_recv,
-            sender,
+        reg = dask_client.submit(
+            NetworkBenchmark.register_handler,
             size,
             workers=[receiver],
             pure=False,
         )
-        # time.sleep(0.01)
-        # I don't think this is safe, if the sender runs before the receiver then the
-        # handler won't be in place, but I'm not sure.
+        reg.result()
+
+        r = dask_client.submit(
+            NetworkBenchmark.benchmark_recv,
+            workers=[receiver],
+            pure=False,
+        )
         s = dask_client.submit(
             NetworkBenchmark.benchmark_send,
             receiver,
@@ -55,7 +58,6 @@ class NetworkBenchmark:
             workers=[sender],
             pure=False,
         )
-        # time.sleep(0.01)
 
         start = s.result()
         end = r.result()
@@ -95,11 +97,11 @@ def create_dask_context_graph(client):
 
     # Group workers by hostname
     host_groups = {}
-    for worker, info in worker_info.items():
+    for info in worker_info.values():
         host_groups.setdefault(info["hostname"], []).append(info)
 
     # Connect workers within the same host
-    for host, workers in host_groups.items():
+    for workers in host_groups.values():
         for i in range(len(workers)):
             for j in range(i + 1, len(workers)):
                 bandwidth = NetworkBenchmark.run(
@@ -116,35 +118,31 @@ def create_dask_context_graph(client):
                 )
 
     # And across different hosts
-    for host1, workers1 in host_groups.items():
-        for host2, workers2 in host_groups.items():
-            if host1 != host2:
-                for worker1 in workers1:
-                    for worker2 in workers2:
-                        bandwidth = NetworkBenchmark.run(
-                            client,
-                            workers[i]["uri"],
-                            workers[j]["uri"],
-                            10 * 1024 * 1024,
-                        )
-                        print(
-                            f"Bandwidth: {bandwidth} MiB/s between worker {workers[i]['name']}"
-                            + f"and worker {workers[j]['name']}"
-                        )
-                        context_graph.add_edge(
-                            workers[i]["name"],
-                            workers[j]["name"],
-                            bandwidth=bandwidth,
-                            latency=0,
-                        )
-
-    # for sender in worker_info.keys():
-    #     for receiver in worker_info.keys():
-    #         if sender != receiver:
-    #             NetworkBenchmark.run(client, sender, receiver, 1000)
+    hosts = list(host_groups.keys())
+    for i in range(len(hosts)):
+        host1 = hosts[i]
+        workers1 = host_groups[host1]
+        for j in range(i + 1, len(hosts)):
+            host2 = hosts[j]
+            workers2 = host_groups[host2]
+            for worker1 in workers1:
+                for worker2 in workers2:
+                    bandwidth = NetworkBenchmark.run(
+                        client,
+                        worker1["uri"],
+                        worker2["uri"],
+                        10 * 1024 * 1024,
+                    )
+                    print(
+                        f"Bandwidth: {bandwidth} MiB/s between worker {worker1['name']}"
+                        + f" and worker {worker2['name']}"
+                    )
+                    context_graph.add_edge(
+                        worker1["name"],
+                        worker2["name"],
+                        bandwidth=bandwidth,
+                        latency=0,
+                    )
 
     print(context_graph)
-
-    # context_graph.visualise("contextgraph.html")
-
     return context_graph
