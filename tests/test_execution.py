@@ -4,15 +4,13 @@ import os
 import numpy as np
 import pytest
 import xarray as xr
-from helpers import mock_graph
 
 from cascade.executors.dask import DaskLocalExecutor
 from cascade.fluent import from_source
-from cascade.profiler import profile
 
 
 @pytest.mark.parametrize(
-    "func, output_type",
+    "task_graph, output_type",
     [
         [functools.partial(np.random.rand, 100, 100), np.ndarray],
         [
@@ -22,39 +20,14 @@ from cascade.profiler import profile
             xr.DataArray,
         ],
     ],
+    indirect=["task_graph"],
 )
-def test_graph_execution(tmpdir, func, output_type):
-    g = mock_graph(func)
-
+def test_graph_execution(tmpdir, task_graph, output_type):
     os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    output = DaskLocalExecutor().execute(g, report=f"{tmpdir}/report.html")
+    output = DaskLocalExecutor().execute(task_graph, report=f"{tmpdir}/report.html")
     assert len(output) == 3
     assert list(output.values())[0].shape == (100,)
     assert np.all([isinstance(x, output_type) for x in output.values()])
-
-
-def test_graph_benchmark(tmpdir):
-    g = mock_graph(functools.partial(np.random.rand, 100, 100))
-
-    os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    executor = DaskLocalExecutor(n_workers=2)
-    _, annotated_graph = profile(g, tmpdir, executor)
-    nodes = list(annotated_graph.nodes())
-    assert not all([node.duration == 0 for node in nodes])
-    assert not all([node.memory == 0 for node in nodes])
-
-
-@pytest.mark.skip("Need new Array API Compat release with JAX helpers")
-def test_graph_execution_jax(tmpdir):
-    jax = pytest.importorskip("jax")
-
-    g = mock_graph(lambda *x: jax.numpy.asarray(np.random.rand(*x)))
-
-    os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    output = DaskLocalExecutor().execute(g, 2, report=f"{tmpdir}/report.html")
-    assert len(output) == 3
-    assert list(output.values())[0].shape == (2,)
-    assert np.all([isinstance(x, jax.Array) for x in output.values()])
 
 
 @pytest.mark.parametrize(

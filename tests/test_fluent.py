@@ -3,7 +3,7 @@ import functools
 import dill
 import numpy as np
 import pytest
-from helpers import mock_action, mock_graph
+from helpers import mock_action
 
 from cascade.fluent import Node, Payload, custom_hash, from_source
 from cascade.graph import deserialise, serialise
@@ -216,14 +216,13 @@ def test_select_nodes():
     assert isinstance(action.node({"dim_0": 0, "dim_1": 1}), Node)
 
 
-def test_serialisation(tmpdir):
-    graph = mock_graph(functools.partial(np.random.rand, 100, 100))
-    assert len(graph.sinks) > 0
-    data = serialise(graph)
+def test_serialisation(tmpdir, task_graph):
+    assert len(task_graph.sinks) > 0
+    data = serialise(task_graph)
     with open(f"{tmpdir}/graph.dill", "wb") as f:
         dill.dump(data, f)
 
     with open(f"{tmpdir}/graph.dill", "rb") as f:
         read_data = dill.load(f)
     new_graph = deserialise(read_data)
-    assert len(graph.sinks) == len(new_graph.sinks)
+    assert len(task_graph.sinks) == len(new_graph.sinks)
