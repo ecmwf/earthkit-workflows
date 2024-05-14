@@ -3,7 +3,7 @@ import os
 import pathlib
 import warnings
 
-from memray import FileReader, Tracker
+from memray import FileReader, Tracker, FileDestination
 
 from .executors.executor import Executor
 from .fluent import Node
@@ -18,7 +18,8 @@ def _wrap_task(node: Node, path: pathlib.Path) -> Node:
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        with Tracker(path, native_traces=True):
+        destination = FileDestination(path, overwrite=True)
+        with Tracker(destination=destination, native_traces=True):
             result = func(*args, **kwargs)
         return result
 
