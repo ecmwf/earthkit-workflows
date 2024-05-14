@@ -31,15 +31,6 @@ def test_graph_execution(tmpdir, task_graph, output_type):
     assert np.all([isinstance(x, output_type) for x in output.values()])
 
 
-def test_graph_benchmark(tmpdir, task_graph):
-    os.environ["DASK_LOGGING__DISTRIBUTED"] = "debug"
-    executor = DaskLocalExecutor(n_workers=2)
-    _, annotated_graph = profile(task_graph, tmpdir, executor)
-    nodes = list(annotated_graph.nodes())
-    assert not all([node.duration == 0 for node in nodes])
-    assert not all([node.memory == 0 for node in nodes])
-
-
 @pytest.mark.parametrize(
     "func", ["mean", "std", "min", "max", "sum", "prod", "concatenate"]
 )

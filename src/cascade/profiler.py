@@ -3,12 +3,13 @@ import os
 import pathlib
 import warnings
 
-from memray import FileReader, Tracker, FileDestination
+from memray import FileDestination, FileReader, Tracker
 
 from .executors.executor import Executor
 from .fluent import Node
 from .graph import Graph, Transformer
-from .taskgraph import Task
+from .schedulers.schedule import Schedule
+from .taskgraph import Task, TaskGraph
 
 
 def _wrap_task(node: Node, path: pathlib.Path) -> Node:
@@ -66,11 +67,17 @@ class _ReadProfiles(Transformer):
 
 
 def profile(
-    graph: Graph, base_path: os.PathLike, executor: Executor
+    graph: Graph | Schedule, base_path: os.PathLike, executor: Executor
 ) -> tuple[object, Graph]:
     base_path = pathlib.Path(base_path)
     base_path.mkdir(parents=True, exist_ok=True)
-    wrapped_graph = _AddProfiler(base_path).transform(graph)
-    result = executor.execute(wrapped_graph)
-    annotated_graph = _ReadProfiles(base_path).transform(graph)
+    task_graph = TaskGraph(graph.sinks) if isinstance(graph, Schedule) else graph
+    wrapped_graph = _AddProfiler(base_path).transform(task_graph)
+    execution_graph = (
+        Schedule(wrapped_graph, graph.context_graph, graph.task_allocation)
+        if isinstance(graph, Schedule)
+        else wrapped_graph
+    )
+    result = executor.execute(execution_graph)
+    annotated_graph = _ReadProfiles(base_path).transform(task_graph)
     return result, annotated_graph
