@@ -7,7 +7,7 @@ from cascade.contextgraph import ContextGraph
 from cascade.fluent import Payload, from_source
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def context_graph():
     cont_graph = ContextGraph()
     cont_graph.add_node("worker_1", type="CPU", speed=10, memory=400)
@@ -20,13 +20,14 @@ def context_graph():
     return cont_graph
 
 
-@pytest.fixture
-def task_graph():
+@pytest.fixture(scope="function")
+def task_graph(request):
+    func = getattr(request, "param", functools.partial(np.random.rand, 2, 3))
     return (
         from_source(
             [
                 np.fromiter(
-                    [functools.partial(np.random.rand, 2, 3) for _ in range(6)],
+                    [func for _ in range(6)],
                     dtype=object,
                 )
                 for _ in range(7)
