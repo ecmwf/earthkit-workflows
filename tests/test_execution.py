@@ -7,7 +7,6 @@ import xarray as xr
 
 from cascade.executors.dask import DaskLocalExecutor
 from cascade.fluent import from_source
-from cascade.profiler import profile
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 
-from cascade.fluent import Action, Node, Payload, from_source
+from cascade.fluent import Action, Node, Payload
 
 
 class MockNode(Node):
