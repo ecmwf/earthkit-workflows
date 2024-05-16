@@ -169,22 +169,22 @@ class Backend:
     def pow(*args, **kwargs):
         return array_module(*args).pow(*args, **kwargs)
 
-    def take(array, indices, *, axis: int, **kwargs):
+    def take(array, indices, **kwargs):
         """
         Take elements from array specified by indices along
         the specified axis. If indices is an integer, then an array
         with one less dimension is return. If indices is an array
         then the shape of the output matches the input, except along
-        axis where it will have the same length as indices
+        axis where it will have the same length as indices. Axis can
+        be specified using axis kwarg, or with dim if using xarray.
 
         Parameters
         ----------
         array: Array to take elements from
         indices: int or Array of int, elements to extract from array
-        axis: int, axis along which to take elements
 
         Return
         ------
         Array
         """
-        return array_module(array).take(array, indices, axis=axis, **kwargs)
+        return array_module(array).take(array, indices, **kwargs)

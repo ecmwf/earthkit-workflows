@@ -9,6 +9,9 @@ class TestArrayAPIBackend(BackendBase):
     def input_generator(self, num_inputs: int, input_shape=(2, 3)):
         return [np.random.rand(*input_shape) for _ in range(num_inputs)]
 
+    def shape(self, array):
+        return array.shape
+
     @pytest.mark.parametrize(
         ["num_inputs", "input_shape", "kwargs", "output_shape"],
         [
