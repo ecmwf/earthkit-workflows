@@ -1,5 +1,3 @@
-import warnings
-
 import numpy as np
 import xarray as xr
 
@@ -104,27 +102,30 @@ class XArrayBackend:
 
     def concat(
         *arrays: list[xr.DataArray | xr.Dataset],
+        dim: str,
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
-        dim = method_kwargs.pop("dim")
-        assert np.any(
-            [dim in a.dims for a in arrays]
-        ), "Concat must be used on existing dimensions only. Try stack instead."
+        if not np.any([dim in a.sizes for a in arrays]):
+            raise ValueError(
+                "Concat must be used on existing dimensions only. Try stack instead."
+            )
         return xr.concat(arrays, dim=dim, **method_kwargs)
 
     def stack(
         *arrays: list[xr.DataArray | xr.Dataset],
+        dim: str,
         axis: int | None = None,
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
-        dim = method_kwargs.pop("dim")
-        assert not np.any(
-            [dim in a.dims for a in arrays]
-        ), "Stack must be used on non-existing dimensions only. Try concat instead."
+        if np.any([dim in a.sizes for a in arrays]):
+            raise ValueError(
+                "Stack must be used on non-existing dimensions only. Try concat instead."
+            )
 
         ret = xr.concat(arrays, dim=dim, **method_kwargs)
         if axis is not None and axis != 0:
-            ret = ret.transpose(*ret.dims[1:axis], dim, *ret.dims[axis:])
+            dims = list(ret.sizes.keys())
+            ret = ret.transpose(*dims[1:axis], dim, *dims[axis:])
         return ret
 
     def add(
@@ -172,14 +173,21 @@ class XArrayBackend:
             "divide", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
-    def take(array, indices, *, axis: int, **kwargs):
-        if isinstance(array, xr.Dataset):
-            warnings.warn(
-                "Converting Dataset to DataArray for method: take", UserWarning
-            )
-            array = array.to_dataarray()
-
-        if hasattr(indices, "__iter__"):
-            return np.take(array, indices, axis=axis, **kwargs)
-        ret = np.take(array, [indices], axis=axis, **kwargs)
-        return np.squeeze(ret, axis=axis)
+    def take(
+        array,
+        indices,
+        *,
+        axis: int | None = None,
+        dim: str | None = None,
+        **method_kwargs,
+    ):
+        kwargs = {"drop": True}
+        kwargs.update(method_kwargs)
+        if axis is None:
+            if dim is None:
+                raise ValueError("Either axis or dim must be specified.")
+            return array.isel({dim: indices}, **kwargs)
+        axis_dim = list(array.sizes.keys())[axis]
+        if dim is not None and dim != axis_dim:
+            raise ValueError(f"Mismatching axis ({axis}) and dim ({dim}) provided.")
+        return array.isel({axis_dim: indices}, **kwargs)

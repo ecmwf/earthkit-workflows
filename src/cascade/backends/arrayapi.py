@@ -32,7 +32,7 @@ class ArrayAPIBackend:
     def var(*args, **kwargs):
         return _xp_multi_args("var", *args, **kwargs)
 
-    def stack(*args, axis: int | None = None, **kwargs):
+    def stack(*args, axis: int | None = None):
         xp = array_api_compat.array_namespace(*args)
         broadcasted = xp.broadcast_arrays(*args)
         return xp.stack(broadcasted, axis=axis)
