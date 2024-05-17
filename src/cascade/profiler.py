@@ -12,7 +12,7 @@ from .schedulers.schedule import Schedule
 from .taskgraph import Task, TaskGraph
 
 
-def _wrap_task(node: Node, path: pathlib.Path) -> Node:
+def _wrap_task(node: Node, path: pathlib.Path, native_traces: bool) -> Node:
     assert isinstance(node.payload, tuple)
     assert len(node.payload) == 3
     func = node.payload[0]
@@ -20,7 +20,7 @@ def _wrap_task(node: Node, path: pathlib.Path) -> Node:
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         destination = FileDestination(path, overwrite=True)
-        with Tracker(destination=destination, native_traces=True):
+        with Tracker(destination=destination, native_traces=native_traces):
             result = func(*args, **kwargs)
         return result
 
@@ -30,12 +30,13 @@ def _wrap_task(node: Node, path: pathlib.Path) -> Node:
 
 
 class _AddProfiler(Transformer):
-    def __init__(self, base_path: pathlib.Path):
+    def __init__(self, base_path: pathlib.Path, native_traces: bool = False):
         self.base_path = base_path
+        self.native_traces = native_traces
 
     def node(self, node: Node, **inputs: Node.Output) -> Node:
         path = self.base_path / (node.name + ".bin")
-        wrapped = _wrap_task(node, path)
+        wrapped = _wrap_task(node, path, self.native_traces)
         wrapped.inputs = inputs
         return wrapped
 
@@ -67,12 +68,15 @@ class _ReadProfiles(Transformer):
 
 
 def profile(
-    graph: Graph | Schedule, base_path: os.PathLike, executor: Executor
+    graph: Graph | Schedule,
+    base_path: os.PathLike,
+    executor: Executor,
+    native_traces: bool = False,
 ) -> tuple[object, Graph]:
     base_path = pathlib.Path(base_path)
     base_path.mkdir(parents=True, exist_ok=True)
     task_graph = TaskGraph(graph.sinks) if isinstance(graph, Schedule) else graph
-    wrapped_graph = _AddProfiler(base_path).transform(task_graph)
+    wrapped_graph = _AddProfiler(base_path, native_traces).transform(task_graph)
     execution_graph = (
         Schedule(wrapped_graph, graph.context_graph, graph.task_allocation)
         if isinstance(graph, Schedule)
