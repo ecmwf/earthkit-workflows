@@ -72,8 +72,21 @@ class Cascade:
             input = self._graph
         return self.executor.execute(input, report="report.html")
 
-    def benchmark(self, base_path: os.PathLike):
-        results, self._graph = profile(self._graph, base_path, self.executor)
+    def benchmark(
+        self,
+        base_path: os.PathLike,
+        memray_native_traces: bool = False,
+        memory: str = "memray",
+        duration: str = "meters",
+    ):
+        results, self._graph = profile(
+            self._graph,
+            base_path,
+            self.executor,
+            memray_native_traces,
+            memory,
+            duration,
+        )
         return results
 
     def __add__(self, other: "Cascade") -> "Cascade":

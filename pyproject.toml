@@ -25,6 +25,8 @@ dependencies = [
     "dill",
     "multiprocess",
     "memray",
+    "code-meters",
+    "filelock>=3.12.0"
 ]
 
 [project.optional-dependencies]

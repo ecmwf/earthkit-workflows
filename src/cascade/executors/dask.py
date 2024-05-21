@@ -110,7 +110,9 @@ def execute(
 
             for fut in seq:
                 if fut.status != "finished":
-                    print(f"Task {fut.key} failed with exception: {fut.exception()}")
+                    print(
+                        f"Task {fut.key}, completed with status {fut.status} and exception: {fut.exception()}"
+                    )
                     errored_tasks += 1
                 results[fut.key] = fut.result()
 
