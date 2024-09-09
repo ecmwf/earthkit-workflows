@@ -1,6 +1,6 @@
-from typing import Callable
+from typing import Callable, cast
 
-from .graph import Graph, Node
+from .graph import Graph, Node, Sink
 from .transform import Transformer
 
 PredicateType = Callable[[Node, Node], bool]
@@ -49,7 +49,7 @@ class _DedupTransformer(Transformer):
             ref = self.__find_node(sink)
             assert ref is not None
             new_sinks.add(ref)
-        return Graph(list(new_sinks))
+        return Graph(cast(list[Sink], list(new_sinks)))
 
 
 def same_payload(a: Node, b: Node):

@@ -98,13 +98,13 @@ class Node:
     def _make_output(self, name: str) -> Output:
         return Node.Output(self, name)
 
-    def serialise(self) -> dict:
+    def serialise(self) -> dict[str, Any]:
         """Convert the node to a serialisable value
 
         If the payload object has a ``serialise`` method, it is called without
         arguments to get its serialised form, otherwise the payload is assumed
         to be serialisable as is."""
-        res = {}
+        res: dict[str, Any] = {}
         res["outputs"] = self.outputs.copy()
         res["inputs"] = {name: src.serialise() for name, src in self.inputs.items()}
         if self.payload is not None:

@@ -60,17 +60,17 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
     bare `Source`, `Processor` and `Sink` objects, depending on the presence of
     inputs and outputs.
     """
-    deps = {}
-    for name, node in data.items():
-        deps[name] = []
-        for inp in node.get("inputs", {}).values():
-            if isinstance(inp, str):
-                deps[name].append(inp)
-            else:
-                deps[name].append(inp[0])
+    deps = {
+        name: [
+            inp if isinstance(inp, str) else inp[0]
+            for inp in node.get("inputs", {}).values()
+        ]
+        for name, node in data.items()
+    }
+
     ts = graphlib.TopologicalSorter(deps)
-    nodes = {}
-    sinks = []
+    nodes: dict[str, Any] = {}
+    sinks: list = []
     for name in ts.static_order():
         node_data = data[name]
         node_inputs = {}

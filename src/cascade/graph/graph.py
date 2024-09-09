@@ -115,20 +115,21 @@ class Graph:
         The result is a dict where keys are the given node's input names, and
         values are node outputs, encoded as either the node itself (default
         output), or (parent, output name) tuples."""
-        pred = {}
-        for iname, isrc in node.inputs.items():
-            if isrc.name == Node.DEFAULT_OUTPUT:
-                pred[iname] = isrc.parent
-            else:
-                pred[iname] = (isrc.parent, isrc.name)
-        return pred
+        return {
+            iname: (
+                isrc.parent
+                if isrc.name == Node.DEFAULT_OUTPUT
+                else (isrc.parent, isrc.name)
+            )
+            for iname, isrc in node.inputs.items()
+        }
 
     def get_successors(self, node: Node) -> dict[str, list[tuple[Node, str]]]:
         """Get the successors (children) of a node
 
         The result is a dict where keys are the given node's output names, and
         values are lists of (child, input name) tuples."""
-        succ = {}
+        succ: dict[str, list[tuple[Node, str]]] = {}
         for other in self.nodes():
             for iname, isrc in other.inputs.items():
                 if isrc.parent is node:
