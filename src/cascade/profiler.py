@@ -3,10 +3,13 @@ import os
 import pathlib
 import re
 import warnings
+from typing import cast
 
 import filelock
 from memray import FileDestination, FileReader, Tracker
 from meters import metered
+
+from cascade.graph.nodes import Sink
 
 from .executors.executor import Executor
 from .fluent import Node
@@ -44,7 +47,7 @@ class _AddMemrayProfiler(Transformer):
         return wrapped
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(sinks)
+        return graph.__class__(cast(list[Sink], sinks))
 
 
 class _ReadMemrayProfiles(Transformer):
@@ -56,7 +59,9 @@ class _ReadMemrayProfiles(Transformer):
         self.duration = duration
 
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        task = Task(node.name, node.outputs.copy(), node.payload, **inputs)
+        task = Task(
+            node.name, node.outputs.copy(), node.payload, resources=None, **inputs
+        )
         path = self.base_path / (node.name + ".bin")
         try:
             reader = FileReader(path)
@@ -73,7 +78,7 @@ class _ReadMemrayProfiles(Transformer):
         return task
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(sinks)
+        return graph.__class__(cast(list[Sink], sinks))
 
 
 def _meters_wrap_task(node: Node, path: str) -> Node:
@@ -105,17 +110,24 @@ class _AddMetersProfiler(Transformer):
         return wrapped
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(sinks)
+        return graph.__class__(cast(list[Sink], sinks))
+
+
+def _get_from_logline(regex: str, line: str) -> float:
+    m = re.search(regex, line)
+    if not m:
+        raise ValueError
+    return float(m.group(1))
 
 
 def parse_metered_logfile(
     logfile: str, memory: bool = True, duration: bool = True
-) -> dict[str, float]:
+) -> dict[str, Resources]:
     resources = {}
     with open(logfile, "r") as file:
         for line in file:
-            log_bytes = float(re.search("memory: (.+?) bytes", line).group(1))
-            log_time = float(re.search("wall time: (.+?) s", line).group(1))
+            log_bytes = _get_from_logline("memory: (.+?) bytes", line)
+            log_time = _get_from_logline("wall time: (.+?) s", line)
             resources[":".join(line.split(":")[0:2])] = Resources(
                 log_time, log_bytes / (1024**2)
             )
@@ -129,7 +141,9 @@ class _ReadMetersProfiles(Transformer):
         self.duration = duration
 
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        task = Task(node.name, node.outputs.copy(), node.payload, **inputs)
+        task = Task(
+            node.name, node.outputs.copy(), node.payload, resources=None, **inputs
+        )
         resources = self.resources[node.name]
         if self.duration:
             task.duration = resources.duration
@@ -138,12 +152,12 @@ class _ReadMetersProfiles(Transformer):
         return task
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(sinks)
+        return graph.__class__(cast(list[Sink], sinks))
 
 
 def memray_profile(
     graph: Graph | Schedule,
-    base_path: os.PathLike,
+    base_path: os.PathLike | str,
     executor: Executor,
     native_traces: bool = False,
     memory: bool = True,
