@@ -1,7 +1,7 @@
-from typing import Iterator, cast
+from typing import Iterable, Iterator, cast
 
 from cascade.contextgraph import ContextGraph
-from cascade.graph import Graph, Node, Source, copy_graph
+from cascade.graph import Graph, Node, Sink, Source, copy_graph
 
 
 class Schedule(Graph):
@@ -43,13 +43,13 @@ class Schedule(Graph):
                 return processor
         raise RuntimeError(f"Task {task_name} not in schedule {self.task_allocation}")
 
-    def processors(self) -> Iterator[str]:
+    def processors(self) -> Iterable[str]:
         """
         Iterator over all processor names in the schedule
 
         Returns
         -------
-        Iterator[str]
+        Iterable[str]
         """
         return self.task_allocation.keys()
 
@@ -91,7 +91,7 @@ class Schedule(Graph):
                     while f"input{index}" in next_task.inputs:
                         index += 1
                     if current_task in new_graph.sinks:
-                        new_graph.sinks.remove(current_task)
+                        new_graph.sinks.remove(cast(Sink, current_task))
                         current_task.outputs = [Node.DEFAULT_OUTPUT]
                     next_task.inputs[f"input{index}"] = current_task.get_output()
                     # Check number of nodes as disconnected components may have been introduced
@@ -154,5 +154,5 @@ class Schedule(Graph):
         tasks = self.task_allocation[task_worker]
         previous = tasks.index(node.name) - 1
         if previous > 0:
-            predecessors["allocation"].append(self.get_node(tasks[next]))
+            predecessors["allocation"].append(self.get_node(tasks[next]))  # type: ignore # no idea what this should do
         return predecessors
