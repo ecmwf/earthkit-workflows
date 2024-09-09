@@ -51,6 +51,7 @@ def to_pyvis(
     node_attrs: dict | Callable[[Node], dict] | None = None,
     edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = None,
     hierarchical_layout: bool = True,
+    options: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Network:
     """Convert a graph to a PyVis network
@@ -64,6 +65,9 @@ def to_pyvis(
     edge_attrs: None | dict | ((str, Node, str, Node) -> dict)
         Edge attributes, or function to set per-edge attributes. The function
         arguments are (from_output_name, from_node, to_input_name, to_node)
+    options: dict[str, Any] | None, optional
+        Options to pass to the `set_options` method of the network.
+        Has priority over `hierarchical_layout`
     hierarchical_layout:
         If True, request a hierarchical layout
     **kwargs
@@ -82,6 +86,12 @@ def to_pyvis(
         for iname, isrc in node.inputs.items():
             eattrs = edge_func(str(isrc), isrc.parent, f"{node.name}.{iname}", node)
             net.add_edge(isrc.parent.name, node.name, **eattrs)
+
+    options = options or {}
     if hierarchical_layout:
-        net.set_options(json.dumps(hierarchical_layout_options()))
+        hierarchical_layout_options_dict = hierarchical_layout_options()
+        hierarchical_layout_options_dict.update(options)
+        net.set_options(json.dumps(hierarchical_layout_options_dict))
+    else:
+        net.set_options(json.dumps(options))
     return net
