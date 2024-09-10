@@ -5,7 +5,7 @@ import networkx as nx
 
 class Processor:
     def __init__(
-        self, name: str, type: str, speed: float, memory: float, uri: str = None
+        self, name: str, type: str, speed: float, memory: float, uri: str | None = None
     ):
         self.name = name
         self.type = type
@@ -38,7 +38,7 @@ class ContextGraph(nx.Graph):
         super().__init__(**attr)
 
     def add_node(
-        self, name: str, type: str, speed: float, memory: float, uri: str = None
+        self, name: str, type: str, speed: float, memory: float, uri: str | None = None
     ):
         """
         Add node to context graph
@@ -68,10 +68,12 @@ class ContextGraph(nx.Graph):
         bandwidth: float, bandwidth of edge in MiB/s
         latency: float, latency of edge in seconds
         """
-        u_of_edge = self.node_dict[u_of_edge]
-        v_of_edge = self.node_dict[v_of_edge]
-        c = Communicator(u_of_edge, v_of_edge, bandwidth, latency)
-        super().add_edge(u_of_edge, v_of_edge, obj=c)
+        un_of_edge = self.node_dict[u_of_edge]
+        vn_of_edge = self.node_dict[v_of_edge]
+        c = Communicator(un_of_edge, vn_of_edge, bandwidth, latency)
+        # NOTE this looks a bit odd -- I'd thought the edge should be defined by (str, str, o), instead of
+        # (node, node, o), because thats how its retrieved in the method below. But doing that crashes tests atm
+        super().add_edge(un_of_edge, vn_of_edge, obj=c)
 
     def communicator(self, u_of_edge: str, v_of_edge: str) -> Communicator:
         """
