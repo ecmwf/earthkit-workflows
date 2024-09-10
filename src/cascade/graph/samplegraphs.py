@@ -1,4 +1,6 @@
-from . import Graph, Processor, Sink, Source
+from typing import Sequence
+
+from . import Graph, Node, Processor, Sink, Source
 
 
 def empty() -> Graph:
@@ -12,7 +14,7 @@ def linear(nproc: int = 5) -> Graph:
     reader -> process-0 -> ... -> process-{nproc-1} -> writer
     """
     r = Source("reader")
-    p = r
+    p: Node = r
     for i in range(nproc):
         p = Processor(f"process-{i}", input=p)
     w = Sink("writer", input=p)
@@ -29,7 +31,7 @@ def disconnected(nchains: int = 5, nproc: int = 1) -> Graph:
     If nproc is 1 the `.0` suffix of processors is omitted
     """
     rs = [Source(f"reader-{i}") for i in range(nchains)]
-    ps = rs
+    ps: Sequence[Node] = rs
     for j in range(nproc):
         suffix = "" if nproc == 1 else f".{j}"
         ps = [Processor(f"process-{i}{suffix}", input=p) for i, p in enumerate(ps)]
@@ -49,7 +51,7 @@ def simple(nread: int = 5, nproc: int = 3) -> Graph:
     ws = []
     for i in range(nproc):
         pi = {f"input{j}": r for j, r in enumerate(rs)}
-        p = Processor(f"process-{i}", **pi)
+        p = Processor(f"process-{i}", outputs=None, payload=None, **pi)
         ps.append(p)
         ws.append(Sink(f"writer-{i}", input=p))
     return Graph(ws)
@@ -83,11 +85,11 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
         input1=p0.output1,
         input2=rs[min(2, nread - 1)],
     )
-    ws = []
-    for i in range(nout2):
-        for p1 in p1s:
-            w = Sink(f"writer-{len(ws)}", input1=p1, input2=p2.get_output(f"output{i}"))
-            ws.append(w)
+    _ws = ((inp, out) for out in range(nout2) for inp in p1s)
+    ws: list[Sink] = [
+        Sink(f"writer-{j}", input1=inp, input2=p2.get_output(f"output{out}"))
+        for j, (inp, out) in enumerate(_ws)
+    ]
     return Graph(ws)
 
 
@@ -107,7 +109,8 @@ def comb(nteeth: int = 5, nproc: int = 0):
     where tooth-{i} is reader-{i} if nproc is 0, else process-{i}.{nproc-1}
     The last join feeds into the writer: join-{nteeth - 2} -> writer
     """
-    tip = None
+    tip: Node | None = None
+    tooth: Node
     for i in range(nteeth):
         tooth = Source(f"reader-{i}")
         for j in range(nproc):
