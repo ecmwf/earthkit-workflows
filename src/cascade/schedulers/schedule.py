@@ -154,5 +154,5 @@ class Schedule(Graph):
         tasks = self.task_allocation[task_worker]
         previous = tasks.index(node.name) - 1
         if previous > 0:
-            predecessors["allocation"].append(self.get_node(tasks[next]))
+            predecessors["allocation"].append(self.get_node(tasks[previous]))
         return predecessors
