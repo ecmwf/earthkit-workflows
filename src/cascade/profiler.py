@@ -3,17 +3,14 @@ import os
 import pathlib
 import re
 import warnings
-from typing import cast
 
 import filelock
 from memray import FileDestination, FileReader, Tracker
 from meters import metered
 
-from cascade.graph.nodes import Sink
-
 from .executors.executor import Executor
 from .fluent import Node
-from .graph import Graph, Transformer
+from .graph import Graph, Output, Transformer
 from .schedulers.schedule import Schedule
 from .taskgraph import Resources, Task, TaskGraph
 
@@ -40,14 +37,14 @@ class _AddMemrayProfiler(Transformer):
         self.base_path = base_path
         self.native_traces = native_traces
 
-    def node(self, node: Node, **inputs: Node.Output) -> Node:
+    def node(self, node: Node, **inputs: Output) -> Node:
         path = self.base_path / (node.name + ".bin")
         wrapped = _memray_wrap_task(node, path, self.native_traces)
         wrapped.inputs = inputs
         return wrapped
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(cast(list[Sink], sinks))
+        return graph.__class__(sinks)
 
 
 class _ReadMemrayProfiles(Transformer):
@@ -58,7 +55,7 @@ class _ReadMemrayProfiles(Transformer):
         self.memory = memory
         self.duration = duration
 
-    def node(self, node: Node, **inputs: Node.Output) -> Task:
+    def node(self, node: Node, **inputs: Output) -> Task:
         task = Task(
             node.name, node.outputs.copy(), node.payload, resources=None, **inputs
         )
@@ -78,7 +75,7 @@ class _ReadMemrayProfiles(Transformer):
         return task
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(cast(list[Sink], sinks))
+        return graph.__class__(sinks)
 
 
 def _meters_wrap_task(node: Node, path: str) -> Node:
@@ -104,13 +101,13 @@ class _AddMetersProfiler(Transformer):
     def __init__(self, logfile: str):
         self.logfile = logfile
 
-    def node(self, node: Node, **inputs: Node.Output) -> Node:
+    def node(self, node: Node, **inputs: Output) -> Node:
         wrapped = _meters_wrap_task(node, self.logfile)
         wrapped.inputs = inputs
         return wrapped
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(cast(list[Sink], sinks))
+        return graph.__class__(sinks)
 
 
 def _get_from_logline(regex: str, line: str) -> float:
@@ -140,7 +137,7 @@ class _ReadMetersProfiles(Transformer):
         self.memory = memory
         self.duration = duration
 
-    def node(self, node: Node, **inputs: Node.Output) -> Task:
+    def node(self, node: Node, **inputs: Output) -> Task:
         task = Task(
             node.name, node.outputs.copy(), node.payload, resources=None, **inputs
         )
@@ -152,7 +149,7 @@ class _ReadMetersProfiles(Transformer):
         return task
 
     def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
-        return graph.__class__(cast(list[Sink], sinks))
+        return graph.__class__(sinks)
 
 
 def memray_profile(

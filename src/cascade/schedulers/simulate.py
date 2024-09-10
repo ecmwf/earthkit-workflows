@@ -25,7 +25,7 @@ class TaskState:
 
 
 class MemoryUsage:
-    def __init__(self):
+    def __init__(self) -> None:
         self.tasks_in_memory: list[Task] = []
 
     @property

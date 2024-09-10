@@ -1,6 +1,8 @@
 from typing import Any, Callable, Iterator, cast
 
-from .graph import Graph, Node, Sink
+from typing_extensions import Self
+
+from .graph import Graph, Node, Output
 from .utility import predecessors
 
 
@@ -28,7 +30,7 @@ class Task(Node):
         outputs: list[str] | None = None,
         payload: Any = None,
         resources: Resources | None = None,
-        **kwargs: "Node | Node.Output",
+        **kwargs: Self | Output,
     ):
         super().__init__(name, outputs, payload, **kwargs)
         if resources is None:
@@ -78,14 +80,14 @@ class Communication(Node):
     size: float, size of transfer in MiB
     """
 
-    def __init__(self, name: str, source: Node | Node.Output, size: float):
+    def __init__(self, name: str, source: Node | Output, size: float):
         super().__init__(name, payload=None, input=source)
         self.size = size
         self.state = None
 
 
 class TaskGraph(Graph):
-    def __init__(self, sinks: list[Sink]):
+    def __init__(self, sinks: list[Node]):
         super().__init__(sinks)
         self._accumulated_duration = {}
         for task in self.nodes(forwards=True):

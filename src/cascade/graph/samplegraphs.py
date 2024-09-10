@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from . import Graph, Node, Processor, Sink, Source
+from . import Graph, Node
 
 
 def empty() -> Graph:
@@ -13,11 +13,11 @@ def linear(nproc: int = 5) -> Graph:
 
     reader -> process-0 -> ... -> process-{nproc-1} -> writer
     """
-    r = Source("reader")
+    r = Node("reader")
     p: Node = r
     for i in range(nproc):
-        p = Processor(f"process-{i}", input=p)
-    w = Sink("writer", input=p)
+        p = Node(f"process-{i}", input=p)
+    w = Node("writer", outputs=[], input=p)
     return Graph([w])
 
 
@@ -30,12 +30,12 @@ def disconnected(nchains: int = 5, nproc: int = 1) -> Graph:
 
     If nproc is 1 the `.0` suffix of processors is omitted
     """
-    rs = [Source(f"reader-{i}") for i in range(nchains)]
+    rs = [Node(f"reader-{i}") for i in range(nchains)]
     ps: Sequence[Node] = rs
     for j in range(nproc):
         suffix = "" if nproc == 1 else f".{j}"
-        ps = [Processor(f"process-{i}{suffix}", input=p) for i, p in enumerate(ps)]
-    ws = [Sink(f"writer-{i}", input=p) for i, p in enumerate(ps)]
+        ps = [Node(f"process-{i}{suffix}", input=p) for i, p in enumerate(ps)]
+    ws = [Node(f"writer-{i}", outputs=[], input=p) for i, p in enumerate(ps)]
     return Graph(ws)
 
 
@@ -46,14 +46,14 @@ def simple(nread: int = 5, nproc: int = 3) -> Graph:
     `nproc` processors reading from all readers (process-{i} for i in range(nproc))
     `nproc` writers writing the corresponding processor output (writer-{i} for i in range(nproc))
     """
-    rs = [Source(f"reader-{i}") for i in range(nread)]
+    rs = [Node(f"reader-{i}") for i in range(nread)]
     ps = []
     ws = []
     for i in range(nproc):
         pi = {f"input{j}": r for j, r in enumerate(rs)}
-        p = Processor(f"process-{i}", outputs=None, payload=None, **pi)
+        p = Node(f"process-{i}", outputs=None, payload=None, **pi)
         ps.append(p)
-        ws.append(Sink(f"writer-{i}", input=p))
+        ws.append(Node(f"writer-{i}", outputs=[], input=p))
     return Graph(ws)
 
 
@@ -70,24 +70,26 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
     writer-* read from one of the process-{i} (i in range(1, nout1-1)) and one output of process-{nout1-1}
     """
     assert nout1 >= 3
-    rs = [Source(f"reader-{i}") for i in range(nread)]
+    rs = [Node(f"reader-{i}") for i in range(nread)]
     p0i = {f"input{i}": r for i, r in enumerate(rs)}
-    p0 = Processor("process-0", outputs=[f"output{i}" for i in range(nout1)], **p0i)
+    p0 = Node("process-0", outputs=[f"output{i}" for i in range(nout1)], **p0i)
     p1s = []
     for i in range(2, nout1):
-        p = Processor(
+        p = Node(
             f"process-{i-1}", input1=p0.output0, input2=p0.get_output(f"output{i}")
         )
         p1s.append(p)
-    p2 = Processor(
+    p2 = Node(
         f"process-{nout1-1}",
         outputs=[f"output{i}" for i in range(nout2)],
         input1=p0.output1,
         input2=rs[min(2, nread - 1)],
     )
     _ws = ((inp, out) for out in range(nout2) for inp in p1s)
-    ws: list[Sink] = [
-        Sink(f"writer-{j}", input1=inp, input2=p2.get_output(f"output{out}"))
+    ws: list[Node] = [
+        Node(
+            f"writer-{j}", outputs=[], input1=inp, input2=p2.get_output(f"output{out}")
+        )
         for j, (inp, out) in enumerate(_ws)
     ]
     return Graph(ws)
@@ -112,12 +114,12 @@ def comb(nteeth: int = 5, nproc: int = 0):
     tip: Node | None = None
     tooth: Node
     for i in range(nteeth):
-        tooth = Source(f"reader-{i}")
+        tooth = Node(f"reader-{i}")
         for j in range(nproc):
-            tooth = Processor(f"process-{i}.{j}", input=tooth)
+            tooth = Node(f"process-{i}.{j}", input=tooth)
         if tip is None:
             tip = tooth
         else:
-            tip = Processor(f"join-{i-1}", input1=tip, input2=tooth)
+            tip = Node(f"join-{i-1}", input1=tip, input2=tooth)
     assert tip is not None
-    return Graph([Sink("writer", input=tip)])
+    return Graph([Node("writer", outputs=[], input=tip)])

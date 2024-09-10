@@ -3,31 +3,31 @@ import json
 from typing import Any, Protocol
 
 from .graph import Graph
-from .nodes import Node, Processor, Sink, Source
+from .nodes import Node, Output
 
 
 class NodeFactory(Protocol):
     def __call__(
-        self, name: str, outputs: list[str], payload: Any, **inputs: Node.Output
+        self, name: str, outputs: list[str], payload: Any, **inputs: Output
     ) -> Node:
         pass
 
 
 def default_node_factory(
-    name: str, outputs: list[str], payload: Any, **inputs: Node.Output
+    name: str, outputs: list[str], payload: Any, **inputs: Output
 ) -> Node:
-    if inputs and outputs:
-        return Processor(name, outputs, payload, **inputs)
+    # NOTE this logic is rather fragile; necessary due to the existence of default output. Remove it and simplify here
     if not outputs:
-        return Sink(name, payload, **inputs)
-    return Source(name, outputs, payload)
+        return Node(name, payload=payload, outputs=[], **inputs)
+    else:
+        return Node(name, outputs, payload, **inputs)
 
 
 def _deserialise_node(
     name: str,
     data: dict,
     node_factory: NodeFactory = default_node_factory,
-    **inputs: Node.Output,
+    **inputs: Output,
 ) -> "Node":
     payload = data.get("payload", None)
     outputs = data.get("outputs", [])
@@ -57,9 +57,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
 
     An optional node factory function can be provided to create a node with the
     given name, outputs, payload and inputs. The default factory will create
-    bare `Source`, `Processor` and `Sink` objects, depending on the presence of
-    inputs and outputs.
-    """
+    bare `Node` objects"""
     deps = {
         name: [
             inp if isinstance(inp, str) else inp[0]
@@ -70,7 +68,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
 
     ts = graphlib.TopologicalSorter(deps)
     nodes: dict[str, Any] = {}
-    sinks: list = []
+    sinks: list[Node] = []
     for name in ts.static_order():
         node_data = data[name]
         node_inputs = {}
@@ -83,8 +81,8 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
         nodes[name] = _deserialise_node(
             name, node_data, node_factory=node_factory, **node_inputs
         )
-        if isinstance(nodes[name], Sink):
-            sinks.append(nodes[name])
+        if (sink := nodes[name]).is_sink():
+            sinks.append(sink)
     return Graph(sinks)
 
 

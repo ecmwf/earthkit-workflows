@@ -1,7 +1,8 @@
 from typing import Callable, cast
 
-from .graph import Graph, Node, Sink
-from .transform import Transformer
+from cascade.graph.graph import Graph
+from cascade.graph.nodes import Node, Output
+from cascade.graph.transform import Transformer
 
 PredicateType = Callable[[Node, Node], bool]
 
@@ -35,7 +36,7 @@ class _DedupTransformer(Transformer):
                 return other
         return None
 
-    def node(self, node: Node, **inputs: Node.Output) -> Node:
+    def node(self, node: Node, **inputs: Output) -> Node:
         node.inputs = inputs  # XXX: should we create a copy of node?
         other = self.__find_node(node)
         if other is not None:
@@ -49,7 +50,7 @@ class _DedupTransformer(Transformer):
             ref = self.__find_node(sink)
             assert ref is not None
             new_sinks.add(ref)
-        return Graph(cast(list[Sink], list(new_sinks)))
+        return Graph(cast(list[Node], list(new_sinks)))
 
 
 def same_payload(a: Node, b: Node):
