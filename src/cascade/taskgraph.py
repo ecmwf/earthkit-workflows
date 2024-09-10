@@ -27,7 +27,7 @@ class Task(Node):
         name: str,
         outputs: list[str] | None = None,
         payload: Any = None,
-        resources: Resources = None,
+        resources: Resources | None = None,
         **kwargs: "Node | Node.Output",
     ):
         super().__init__(name, outputs, payload, **kwargs)
