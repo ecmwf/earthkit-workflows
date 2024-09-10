@@ -1,11 +1,12 @@
 import copy
 import functools
 from dataclasses import dataclass
+from typing import Callable, cast
 
 import numpy as np
 
 from cascade.contextgraph import Communicator, ContextGraph, Processor
-from cascade.graph import Graph
+from cascade.graph import Graph, Node
 from cascade.taskgraph import Communication, Task, TaskGraph
 from cascade.transformers import to_execution_graph
 from cascade.utility import EventLoop, predecessors, successors
@@ -47,7 +48,7 @@ class MemoryUsage:
 
 @dataclass
 class ProcessorState:
-    current_task: Task = None
+    current_task: Task | None = None
     end_time: float = 0
     idle_time: float = 0
     memory_usage: MemoryUsage = MemoryUsage()
@@ -55,7 +56,7 @@ class ProcessorState:
 
 @dataclass
 class CommunicatorState:
-    current_task: Communication = None
+    current_task: Communication | None = None
     end_time: float = 0
     idle_time: float = 0
 
@@ -66,7 +67,7 @@ class ContextState:
         for ctx in self.context_graph:
             ctx.state = ProcessorState()
         for communicator in self.context_graph.communicators():
-            communicator.state = CommunicatorState()
+            communicator.state = CommunicatorState()  # type: ignore # TODO declare state in communicator
         self.sim = EventLoop()
         self.with_communication = with_communication
 
@@ -80,7 +81,7 @@ class ContextState:
         raise ValueError(f"Communicator {name} not found in context graph")
 
     def assign_task_to_processor(
-        self, task: Task, processor: Processor, start_time: float, callback: callable
+        self, task: Task, processor: Processor, start_time: float, callback: Callable
     ):
         """
         Assign task to processor and schedule callback for task completion.
@@ -92,8 +93,12 @@ class ContextState:
         start_time: float, time to start the task
         callback: callable, callback to trigger on task completion
         """
+        if not hasattr(processor, "state"):
+            raise TypeError
         processor.state.idle_time += start_time - processor.state.end_time
         processor.state.current_task = task
+        if not task.state:
+            raise TypeError
         task.state.start_time = start_time
         if isinstance(task, Task) and isinstance(processor, Processor):
             task.state.end_time = start_time + task.duration
@@ -135,6 +140,8 @@ class ContextState:
         ret = [p for p in self.context_graph if p.state.current_task is None]
         if self.with_communication:
             for communicator in self.context_graph.communicators():
+                if not hasattr(communicator, "state"):
+                    raise TypeError
                 if communicator.state.current_task is None:
                     ret.append(communicator)
         return ret
@@ -206,13 +213,17 @@ class Simulator:
         processor: Processor, processor that completed the task
         time: float, time at which the task was completed
         """
+        if task.state is None:
+            raise TypeError
         task.state.finished = True
+        if not hasattr(processor, "state"):
+            raise TypeError
         processor.state.current_task = None
         self.completed_tasks.add(task.name)
         self.update_eligible_tasks(task, execution_state)
         self.assign_eligible_tasks(time, execution_state, context_state)
 
-    def is_task_eligible(self, task: Task, schedule: Graph) -> bool:
+    def is_task_eligible(self, task: Node, schedule: Graph) -> bool:
         """
         Check if a task is eligible for execution based on its predecessors.
 
@@ -244,7 +255,7 @@ class Simulator:
             else:
                 if self.is_task_eligible(next_task, execution.task_graph):
                     processor = (
-                        execution.task_graph.get_processor(next_task.name).name
+                        execution.task_graph.get_processor(next_task.name).name  # type: ignore
                         if isinstance(execution.task_graph, Schedule)
                         else Simulator.DEFAULT_PROCESSOR
                     )
@@ -261,7 +272,7 @@ class Simulator:
                             )
                         self.eligible[processor] = next_task
 
-    def initialise_eligible_tasks(self, graph: TaskGraph | Schedule) -> list[Task]:
+    def initialise_eligible_tasks(self, graph: TaskGraph | Schedule):
         """
         Initialise the eligible tasks for execution based on the graph or
         schedule.
@@ -272,13 +283,13 @@ class Simulator:
 
         Returns
         -------
-        list[Task], list of tasks that are eligible for execution
+        nothing, the list of tasks that are eligible for execution are set to self
         """
         sources = graph.sources()
         if isinstance(graph, Schedule):
             for source in sources:
-                processor = graph.get_processor(source.name)
-                self.eligible[processor.name] = source
+                processor = graph.processor(source.name)
+                self.eligible[processor] = source
         else:
             self.eligible[Simulator.DEFAULT_PROCESSOR] = list(sources)
 
@@ -321,14 +332,14 @@ class Simulator:
             if next_task is not None:
                 context_state.assign_task_to_processor(
                     next_task,
-                    processor,
+                    cast(Processor, processor),
                     time,
                     functools.partial(
                         self.on_task_complete,
                         execution_state,
                         context_state,
                         next_task,
-                        processor,
+                        cast(Processor, processor),
                     ),
                 )
 

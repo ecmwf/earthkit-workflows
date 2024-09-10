@@ -1,8 +1,9 @@
 import functools
+from typing import cast
 
-from cascade.contextgraph import ContextGraph
+from cascade.contextgraph import ContextGraph, Processor
 from cascade.graph import Graph
-from cascade.taskgraph import Task, TaskGraph
+from cascade.taskgraph import TaskGraph
 from cascade.transformers import to_task_graph
 
 from .schedule import Schedule
@@ -20,18 +21,22 @@ class DepthFirstScheduler(Simulator):
 
     def assign_eligible_tasks(
         self, time: float, execution_state: ExecutionState, context_state: ContextState
-    ):
+    ) -> None:
+        # NOTE a few typing glitches here wrt processor-communicator, should be cleared up
         context_state.update(self.completed_tasks)
         for processor in context_state.idle_processors():
+            if not hasattr(processor, "state"):
+                raise TypeError
             mem_usage = processor.state.memory_usage.memory
             pop_index = None
             # Take from back so newly added dependents get picked off first
             for index in range(
                 len(self.eligible[Simulator.DEFAULT_PROCESSOR]) - 1, -1, -1
             ):
-                if (
-                    mem_usage + self.eligible[Simulator.DEFAULT_PROCESSOR][index].memory
-                ) < processor.memory:
+                processor_ = cast(
+                    Processor, self.eligible[Simulator.DEFAULT_PROCESSOR][index]
+                )
+                if (mem_usage + processor_.memory) < cast(Processor, processor).memory:
                     pop_index = index
                     break
 
@@ -42,18 +47,19 @@ class DepthFirstScheduler(Simulator):
                 )
                 context_state.assign_task_to_processor(
                     next_task,
-                    processor,
+                    cast(Processor, processor),
                     time,
                     functools.partial(
                         self.on_task_complete,
                         execution_state,
                         context_state,
                         next_task,
-                        processor,
+                        cast(Processor, processor),
                     ),
                 )
 
-    def initialise_eligible_tasks(self, graph: TaskGraph) -> list[Task]:
+    def initialise_eligible_tasks(self, graph: TaskGraph | Schedule) -> None:
+        graph = cast(TaskGraph, graph)  # not sure if we shouldnt raise instead
         # Sort sinks by total duration
         sinks = graph.sinks[:]
         sinks.sort(key=lambda x: graph.accumulated_duration(x))

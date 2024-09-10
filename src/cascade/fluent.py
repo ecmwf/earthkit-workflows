@@ -1,7 +1,7 @@
 import copy
 import functools
 import hashlib
-from typing import Callable
+from typing import Any, Callable, Iterable, Sequence, cast
 
 import numpy as np
 import xarray as xr
@@ -17,8 +17,9 @@ class Payload:
     """
 
     def __init__(
-        self, func: Callable, args: list | None = None, kwargs: dict | None = None
+        self, func: Callable, args: Iterable | None = None, kwargs: dict | None = None
     ):
+        self.args: Iterable | None
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
                 raise ValueError("Partial function should not have args or kwargs")
@@ -93,9 +94,10 @@ class Node(BaseNode):
     def __init__(
         self,
         payload: Callable | Payload,
-        inputs: BaseNode | tuple[BaseNode] = (),
-        name: str = None,
+        inputs: BaseNode | Sequence[BaseNode] = tuple(),
+        name: str | None = None,
     ):
+        self._for_copy = (payload, inputs, name)
         if not isinstance(payload, Payload):
             payload = Payload(payload)
         else:
@@ -108,6 +110,7 @@ class Node(BaseNode):
             payload.set_args([self.input_name(x) for x in range(len(inputs))])
         else:
             # All inputs into Node should also feature in payload - no dangling inputs
+            assert payload.args is not None  # mypy confused here
             assert np.all(
                 [
                     x in payload.args
@@ -121,10 +124,11 @@ class Node(BaseNode):
 
         super().__init__(
             name,
+            outputs=None,
             payload=payload.to_tuple(),
             **{self.input_name(x): node for x, node in enumerate(inputs)},
         )
-        self.attributes = {}
+        self.attributes: dict[str, Any] = {}
 
     @staticmethod
     def input_name(index: int):
@@ -132,6 +136,9 @@ class Node(BaseNode):
 
     def __str__(self) -> str:
         return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
+
+    def copy(self) -> "Node":
+        return self.__class__(*self._for_copy)
 
 
 class Action:
@@ -164,7 +171,7 @@ class Action:
             for coord, values in self.nodes.coords.items():
                 if coord in other_action.nodes.coords:
                     other_action.nodes = other_action.nodes.assign_coords(
-                        **{coord: values}
+                        **{str(coord): values}
                     )
         new_nodes = xr.concat(
             [self.nodes, other_action.nodes],
@@ -197,11 +204,12 @@ class Action:
         Action
         """
         res = None
+        dim_values: list[int] | np.ndarray[Any, Any]
         if isinstance(dim, str):
             dim_name = dim
             dim_values = list(range(len(params)))
         else:
-            dim_name = dim.name
+            dim_name = cast(str, dim.name)  # xarray is rather broad in names
             dim_values = dim.values
 
         for index, param in enumerate(params):
@@ -213,11 +221,15 @@ class Action:
             else:
                 res = res.join(new_res, dim_name)
 
+        if not res:
+            raise ValueError
         # Remove expanded dimension if only a single element
         res._squeeze_dimension(dim_name)
         return res
 
-    def broadcast(self, other_action: "Action", exclude: list[str] = None) -> "Action":
+    def broadcast(
+        self, other_action: "Action", exclude: list[str] | None = None
+    ) -> "Action":
         """
         Broadcast nodes against nodes in other_action
 
@@ -246,15 +258,15 @@ class Action:
             flags=["multi_index", "refs_ok"],
         )
         for node in it:
-            new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])
+            new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])  # type: ignore
 
-        new_nodes = xr.DataArray(
+        new_nodes_xa = xr.DataArray(
             new_nodes,
             coords=broadcasted_nodes.coords,
             dims=broadcasted_nodes.dims,
             attrs=self.nodes.attrs,
         )
-        return type(self)(new_nodes)
+        return type(self)(new_nodes_xa)
 
     def expand(
         self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
@@ -280,7 +292,7 @@ class Action:
         params = [(x, dim, axis, new_axis) for x in range(dim_size)]
         return self.transform(_expand_transform, params, dim)
 
-    def map(self, payload: Callable | np.ndarray[Callable]) -> "Action":
+    def map(self, payload: Callable | Payload | np.ndarray[Any, Any]) -> "Action":
         """
         Apply specified payload on all nodes. If argument is an array of payloads,
         this must be the same size as the array of nodes and each node gets a
@@ -301,7 +313,8 @@ class Action:
         AssertionError if the shape of the payload array does not match the shape of the
         array of nodes
         """
-        if not isinstance(payload, (Callable, Payload)):
+        # NOTE this method is really not mypy friendly, just ignore everything
+        if not isinstance(payload, Callable | Payload):  # type: ignore
             payload = np.asarray(payload)
             assert payload.shape == self.nodes.shape, (
                 f"For unique payloads for each node, payload shape {payload.shape}"
@@ -313,9 +326,9 @@ class Action:
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
         node_payload = payload
         for node in it:
-            if not isinstance(payload, (Callable, Payload)):
-                node_payload = payload[it.multi_index]
-            new_nodes[it.multi_index] = Node(node_payload, node[()])
+            if not isinstance(payload, Callable | Payload):  # type: ignore
+                node_payload = payload[it.multi_index]  # type: ignore
+            new_nodes[it.multi_index] = Node(node_payload, node[()])  # type: ignore
         return type(self)(
             xr.DataArray(
                 new_nodes,
@@ -327,7 +340,7 @@ class Action:
 
     def reduce(
         self,
-        payload: Callable,
+        payload: Callable | Payload,
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
@@ -357,7 +370,7 @@ class Action:
         """
 
         if len(dim) == 0:
-            dim = self.nodes.dims[0]
+            dim = str(self.nodes.dims[0])
 
         batched = self
         level = 0
@@ -410,7 +423,9 @@ class Action:
         if keep_dim:
             axis = self.nodes.dims.index(dim)
             result._add_dimension(
-                dim, f"{self.nodes.coords[dim][0]}-{self.nodes.coords[dim][-1]}", axis
+                dim,
+                f"{self.nodes.coords[dim][0]}-{self.nodes.coords[dim][-1]}",  # type: ignore
+                axis,
             )
         return result
 
@@ -507,7 +522,7 @@ class Action:
         backend_kwargs: dict = {},
     ) -> "Action":
         if len(dim) == 0:
-            dim = self.nodes.dims[0]
+            dim = str(self.nodes.dims[0])
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
             return self.reduce(
@@ -526,7 +541,7 @@ class Action:
         backend_kwargs: dict = {},
     ) -> "Action":
         if len(dim) == 0:
-            dim = self.nodes.dims[0]
+            dim = str(self.nodes.dims[0])
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
             return self.reduce(Payload(backends.std, kwargs=backend_kwargs), dim)
@@ -608,7 +623,7 @@ class Action:
         if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
             self.nodes = self.nodes.squeeze(dim_name, drop=drop)
 
-    def node(self, criteria: dict) -> Node | np.ndarray[Node]:
+    def node(self, criteria: dict) -> Node | np.ndarray[Any, Any]:
         """
         Get nodes matching selection criteria from action
 
@@ -670,9 +685,9 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads_list: np.ndarray[Callable],
-    dims: list = None,
-    coords: dict = None,
+    payloads_list: np.ndarray[Any, Any],  # values are Callables
+    dims: list | None = None,
+    coords: dict | None = None,
     action=Action,
 ) -> Action:
 
@@ -682,10 +697,10 @@ def from_source(
     # Ensure all source nodes have a unique name
     node_names = set()
     for item in it:
-        if not isinstance(item[()], Payload):
-            payload = Payload(item[()])
+        if not isinstance(item[()], Payload):  # type: ignore
+            payload = Payload(item[()])  # type: ignore
         else:
-            payload = item[()]
+            payload = item[()]  # type: ignore
         name = payload.name()
         if name in node_names:
             name += str(it.multi_index)

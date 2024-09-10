@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, cast
 
 from .graph import Graph
 from .nodes import Node, Processor, Sink, Source
@@ -106,12 +106,13 @@ class Splicer(Transformer):
 
     def graph(self, g: Graph, sinks: list[Node]) -> _Subgraph:
         leaves = {}
-        inner_sinks = []
+        inner_sinks: list[Sink] = []
         for s in sinks:
             sname = s.name.lstrip(f"{self.name}.")
             if sname in self.outputs.values():
                 leaves[sname] = s
             else:
+                assert isinstance(s, Sink)
                 inner_sinks.append(s)
         return _Subgraph(self.name, leaves, self.outputs, inner_sinks)
 
@@ -149,7 +150,7 @@ class Splicer(Transformer):
             Name of the processor to create
         s: Sink
             Sink to replace
-        **inputs: dict[str, Output]
+        **inputs: dict[str, Node.Output]
             Inputs for the processor
 
         Returns
@@ -157,7 +158,7 @@ class Splicer(Transformer):
         Node
             Replacement for the sink
         """
-        return Processor(name, payload=s.payload, **inputs)
+        return Processor(name, outputs=None, payload=s.payload, **inputs)
 
 
 ExpanderType = Callable[
@@ -185,6 +186,7 @@ class _Expander(Transformer):
 
     def node(self, n: Node, **inputs: Node.Output) -> Node | _Subgraph:
         expanded = self.expand(n)
+        output_map: dict[str, str] | None
         if expanded is None:
             n.inputs = inputs  # XXX: should we create a copy of n?
             return n
@@ -192,7 +194,7 @@ class _Expander(Transformer):
             input_map = None
             output_map = None
         else:
-            expanded, input_map, output_map = expanded
+            expanded, input_map, output_map = expanded  # type: ignore # expanded[2] is dict[str, str|None]
         sp = self.splicer(n.name, inputs, input_map, n.outputs, output_map)
         return sp.transform(expanded)
 
@@ -203,7 +205,7 @@ class _Expander(Transformer):
                 new_sinks.append(sink)
             else:
                 new_sinks.extend(sink.inner_sinks)
-        return Graph(new_sinks)
+        return Graph(cast(list[Sink], new_sinks))
 
 
 def expand_graph(
