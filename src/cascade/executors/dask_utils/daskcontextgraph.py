@@ -11,6 +11,7 @@ from cascade.contextgraph import ContextGraph
 
 class NetworkBenchmark:
 
+    @staticmethod
     async def benchmark_send(target, size):
         comm = await connect(target)
         start = time.time()
@@ -18,6 +19,7 @@ class NetworkBenchmark:
         comm.close()
         return start
 
+    @staticmethod
     def register_handler(size):
         worker = get_worker()
         worker._benchmark_event = asyncio.Event()
@@ -28,6 +30,7 @@ class NetworkBenchmark:
 
         worker.handlers["on_benchmark"] = on_benchmark
 
+    @staticmethod
     async def benchmark_recv():
         worker = get_worker()
         await worker._benchmark_event.wait()
@@ -36,6 +39,7 @@ class NetworkBenchmark:
         del worker._benchmark_event
         return end
 
+    @staticmethod
     def run(dask_client, sender, receiver, size):
 
         reg = dask_client.submit(

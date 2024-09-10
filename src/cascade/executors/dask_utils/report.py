@@ -93,7 +93,7 @@ class TaskStream:
         duration_index = columns.index("duration")
         worker_thread_index = columns.index("worker_thread")
 
-        self._stream = {}
+        self._stream: dict[str, list["TaskStream.Task"]] = {}
         for index, worker in enumerate(key_items[columns.index("worker")][1]):
             self._stream.setdefault(worker, [])
             name = key_items[name_index][1][index]
@@ -143,7 +143,7 @@ class TaskStream:
     def task_info(
         self, exclude_transfer: bool = True
     ) -> dict[str, list["TaskStream.Task"]]:
-        tasks = {}
+        tasks: dict[str, list["TaskStream.Task"]] = {}
         for task_stats in self._stream.values():
             for task in task_stats:
                 if exclude_transfer and task.is_transfer():
@@ -178,7 +178,7 @@ class TaskStream:
         """
         worker_stats = {}
         for worker, tasks in self._stream.items():
-            idle = 0
+            idle = 0.0
             for index, current_info in enumerate(tasks):
 
                 if index == 0:
@@ -222,8 +222,8 @@ class TaskStream:
         """
         worker_stats = {}
         for worker, tasks in self._stream.items():
-            blocking_time = 0
-            total_time = 0
+            blocking_time = 0.0
+            total_time = 0.0
             for index, task in enumerate(tasks):
                 if task.is_transfer():
                     if self.is_enclosed(worker, task):

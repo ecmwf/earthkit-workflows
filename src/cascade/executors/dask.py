@@ -77,19 +77,19 @@ def execute(
             with dask.annotate(
                 workers=functools.partial(_worker_name, schedule.task_allocation),
             ):
-                dask_graph = to_dask_graph(schedule)
+                dask_graph_ = to_dask_graph(schedule)
                 for _, allocation in schedule.task_allocation.items():
                     for index, task in enumerate(allocation):
                         if index > 0:
-                            dask_graph[task] = (
+                            dask_graph_[task] = (
                                 chunks.bind,
-                                dask_graph[task],
+                                dask_graph_[task],
                                 allocation[index - 1],
                             )
-                dask_graph = HighLevelGraph.from_collections("graph", dask_graph)
+                dask_graph = HighLevelGraph.from_collections("graph", dask_graph_)
 
     elif isinstance(schedule, Graph):
-        dask_graph = to_dask_graph(schedule)
+        dask_graph = to_dask_graph(schedule)  # type: ignore # returns a dict but Dask is ok with it
     else:
         raise ValueError("Invalid input, schedule must be of type Graph or Schedule")
 
@@ -97,7 +97,7 @@ def execute(
     errored_tasks = 0
     context = nullcontext() if report == "" else performance_report(report)
     with Client(**client_kwargs) as client:
-        with context:
+        with context:  # type: ignore # improper annotations in deps
             future = client.get(
                 dask_graph, [x.name for x in schedule.sinks], sync=False
             )
@@ -172,8 +172,8 @@ class DaskLocalExecutor(Executor):
         threads_per_worker: int = 1,
         processes: bool = True,
         memory_limit: str | None = "5G",
-        cluster_kwargs: dict = None,
-        adaptive_kwargs: dict = None,
+        cluster_kwargs: dict | None = None,
+        adaptive_kwargs: dict | None = None,
     ):
         self.adaptive_kwargs = adaptive_kwargs
         self.cluster_kwargs = {
@@ -185,12 +185,7 @@ class DaskLocalExecutor(Executor):
         if cluster_kwargs is not None:
             self.cluster_kwargs.update(cluster_kwargs)
 
-    def execute(
-        self,
-        graph: Graph,
-        *,
-        report: str = "",
-    ) -> Any:
+    def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
         """
         Execute graph with a Dask local cluster and produce a performance report of the execution.
 
@@ -209,16 +204,16 @@ class DaskLocalExecutor(Executor):
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        check_consistency(graph, self.cluster_kwargs, self.adaptive_kwargs)
+        check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
         with create_cluster(
             "local", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return execute(
-                graph,
+                schedule,
                 client_kwargs={"address": cluster},
                 adaptive=(self.adaptive_kwargs is not None),
-                report=report,
+                report=kwargs.get("report", ""),
             )
 
     def create_context_graph(self) -> ContextGraph:
@@ -245,12 +240,12 @@ class DaskKubeExecutor(Executor):
 
     def __init__(
         self,
-        pod_template: dict = None,
-        namespace: str = None,
-        n_workers: int = None,
-        env: dict = None,
-        cluster_kwargs: dict = None,
-        adaptive_kwargs: dict = None,
+        pod_template: dict | None = None,
+        namespace: str | None = None,
+        n_workers: int | None = None,
+        env: dict | None = None,
+        cluster_kwargs: dict | None = None,
+        adaptive_kwargs: dict | None = None,
     ):
         self.cluster_kwargs = {
             "pod_template": pod_template,
@@ -262,12 +257,7 @@ class DaskKubeExecutor(Executor):
             self.cluster_kwargs.update(cluster_kwargs)
         self.adaptive_kwargs = adaptive_kwargs
 
-    def execute(
-        self,
-        graph: Graph,
-        *,
-        report: str = "",
-    ) -> Any:
+    def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
         """
         Execute graph with a Dask Kubernetes cluster and produce a performance report of the execution.
 
@@ -286,16 +276,16 @@ class DaskKubeExecutor(Executor):
         ------
         RuntimeError if any tasks in the graph have failed
         """
-        check_consistency(graph, self.cluster_kwargs, self.adaptive_kwargs)
+        check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
         with create_cluster(
             "kube", self.cluster_kwargs, self.adaptive_kwargs
         ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return execute(
-                graph,
+                schedule,
                 client_kwargs={"address": cluster},
                 adaptive=(self.adaptive_kwargs is not None),
-                report=report,
+                report=kwargs.get("report", ""),
             )
 
     def create_context_graph(self) -> ContextGraph:
@@ -315,12 +305,7 @@ class DaskClientExecutor(Executor):
         self.dask_scheduler_file = dask_scheduler_file
         self.adaptive = adaptive
 
-    def execute(
-        self,
-        graph: Graph,
-        *,
-        report: str = "",
-    ) -> Any:
+    def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
         """
         Execute graph on an existing dask cluster, where the information for the scheduler is provided
         in the scheduler file, and produce a performance report of the execution.
@@ -343,10 +328,10 @@ class DaskClientExecutor(Executor):
         RuntimeError if any tasks in the graph have failed
         """
         return execute(
-            graph,
+            schedule,
             client_kwargs={"scheduler_file": self.dask_scheduler_file},
             adaptive=self.adaptive,
-            report=report,
+            report=kwargs.get("report", ""),
         )
 
     def create_context_graph(self) -> ContextGraph:

@@ -103,7 +103,7 @@ class TaskGraph(Graph):
             for input in node.inputs.values():
                 yield input.parent, node
 
-    def accumulated_duration(self, task: Task) -> float:
+    def accumulated_duration(self, task: Node) -> float:
         """
         Calculate the accumulated duration of a task, using the duration of all its
         predecessors.

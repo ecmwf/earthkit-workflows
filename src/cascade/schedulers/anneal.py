@@ -1,5 +1,6 @@
 import copy
 import random
+from typing import Callable, cast
 
 import numpy as np
 
@@ -29,7 +30,7 @@ class AnnealingScheduler:
 
     def __init__(
         self,
-        cost_function: callable,
+        cost_function: Callable,
         num_temp_levels: int = 100,
         num_tries: int = 100,
         num_success_cutoff: int = 10,
@@ -43,6 +44,7 @@ class AnnealingScheduler:
         self.init_temp = init_temp
         self.temp_factor = temp_factor
 
+    @staticmethod
     def total_idle_time(schedule: Schedule) -> float:
         """
         Cost associated to simulated execution of the schedule in terms of the total idle time
@@ -61,6 +63,7 @@ class AnnealingScheduler:
             [processor.state.idle_time for processor in context_state.context_graph]
         )
 
+    @staticmethod
     def total_execution_time(schedule: Schedule) -> float:
         """
         Cost associated to simulated execution of the schedule in terms of the total execution
@@ -74,17 +77,25 @@ class AnnealingScheduler:
         -------
         float
         """
-        start = None
-        end = 0
+        start: float | None = None
+        end = 0.0
         execution_state, _ = Simulator().execute(schedule, with_communication=True)
         for task in execution_state.task_graph.sources():
-            p_start = task.state.start_time
+            if not hasattr(
+                task.state, "start_time"
+            ):  # runtime patched somewhere I guess
+                raise TypeError
+            p_start = cast(float, task.state.start_time)
             start = min(start, p_start) if start is not None else p_start
 
-        for task in execution_state.task_graph.sinks:
-            end = max(end, task.state.end_time)
-        return end - start
+        for sink in execution_state.task_graph.sinks:
+            if not hasattr(sink.state, "end_time"):  # runtime patched somewhere I guess
+                raise TypeError
+            end = max(end, sink.state.end_time)
+        # we cast because it could be None... which should crash runtime, but somehow in tests doesnt
+        return end - cast(float, start)
 
+    @staticmethod
     def permute(schedule: Schedule) -> Schedule:
         """
         Generate new task allocation by randomly selecting two processors and swapping one task
