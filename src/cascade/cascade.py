@@ -17,9 +17,9 @@ class Cascade:
 
     def __init__(self, graph: Graph = Graph([])):
         self._graph = graph
-        self._schedule = None
-        self._executor = None
-        self._context_graph = None
+        self._schedule: Schedule | None = None
+        self._executor: Executor | None = None
+        self._context_graph: ContextGraph | None = None
 
     @property
     def executor(self) -> Executor:
@@ -81,7 +81,7 @@ class Cascade:
     ):
         results, self._graph = profile(
             self._graph,
-            base_path,
+            str(base_path),
             self.executor,
             memray_native_traces,
             memory,

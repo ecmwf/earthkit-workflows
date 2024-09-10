@@ -1,3 +1,5 @@
+from typing import Callable
+
 from dask.utils import apply
 
 from .graph import Graph, Node, Sink, Transformer
@@ -36,7 +38,7 @@ def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> Task
 
 class _ToExecutionGraph(Transformer):
 
-    def __init__(self, state: callable = None):
+    def __init__(self, state: Callable | None = None):
         self.state = state
 
     def node(self, node: Node, **inputs: Node.Output) -> Task:
@@ -51,7 +53,7 @@ class _ToExecutionGraph(Transformer):
         return ExecutionGraph(sinks)
 
 
-def to_execution_graph(graph: Graph, state: callable = None) -> ExecutionGraph:
+def to_execution_graph(graph: Graph, state: Callable | None = None) -> ExecutionGraph:
     return _ToExecutionGraph(state).transform(graph)
 
 

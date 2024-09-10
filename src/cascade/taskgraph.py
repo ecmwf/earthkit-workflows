@@ -1,4 +1,4 @@
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, cast
 
 from .graph import Graph, Node, Sink
 from .utility import predecessors
@@ -27,7 +27,7 @@ class Task(Node):
         name: str,
         outputs: list[str] | None = None,
         payload: Any = None,
-        resources: Resources = None,
+        resources: Resources | None = None,
         **kwargs: "Node | Node.Output",
     ):
         super().__init__(name, outputs, payload, **kwargs)
@@ -37,7 +37,7 @@ class Task(Node):
         self.state = None
 
     @property
-    def duration(self):
+    def duration(self) -> float:
         return self.resources.duration
 
     @duration.setter
@@ -103,7 +103,7 @@ class TaskGraph(Graph):
             for input in node.inputs.values():
                 yield input.parent, node
 
-    def accumulated_duration(self, task: Task) -> float:
+    def accumulated_duration(self, task: Node) -> float:
         """
         Calculate the accumulated duration of a task, using the duration of all its
         predecessors.
@@ -119,20 +119,26 @@ class TaskGraph(Graph):
         if task in self._accumulated_duration:
             return self._accumulated_duration[task]
 
-        duration = task.duration
+        duration = cast(
+            Task, task
+        ).duration  # nodes seem to be runtime patched to tasks
         for child in predecessors(self, task):
             if child in self._accumulated_duration:
                 duration += self._accumulated_duration[child]
             else:
-                duration += self._accumulated_duration(child)
+                duration += self.accumulated_duration(child)
         return duration
 
 
 class ExecutionGraph(TaskGraph):
     def _make_communication_task(
-        self, source: Node, target: Node, state: callable = None
+        self, source: Node, target: Node, state: Callable | None = None
     ):
-        t = Communication(f"{source.name}-{target.name}", source, source.memory)
+        t = Communication(
+            f"{source.name}-{target.name}",
+            source,
+            cast(Task, source).memory,  # nodes seem to be runtime patched to tasks
+        )
         t.state = state() if state is not None else None
 
         for iname, input in target.inputs.items():

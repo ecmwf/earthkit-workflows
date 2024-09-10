@@ -1,5 +1,6 @@
 import functools
 import warnings
+from typing import Callable
 
 import xarray as xr
 
@@ -32,7 +33,7 @@ def array_module(*arrays):
     return backend
 
 
-def __getattr__(name: str) -> callable:
+def __getattr__(name: str) -> Callable:
     if not hasattr(Backend, name):
 
         def f(*args, **kwargs):
@@ -60,7 +61,7 @@ def num_args(expect: int, accept_nested: bool = True):
     accept_nested: bool, whether to unpack
     """
 
-    def decorator(func: callable) -> callable:
+    def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def check_num_args(*args, **kwargs):
             if accept_nested and len(args) == 1:
@@ -75,14 +76,14 @@ def num_args(expect: int, accept_nested: bool = True):
     return decorator
 
 
-def batchable(func: callable) -> callable:
+def batchable(func: Callable) -> Callable:
     """
     Decorator to mark a function as batchable. A method is batchable if
     it can be computed sequentially trivially by applying the same function
     to each batch and to aggregate the batches. Examples of batchable
     functions are sum, prod, min and non-batchable are mean and std.
     """
-    func.batchable = True
+    func.batchable = True  # type: ignore # monkeypatching...
     return func
 
 

@@ -3,8 +3,9 @@ import xarray as xr
 
 
 class XArrayBackend:
+    @staticmethod
     def multi_arg_function(
-        name: str, *arrays: list[xr.DataArray | xr.Dataset], **method_kwargs
+        name: str, *arrays: xr.DataArray | xr.Dataset, **method_kwargs
     ) -> xr.DataArray | xr.Dataset:
         """
         Apply named function on DataArrays or Datasets. If only a single
@@ -31,9 +32,10 @@ class XArrayBackend:
 
         return getattr(arg, name)(**method_kwargs)
 
+    @staticmethod
     def two_arg_function(
         name: str,
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         keep_attrs: bool | str = False,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
@@ -58,50 +60,58 @@ class XArrayBackend:
         with xr.set_options(keep_attrs=keep_attrs):
             return getattr(np, name)(arrays[0], arrays[1], **method_kwargs)
 
+    @staticmethod
     def mean(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("mean", *arrays, **method_kwargs)
 
+    @staticmethod
     def std(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("std", *arrays, **method_kwargs)
 
+    @staticmethod
     def min(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("min", *arrays, **method_kwargs)
 
+    @staticmethod
     def max(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("max", *arrays, **method_kwargs)
 
+    @staticmethod
     def sum(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("sum", *arrays, **method_kwargs)
 
+    @staticmethod
     def prod(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("prod", *arrays, **method_kwargs)
 
+    @staticmethod
     def var(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
         return XArrayBackend.multi_arg_function("var", *arrays, **method_kwargs)
 
+    @staticmethod
     def concat(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         dim: str,
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
@@ -109,10 +119,11 @@ class XArrayBackend:
             raise ValueError(
                 "Concat must be used on existing dimensions only. Try stack instead."
             )
-        return xr.concat(arrays, dim=dim, **method_kwargs)
+        return xr.concat(arrays, dim=dim, **method_kwargs)  # type: ignore # xr/mypy dont coop
 
+    @staticmethod
     def stack(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         dim: str,
         axis: int | None = None,
         **method_kwargs: dict,
@@ -122,14 +133,15 @@ class XArrayBackend:
                 "Stack must be used on non-existing dimensions only. Try concat instead."
             )
 
-        ret = xr.concat(arrays, dim=dim, **method_kwargs)
+        ret = xr.concat(arrays, dim=dim, **method_kwargs)  # type: ignore # xr/mypy dont coop
         if axis is not None and axis != 0:
             dims = list(ret.sizes.keys())
             ret = ret.transpose(*dims[1:axis], dim, *dims[axis:])
         return ret
 
+    @staticmethod
     def add(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
@@ -137,8 +149,9 @@ class XArrayBackend:
             "add", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
+    @staticmethod
     def subtract(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
@@ -146,8 +159,9 @@ class XArrayBackend:
             "subtract", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
+    @staticmethod
     def multiply(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
@@ -155,8 +169,9 @@ class XArrayBackend:
             "multiply", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
+    @staticmethod
     def pow(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
@@ -164,8 +179,9 @@ class XArrayBackend:
             "power", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
+    @staticmethod
     def divide(
-        *arrays: list[xr.DataArray | xr.Dataset],
+        *arrays: xr.DataArray | xr.Dataset,
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
@@ -173,6 +189,7 @@ class XArrayBackend:
             "divide", *arrays, keep_attrs=keep_attrs, **method_kwargs
         )
 
+    @staticmethod
     def take(
         array,
         indices,
