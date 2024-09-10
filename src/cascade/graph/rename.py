@@ -1,9 +1,9 @@
 from functools import reduce
 from operator import add
-from typing import Callable, cast
+from typing import Callable
 
 from .graph import Graph
-from .nodes import Node, Sink
+from .nodes import Node, Output
 from .transform import Transformer
 
 RenamerFunc = Callable[[str], str]
@@ -15,13 +15,13 @@ class _Renamer(Transformer):
     def __init__(self, func: RenamerFunc):
         self.func = func
 
-    def node(self, n: Node, **inputs: Node.Output) -> Node:
+    def node(self, n: Node, **inputs: Output) -> Node:
         n.name = self.func(n.name)  # XXX: should we create a copy of n?
         n.inputs = inputs
         return n
 
     def graph(self, g: Graph, sinks: list[Node]) -> Graph:
-        return Graph(cast(list[Sink], sinks))
+        return Graph(sinks)
 
 
 def rename_nodes(func: RenamerFunc, graph: Graph) -> Graph:

@@ -2,7 +2,7 @@ from collections import Counter
 from typing import Callable
 
 from .graph import Graph
-from .nodes import Node, Sink
+from .nodes import Node, Output
 from .transform import Transformer
 
 FuseCallback = Callable[[Node, str, Node, str], Node | None]
@@ -16,7 +16,7 @@ class _FuseTransformer(Transformer):
         self.func = func
         self.counter = None
 
-    def node(self, node: Node, **inputs: Node.Output) -> Node:
+    def node(self, node: Node, **inputs: Output) -> Node:
         assert self.counter is not None
         result = node
         any_fused = False
@@ -34,7 +34,7 @@ class _FuseTransformer(Transformer):
             result.inputs = inputs  # XXX: should we create a copy of result/node?
         return result
 
-    def graph(self, g: Graph, sinks: list[Sink]) -> Graph:
+    def graph(self, g: Graph, sinks: list[Node]) -> Graph:
         return Graph(sinks)
 
     def transform(self, graph: Graph) -> Graph:

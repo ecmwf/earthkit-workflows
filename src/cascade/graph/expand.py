@@ -1,7 +1,7 @@
-from typing import Callable, cast
+from typing import Callable
 
 from .graph import Graph
-from .nodes import Node, Processor, Sink, Source
+from .nodes import Node, Output
 from .transform import Transformer
 
 
@@ -9,24 +9,24 @@ class _Subgraph:
     name: str
     leaves: dict[str, Node]
     output_map: dict[str, str]
-    inner_sinks: list[Sink]
+    inner_sinks: list[Node]
 
     def __init__(
         self,
         name: str,
         leaves: dict[str, Node],
         output_map: dict[str, str],
-        inner_sinks: list[Sink],
+        inner_sinks: list[Node],
     ):
         self.name = name
         self.leaves = leaves
         self.output_map = output_map
         self.inner_sinks = inner_sinks
 
-    def __getattr__(self, name: str) -> Node.Output:
+    def __getattr__(self, name: str) -> Output:
         return self.get_output(name)
 
-    def get_output(self, name: str | None = None) -> Node.Output:
+    def get_output(self, name: str | None = None) -> Output:
         if name is None:
             name = Node.DEFAULT_OUTPUT
         if name in self.output_map:
@@ -64,13 +64,13 @@ class Splicer(Transformer):
     """
 
     name: str
-    inputs: dict[str, Node.Output]
+    inputs: dict[str, Output]
     outputs: dict[str, str]
 
     def __init__(
         self,
         name: str,
-        inputs: dict[str, Node.Output],
+        inputs: dict[str, Output],
         input_map: dict[str, str] | None,
         outputs: list[str],
         output_map: dict[str, str] | None,
@@ -86,18 +86,18 @@ class Splicer(Transformer):
         else:
             self.outputs = {oname: output_map.get(oname, oname) for oname in outputs}
 
-    def source(self, s: Source) -> Node:
+    def source(self, s: Node) -> Node:
         if s.name not in self.inputs:
             s.name = f"{self.name}.{s.name}"  # XXX: should we create a copy of s?
             return s
         return self.splice_source(f"{self.name}.{s.name}", s, self.inputs[s.name])
 
-    def processor(self, p: Processor, **inputs: Node.Output) -> Processor:
+    def processor(self, p: Node, **inputs: Output) -> Node:
         p.name = f"{self.name}.{p.name}"  # XXX: should we create a copy of p?
         p.inputs = inputs
         return p
 
-    def sink(self, s: Sink, **inputs: Node.Output) -> Node:
+    def sink(self, s: Node, **inputs: Output) -> Node:
         if s.name not in self.outputs.values():
             s.name = f"{self.name}.{s.name}"  # XXX: should we create a copy of s?
             s.inputs = inputs
@@ -106,27 +106,26 @@ class Splicer(Transformer):
 
     def graph(self, g: Graph, sinks: list[Node]) -> _Subgraph:
         leaves = {}
-        inner_sinks: list[Sink] = []
+        inner_sinks: list[Node] = []
         for s in sinks:
             sname = s.name.lstrip(f"{self.name}.")
             if sname in self.outputs.values():
                 leaves[sname] = s
             else:
-                assert isinstance(s, Sink)
                 inner_sinks.append(s)
         return _Subgraph(self.name, leaves, self.outputs, inner_sinks)
 
-    def splice_source(self, name: str, s: Source, input: Node.Output) -> Node:
+    def splice_source(self, name: str, s: Node, input: Output) -> Node:
         """Create a processor node to replace a source in the sub-graph
 
-        The default implementation creates a bare Processor with the original
+        The default implementation creates a bare Node with the original
         source's name, payload and outputs.
 
         Parameters
         ----------
         name: str
             Name of the processor to create
-        s: Source
+        s: Node
             Source to replace
         input: Output
             Output to which to connect the processor
@@ -136,21 +135,21 @@ class Splicer(Transformer):
         Node
             Replacement for the source
         """
-        return Processor(name, s.outputs, s.payload, input=input)
+        return Node(name, s.outputs, s.payload, input=input)
 
-    def splice_sink(self, name: str, s: Sink, **inputs: Node.Output) -> Node:
+    def splice_sink(self, name: str, s: Node, **inputs: Output) -> Node:
         """Create a processor node to replace a sink in the sub-graph
 
-        The default implementation creates a bare Processor with the original
+        The default implementation creates a bare Node with the original
         sink's name, payload and inputs.
 
         Parameters
         ----------
         name: str
             Name of the processor to create
-        s: Sink
+        s: Node
             Sink to replace
-        **inputs: dict[str, Node.Output]
+        **inputs: dict[str, Output]
             Inputs for the processor
 
         Returns
@@ -158,7 +157,7 @@ class Splicer(Transformer):
         Node
             Replacement for the sink
         """
-        return Processor(name, outputs=None, payload=s.payload, **inputs)
+        return Node(name, outputs=None, payload=s.payload, **inputs)
 
 
 ExpanderType = Callable[
@@ -167,7 +166,7 @@ ExpanderType = Callable[
 SplicerType = Callable[
     [
         str,
-        dict[str, Node.Output],
+        dict[str, Output],
         dict[str, str] | None,
         list[str],
         dict[str, str] | None,
@@ -184,7 +183,7 @@ class _Expander(Transformer):
         self.expand = expand
         self.splicer = splicer
 
-    def node(self, n: Node, **inputs: Node.Output) -> Node | _Subgraph:
+    def node(self, n: Node, **inputs: Output) -> Node | _Subgraph:
         expanded = self.expand(n)
         output_map: dict[str, str] | None
         if expanded is None:
@@ -205,7 +204,7 @@ class _Expander(Transformer):
                 new_sinks.append(sink)
             else:
                 new_sinks.extend(sink.inner_sinks)
-        return Graph(cast(list[Sink], new_sinks))
+        return Graph(new_sinks)
 
 
 def expand_graph(

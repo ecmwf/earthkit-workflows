@@ -1,5 +1,34 @@
 from typing import Any
 
+from typing_extensions import Self
+
+
+class Output:
+    """Helper class to refer to node outputs"""
+
+    parent: "Node"
+    name: str
+
+    def __init__(self, parent: "Node", name: str):
+        self.parent = parent
+        self.name = name
+
+    def serialise(self) -> str | tuple[str, str]:
+        """Convert the reference to a serialisable type"""
+        if self.name == Node.DEFAULT_OUTPUT:
+            return self.parent.name
+        return self.parent.name, self.name
+
+    def __repr__(self) -> str:
+        if self.name == Node.DEFAULT_OUTPUT:
+            return f"<Default output of {self.parent!r}>"
+        return f"<Output {self.name!r} of {self.parent!r}>"
+
+    def __str__(self) -> str:
+        if self.name == Node.DEFAULT_OUTPUT:
+            return self.parent.name
+        return f"{self.parent.name}.{self.name}"
+
 
 class Node:
     """Base class for graph nodes
@@ -24,41 +53,15 @@ class Node:
         default output
     payload: Any
         Node payload
-    **inputs: Node | Node.Output
+    **inputs: Node | Output
         Node outputs to use as inputs. If a `Node` object is passed, the input
         will be connected to its default output.
     """
 
     DEFAULT_OUTPUT = "__default__"
 
-    class Output:
-        """Helper class to refer to node outputs"""
-
-        parent: "Node"
-        name: str
-
-        def __init__(self, parent: "Node", name: str):
-            self.parent = parent
-            self.name = name
-
-        def serialise(self) -> str | tuple[str, str]:
-            """Convert the reference to a serialisable type"""
-            if self.name == Node.DEFAULT_OUTPUT:
-                return self.parent.name
-            return self.parent.name, self.name
-
-        def __repr__(self) -> str:
-            if self.name == Node.DEFAULT_OUTPUT:
-                return f"<Default output of {self.parent!r}>"
-            return f"<Output {self.name!r} of {self.parent!r}>"
-
-        def __str__(self) -> str:
-            if self.name == Node.DEFAULT_OUTPUT:
-                return self.parent.name
-            return f"{self.parent.name}.{self.name}"
-
     name: str
-    inputs: dict[str, "Node.Output"]
+    inputs: dict[str, Output]
     outputs: list[str]
     payload: Any
 
@@ -67,13 +70,13 @@ class Node:
         name: str,
         outputs: list[str] | None = None,
         payload: Any = None,
-        **kwargs: "Node | Node.Output",
+        **kwargs: "Node | Output",  # NOTE can't declare Self due to children. Fix hiearchy instead
     ):
         self.name = name
         self.outputs = [Node.DEFAULT_OUTPUT] if outputs is None else outputs
         self.payload = payload
         self.inputs = {
-            iname: (inp if isinstance(inp, Node.Output) else inp.get_output())
+            iname: (inp if isinstance(inp, Output) else inp.get_output())
             for iname, inp in kwargs.items()
         }
 
@@ -96,7 +99,7 @@ class Node:
         raise AttributeError(name)
 
     def _make_output(self, name: str) -> Output:
-        return Node.Output(self, name)
+        return Output(self, name)
 
     def serialise(self) -> dict[str, Any]:
         """Convert the node to a serialisable value
@@ -124,50 +127,14 @@ class Node:
 
     def is_processor(self) -> bool:
         """Check whether the node is a processor (i.e. has both inputs and outputs)"""
-        return bool(self.inputs) and bool(self.outputs)
+        return (not self.is_sink()) and (not self.is_source())
 
     def is_sink(self) -> bool:
         """Check whether the node is a sink (i.e. has no outputs)"""
         return not self.outputs
 
-    def copy(self) -> "Node":
+    def copy(self) -> Self:
         """Shallow copy of the node (the payload is not copied)"""
-        return Node(self.name, self.outputs.copy(), self.payload, **self.inputs)
-
-
-class Source(Node):
-    """Node that acts as a source, i.e. has no inputs"""
-
-    def __init__(
-        self, name: str, outputs: list[str] | None = None, payload: Any = None
-    ):
-        super().__init__(name, outputs, payload)
-
-    def __instancecheck__(self, instance: Any) -> bool:
-        return isinstance(instance, Node) and instance.is_source()
-
-    def copy(self) -> "Source":
-        return Source(self.name, self.outputs.copy(), self.payload)
-
-
-class Processor(Node):
-    """Node that acts as a processor, i.e. has both inputs and outputs"""
-
-    def __instancecheck__(self, instance: Any) -> bool:
-        return isinstance(instance, Node) and instance.is_processor()
-
-    def copy(self) -> "Processor":
-        return Processor(self.name, self.outputs.copy(), self.payload, **self.inputs)
-
-
-class Sink(Node):
-    """Node that acts as a sink, i.e. has no outputs"""
-
-    def __init__(self, name: str, payload: Any = None, **kwargs: Node | Node.Output):
-        super().__init__(name, [], payload, **kwargs)
-
-    def __instancecheck__(self, instance: Any) -> bool:
-        return isinstance(instance, Node) and instance.is_sink()
-
-    def copy(self) -> "Sink":
-        return Sink(self.name, self.payload, **self.inputs)
+        return self.__class__(
+            self.name, self.outputs.copy(), self.payload, **self.inputs
+        )

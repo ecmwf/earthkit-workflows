@@ -1,21 +1,12 @@
-from cascade.graph import (
-    Graph,
-    Node,
-    Processor,
-    Sink,
-    Source,
-    Splicer,
-    expand_graph,
-    serialise,
-)
+from cascade.graph import Graph, Node, Splicer, expand_graph, serialise
 from cascade.graph.expand import _Subgraph
 from cascade.graph.samplegraphs import disconnected, linear, multi, simple
 
 D = Node.DEFAULT_OUTPUT
 
 
-def test_splice_linear():
-    inp = Source("reader")
+def test_splice_linear() -> None:
+    inp = Node("reader")
     g = linear(2)
     sp = Splicer("main", {"reader": inp.get_output()}, None, ["writer"], None)
     spliced: _Subgraph = sp.transform(g)
@@ -23,21 +14,21 @@ def test_splice_linear():
     out = spliced.get_output("writer")
     w = out.parent
     assert w.name == "main.writer"
-    assert isinstance(w, Processor)
+    assert w.is_processor()
     p1 = w.inputs["input"].parent
     assert p1.name == "main.process-1"
     p0 = p1.inputs["input"].parent
     assert p0.name == "main.process-0"
     r = p0.inputs["input"].parent
     assert r.name == "main.reader"
-    assert isinstance(r, Processor)
+    assert r.is_processor()
     i = r.inputs["input"].parent
     assert i == inp
 
 
-def test_splice_disc():
+def test_splice_disc() -> None:
     N = 5
-    inps = [Source(f"reader-{i}") for i in range(N)]
+    inps = [Node(f"reader-{i}") for i in range(N)]
     g = disconnected(N)
     sp = Splicer(
         "main",
@@ -51,18 +42,18 @@ def test_splice_disc():
     for i in range(N):
         out = spliced.get_output(f"output{i}")
         w = out.parent
-        assert isinstance(w, Processor)
+        assert w.is_processor()
         assert w.name == f"main.writer-{i}"
         p = w.inputs["input"].parent
         assert p.name == f"main.process-{i}"
         r = p.inputs["input"].parent
         assert r.name == f"main.reader-{i}"
-        assert isinstance(r, Processor)
+        assert r.is_processor()
         inp = r.inputs["input"].parent
         assert inp == inps[i]
 
 
-def test_expand_linear():
+def test_expand_linear() -> None:
     def linear_expander(
         node: Node,
     ) -> tuple[Graph, dict[str, str], dict[str, str]] | None:
@@ -79,29 +70,31 @@ def test_expand_linear():
     assert len(expanded.sinks) == 1
     wr = expanded.sinks[0]
     assert wr.name == "writer"
-    assert isinstance(wr, Sink)
+    assert wr.is_sink()
     tip = wr
     for i in range(NC - 1, -1, -1):
         w = tip.inputs["input"].parent
-        assert isinstance(w, Processor)
+        assert w.is_processor()
         assert w.name == f"process-{i}.writer"
         cur = w
         for j in range(i + 1, -1, -1):
             p = cur.inputs["input"].parent
-            assert isinstance(p, Processor)
+            assert p.is_processor()
             assert p.name == f"process-{i}.process-{j}"
             cur = p
         r = cur.inputs["input"].parent
-        assert isinstance(r, Processor)
+        assert r.is_processor()
         assert r.name == f"process-{i}.reader"
         tip = r
     rd = tip.inputs["input"].parent
     assert rd.name == "reader"
-    assert isinstance(rd, Source)
+    assert rd.is_source()
 
 
-def test_expand_multi():
-    def expander(node: Node) -> tuple[Graph, dict[str, str], dict[str, str]] | None:
+def test_expand_multi() -> None:
+    def expander(
+        node: Node,
+    ) -> tuple[Graph, dict[str, str] | None, dict[str, str]] | None:
         if node.name.startswith("reader-"):
             return linear(2), None, {D: "writer"}
         if node.name.startswith("process-"):
@@ -113,9 +106,9 @@ def test_expand_multi():
                 omap = {f"output{i}": f"writer-{i}" for i in range(nproc)}
                 return sg, imap, omap
         if node.name.startswith("writer-"):
-            i1 = Source("input1")
-            i2 = Source("input2")
-            w = Sink("writer", input1=i1, input2=i2)
+            i1 = Node("input1")
+            i2 = Node("input2")
+            w = Node("writer", outputs=[], input1=i1, input2=i2)
             return Graph([w])
         return None
 

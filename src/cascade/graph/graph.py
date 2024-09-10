@@ -1,6 +1,6 @@
-from typing import Iterator, cast
+from typing import Iterator, Sequence, cast
 
-from .nodes import Node, Sink, Source
+from cascade.graph.nodes import Node
 
 
 class Graph:
@@ -10,14 +10,18 @@ class Graph:
 
     Parameters
     ----------
-    sinks: list[Sink]
+    sinks: list[Node]
         Sinks of the graph
     """
 
-    sinks: list[Sink]
+    sinks: list[Node]
 
-    def __init__(self, sinks: list[Sink]):
-        self.sinks = sinks
+    def __init__(self, sinks: Sequence[Node]):
+        # NOTE we need to cast to support covariance for the fluent.Node. Fix hierarchy instead
+        self.sinks = cast(list[Node], sinks)
+        # if any(culprit := e for e in sinks if not e.is_sink()):
+        #     # NOTE consider creating a sink view instead
+        #     raise ValueError(f"not a sink: {culprit}")
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Graph):
@@ -95,11 +99,9 @@ class Graph:
             yield node
             done.add(node)
 
-    def sources(self) -> Iterator[Source]:
+    def sources(self) -> Iterator[Node]:
         """Iterate over the sources in the graph"""
-        for node in self.nodes(forwards=True):
-            if node.is_source():
-                yield cast(Source, node)
+        return (n for n in self.nodes(forwards=True) if n.is_source())
 
     def get_node(self, name: str) -> Node:
         """Get a node by name

@@ -1,15 +1,6 @@
 from payload_utils import add_payload
 
-from cascade.graph import (
-    Graph,
-    Node,
-    Processor,
-    Sink,
-    Source,
-    deduplicate_nodes,
-    expand_graph,
-    serialise,
-)
+from cascade.graph import Graph, Node, deduplicate_nodes, expand_graph, serialise
 from cascade.graph.samplegraphs import disconnected, simple
 
 D = Node.DEFAULT_OUTPUT
@@ -21,13 +12,13 @@ def test_dedup_disc():
     assert len(mg.sinks) == 1
     w = mg.sinks[0]
     assert w.name.startswith("writer-")
-    assert isinstance(w, Sink)
+    assert w.is_sink()
     p = w.inputs["input"].parent
     assert p.name.startswith("process-")
-    assert isinstance(p, Processor)
+    assert p.is_processor()
     r = p.inputs["input"].parent
     assert r.name.startswith("reader-")
-    assert isinstance(r, Source)
+    assert r.is_source()
 
 
 def test_no_dedup():
@@ -50,7 +41,7 @@ def test_dedup_part():
     def expander(node: Node) -> Graph | None:
         return {"g1": g1, "g2": g2}.get(node.name, None)
 
-    templ = Graph([Sink("g1"), Sink("g2")])
+    templ = Graph([Node("g1"), Node("g2")])
     g = expand_graph(expander, templ)
     mg = deduplicate_nodes(g)
     s = serialise(mg)

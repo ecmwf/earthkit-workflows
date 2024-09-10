@@ -1,5 +1,20 @@
-from .graph import Graph
-from .nodes import Node, Processor, Sink, Source
+from typing import Any
+
+from cascade.graph.graph import Graph
+from cascade.graph.nodes import Node
+
+
+def node_visit(impl: Any, node: Node, inputs: dict[str, Any]):
+    """Helper method shared by Visitor and Transformer"""
+    if node.is_source() and hasattr(impl, "source"):
+        return impl.source(node)
+    elif node.is_sink() and hasattr(impl, "sink"):
+        return impl.sink(node, **inputs)
+    elif node.is_processor() and hasattr(impl, "processor"):
+        return impl.processor(node, **inputs)
+    elif hasattr(impl, "node"):
+        return impl.node(node, **inputs)
+    return node
 
 
 class Visitor:
@@ -23,15 +38,4 @@ class Visitor:
         See `Visitor` for details.
         """
         for node in graph.nodes():
-            self.__visit(node)
-
-    def __visit(self, node: Node):
-        if isinstance(node, Source) and hasattr(self, "source"):
-            self.source(node)
-        elif isinstance(node, Sink) and hasattr(self, "sink"):
-            self.sink(node)
-        elif isinstance(node, Processor) and hasattr(self, "processor"):
-            self.processor(node)
-        elif isinstance(node, Node) and hasattr(self, "node"):
-            self.node(node)
-        assert isinstance(node, (Node, Sink, Processor, Source))
+            node_visit(self, node, {})

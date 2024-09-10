@@ -1,7 +1,7 @@
-from typing import Iterable, Iterator, cast
+from typing import Iterable, Iterator
 
 from cascade.contextgraph import ContextGraph
-from cascade.graph import Graph, Node, Sink, Source, copy_graph
+from cascade.graph import Graph, Node, copy_graph
 
 
 class Schedule(Graph):
@@ -88,7 +88,7 @@ class Schedule(Graph):
                     while f"input{index}" in next_task.inputs:
                         index += 1
                     if current_task in new_graph.sinks:
-                        new_graph.sinks.remove(cast(Sink, current_task))
+                        new_graph.sinks.remove(current_task)
                         current_task.outputs = [Node.DEFAULT_OUTPUT]
                     next_task.inputs[f"input{index}"] = current_task.get_output()
                     # Check number of nodes as disconnected components may have been introduced
@@ -106,9 +106,8 @@ class Schedule(Graph):
     def has_cycle(self) -> bool:
         return Schedule.valid_allocations(self, self.task_allocation)
 
-    def sources(self) -> Iterator[Source]:
-        for tasks in self.task_allocation.values():
-            yield cast(Source, self.get_node(tasks[0]))
+    def sources(self) -> Iterator[Node]:
+        return (self.get_node(tasks[0]) for tasks in self.task_allocation.values())
 
     def get_successors(self, node: Node) -> dict[str, list[tuple[Node, str]]]:
         """Determines the children of node, taking into account direct dependences
