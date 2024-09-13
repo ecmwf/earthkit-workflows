@@ -2,10 +2,17 @@
 Adapter for the fluent-based definition into the core graph definition
 """
 
-from typing import Any
+from typing import Any, cast
 
 from cascade.graph import Graph, serialise
-from cascade.v2.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
+from cascade.schedulers.schedule import Schedule as FluentSchedule
+from cascade.v2.core import (
+    JobInstance,
+    Schedule,
+    Task2TaskEdge,
+    TaskDefinition,
+    TaskInstance,
+)
 
 
 def cascade_func_wrap(**kwargs) -> Any:
@@ -50,7 +57,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
 
     definition = TaskDefinition(
         func=cascade_func_wrap,
-        environment="",
+        environment=[],
         entrypoint="",
         input_schema=input_schema,
         output_schema={e: "Any" for e in node["outputs"]},
@@ -76,3 +83,14 @@ def graph2job(graph: Graph) -> JobInstance:
         edges += task_edges
         tasks[node_name] = task
     return JobInstance(tasks=tasks, edges=edges)
+
+
+def schedule2schedule(fluent_schedule: FluentSchedule) -> tuple[JobInstance, Schedule]:
+    job_instance = graph2job(fluent_schedule)
+    schedule = Schedule(
+        host_task_queues={
+            cast(str, k): cast(list[str], list(v))
+            for k, v in fluent_schedule.task_allocation.items()
+        }
+    )
+    return job_instance, schedule

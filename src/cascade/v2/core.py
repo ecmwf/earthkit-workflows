@@ -17,8 +17,8 @@ class TaskDefinition(BaseModel):
         None,
         description="a Callable, must be cloud-picklable. Prefered over `entrypoint` if given",
     )
-    environment: str = Field(
-        description="name of a package which contains the entrypoint and declares all required dependencies"
+    environment: list[str] = Field(
+        description="pip-installable packages, should contain entrypoint and all deps it requires"
     )
     input_schema: dict[str, str] = Field(
         description="kv of input params and their types (fqn of class)"
