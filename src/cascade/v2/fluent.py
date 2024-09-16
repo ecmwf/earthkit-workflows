@@ -17,14 +17,15 @@ from cascade.v2.core import (
 
 def cascade_func_wrap(**kwargs) -> Any:
     kwargs_rl = kwargs["kwargs"]
-    func = kwargs["func"]
+    func = TaskDefinition.func_dec(kwargs["func"])
     argpos = kwargs["argpos"]
     argdyn = kwargs["argdyn"]
     args_rl = [None] * (len(argpos) + len(argdyn))
     for k, v in argpos.items():
         args_rl[k] = v
     for k, v in argdyn.items():
-        args_rl[k] = kwargs[v]
+        # NOTE not exactly sure why we need `int(k)` here -- some quirk of in-fiab serdes?
+        args_rl[int(k)] = kwargs[v]
     return func(*args_rl, **kwargs_rl)
 
 
@@ -32,7 +33,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     edges = []
     input_schema = {
         "kwargs": "dict",
-        "func": "Callable",
+        "func": "str",
         "argpos": "dict",
         "argdyn": "dict",
     }
@@ -56,7 +57,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             argpos[i] = param
 
     definition = TaskDefinition(
-        func=cascade_func_wrap,
+        func=TaskDefinition.func_enc(cascade_func_wrap),
         environment=[],
         entrypoint="",
         input_schema=input_schema,
@@ -68,7 +69,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             "kwargs": node["payload"][2],
             "argpos": argpos,
             "argdyn": argdyn,
-            "func": node["payload"][0],
+            "func": TaskDefinition.func_enc(node["payload"][0]),
         },
     )
     return task, edges

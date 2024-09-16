@@ -2,7 +2,9 @@
 Core graph data structures -- prescribes most of the API
 """
 
-from typing import Any, Callable
+from typing import Any, Callable, cast
+import cloudpickle
+from base64 import b64decode, b64encode
 
 from pydantic import BaseModel, Field
 
@@ -13,9 +15,9 @@ class TaskDefinition(BaseModel):
         "",
         description="fqn of a Callable, eg mymod.submod.function. Ignored if `func` given",
     )
-    func: Callable | None = Field(
+    func: str | None = Field(
         None,
-        description="a Callable, must be cloud-picklable. Prefered over `entrypoint` if given",
+        description="a cloud-pickled callable. Prefered over `entrypoint` if given",
     )
     environment: list[str] = Field(
         description="pip-installable packages, should contain entrypoint and all deps it requires"
@@ -26,6 +28,15 @@ class TaskDefinition(BaseModel):
     output_schema: dict[str, str] = Field(
         description="kv of outputs and their types (fqn of class)"
     )
+
+    @staticmethod
+    def func_dec(f: str) -> Callable:
+        return cast(Callable, cloudpickle.loads(b64decode(f)))
+
+    @staticmethod
+    def func_enc(f: Callable) -> str:
+        return b64encode(cloudpickle.dumps(f)).decode("ascii")
+
 
 
 class Task2TaskEdge(BaseModel):

@@ -16,7 +16,7 @@ def schedule(
     # simplest impl: assign all to first host to produce *a* viable schedule. To be dropped soon
     if not environment.hosts:
         return Either.error("no hosts given")
-    top_host = max(environment.hosts.items(), key=lambda e: e[1])[0]
+    top_host = max(environment.hosts.items(), key=lambda e: e[1].memory_mb)[0]
 
     # TODO include optional TaskResourceRequirements, check they fit
 

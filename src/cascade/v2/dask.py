@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 import dask.utils
 
-from cascade.v2.core import JobInstance, TaskInstance
+from cascade.v2.core import JobInstance, TaskInstance, TaskDefinition
 from cascade.v2.views import param_source
 
 
@@ -30,7 +30,7 @@ def task2dask(
         raise NotImplementedError(task.definition.environment)
 
     if task.definition.func:
-        func = task.definition.func
+        func = TaskDefinition.func_dec(task.definition.func)
     elif "." in task.definition.entrypoint:
         module_name, function_name = task.definition.entrypoint.rsplit(".", 1)
         func = importlib.import_module(module_name).__dict__[function_name]
