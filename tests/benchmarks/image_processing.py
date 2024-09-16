@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 
 from cascade.cascade import Cascade
-from cascade.fluent import Fluent, Payload
+from cascade.fluent import Fluent, Payload # type: ignore
 from cascade.visualise import visualise
 
 

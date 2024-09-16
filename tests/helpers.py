@@ -6,7 +6,7 @@ from cascade.fluent import Action, Node, Payload
 
 class MockNode(Node):
     def __init__(self, name: str):
-        super().__init__(Payload(name))
+        super().__init__(Payload(name)) # type: ignore
 
 
 def mock_action(shape: tuple) -> Action:

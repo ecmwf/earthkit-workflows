@@ -138,16 +138,16 @@ def test_flatten_expand():
 @pytest.mark.parametrize(
     "input_nodes_shape, func, inputs, output_nodes_shape, node_inputs",
     [
-        [(3, 4), "map", [Payload("test")], (3, 4), 1],
-        [(3, 4, 5), "reduce", [Payload("func")], (4, 5), 3],
+        [(3, 4), "map", [Payload("test")], (3, 4), 1], # type: ignore
+        [(3, 4, 5), "reduce", [Payload("func")], (4, 5), 3], # type: ignore
         [
             (3, 4, 5),
             "reduce",
-            [Payload("func"), "dim_1"],
+            [Payload("func"), "dim_1"], # type: ignore
             (3, 5),
             4,
         ],
-        [(3,), "reduce", [Payload("func")], (), 3],
+        [(3,), "reduce", [Payload("func")], (), 3], # type: ignore
         [
             (3,),
             "join",

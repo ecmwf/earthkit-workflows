@@ -1,5 +1,6 @@
 from cascade.graph import Node, fuse_nodes, serialise
 from cascade.graph.samplegraphs import comb, linear
+from typing import Any
 
 D = Node.DEFAULT_OUTPUT
 
@@ -49,7 +50,7 @@ def fuse_accum(parent: Node, pout: str, child: Node, cin: str) -> Node | None:
         return None
     if len(child.inputs) != 2:
         return None
-    joined = []
+    joined: list[Any] = []
     joined.extend(parent.inputs.values())
     joined.extend(isrc for iname, isrc in child.inputs.items() if iname != cin)
     inputs = {f"input{i}": src for i, src in enumerate(joined)}

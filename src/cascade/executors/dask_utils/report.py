@@ -274,5 +274,5 @@ class Report:
     def __init__(self, report_file: str):
         with open(report_file) as fp:
             soup = BeautifulSoup(fp, "html.parser")
-        self.summary = Summary(soup.body.script.string)
-        self.task_stream = TaskStream(soup.body.script.string)
+        self.summary = Summary(soup.body.script.string) # type: ignore
+        self.task_stream = TaskStream(soup.body.script.string) # type: ignore
