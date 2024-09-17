@@ -31,12 +31,6 @@ def cascade_func_wrap(**kwargs) -> Any:
 
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
     edges = []
-    input_schema = {
-        "kwargs": "dict",
-        "func": "str",
-        "argpos": "dict",
-        "argdyn": "dict",
-    }
     for param, other in node["inputs"].items():
         edges.append(
             Task2TaskEdge(
@@ -46,32 +40,45 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
                 sink_input="dynamic_" + param,
             )
         )
-        input_schema["dynamic_" + param] = "Any"
 
-    argdyn = {}
-    argpos = {}
-    for i, pname in enumerate(node["payload"][1]):
-        if param in node["inputs"]:
-            argdyn[i] = "dynamic_" + param
-        else:
-            argpos[i] = param
+    # TODO this is hotfix. Strict schema and the like required for payload
+    if isinstance(node["payload"], tuple):
+        input_schema = {
+            "kwargs": "dict",
+            "func": "str",
+            "argpos": "dict",
+            "argdyn": "dict",
+        }
+        for edge in edges:
+            input_schema[edge.sink_input] = "Any"
+        argdyn = {}
+        argpos = {}
+        for i, pname in enumerate(node["payload"][1]):
+            if param in node["inputs"]:
+                argdyn[i] = "dynamic_" + param
+            else:
+                argpos[i] = param
 
-    definition = TaskDefinition(
-        func=TaskDefinition.func_enc(cascade_func_wrap),
-        environment=[],
-        entrypoint="",
-        input_schema=input_schema,
-        output_schema={e: "Any" for e in node["outputs"]},
-    )
-    task = TaskInstance(
-        definition=definition,
-        static_input={
-            "kwargs": node["payload"][2],
-            "argpos": argpos,
-            "argdyn": argdyn,
-            "func": TaskDefinition.func_enc(node["payload"][0]),
-        },
-    )
+        definition = TaskDefinition(
+            func=TaskDefinition.func_enc(cascade_func_wrap),
+            environment=[],
+            entrypoint="",
+            input_schema=input_schema,
+            output_schema={e: "Any" for e in node["outputs"]},
+        )
+        task = TaskInstance(
+            definition=definition,
+            static_input={
+                "kwargs": node["payload"][2],
+                "argpos": argpos,
+                "argdyn": argdyn,
+                "func": TaskDefinition.func_enc(node["payload"][0]),
+            },
+        )
+    elif isinstance(node["payload"], dict) and node["payload"].keys() == TaskInstance.model_fields.keys():
+        # NOTE this doesnt really work -- the edges are broken afterwards
+        task = TaskInstance(**node["payload"])
+
     return task, edges
 
 
