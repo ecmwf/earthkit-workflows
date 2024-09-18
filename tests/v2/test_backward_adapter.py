@@ -1,8 +1,8 @@
 from dask.threaded import get
 
 from cascade.graph.samplegraphs import linear
+from cascade.v2.backward import graph2job
 from cascade.v2.dask import job2dask
-from cascade.v2.fluent import graph2job
 
 
 def test_fluent():

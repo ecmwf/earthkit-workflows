@@ -26,13 +26,10 @@ class TaskDefinition(BaseModel):
     environment: list[str] = Field(
         description="pip-installable packages, should contain entrypoint and all deps it requires"
     )
-    input_schema_kw: dict[str, str] = Field(
-        description="kv of input kw params and their types (fqn of class)"
+    # NOTE we could accept eg has_kwargs, has_args, etc... or serialize the whole inspect.signature here?
+    input_schema: dict[str, str] = Field(
+        description="kv of input kw params and their types (fqn of class). Non-kw params not validated"
     )
-    input_schema_ps: dict[int, str] = Field(
-        description="kv of input pos params and their types (fqn of class)"
-    )
-
     output_schema: dict[str, str] = Field(
         description="kv of outputs and their types (fqn of class)"
     )

@@ -1,5 +1,5 @@
 """
-Adapter for the fluent-based definition into the core graph definition
+Backward-compatibility adapter from the v1/graph definition into the v2/core definition
 """
 
 from typing import Any, Callable, cast
@@ -23,12 +23,9 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         args = cast(list[Any], node["payload"][1])
         kwargs = cast(dict[str, Any], node["payload"][2])
 
-        input_schema_kw: dict[str, str] = {}
-        input_schema_ps: dict[int, str] = {}
-        for i, _ in enumerate(args):
-            input_schema_ps[i] = "Any"
+        input_schema: dict[str, str] = {}
         for k in kwargs.keys():
-            input_schema_kw[k] = "Any"
+            input_schema[k] = "Any"
 
         static_input_kw: dict[str, Any] = kwargs.copy()
         static_input_ps: dict[int, Any] = {}
@@ -56,8 +53,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             func=TaskDefinition.func_enc(func),
             environment=[],
             entrypoint="",
-            input_schema_kw=input_schema_kw,
-            input_schema_ps=input_schema_ps,
+            input_schema=input_schema,
             output_schema={e: "Any" for e in node["outputs"]},
         )
         task = TaskInstance(
