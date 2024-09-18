@@ -29,6 +29,7 @@ class Output:
             return self.parent.name
         return f"{self.parent.name}.{self.name}"
 
+
 class Node:
     """Base class for graph nodes
 

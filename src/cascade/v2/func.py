@@ -80,3 +80,9 @@ class Either(Generic[T, E]):
                 return self.error(self.e + other)
         else:
             return self
+
+
+def ensure(l: list, i: int) -> None:
+    """Ensures list l has at least i elements, for a safe l[i] = ..."""
+    if (k := (i + 1 - len(l))) > 0:
+        l.extend([None] * k)

@@ -32,7 +32,7 @@ def test_splice_disc() -> None:
     g = disconnected(N)
     sp = Splicer(
         "main",
-        {f"input{i}": inp for i, inp in enumerate(inps)}, # type: ignore
+        {f"input{i}": inp for i, inp in enumerate(inps)},  # type: ignore
         {f"reader-{i}": f"input{i}" for i in range(N)},
         [f"output{i}" for i in range(N)],
         {f"output{i}": f"writer-{i}" for i in range(N)},
@@ -66,7 +66,7 @@ def test_expand_linear() -> None:
 
     NC = 3
     coarse = linear(NC)
-    expanded = expand_graph(linear_expander, coarse) # type: ignore
+    expanded = expand_graph(linear_expander, coarse)  # type: ignore
     assert len(expanded.sinks) == 1
     wr = expanded.sinks[0]
     assert wr.name == "writer"
@@ -109,14 +109,14 @@ def test_expand_multi() -> None:
             i1 = Node("input1")
             i2 = Node("input2")
             w = Node("writer", outputs=[], input1=i1, input2=i2)
-            return Graph([w]) # type: ignore
+            return Graph([w])  # type: ignore
         return None
 
     NR = 5
     NO1 = 3
     NO2 = 2
     coarse = multi(NR, NO1, NO2)
-    expanded = expand_graph(expander, coarse) # type: ignore
+    expanded = expand_graph(expander, coarse)  # type: ignore
     s = serialise(expanded)
     exp = {}
     for i in range(NR):

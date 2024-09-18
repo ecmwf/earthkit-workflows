@@ -7,24 +7,15 @@ from typing import Any, Callable
 
 import dask.utils
 
-from cascade.v2.core import JobInstance, TaskInstance, TaskDefinition
+from cascade.v2.core import JobInstance, TaskDefinition, TaskInstance
+from cascade.v2.func import ensure
 from cascade.v2.views import param_source
-
-
-def dask_func_wrap(*args, **kwargs) -> Any:
-    # the problem with dask is that it does not do dataset substitution in kwargs
-    func = kwargs["func"]
-    arg_names = kwargs["arg_names"]
-    kwargs_rl = kwargs["kwargs"]
-    kwargs_rl.update({k: v for k, v in zip(arg_names, args)})
-    return func(**kwargs_rl)
-
 
 DaskPayload = tuple[Callable, Callable, list[Any], dict[str, Any]]
 
 
 def task2dask(
-    task: TaskInstance, input2source: dict[str, tuple[str, str]]
+    task: TaskInstance, input2source: dict[int | str, tuple[str, str]]
 ) -> DaskPayload:
     if task.definition.environment:
         raise NotImplementedError(task.definition.environment)
@@ -38,19 +29,25 @@ def task2dask(
         function_name = task.definition.entrypoint
         func = eval(function_name)
 
-    dynamic_inputs = [e for e in task.definition.input_schema if e in input2source]
-    kwargs = {
-        "func": func,
-        "kwargs": task.static_input,
-        "arg_names": dynamic_inputs,
-    }
+    args: list[Any] = []
+    for k, v in task.static_input_ps.items():
+        ensure(args, k)
+        args[k] = v
+    kwargs: dict[str, Any] = task.static_input_kw.copy()
+    for s, (onode, _) in input2source.items():
+        if isinstance(s, str):
+            raise NotImplementedError("dask doesnt support kwargs dyn args")
+        elif isinstance(s, int):
+            ensure(args, s)
+            args[s] = onode
 
-    return (
+    rv = (
         dask.utils.apply,
-        dask_func_wrap,
-        [input2source[e][0] for e in dynamic_inputs],
+        func,
+        args,
         kwargs,
     )
+    return rv
 
 
 DaskJob = dict

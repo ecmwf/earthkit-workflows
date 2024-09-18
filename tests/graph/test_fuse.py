@@ -1,6 +1,7 @@
+from typing import Any
+
 from cascade.graph import Node, fuse_nodes, serialise
 from cascade.graph.samplegraphs import comb, linear
-from typing import Any
 
 D = Node.DEFAULT_OUTPUT
 

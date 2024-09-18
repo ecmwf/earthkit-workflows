@@ -2,11 +2,15 @@
 Core graph data structures -- prescribes most of the API
 """
 
-from typing import Any, Callable, cast
-import cloudpickle
 from base64 import b64decode, b64encode
+from typing import Any, Callable, Optional, cast
 
+import cloudpickle
 from pydantic import BaseModel, Field
+
+# NOTE it would be tempting to dict[str|int, ...] at places where we deal with kwargs/args, instead of
+# double field dict[str] and dict[int]. However, that won't survive serde -- you end up with ints being
+# strings
 
 
 # Definitions
@@ -22,9 +26,13 @@ class TaskDefinition(BaseModel):
     environment: list[str] = Field(
         description="pip-installable packages, should contain entrypoint and all deps it requires"
     )
-    input_schema: dict[str, str] = Field(
-        description="kv of input params and their types (fqn of class)"
+    input_schema_kw: dict[str, str] = Field(
+        description="kv of input kw params and their types (fqn of class)"
     )
+    input_schema_ps: dict[int, str] = Field(
+        description="kv of input pos params and their types (fqn of class)"
+    )
+
     output_schema: dict[str, str] = Field(
         description="kv of outputs and their types (fqn of class)"
     )
@@ -38,12 +46,12 @@ class TaskDefinition(BaseModel):
         return b64encode(cloudpickle.dumps(f)).decode("ascii")
 
 
-
 class Task2TaskEdge(BaseModel):
     source_task: str
     source_output: str
     sink_task: str
-    sink_input: str
+    sink_input_kw: Optional[str]
+    sink_input_ps: Optional[int]
 
 
 class JobDefinition(BaseModel):
@@ -55,7 +63,10 @@ class JobDefinition(BaseModel):
 # Instances
 class TaskInstance(BaseModel):
     definition: TaskDefinition
-    static_input: dict[str, Any] = Field(
+    static_input_kw: dict[str, Any] = Field(
+        description="input parameters for the entrypoint. Must be json/msgpack-serializable"
+    )
+    static_input_ps: dict[int, Any] = Field(
         description="input parameters for the entrypoint. Must be json/msgpack-serializable"
     )
 

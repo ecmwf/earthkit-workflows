@@ -2,9 +2,9 @@
 Adapter for the fluent-based definition into the core graph definition
 """
 
-from typing import Any, cast
+from typing import Any, Callable, cast
 
-from cascade.graph import Graph, serialise
+from cascade.graph import Graph, Node, serialise
 from cascade.schedulers.schedule import Schedule as FluentSchedule
 from cascade.v2.core import (
     JobInstance,
@@ -15,69 +15,63 @@ from cascade.v2.core import (
 )
 
 
-def cascade_func_wrap(**kwargs) -> Any:
-    kwargs_rl = kwargs["kwargs"]
-    func = TaskDefinition.func_dec(kwargs["func"])
-    argpos = kwargs["argpos"]
-    argdyn = kwargs["argdyn"]
-    args_rl = [None] * (len(argpos) + len(argdyn))
-    for k, v in argpos.items():
-        args_rl[k] = v
-    for k, v in argdyn.items():
-        # NOTE not exactly sure why we need `int(k)` here -- some quirk of in-fiab serdes?
-        args_rl[int(k)] = kwargs[v]
-    return func(*args_rl, **kwargs_rl)
-
-
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
-    edges = []
-    for param, other in node["inputs"].items():
-        edges.append(
-            Task2TaskEdge(
-                source_task=other,
-                source_output="__default__",
-                sink_task=name,
-                sink_input="dynamic_" + param,
-            )
-        )
 
     # TODO this is hotfix. Strict schema and the like required for payload
     if isinstance(node["payload"], tuple):
-        input_schema = {
-            "kwargs": "dict",
-            "func": "str",
-            "argpos": "dict",
-            "argdyn": "dict",
-        }
-        for edge in edges:
-            input_schema[edge.sink_input] = "Any"
-        argdyn = {}
-        argpos = {}
-        for i, pname in enumerate(node["payload"][1]):
-            if param in node["inputs"]:
-                argdyn[i] = "dynamic_" + param
-            else:
-                argpos[i] = param
+        func = cast(Callable, node["payload"][0])
+        args = cast(list[Any], node["payload"][1])
+        kwargs = cast(dict[str, Any], node["payload"][2])
+
+        input_schema_kw: dict[str, str] = {}
+        input_schema_ps: dict[int, str] = {}
+        for i, _ in enumerate(args):
+            input_schema_ps[i] = "Any"
+        for k in kwargs.keys():
+            input_schema_kw[k] = "Any"
+
+        static_input_kw: dict[str, Any] = kwargs.copy()
+        static_input_ps: dict[int, Any] = {}
+        rev_lookup: dict[str, int] = {}
+        for i, e in enumerate(args):
+            static_input_ps[i] = e
+            rev_lookup[e] = i
+        edges = []
+        for param, other in node["inputs"].items():
+            edges.append(
+                Task2TaskEdge(
+                    source_task=other,
+                    source_output=Node.DEFAULT_OUTPUT,
+                    sink_task=name,
+                    sink_input_ps=rev_lookup[param],
+                    sink_input_kw=None,
+                )
+            )
+            static_input_ps[i] = None
+
+        if node["outputs"] != [Node.DEFAULT_OUTPUT] and node["outputs"]:
+            raise NotImplementedError("multiple outputs are not supported yet")
 
         definition = TaskDefinition(
-            func=TaskDefinition.func_enc(cascade_func_wrap),
+            func=TaskDefinition.func_enc(func),
             environment=[],
             entrypoint="",
-            input_schema=input_schema,
+            input_schema_kw=input_schema_kw,
+            input_schema_ps=input_schema_ps,
             output_schema={e: "Any" for e in node["outputs"]},
         )
         task = TaskInstance(
             definition=definition,
-            static_input={
-                "kwargs": node["payload"][2],
-                "argpos": argpos,
-                "argdyn": argdyn,
-                "func": TaskDefinition.func_enc(node["payload"][0]),
-            },
+            static_input_kw=static_input_kw,
+            static_input_ps=static_input_ps,
         )
-    elif isinstance(node["payload"], dict) and node["payload"].keys() == TaskInstance.model_fields.keys():
-        # NOTE this doesnt really work -- the edges are broken afterwards
+    elif (
+        isinstance(node["payload"], dict)
+        and node["payload"].keys() == TaskInstance.model_fields.keys()
+    ):
+        # NOTE this doesnt really work as edges arent covered
         task = TaskInstance(**node["payload"])
+        edges = []
 
     return task, edges
 

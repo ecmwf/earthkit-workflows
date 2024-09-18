@@ -8,7 +8,7 @@ def node_number(node: Node, sentinel: object) -> object | int:
     if not s:
         return sentinel
     try:
-        n = int(n) # type: ignore
+        n = int(n)  # type: ignore
     except ValueError:
         return sentinel
     return n

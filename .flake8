@@ -1,5 +1,5 @@
 [flake8]
 max-line-length = 120
 
-# E731: lambdas are legit
-extend-ignore = E731
+# E731: lambdas are legit, E741: nothing wrong with `l` variable name
+extend-ignore = E731, E741
