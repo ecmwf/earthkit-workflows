@@ -1,7 +1,7 @@
 import copy
 import functools
 import hashlib
-from typing import Any, Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Hashable, Iterable, Sequence, cast, overload
 
 import numpy as np
 import xarray as xr
@@ -268,8 +268,18 @@ class Action:
         )
         return type(self)(new_nodes_xa)
 
+    @overload
     def expand(
-        self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
+        self, dim: str, dim_size: int | None, axis: int = 0, new_axis: int = 0, values: list[Hashable] = []
+    ) -> "Action": ...
+
+    @overload
+    def expand(
+        self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0, values: None = None
+    ) -> "Action": ...
+
+    def expand(
+        self, dim: str, dim_size: int | None = None, axis: int = 0, new_axis: int = 0, values: list[Hashable] | None = None
     ) -> "Action":
         """
         Create new dimension in array of nodes of specified size by
@@ -280,17 +290,24 @@ class Action:
         Parameters
         ----------
         dim: str, name of new dimension
-        dim_size: int, size of new dimension
+        dim_size: int | None, size of new dimension. If not given `values` must be
         axis: int, axis to take values from in internal data of node
         new_axis: int, position to insert new dimension
+        values: list[Hashable] | None, values of new dimension. If not given `dim_size` must be
 
 
         Return
         ------
         Action
         """
-        params = [(x, dim, axis, new_axis) for x in range(dim_size)]
+        if dim_size is None and values is None:
+            raise TypeError("Either `dim_size` or `values` must be given.")
+        if values is not None:
+            params = [(i, dim, axis, new_axis, x) for i, x in enumerate(values)]
+        else:
+            params = [(x, dim, axis, new_axis) for x in range(dim_size)]
         return self.transform(_expand_transform, params, dim)
+
 
     def map(self, payload: Callable | Payload | np.ndarray[Any, Any]) -> "Action":
         """
@@ -654,12 +671,12 @@ def _batch_transform(
 
 
 def _expand_transform(
-    action: Action, index: int, dim: str, axis: int = 0, new_axis: int = 0
+    action: Action, index: int | Hashable, dim: str, axis: int = 0, new_axis: int = 0, value: Hashable | None = None
 ) -> Action:
     ret = action.map(
         Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
     )
-    ret._add_dimension(dim, index, new_axis)
+    ret._add_dimension(dim, value or index, new_axis)
     return ret
 
 
