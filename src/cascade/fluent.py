@@ -1,7 +1,7 @@
 import copy
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Sequence, cast
+from typing import Any, Callable, Hashable, Iterable, Sequence
 
 import numpy as np
 import xarray as xr
@@ -90,6 +90,9 @@ def custom_hash(string: str) -> str:
     return ret.hexdigest()
 
 
+Coord = tuple[str, list[Any]]
+
+
 class Node(BaseNode):
     def __init__(
         self,
@@ -164,7 +167,7 @@ class Action:
     def join(
         self,
         other_action: "Action",
-        dim: str | xr.DataArray,
+        dim: str | Coord,
         match_coord_values: bool = False,
     ) -> "Action":
         if match_coord_values:
@@ -175,7 +178,7 @@ class Action:
                     )
         new_nodes = xr.concat(
             [self.nodes, other_action.nodes],
-            dim,
+            dim if isinstance(dim, str) else xr.DataArray(dim[1], name=dim[0]),
             combine_attrs="no_conflicts",
             coords="minimal",
             join="exact",
@@ -184,7 +187,7 @@ class Action:
         return ret
 
     def transform(
-        self, func: Callable, params: list, dim: str | xr.DataArray, axis: int = 0
+        self, func: Callable, params: list, dim: str | Coord, axis: int = 0
     ) -> "Action":
         """
         Create new nodes by applying function on action with different
@@ -196,7 +199,7 @@ class Action:
         func: function with signature func(Action, *args) -> Action
         params: list, containing different arguments to pass into func
         for generating new nodes
-        dim: str or DataArray, name of dimension to join actions or xr.DataArray specifying new dimension name and
+        dim: str or `Coord`, name of dimension to join actions or `Coord` specifying new dimension name and
         coordinate values
         axis: int, position to insert new dimension
 
@@ -210,8 +213,8 @@ class Action:
             dim_name = dim
             dim_values = list(range(len(params)))
         else:
-            dim_name = cast(str, dim.name)  # xarray is rather broad in names
-            dim_values = dim.values
+            dim_name = dim[0]
+            dim_values = dim[1]
 
         for index, param in enumerate(params):
             new_res = func(self, *param)
@@ -271,8 +274,8 @@ class Action:
 
     def expand(
         self,
-        dim: str | xr.DataArray,
-        internal_dim: int | str | xr.DataArray,
+        dim: str | Coord,
+        internal_dim: int | str | Coord,
         dim_size: int | None = None,
         axis: int = 0,
         backend_kwargs: dict = {},
@@ -285,11 +288,11 @@ class Action:
 
         Parameters
         ----------
-        dim: str or DataArray, name of dimension or xr.DataArray specifying new dimension name and
+        dim: str or `Coord`, name of dimension or `Coord` specifying new dimension name and
         coordinate values
         internal_dim: int, str or DataArray, index or name of internal dimension to expand, or
-        xr.DataArray specifying dimension name and selection criteria
-        dim_size: int | None, size of new dimension. If not given `internal_dim` must be xr.DataArray
+        `Coord` specifying dimension name and list of selection criteria
+        dim_size: int | None, size of new dimension. If not given `internal_dim` must be `Coord`
         axis: int, position to insert new dimension
         backend_kwargs: dict, kwargs for the underlying backend take method
 
@@ -305,11 +308,9 @@ class Action:
                 )
             params = [(i, internal_dim, backend_kwargs) for i in range(dim_size)]
         else:
-            params = [
-                (x, internal_dim.name, backend_kwargs) for x in internal_dim.values
-            ]
+            params = [(x, internal_dim[0], backend_kwargs) for x in internal_dim[1]]
 
-        if isinstance(dim, xr.DataArray) and len(params) != len(dim.values):
+        if not isinstance(dim, str) and len(params) != len(dim[1]):
             raise ValueError(
                 "Length of values in `dim` must match `dim_size` or length of values in `internal_dim`"
             )
