@@ -117,7 +117,7 @@ class Backend:
     def var(*args, **kwargs):
         return array_module(*args).var(*args, **kwargs)
 
-    def stack(*args, axis: int | None = None, **kwargs):
+    def stack(*args, axis: int = 0, **kwargs):
         """
         Join arrays along new axis. All arrays must have
         the same shape, or be broadcastable to the same shape.
@@ -125,7 +125,7 @@ class Backend:
         Parameters
         ----------
         arrays: list of Arrays to apply function on
-        axis: int | None, axis of new dimension if provided
+        axis: int, axis of new dimension if provided
         method_kwargs: dict, kwargs for array module stack method
 
         Return

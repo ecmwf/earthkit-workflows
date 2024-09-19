@@ -1,7 +1,7 @@
 import copy
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Sequence, cast, overload
+from typing import Any, Callable, Hashable, Iterable, Sequence, cast
 
 import numpy as np
 import xarray as xr
@@ -184,7 +184,7 @@ class Action:
         return ret
 
     def transform(
-        self, func: Callable, params: list, dim: str | xr.DataArray
+        self, func: Callable, params: list, dim: str | xr.DataArray, axis: int = 0
     ) -> "Action":
         """
         Create new nodes by applying function on action with different
@@ -198,6 +198,7 @@ class Action:
         for generating new nodes
         dim: str or DataArray, name of dimension to join actions or xr.DataArray specifying new dimension name and
         coordinate values
+        axis: int, position to insert new dimension
 
         Return
         ------
@@ -215,7 +216,7 @@ class Action:
         for index, param in enumerate(params):
             new_res = func(self, *param)
             if dim_name not in new_res.nodes.coords:
-                new_res._add_dimension(dim_name, dim_values[index])
+                new_res._add_dimension(dim_name, dim_values[index], axis)
             if res is None:
                 res = new_res
             else:
@@ -268,18 +269,13 @@ class Action:
         )
         return type(self)(new_nodes_xa)
 
-    @overload
     def expand(
-        self, dim: str, dim_size: int | None, axis: int = 0, new_axis: int = 0, values: list[Hashable] = []
-    ) -> "Action": ...
-
-    @overload
-    def expand(
-        self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0, values: None = None
-    ) -> "Action": ...
-
-    def expand(
-        self, dim: str, dim_size: int | None = None, axis: int = 0, new_axis: int = 0, values: list[Hashable] | None = None
+        self,
+        dim: str | xr.DataArray,
+        internal_dim: int | str | xr.DataArray,
+        dim_size: int | None = None,
+        axis: int = 0,
+        backend_kwargs: dict = {},
     ) -> "Action":
         """
         Create new dimension in array of nodes of specified size by
@@ -289,25 +285,35 @@ class Action:
 
         Parameters
         ----------
-        dim: str, name of new dimension
-        dim_size: int | None, size of new dimension. If not given `values` must be
-        axis: int, axis to take values from in internal data of node
-        new_axis: int, position to insert new dimension
-        values: list[Hashable] | None, values of new dimension. If not given `dim_size` must be
+        dim: str or DataArray, name of dimension or xr.DataArray specifying new dimension name and
+        coordinate values
+        internal_dim: int, str or DataArray, index or name of internal dimension to expand, or
+        xr.DataArray specifying dimension name and selection criteria
+        dim_size: int | None, size of new dimension. If not given `internal_dim` must be xr.DataArray
+        axis: int, position to insert new dimension
+        backend_kwargs: dict, kwargs for the underlying backend take method
 
 
         Return
         ------
         Action
         """
-        if dim_size is None and values is None:
-            raise TypeError("Either `dim_size` or `values` must be given.")
-        if values is not None:
-            params = [(i, dim, axis, new_axis, x) for i, x in enumerate(values)]
+        if isinstance(internal_dim, (int, str)):
+            if dim_size is None:
+                raise TypeError(
+                    "If `internal_dim` is str or int, then `dim_size` must be provided"
+                )
+            params = [(i, internal_dim, backend_kwargs) for i in range(dim_size)]
         else:
-            params = [(x, dim, axis, new_axis) for x in range(dim_size)]
-        return self.transform(_expand_transform, params, dim)
+            params = [
+                (x, internal_dim.name, backend_kwargs) for x in internal_dim.values
+            ]
 
+        if isinstance(dim, xr.DataArray) and len(params) != len(dim.values):
+            raise ValueError(
+                "Length of values in `dim` must match `dim_size` or length of values in `internal_dim`"
+            )
+        return self.transform(_expand_transform, params, dim, axis=axis)
 
     def map(self, payload: Callable | Payload | np.ndarray[Any, Any]) -> "Action":
         """
@@ -671,12 +677,13 @@ def _batch_transform(
 
 
 def _expand_transform(
-    action: Action, index: int | Hashable, dim: str, axis: int = 0, new_axis: int = 0, value: Hashable | None = None
+    action: Action, index: int | Hashable, dim: int | str, backend_kwargs: dict = {}
 ) -> Action:
     ret = action.map(
-        Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
+        Payload(
+            backends.take, [Node.input_name(0), index], {"dim": dim, **backend_kwargs}
+        )
     )
-    ret._add_dimension(dim, value or index, new_axis)
     return ret
 
 

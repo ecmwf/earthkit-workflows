@@ -126,11 +126,11 @@ def test_flatten_expand():
     with pytest.raises(Exception):
         action2.flatten()
 
-    action3 = action2.expand("dim_0", 2)
+    action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
     assert action3.nodes.shape == (2,)
     assert len(action3.nodes.data.item(0).inputs) == 1
 
-    action4 = action3.expand("dim_1", 3, new_axis=1)
+    action4 = action3.expand("dim_1", internal_dim=0, dim_size=3, axis=1)
     assert action4.nodes.shape == (2, 3)
     assert len(action4.nodes.data.item(0).inputs) == 1
 
@@ -171,7 +171,11 @@ def test_flatten_expand():
         [
             (3,),
             "transform",
-            [lambda action, x: action.expand("dim_1", x), [(4,), (4,), (4,)], "index"],
+            [
+                lambda action, x: action.expand("dim_1", internal_dim=0, dim_size=x),
+                [(4,), (4,), (4,)],
+                "index",
+            ],
             (3, 4, 3),
             1,
         ],

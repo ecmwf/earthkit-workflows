@@ -36,7 +36,7 @@ def task_graph(request):
         )
         .mean("x")
         .min("y")
-        .expand("z", 3, 1, 0)
+        .expand("z", internal_dim=1, dim_size=3, axis=0)
         .map([Payload(lambda x, a=a: x * a) for a in range(1, 4)])
         .graph()
     )
