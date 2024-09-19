@@ -472,7 +472,20 @@ class Action:
         return self.reduce(
             Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}), dim
         )
-
+    
+    def _validate_criteria(self, criteria: dict):
+        keys = list(criteria.keys())
+        for key in keys:
+            if key not in self.nodes.dims:
+                if self.nodes.coords.get(key, None) == criteria[key]:
+                    criteria.pop(key)
+                else:
+                    raise NotImplementedError(
+                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims}"
+                        + f"and coords {self.nodes.coords}"
+                    )
+        return criteria
+    
     def select(self, criteria: dict, drop: bool = False) -> "Action":
         """
         Create action contaning nodes match selection criteria
@@ -486,20 +499,36 @@ class Action:
         ------
         Action
         """
-        keys = list(criteria.keys())
-        for key in keys:
-            if key not in self.nodes.dims:
-                if self.nodes.coords.get(key, None) == criteria[key]:
-                    criteria.pop(key)
-                else:
-                    raise NotImplementedError(
-                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims}"
-                        + f"and coords {self.nodes.coords}"
-                    )
+        criteria = self._validate_criteria(criteria)
+
         if len(criteria) == 0:
             return self
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
         return type(self)(selected_nodes)
+    
+    sel = select
+    
+    def iselect(self, criteria: dict, drop: bool = False) -> "Action":
+        """
+        Create action contaning nodes match index selection criteria
+
+        Parameters
+        ----------
+        criteria: dict, key-value pairs specifying selection criteria
+        drop: bool, drop coord variables in criteria if True
+
+        Return
+        ------
+        Action
+        """
+        criteria = self._validate_criteria(criteria)
+
+        if len(criteria) == 0:
+            return self
+        selected_nodes = self.nodes.isel(**criteria, drop=drop)
+        return type(self)(selected_nodes)
+
+    isel = iselect
 
     def concatenate(
         self,
