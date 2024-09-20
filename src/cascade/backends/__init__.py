@@ -16,9 +16,7 @@ BACKENDS = {
 
 def register(type, backend):
     if type in BACKENDS:
-        warnings.warn(
-            f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}."
-        )
+        warnings.warn(f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}.")
     BACKENDS[type] = backend
 
 
@@ -51,8 +49,7 @@ def __getattr__(name: str) -> Callable:
 
 
 def num_args(expect: int, accept_nested: bool = True):
-    """
-    Decorator to check the number of arguments passed to a function.
+    """Decorator to check the number of arguments passed to a function.
     If expect is -1, then an unlimited number of arguments is allowed.
 
     Params
@@ -66,9 +63,7 @@ def num_args(expect: int, accept_nested: bool = True):
         def check_num_args(*args, **kwargs):
             if accept_nested and len(args) == 1:
                 args = args[0]
-            assert (
-                len(args) == expect
-            ), f"{func.__name__} expects two input arguments, got {len(args)}"
+            assert len(args) == expect, f"{func.__name__} expects two input arguments, got {len(args)}"
             return func(*args, **kwargs)
 
         return check_num_args
@@ -77,8 +72,7 @@ def num_args(expect: int, accept_nested: bool = True):
 
 
 def batchable(func: Callable) -> Callable:
-    """
-    Decorator to mark a function as batchable. A method is batchable if
+    """Decorator to mark a function as batchable. A method is batchable if
     it can be computed sequentially trivially by applying the same function
     to each batch and to aggregate the batches. Examples of batchable
     functions are sum, prod, min and non-batchable are mean and std.
@@ -118,8 +112,7 @@ class Backend:
         return array_module(*args).var(*args, **kwargs)
 
     def stack(*args, axis: int | None = None, **kwargs):
-        """
-        Join arrays along new axis. All arrays must have
+        """Join arrays along new axis. All arrays must have
         the same shape, or be broadcastable to the same shape.
 
         Parameters
@@ -136,8 +129,7 @@ class Backend:
 
     @batchable
     def concat(*args, **kwargs):
-        """
-        Join along existing axis in one of the inputs
+        """Join along existing axis in one of the inputs
 
         Parameters
         ----------
@@ -171,8 +163,7 @@ class Backend:
         return array_module(*args).pow(*args, **kwargs)
 
     def take(array, indices, **kwargs):
-        """
-        Take elements from array specified by indices along
+        """Take elements from array specified by indices along
         the specified axis. If indices is an integer, then an array
         with one less dimension is return. If indices is an array
         then the shape of the output matches the input, except along

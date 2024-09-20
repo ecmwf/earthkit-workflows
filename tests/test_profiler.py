@@ -9,9 +9,7 @@ from cascade.schedulers.depthfirst import DepthFirstScheduler
 def test_memray_profiler(tmpdir, task_graph, schedule):
     executor = DaskLocalExecutor(n_workers=2)
     if schedule:
-        task_graph = DepthFirstScheduler().schedule(
-            task_graph, executor.create_context_graph()
-        )
+        task_graph = DepthFirstScheduler().schedule(task_graph, executor.create_context_graph())
     _, annotated_graph = memray_profile(task_graph, tmpdir, executor)
     nodes = list(annotated_graph.nodes())
     assert not all([node.duration == 0 for node in nodes])
@@ -22,9 +20,7 @@ def test_memray_profiler(tmpdir, task_graph, schedule):
 def test_meters_profiler(tmpdir, task_graph, schedule):
     executor = DaskLocalExecutor(n_workers=2)
     if schedule:
-        task_graph = DepthFirstScheduler().schedule(
-            task_graph, executor.create_context_graph()
-        )
+        task_graph = DepthFirstScheduler().schedule(task_graph, executor.create_context_graph())
     _, annotated_graph = meters_profile(task_graph, f"{tmpdir}/meters_log", executor)
     nodes = list(annotated_graph.nodes())
     assert not all([node.duration == 0 for node in nodes])

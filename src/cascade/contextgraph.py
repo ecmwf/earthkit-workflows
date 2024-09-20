@@ -4,9 +4,7 @@ import networkx as nx
 
 
 class Processor:
-    def __init__(
-        self, name: str, type: str, speed: float, memory: float, uri: str | None = None
-    ):
+    def __init__(self, name: str, type: str, speed: float, memory: float, uri: str | None = None):
         self.name = name
         self.type = type
         self.speed = speed
@@ -19,9 +17,7 @@ class Processor:
 
 
 class Communicator:
-    def __init__(
-        self, source: Processor, target: Processor, bandwidth: float, latency: float
-    ):
+    def __init__(self, source: Processor, target: Processor, bandwidth: float, latency: float):
         self.source = source.name
         self.target = target.name
         self.bandwidth = bandwidth
@@ -37,11 +33,8 @@ class ContextGraph(nx.Graph):
         self.node_dict = {}
         super().__init__(**attr)
 
-    def add_node(
-        self, name: str, type: str, speed: float, memory: float, uri: str | None = None
-    ):
-        """
-        Add node to context graph
+    def add_node(self, name: str, type: str, speed: float, memory: float, uri: str | None = None):
+        """Add node to context graph
 
         Params
         ------
@@ -55,11 +48,8 @@ class ContextGraph(nx.Graph):
         self.node_dict[ex.name] = ex
         super().add_node(ex)
 
-    def add_edge(
-        self, u_of_edge: str, v_of_edge: str, bandwidth: float, latency: float
-    ):
-        """
-        Add edge connecting two processors
+    def add_edge(self, u_of_edge: str, v_of_edge: str, bandwidth: float, latency: float):
+        """Add edge connecting two processors
 
         Params
         ------
@@ -76,8 +66,7 @@ class ContextGraph(nx.Graph):
         super().add_edge(un_of_edge, vn_of_edge, obj=c)
 
     def communicator(self, u_of_edge: str, v_of_edge: str) -> Communicator:
-        """
-        Get communicator for edge
+        """Get communicator for edge
 
         Params
         ------
@@ -91,8 +80,7 @@ class ContextGraph(nx.Graph):
         return super().get_edge_data(u_of_edge, v_of_edge)["obj"]
 
     def communicators(self) -> Iterator[Communicator]:
-        """
-        Iterator over communicators in edges of graphs
+        """Iterator over communicators in edges of graphs
 
         Returns
         -------

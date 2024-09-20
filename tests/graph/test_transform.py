@@ -16,9 +16,7 @@ class ToSimple(Transformer):
     def sink(self, s: Sink, **inputs: Any) -> tuple[str, dict[str, Any]]:
         return s.name, inputs
 
-    def output(
-        self, node: str | tuple[str, Any], name: str
-    ) -> str | tuple[str, dict[str, Any]]:
+    def output(self, node: str | tuple[str, Any], name: str) -> str | tuple[str, dict[str, Any]]:
         if isinstance(node, str):  # source
             return f"{node}.{name}"
         pname, inputs = node  # processor
@@ -91,9 +89,7 @@ class ToDepDict(Transformer):
         res[n.name] = ndeps
         return n.name, res
 
-    def output(
-        self, ntrans: tuple[str, DepDict], oname: str
-    ) -> tuple[str, str, DepDict]:
+    def output(self, ntrans: tuple[str, DepDict], oname: str) -> tuple[str, str, DepDict]:
         nname, ndeps = ntrans
         return nname, oname, ndeps
 

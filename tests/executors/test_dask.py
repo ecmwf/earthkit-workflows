@@ -7,9 +7,7 @@ from cascade.schedulers.depthfirst import DepthFirstScheduler
 
 
 class MockTaskStream(TaskStream):
-    def __init__(
-        self, stream: dict[str, list[TaskStream.Task]], start: float, end: float
-    ):
+    def __init__(self, stream: dict[str, list[TaskStream.Task]], start: float, end: float):
         self._stream = stream
         self.start = start
         self.end = end
@@ -25,9 +23,7 @@ def test_with_schedule(tmpdir, task_graph, context_graph):
 
     # Parse performance report to check task stream is the same as task allocation
     # in schedule
-    DaskLocalExecutor(n_workers=2).execute(
-        schedule, report=f"{tmpdir}/report-schedule.html"
-    )
+    DaskLocalExecutor(n_workers=2).execute(schedule, report=f"{tmpdir}/report-schedule.html")
     report = Report(f"{tmpdir}/report-schedule.html")
     for tasks in report.task_stream.stream(True).values():
         print("STREAM", [t.name for t in tasks])
@@ -50,10 +46,7 @@ def test_with_schedule_adaptive(tmpdir, task_graph, context_graph):
     )
     report = Report(f"{tmpdir}/report-adaptive.html")
     assert np.any(
-        [
-            tasks not in list(schedule.task_allocation.values())
-            for tasks in report.task_stream.stream(True).values()
-        ]
+        [tasks not in list(schedule.task_allocation.values()) for tasks in report.task_stream.stream(True).values()]
     )
 
 
