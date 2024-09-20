@@ -62,7 +62,8 @@ class Graph:
         """Iterate over nodes of the graph
 
         If ``forwards`` is true, iterate in topological order. Otherwise,
-        iterate backwards starting from the sinks."""
+        iterate backwards starting from the sinks.
+        """
         done: set[Node] = set()
         todo: list[Node] = [sink for sink in self.sinks]
 
@@ -103,7 +104,8 @@ class Graph:
     def get_node(self, name: str) -> Node:
         """Get a node by name
 
-        Raises `KeyError` if not found."""
+        Raises `KeyError` if not found.
+        """
         for node in self.nodes():
             if node.name == name:
                 return node
@@ -114,13 +116,10 @@ class Graph:
 
         The result is a dict where keys are the given node's input names, and
         values are node outputs, encoded as either the node itself (default
-        output), or (parent, output name) tuples."""
+        output), or (parent, output name) tuples.
+        """
         return {
-            iname: (
-                isrc.parent
-                if isrc.name == Node.DEFAULT_OUTPUT
-                else (isrc.parent, isrc.name)
-            )
+            iname: (isrc.parent if isrc.name == Node.DEFAULT_OUTPUT else (isrc.parent, isrc.name))
             for iname, isrc in node.inputs.items()
         }
 
@@ -128,7 +127,8 @@ class Graph:
         """Get the successors (children) of a node
 
         The result is a dict where keys are the given node's output names, and
-        values are lists of (child, input name) tuples."""
+        values are lists of (child, input name) tuples.
+        """
         succ: dict[str, list[tuple[Node, str]]] = {}
         for other in self.nodes():
             for iname, isrc in other.inputs.items():

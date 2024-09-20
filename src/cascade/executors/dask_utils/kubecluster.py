@@ -68,14 +68,9 @@ class KubeCluster(DaskKubeCluster):
 
     async def _start(self):
         self.pod_template = self._get_pod_template(self.pod_template, pod_type="worker")
-        self.scheduler_pod_template = self._get_pod_template(
-            self.scheduler_pod_template, pod_type="scheduler"
-        )
+        self.scheduler_pod_template = self._get_pod_template(self.scheduler_pod_template, pod_type="scheduler")
         if not self.pod_template:
-            msg = (
-                "Worker pod specification not provided. See KubeCluster "
-                "docstring for ways to specify workers"
-            )
+            msg = "Worker pod specification not provided. See KubeCluster " "docstring for ways to specify workers"
             raise ValueError(msg)
 
         base_pod_template = self.pod_template
@@ -104,17 +99,11 @@ class KubeCluster(DaskKubeCluster):
             self.namespace = get_current_namespace()
 
         environ = {k: v for k, v in os.environ.items() if k not in ["user", "uuid"]}
-        self._generate_name = self._generate_name.format(
-            user=getpass.getuser(), uuid=str(uuid.uuid4())[:10], **environ
-        )
+        self._generate_name = self._generate_name.format(user=getpass.getuser(), uuid=str(uuid.uuid4())[:10], **environ)
         self._generate_name = escape(self._generate_name)
 
-        self.pod_template = self._fill_pod_templates(
-            self.pod_template, pod_type="worker"
-        )
-        self.scheduler_pod_template = self._fill_pod_templates(
-            self.scheduler_pod_template, pod_type="scheduler"
-        )
+        self.pod_template = self._fill_pod_templates(self.pod_template, pod_type="worker")
+        self.scheduler_pod_template = self._fill_pod_templates(self.scheduler_pod_template, pod_type="scheduler")
 
         common_options = {
             "cluster": self,
@@ -157,9 +146,7 @@ class KubeCluster(DaskKubeCluster):
             "cls": Worker,
             "options": {"pod_template": self.pod_template, **common_options},
         }
-        self.worker_spec = {
-            self._new_worker_name(i): self.new_spec for i in range(self._n_workers)
-        }
+        self.worker_spec = {self._new_worker_name(i): self.new_spec for i in range(self._n_workers)}
 
         self.name = self.pod_template.metadata.generate_name
 

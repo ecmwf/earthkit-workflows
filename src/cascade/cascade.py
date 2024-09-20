@@ -14,7 +14,6 @@ from .visualise import visualise
 
 
 class Cascade:
-
     def __init__(self, graph: Graph = Graph([])):
         self._graph = graph
         self._schedule: Schedule | None = None

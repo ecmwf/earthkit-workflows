@@ -2,9 +2,7 @@ import dask
 from dask.distributed import SpecCluster
 
 
-def create_cluster(
-    type: str, cluster_kwargs: dict, adaptive_kwargs: dict | None = None
-) -> SpecCluster:
+def create_cluster(type: str, cluster_kwargs: dict, adaptive_kwargs: dict | None = None) -> SpecCluster:
     dask.config.set(
         {
             "distributed.scheduler.worker-saturation": 1.0,

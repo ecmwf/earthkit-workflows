@@ -14,8 +14,7 @@ from .simulate import Simulator
 
 
 class AnnealingScheduler:
-    """
-    Simulated annealing scheduler to determine optimal schedule for a given task graph and context graph.
+    """Simulated annealing scheduler to determine optimal schedule for a given task graph and context graph.
     Configurable options for each instance are:
         cost_function: callable[[Schedule], float], function to determine cost of schedule. Cost should be
         positive with minimum at 0.
@@ -46,8 +45,7 @@ class AnnealingScheduler:
 
     @staticmethod
     def total_idle_time(schedule: Schedule) -> float:
-        """
-        Cost associated to simulated execution of the schedule in terms of the total idle time
+        """Cost associated to simulated execution of the schedule in terms of the total idle time
         of all processors in the context graph
 
         Params
@@ -59,14 +57,11 @@ class AnnealingScheduler:
         float
         """
         _, context_state = Simulator().execute(schedule, with_communication=True)
-        return sum(
-            [processor.state.idle_time for processor in context_state.context_graph]
-        )
+        return sum([processor.state.idle_time for processor in context_state.context_graph])
 
     @staticmethod
     def total_execution_time(schedule: Schedule) -> float:
-        """
-        Cost associated to simulated execution of the schedule in terms of the total execution
+        """Cost associated to simulated execution of the schedule in terms of the total execution
         time
 
         Params
@@ -81,9 +76,7 @@ class AnnealingScheduler:
         end = 0.0
         execution_state, _ = Simulator().execute(schedule, with_communication=True)
         for task in execution_state.task_graph.sources():
-            if not hasattr(
-                task.state, "start_time"
-            ):  # runtime patched somewhere I guess
+            if not hasattr(task.state, "start_time"):  # runtime patched somewhere I guess
                 raise TypeError
             p_start = cast(float, task.state.start_time)
             start = min(start, p_start) if start is not None else p_start
@@ -97,8 +90,7 @@ class AnnealingScheduler:
 
     @staticmethod
     def permute(schedule: Schedule) -> Schedule:
-        """
-        Generate new task allocation by randomly selecting two processors and swapping one task
+        """Generate new task allocation by randomly selecting two processors and swapping one task
         between them. Ensures that the new task allocation is valid.
 
         Params
@@ -133,8 +125,7 @@ class AnnealingScheduler:
         task_graph: Graph | TaskGraph,
         context_graph: ContextGraph,
     ) -> Schedule:
-        """
-        Create schedule using simulated annealing to minimise execution cost, determined by simulating the
+        """Create schedule using simulated annealing to minimise execution cost, determined by simulating the
         execution of the schedule. Uses depth first schedule as initial starting point. Moves currently
         consist only of randomly picking two processors and one task in each and swapping them. Uses the
         normalised exponential form for the acceptance function.
@@ -177,9 +168,7 @@ class AnnealingScheduler:
                 if num_success > self.num_success_cutoff:
                     break
 
-            print(
-                f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}"
-            )
+            print(f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}")
             temp = temp * self.temp_factor
             if num_success == 0:
                 break

@@ -28,11 +28,7 @@ def to_dot(graph: Graph) -> str:
             if oname != Node.DEFAULT_OUTPUT:
                 attrs["taillabel"] = _quote(oname)
             attrs["headlabel"] = _quote(iname)
-            astr = (
-                " [" + ", ".join(f"{k}={v}" for k, v in attrs.items()) + "]"
-                if attrs
-                else ""
-            )
+            astr = " [" + ", ".join(f"{k}={v}" for k, v in attrs.items()) + "]" if attrs else ""
             out.append(f"{_quote(pname)} -> {_quote(nname)}{astr}")
     return "digraph {\n" + textwrap.indent("\n".join(out), "  ") + "\n}"
 
@@ -40,7 +36,8 @@ def to_dot(graph: Graph) -> str:
 def render_graph(graph: Graph, **kwargs) -> str:
     """Render a graph using GraphViz
 
-    Keyword arguments are passed to `graphviz.Source.render`."""
+    Keyword arguments are passed to `graphviz.Source.render`.
+    """
     import graphviz
 
     dot = to_dot(graph)

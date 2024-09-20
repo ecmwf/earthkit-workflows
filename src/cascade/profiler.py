@@ -51,17 +51,13 @@ class _AddMemrayProfiler(Transformer):
 
 
 class _ReadMemrayProfiles(Transformer):
-    def __init__(
-        self, base_path: pathlib.Path, memory: bool = True, duration: bool = True
-    ):
+    def __init__(self, base_path: pathlib.Path, memory: bool = True, duration: bool = True):
         self.base_path = base_path
         self.memory = memory
         self.duration = duration
 
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        task = Task(
-            node.name, node.outputs.copy(), node.payload, resources=None, **inputs
-        )
+        task = Task(node.name, node.outputs.copy(), node.payload, resources=None, **inputs)
         path = self.base_path / (node.name + ".bin")
         try:
             reader = FileReader(path)
@@ -70,9 +66,7 @@ class _ReadMemrayProfiles(Transformer):
             return task
         with reader:
             if self.duration:
-                task.duration = (
-                    reader.metadata.end_time - reader.metadata.start_time
-                ).total_seconds()
+                task.duration = (reader.metadata.end_time - reader.metadata.start_time).total_seconds()
             if self.memory:
                 task.memory = reader.metadata.peak_memory / (1024**2)  # Convert to MiB
         return task
@@ -120,17 +114,13 @@ def _get_from_logline(regex: str, line: str) -> float:
     return float(m.group(1))
 
 
-def parse_metered_logfile(
-    logfile: str, memory: bool = True, duration: bool = True
-) -> dict[str, Resources]:
+def parse_metered_logfile(logfile: str, memory: bool = True, duration: bool = True) -> dict[str, Resources]:
     resources = {}
     with open(logfile, "r") as file:
         for line in file:
             log_bytes = _get_from_logline("memory: (.+?) bytes", line)
             log_time = _get_from_logline("wall time: (.+?) s", line)
-            resources[":".join(line.split(":")[0:2])] = Resources(
-                log_time, log_bytes / (1024**2)
-            )
+            resources[":".join(line.split(":")[0:2])] = Resources(log_time, log_bytes / (1024**2))
     return resources
 
 
@@ -141,9 +131,7 @@ class _ReadMetersProfiles(Transformer):
         self.duration = duration
 
     def node(self, node: Node, **inputs: Node.Output) -> Task:
-        task = Task(
-            node.name, node.outputs.copy(), node.payload, resources=None, **inputs
-        )
+        task = Task(node.name, node.outputs.copy(), node.payload, resources=None, **inputs)
         resources = self.resources[node.name]
         if self.duration:
             task.duration = resources.duration
@@ -173,9 +161,7 @@ def memray_profile(
         else wrapped_graph
     )
     result = executor.execute(execution_graph)
-    annotated_graph = _ReadMemrayProfiles(base_path, memory, duration).transform(
-        task_graph
-    )
+    annotated_graph = _ReadMemrayProfiles(base_path, memory, duration).transform(task_graph)
     return result, annotated_graph
 
 
@@ -196,9 +182,7 @@ def meters_profile(
         else wrapped_graph
     )
     result = executor.execute(execution_graph)
-    annotated_graph = _ReadMetersProfiles(logfile, memory, duration).transform(
-        task_graph
-    )
+    annotated_graph = _ReadMetersProfiles(logfile, memory, duration).transform(task_graph)
     return result, annotated_graph
 
 

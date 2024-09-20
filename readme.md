@@ -1,3 +1,5 @@
+[![ci](https://github.com/ecmwf/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/ecmwf/cascade/actions/workflows/ci.yml)
+
 ![Image](cascade.png)
 
 > **DISCLAIMER**

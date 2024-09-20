@@ -24,8 +24,7 @@ def execute(
     adaptive: bool = False,
     report: str = "",
 ) -> Any:
-    """
-    Execute graph with a Dask cluster, e.g. LocalCluster or KubeCluster, and
+    """Execute graph with a Dask cluster, e.g. LocalCluster or KubeCluster, and
     produce a performance report of the execution.
 
     Params
@@ -68,9 +67,7 @@ def execute(
                 priority=functools.partial(_priority, schedule.task_allocation),
                 allow_other_workers=True,
             ):
-                dask_graph = HighLevelGraph.from_collections(
-                    "graph", to_dask_graph(schedule)
-                )
+                dask_graph = HighLevelGraph.from_collections("graph", to_dask_graph(schedule))
         else:
             # If strictly following schedule, need to modify tasks to bind with the previous
             # task in schedule task allocation
@@ -98,9 +95,7 @@ def execute(
     context = nullcontext() if report == "" else performance_report(report)
     with Client(**client_kwargs) as client:
         with context:  # type: ignore # improper annotations in deps
-            future = client.get(
-                dask_graph, [x.name for x in schedule.sinks], sync=False
-            )
+            future = client.get(dask_graph, [x.name for x in schedule.sinks], sync=False)
 
             seq = as_completed(future)
             del future
@@ -110,9 +105,7 @@ def execute(
 
             for fut in seq:
                 if fut.status != "finished":
-                    print(
-                        f"Task {fut.key}, completed with status {fut.status} and exception: {fut.exception()}"
-                    )
+                    print(f"Task {fut.key}, completed with status {fut.status} and exception: {fut.exception()}")
                     errored_tasks += 1
                 results[fut.key] = fut.result()
 
@@ -152,8 +145,7 @@ def check_consistency(
 
 
 class DaskLocalExecutor(Executor):
-    """
-    Convenience class for DaskExecutor using LocalCluster exposing most
+    """Convenience class for DaskExecutor using LocalCluster exposing most
     common configuration arguments
 
     Options exposed:
@@ -186,8 +178,7 @@ class DaskLocalExecutor(Executor):
             self.cluster_kwargs.update(cluster_kwargs)
 
     def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
-        """
-        Execute graph with a Dask local cluster and produce a performance report of the execution.
+        """Execute graph with a Dask local cluster and produce a performance report of the execution.
 
         Params
         ------
@@ -205,9 +196,7 @@ class DaskLocalExecutor(Executor):
         RuntimeError if any tasks in the graph have failed
         """
         check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
-        with create_cluster(
-            "local", self.cluster_kwargs, self.adaptive_kwargs
-        ) as cluster:
+        with create_cluster("local", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return execute(
                 schedule,
@@ -217,15 +206,12 @@ class DaskLocalExecutor(Executor):
             )
 
     def create_context_graph(self) -> ContextGraph:
-        with create_cluster(
-            "local", self.cluster_kwargs, self.adaptive_kwargs
-        ) as cluster:
+        with create_cluster("local", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
             return create_context_graph(client_kwargs={"address": cluster})
 
 
 class DaskKubeExecutor(Executor):
-    """
-    Convenience class for DaskExecutor using KubeCluster exposing most
+    """Convenience class for DaskExecutor using KubeCluster exposing most
     common configuration arguments
 
     Options exposed:
@@ -258,8 +244,7 @@ class DaskKubeExecutor(Executor):
         self.adaptive_kwargs = adaptive_kwargs
 
     def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
-        """
-        Execute graph with a Dask Kubernetes cluster and produce a performance report of the execution.
+        """Execute graph with a Dask Kubernetes cluster and produce a performance report of the execution.
 
         Params
         ------
@@ -277,9 +262,7 @@ class DaskKubeExecutor(Executor):
         RuntimeError if any tasks in the graph have failed
         """
         check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
-        with create_cluster(
-            "kube", self.cluster_kwargs, self.adaptive_kwargs
-        ) as cluster:
+        with create_cluster("kube", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return execute(
                 schedule,
@@ -289,15 +272,12 @@ class DaskKubeExecutor(Executor):
             )
 
     def create_context_graph(self) -> ContextGraph:
-        with create_cluster(
-            "kube", self.cluster_kwargs, self.adaptive_kwargs
-        ) as cluster:
+        with create_cluster("kube", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
             return create_context_graph(client_kwargs={"address": cluster})
 
 
 class DaskClientExecutor(Executor):
-    """
-    Execute graph on existing Dask cluster, where the information for the scheduler is provided
+    """Execute graph on existing Dask cluster, where the information for the scheduler is provided
     in the scheduler file
     """
 
@@ -306,8 +286,7 @@ class DaskClientExecutor(Executor):
         self.adaptive = adaptive
 
     def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
-        """
-        Execute graph on an existing dask cluster, where the information for the scheduler is provided
+        """Execute graph on an existing dask cluster, where the information for the scheduler is provided
         in the scheduler file, and produce a performance report of the execution.
 
         Params
@@ -335,6 +314,4 @@ class DaskClientExecutor(Executor):
         )
 
     def create_context_graph(self) -> ContextGraph:
-        return create_context_graph(
-            client_kwargs={"scheduler_file": self.dask_scheduler_file}
-        )
+        return create_context_graph(client_kwargs={"scheduler_file": self.dask_scheduler_file})

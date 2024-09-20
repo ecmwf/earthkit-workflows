@@ -6,13 +6,7 @@ from schedule_utils import example_graph
 from cascade.contextgraph import ContextGraph, Processor
 from cascade.schedulers.depthfirst import DepthFirstScheduler
 from cascade.schedulers.schedule import Schedule
-from cascade.schedulers.simulate import (
-    CommunicatorState,
-    ContextState,
-    ExecutionState,
-    Simulator,
-    TaskState,
-)
+from cascade.schedulers.simulate import CommunicatorState, ContextState, ExecutionState, Simulator, TaskState
 from cascade.taskgraph import Communication, Resources, Task
 from cascade.transformers import to_task_graph
 
@@ -37,11 +31,7 @@ from cascade.transformers import to_task_graph
 def test_context_state(context_graph, task, state, processor, end_time):
     context_state = ContextState(context_graph)
     task.state = state()
-    processor = (
-        context_state.processor(processor)
-        if isinstance(task, Task)
-        else context_state.communicator(processor)
-    )
+    processor = context_state.processor(processor) if isinstance(task, Task) else context_state.communicator(processor)
     context_state.assign_task_to_processor(task, processor, 0, print)
     assert task.state.end_time == end_time
     assert processor.state.current_task == task
