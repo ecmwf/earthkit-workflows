@@ -4,7 +4,7 @@ from pyvis.network import Network
 
 from .contextgraph import Communicator, ContextGraph, Processor
 from .graph import Graph, Node
-from .graph.pyvis import _make_attr_func, edge_info, node_info, to_pyvis, PRESET_OPTIONS
+from .graph.pyvis import PRESET_OPTIONS, _make_attr_func, edge_info, node_info, to_pyvis
 from .taskgraph import Task
 
 
@@ -42,7 +42,7 @@ def visualise(
     dest: str,
     node_attrs: dict | Callable[[Node], dict] | None = node_info_ext,
     edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = edge_info,
-    preset: PRESET_OPTIONS = 'hierarchical',
+    preset: PRESET_OPTIONS = "hierarchical",
     **kwargs,
 ):
     """Visualise a graph with PyVis

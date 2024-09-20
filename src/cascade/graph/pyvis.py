@@ -59,7 +59,7 @@ class VisualisationPresets:
             },
             "physics": {
                 "enabled": False,
-            }
+            },
         }
 
     @staticmethod
@@ -73,27 +73,26 @@ class VisualisationPresets:
                 },
             },
             "physics": {
-                "forceAtlas2Based": {
-                "gravitationalConstant": -28,
-                "springLength": 100
-                },
+                "forceAtlas2Based": {"gravitationalConstant": -28, "springLength": 100},
                 "minVelocity": 0.75,
                 "solver": "forceAtlas2Based",
-                "timestep": 0.25
-            }
+                "timestep": 0.25,
+            },
         }
-    
+
     @staticmethod
     def none() -> dict:
         return {}
 
-PRESET_OPTIONS = Literal['hierarchical', 'quick', 'blob', 'none']
+
+PRESET_OPTIONS = Literal["hierarchical", "quick", "blob", "none"]
+
 
 def to_pyvis(
     graph: Graph,
     node_attrs: dict | Callable[[Node], dict] | None = None,
     edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = None,
-    preset: PRESET_OPTIONS = 'hierarchical',
+    preset: PRESET_OPTIONS = "hierarchical",
     options: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Network:
