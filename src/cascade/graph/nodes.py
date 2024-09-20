@@ -73,7 +73,8 @@ class Node:
         self.outputs = [Node.DEFAULT_OUTPUT] if outputs is None else outputs
         self.payload = payload
         self.inputs = {
-            iname: (inp if isinstance(inp, Node.Output) else inp.get_output()) for iname, inp in kwargs.items()
+            iname: (inp if isinstance(inp, Node.Output) else inp.get_output())
+            for iname, inp in kwargs.items()
         }
 
     def __getattr__(self, name: str) -> Output:
@@ -137,7 +138,9 @@ class Node:
 class Source(Node):
     """Node that acts as a source, i.e. has no inputs"""
 
-    def __init__(self, name: str, outputs: list[str] | None = None, payload: Any = None):
+    def __init__(
+        self, name: str, outputs: list[str] | None = None, payload: Any = None
+    ):
         super().__init__(name, outputs, payload)
 
     def __instancecheck__(self, instance: Any) -> bool:

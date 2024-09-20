@@ -47,7 +47,9 @@ def draw_graph(
             g,
             pos,
             edge_labels={
-                e: (a["source_out"] if a["source_out"] != Node.DEFAULT_OUTPUT else "") + "->" + a["dest_in"]
+                e: (a["source_out"] if a["source_out"] != Node.DEFAULT_OUTPUT else "")
+                + "->"
+                + a["dest_in"]
                 for e, a in g.edges.items()
             },
         )

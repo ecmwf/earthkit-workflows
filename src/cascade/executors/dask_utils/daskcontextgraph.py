@@ -91,7 +91,9 @@ def create_dask_context_graph(client):
 
     # Build nodes for each worker using worker names
     for info in worker_info.values():
-        context_graph.add_node(info["name"], "cpu", info["cpu_speed"], info["memory_total"], info["uri"])
+        context_graph.add_node(
+            info["name"], "cpu", info["cpu_speed"], info["memory_total"], info["uri"]
+        )
 
     # Group workers by hostname
     host_groups = {}
@@ -102,7 +104,9 @@ def create_dask_context_graph(client):
     for workers in host_groups.values():
         for i in range(len(workers)):
             for j in range(i + 1, len(workers)):
-                bandwidth = NetworkBenchmark.run(client, workers[i]["uri"], workers[j]["uri"], 10 * 1024 * 1024)
+                bandwidth = NetworkBenchmark.run(
+                    client, workers[i]["uri"], workers[j]["uri"], 10 * 1024 * 1024
+                )
                 print(
                     f"Bandwidth: {bandwidth} MiB/s between worker {workers[i]['name']} and worker {workers[j]['name']}"
                 )

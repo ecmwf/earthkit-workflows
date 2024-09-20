@@ -59,5 +59,8 @@ def join_namespaced(**graphs: Graph) -> Graph:
     """
     return reduce(
         add,
-        (rename_nodes((lambda n: f"{namespace}.{n}"), graph) for namespace, graph in graphs.items()),
+        (
+            rename_nodes((lambda n: f"{namespace}.{n}"), graph)
+            for namespace, graph in graphs.items()
+        ),
     )
