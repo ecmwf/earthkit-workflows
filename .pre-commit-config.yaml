@@ -27,7 +27,6 @@ repos:
   - id: isort
     args:
     - -l 120
-    - --force-single-line-imports
     - --profile black
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.6.5

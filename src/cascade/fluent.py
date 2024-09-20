@@ -1,11 +1,7 @@
 import copy
 import functools
 import hashlib
-from typing import Any
-from typing import Callable
-from typing import Iterable
-from typing import Sequence
-from typing import cast
+from typing import Any, Callable, Iterable, Sequence, cast
 
 import numpy as np
 import xarray as xr

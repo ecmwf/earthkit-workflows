@@ -2,14 +2,8 @@ from typing import Callable
 
 from dask.utils import apply
 
-from .graph import Graph
-from .graph import Node
-from .graph import Sink
-from .graph import Transformer
-from .taskgraph import ExecutionGraph
-from .taskgraph import Resources
-from .taskgraph import Task
-from .taskgraph import TaskGraph
+from .graph import Graph, Node, Sink, Transformer
+from .taskgraph import ExecutionGraph, Resources, Task, TaskGraph
 
 
 class _ToTaskGraph(Transformer):

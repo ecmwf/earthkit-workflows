@@ -6,21 +6,16 @@ import warnings
 from typing import cast
 
 import filelock
-from memray import FileDestination
-from memray import FileReader
-from memray import Tracker
+from memray import FileDestination, FileReader, Tracker
 from meters import metered
 
 from cascade.graph.nodes import Sink
 
 from .executors.executor import Executor
 from .fluent import Node
-from .graph import Graph
-from .graph import Transformer
+from .graph import Graph, Transformer
 from .schedulers.schedule import Schedule
-from .taskgraph import Resources
-from .taskgraph import Task
-from .taskgraph import TaskGraph
+from .taskgraph import Resources, Task, TaskGraph
 
 
 def _memray_wrap_task(node: Node, path: pathlib.Path, native_traces: bool) -> Node:
