@@ -7,15 +7,11 @@ from .nodes import Node, Processor, Sink, Source
 
 
 class NodeFactory(Protocol):
-    def __call__(
-        self, name: str, outputs: list[str], payload: Any, **inputs: Node.Output
-    ) -> Node:
+    def __call__(self, name: str, outputs: list[str], payload: Any, **inputs: Node.Output) -> Node:
         pass
 
 
-def default_node_factory(
-    name: str, outputs: list[str], payload: Any, **inputs: Node.Output
-) -> Node:
+def default_node_factory(name: str, outputs: list[str], payload: Any, **inputs: Node.Output) -> Node:
     if inputs and outputs:
         return Processor(name, outputs, payload, **inputs)
     if not outputs:
@@ -37,7 +33,8 @@ def _deserialise_node(
 def serialise(graph: Graph) -> dict:
     """Convert a graph to a serialisable representation
 
-    See also `Node.serialise`"""
+    See also `Node.serialise`
+    """
     data = {}
     for node in graph.nodes():
         assert node.name not in data
@@ -48,7 +45,8 @@ def serialise(graph: Graph) -> dict:
 def to_json(graph: Graph) -> str:
     """Serialise a graph as JSON
 
-    See also `serialise`"""
+    See also `serialise`
+    """
     return json.dumps(serialise(graph))
 
 
@@ -61,10 +59,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
     inputs and outputs.
     """
     deps = {
-        name: [
-            inp if isinstance(inp, str) else inp[0]
-            for inp in node.get("inputs", {}).values()
-        ]
+        name: [inp if isinstance(inp, str) else inp[0] for inp in node.get("inputs", {}).values()]
         for name, node in data.items()
     }
 
@@ -80,9 +75,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
             else:
                 parent, oname = src
                 node_inputs[iname] = nodes[parent].get_output(oname)
-        nodes[name] = _deserialise_node(
-            name, node_data, node_factory=node_factory, **node_inputs
-        )
+        nodes[name] = _deserialise_node(name, node_data, node_factory=node_factory, **node_inputs)
         if isinstance(nodes[name], Sink):
             sinks.append(nodes[name])
     return Graph(sinks)
@@ -91,5 +84,6 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
 def from_json(data: str) -> Graph:
     """Build a graph from JSON
 
-    See also `deserialise`"""
+    See also `deserialise`
+    """
     return deserialise(json.loads(data))

@@ -21,8 +21,7 @@ class _ToTaskGraph(Transformer):
 
 
 def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> TaskGraph:
-    """
-    Transform graph into task graph, with resource allocation for each task.
+    """Transform graph into task graph, with resource allocation for each task.
 
     Params
     ------
@@ -37,7 +36,6 @@ def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> Task
 
 
 class _ToExecutionGraph(Transformer):
-
     def __init__(self, state: Callable | None = None):
         self.state = state
 

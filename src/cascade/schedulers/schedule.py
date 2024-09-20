@@ -5,9 +5,7 @@ from cascade.graph import Graph, Node, Sink, Source, copy_graph
 
 
 class Schedule(Graph):
-    def __init__(
-        self, task_graph: Graph, context_graph: ContextGraph, task_allocation: dict
-    ):
+    def __init__(self, task_graph: Graph, context_graph: ContextGraph, task_allocation: dict):
         if not Schedule.valid_allocations(task_graph, task_allocation):
             raise ValueError(
                 "Task graph and task allocation combination results in dependency cycle,"
@@ -27,8 +25,7 @@ class Schedule(Graph):
         return str
 
     def processor(self, task_name: str) -> str:
-        """
-        Get processor name that task is allocated to
+        """Get processor name that task is allocated to
 
         Params
         ------
@@ -44,8 +41,7 @@ class Schedule(Graph):
         raise RuntimeError(f"Task {task_name} not in schedule {self.task_allocation}")
 
     def processors(self) -> Iterable[str]:
-        """
-        Iterator over all processor names in the schedule
+        """Iterator over all processor names in the schedule
 
         Returns
         -------
@@ -54,8 +50,7 @@ class Schedule(Graph):
         return self.task_allocation.keys()
 
     def valid_allocations(task_graph: Graph, task_allocation: dict) -> bool:
-        """
-        Checks if the task allocation is valid, i.e. all tasks are allocated and there are no
+        """Checks if the task allocation is valid, i.e. all tasks are allocated and there are no
         dependency cycles.
 
         Params
@@ -114,8 +109,7 @@ class Schedule(Graph):
             yield cast(Source, self.get_node(tasks[0]))
 
     def get_successors(self, node: Node) -> dict[str, list[tuple[Node, str]]]:
-        """
-        Determines the children of node, taking into account direct dependences
+        """Determines the children of node, taking into account direct dependences
         in the task graph and also the task allocation.
 
         Params
@@ -131,14 +125,11 @@ class Schedule(Graph):
         tasks = self.task_allocation[task_worker]
         next = tasks.index(node.name) + 1
         if next < len(tasks):
-            successors.setdefault(Node.DEFAULT_OUTPUT, []).append(
-                (self.get_node(tasks[next]), "allocation")
-            )
+            successors.setdefault(Node.DEFAULT_OUTPUT, []).append((self.get_node(tasks[next]), "allocation"))
         return successors
 
     def get_predecessors(self, node: Node) -> dict[str, Node | tuple[Node, str]]:
-        """
-        Determines parents of node, taking into account direct dependences in the task graph and
+        """Determines parents of node, taking into account direct dependences in the task graph and
         also the task allocation.
 
         Params

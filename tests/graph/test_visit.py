@@ -42,9 +42,7 @@ def test_visit_disc():
     names = gnames(g)
     assert len(names) == 5 + 5 + 5
     assert set(names) == set(
-        [f"reader-{i}" for i in range(5)]
-        + [f"process-{i}" for i in range(5)]
-        + [f"writer-{i}" for i in range(5)]
+        [f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(5)] + [f"writer-{i}" for i in range(5)]
     )
 
 
@@ -53,9 +51,7 @@ def test_visit_simple():
     names = gnames(g)
     assert len(names) == 5 + 3 + 3
     assert set(names) == set(
-        [f"reader-{i}" for i in range(5)]
-        + [f"process-{i}" for i in range(3)]
-        + [f"writer-{i}" for i in range(3)]
+        [f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(3)] + [f"writer-{i}" for i in range(3)]
     )
 
 
@@ -64,9 +60,7 @@ def test_visit_multi():
     names = gnames(g)
     assert len(names) == 5 + 3 + 2 * (3 - 2)
     assert set(names) == set(
-        [f"reader-{i}" for i in range(5)]
-        + [f"process-{i}" for i in range(3)]
-        + [f"writer-{i}" for i in range(2)]
+        [f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(3)] + [f"writer-{i}" for i in range(2)]
     )
 
 
@@ -98,9 +92,7 @@ def test_visit_sources():
     assert set(snames) == set(f"reader-{i}" for i in range(6))
     onames = [n.name for n in v.others]
     assert len(onames) == 2 + 2
-    assert set(onames) == set(
-        [f"process-{i}" for i in range(2)] + [f"writer-{i}" for i in range(2)]
-    )
+    assert set(onames) == set([f"process-{i}" for i in range(2)] + [f"writer-{i}" for i in range(2)])
 
 
 class ProcessorLister(Visitor):
@@ -131,9 +123,7 @@ def test_visit_processors():
     assert set(pnames) == set(f"process-{i}" for i in range(4))
     onames = [n.name for n in v.others]
     assert len(onames) == 7 + 4
-    assert set(onames) == set(
-        [f"reader-{i}" for i in range(7)] + [f"writer-{i}" for i in range(4)]
-    )
+    assert set(onames) == set([f"reader-{i}" for i in range(7)] + [f"writer-{i}" for i in range(4)])
 
 
 class SinkLister(Visitor):
@@ -164,9 +154,7 @@ def test_visit_sinks():
     assert set(snames) == set(f"writer-{i}" for i in range(5))
     onames = [n.name for n in v.others]
     assert len(onames) == 9 + 5
-    assert set(onames) == set(
-        [f"reader-{i}" for i in range(9)] + [f"process-{i}" for i in range(5)]
-    )
+    assert set(onames) == set([f"reader-{i}" for i in range(9)] + [f"process-{i}" for i in range(5)])
 
 
 class SegregatedLister(Visitor):

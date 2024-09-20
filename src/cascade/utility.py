@@ -27,7 +27,4 @@ def successors(graph: Graph, node: Node) -> list[Node]:
 
 
 def predecessors(graph: Graph, node: Node) -> list[Node]:
-    return [
-        x if isinstance(x, Node) else x[0]
-        for x in graph.get_predecessors(node).values()
-    ]
+    return [x if isinstance(x, Node) else x[0] for x in graph.get_predecessors(node).values()]
