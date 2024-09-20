@@ -57,7 +57,9 @@ class AnnealingScheduler:
         float
         """
         _, context_state = Simulator().execute(schedule, with_communication=True)
-        return sum([processor.state.idle_time for processor in context_state.context_graph])
+        return sum(
+            [processor.state.idle_time for processor in context_state.context_graph]
+        )
 
     @staticmethod
     def total_execution_time(schedule: Schedule) -> float:
@@ -76,7 +78,9 @@ class AnnealingScheduler:
         end = 0.0
         execution_state, _ = Simulator().execute(schedule, with_communication=True)
         for task in execution_state.task_graph.sources():
-            if not hasattr(task.state, "start_time"):  # runtime patched somewhere I guess
+            if not hasattr(
+                task.state, "start_time"
+            ):  # runtime patched somewhere I guess
                 raise TypeError
             p_start = cast(float, task.state.start_time)
             start = min(start, p_start) if start is not None else p_start
@@ -168,7 +172,9 @@ class AnnealingScheduler:
                 if num_success > self.num_success_cutoff:
                     break
 
-            print(f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}")
+            print(
+                f"Temperature iteration {i_temp}: temp {temp}, new cost {previous_cost}"
+            )
             temp = temp * self.temp_factor
             if num_success == 0:
                 break

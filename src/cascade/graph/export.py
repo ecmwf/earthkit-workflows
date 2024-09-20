@@ -7,11 +7,15 @@ from .nodes import Node, Processor, Sink, Source
 
 
 class NodeFactory(Protocol):
-    def __call__(self, name: str, outputs: list[str], payload: Any, **inputs: Node.Output) -> Node:
+    def __call__(
+        self, name: str, outputs: list[str], payload: Any, **inputs: Node.Output
+    ) -> Node:
         pass
 
 
-def default_node_factory(name: str, outputs: list[str], payload: Any, **inputs: Node.Output) -> Node:
+def default_node_factory(
+    name: str, outputs: list[str], payload: Any, **inputs: Node.Output
+) -> Node:
     if inputs and outputs:
         return Processor(name, outputs, payload, **inputs)
     if not outputs:
@@ -59,7 +63,10 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
     inputs and outputs.
     """
     deps = {
-        name: [inp if isinstance(inp, str) else inp[0] for inp in node.get("inputs", {}).values()]
+        name: [
+            inp if isinstance(inp, str) else inp[0]
+            for inp in node.get("inputs", {}).values()
+        ]
         for name, node in data.items()
     }
 
@@ -75,7 +82,9 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
             else:
                 parent, oname = src
                 node_inputs[iname] = nodes[parent].get_output(oname)
-        nodes[name] = _deserialise_node(name, node_data, node_factory=node_factory, **node_inputs)
+        nodes[name] = _deserialise_node(
+            name, node_data, node_factory=node_factory, **node_inputs
+        )
         if isinstance(nodes[name], Sink):
             sinks.append(nodes[name])
     return Graph(sinks)

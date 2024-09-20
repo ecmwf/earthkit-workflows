@@ -105,9 +105,9 @@ def test_broadcast():
     it = np.nditer(output_action.nodes, flags=["multi_index", "refs_ok"])
     for _ in it:
         print(it.multi_index)
-        assert output_action.nodes[it.multi_index].item(0).inputs["input0"].parent == input_action.nodes[
-            it.multi_index[:2]
-        ].item(0)
+        assert output_action.nodes[it.multi_index].item(0).inputs[
+            "input0"
+        ].parent == input_action.nodes[it.multi_index[:2]].item(0)
 
 
 def test_flatten_expand():

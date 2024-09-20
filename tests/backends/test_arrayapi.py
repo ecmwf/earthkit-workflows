@@ -22,7 +22,10 @@ class TestArrayAPIBackend(BackendBase):
     def test_multi_arg_axis(self, num_inputs, input_shape, kwargs, output_shape):
         for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
             assert (
-                getattr(backends, func)(*self.input_generator(num_inputs, input_shape), **kwargs).shape == output_shape
+                getattr(backends, func)(
+                    *self.input_generator(num_inputs, input_shape), **kwargs
+                ).shape
+                == output_shape
             )
 
     @pytest.mark.parametrize(
@@ -34,7 +37,12 @@ class TestArrayAPIBackend(BackendBase):
     )
     def test_two_arg_single(self, num_inputs, input_shape, output_shape):
         for func in ["add", "subtract", "multiply", "divide"]:
-            assert getattr(backends, func)(*self.input_generator(num_inputs, input_shape)).shape == output_shape
+            assert (
+                getattr(backends, func)(
+                    *self.input_generator(num_inputs, input_shape)
+                ).shape
+                == output_shape
+            )
 
     def test_concatenate(self):
         input = self.input_generator(3) + self.input_generator(2, (2, 1))

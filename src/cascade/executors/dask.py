@@ -67,7 +67,9 @@ def execute(
                 priority=functools.partial(_priority, schedule.task_allocation),
                 allow_other_workers=True,
             ):
-                dask_graph = HighLevelGraph.from_collections("graph", to_dask_graph(schedule))
+                dask_graph = HighLevelGraph.from_collections(
+                    "graph", to_dask_graph(schedule)
+                )
         else:
             # If strictly following schedule, need to modify tasks to bind with the previous
             # task in schedule task allocation
@@ -95,7 +97,9 @@ def execute(
     context = nullcontext() if report == "" else performance_report(report)
     with Client(**client_kwargs) as client:
         with context:  # type: ignore # improper annotations in deps
-            future = client.get(dask_graph, [x.name for x in schedule.sinks], sync=False)
+            future = client.get(
+                dask_graph, [x.name for x in schedule.sinks], sync=False
+            )
 
             seq = as_completed(future)
             del future
@@ -105,7 +109,9 @@ def execute(
 
             for fut in seq:
                 if fut.status != "finished":
-                    print(f"Task {fut.key}, completed with status {fut.status} and exception: {fut.exception()}")
+                    print(
+                        f"Task {fut.key}, completed with status {fut.status} and exception: {fut.exception()}"
+                    )
                     errored_tasks += 1
                 results[fut.key] = fut.result()
 
@@ -196,7 +202,9 @@ class DaskLocalExecutor(Executor):
         RuntimeError if any tasks in the graph have failed
         """
         check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
-        with create_cluster("local", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
+        with create_cluster(
+            "local", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return execute(
                 schedule,
@@ -206,7 +214,9 @@ class DaskLocalExecutor(Executor):
             )
 
     def create_context_graph(self) -> ContextGraph:
-        with create_cluster("local", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
+        with create_cluster(
+            "local", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             return create_context_graph(client_kwargs={"address": cluster})
 
 
@@ -262,7 +272,9 @@ class DaskKubeExecutor(Executor):
         RuntimeError if any tasks in the graph have failed
         """
         check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
-        with create_cluster("kube", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
+        with create_cluster(
+            "kube", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             pprint.pprint(cluster.scheduler_info)
             return execute(
                 schedule,
@@ -272,7 +284,9 @@ class DaskKubeExecutor(Executor):
             )
 
     def create_context_graph(self) -> ContextGraph:
-        with create_cluster("kube", self.cluster_kwargs, self.adaptive_kwargs) as cluster:
+        with create_cluster(
+            "kube", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
             return create_context_graph(client_kwargs={"address": cluster})
 
 
@@ -314,4 +328,6 @@ class DaskClientExecutor(Executor):
         )
 
     def create_context_graph(self) -> ContextGraph:
-        return create_context_graph(client_kwargs={"scheduler_file": self.dask_scheduler_file})
+        return create_context_graph(
+            client_kwargs={"scheduler_file": self.dask_scheduler_file}
+        )
