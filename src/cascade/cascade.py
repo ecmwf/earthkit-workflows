@@ -5,8 +5,10 @@ import dill
 from .contextgraph import ContextGraph
 from .executors.dask import DaskLocalExecutor
 from .executors.executor import Executor
-from .graph import Graph, deduplicate_nodes
-from .graph.export import deserialise, serialise
+from .graph import Graph
+from .graph import deduplicate_nodes
+from .graph.export import deserialise
+from .graph.export import serialise
 from .profiler import profile
 from .schedulers.depthfirst import DepthFirstScheduler
 from .schedulers.schedule import Schedule
@@ -14,7 +16,6 @@ from .visualise import visualise
 
 
 class Cascade:
-
     def __init__(self, graph: Graph = Graph([])):
         self._graph = graph
         self._schedule: Schedule | None = None

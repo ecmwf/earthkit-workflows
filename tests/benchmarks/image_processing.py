@@ -5,7 +5,8 @@ import numpy as np
 from PIL import Image
 
 from cascade.cascade import Cascade
-from cascade.fluent import Fluent, Payload
+from cascade.fluent import Fluent
+from cascade.fluent import Payload
 from cascade.visualise import visualise
 
 
@@ -21,9 +22,7 @@ def mandelbrot(c, max_iter):
     return n + 1 - np.log(np.log2(abs(z)))
 
 
-def generate_fractal_image(
-    xmin=0, xmax=100, ymin=0, ymax=100, width=200, height=200, max_iter=5
-):
+def generate_fractal_image(xmin=0, xmax=100, ymin=0, ymax=100, width=200, height=200, max_iter=5):
     """Generate a fractal image of the Mandelbrot set."""
     r1 = np.linspace(xmin, xmax, width)
     r2 = np.linspace(ymin, ymax, height)
@@ -53,7 +52,7 @@ def plot_image(image, cmap="gray"):
 
 
 def plot_multiple_images(images, cmap="gray"):
-    fig, axes = plt.subplots(1, len(images), figsize=(15, 5))
+    _, axes = plt.subplots(1, len(images), figsize=(15, 5))
 
     if len(images) == 1:
         axes = [axes]  # Ensure axes is iterable for a single subplot
@@ -68,7 +67,6 @@ def plot_multiple_images(images, cmap="gray"):
 
 
 def test_cascade_graph():
-
     graph = (
         Fluent()
         .source(generate_fractal_image, np.ndarray((2, 3)))

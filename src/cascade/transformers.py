@@ -2,8 +2,14 @@ from typing import Callable
 
 from dask.utils import apply
 
-from .graph import Graph, Node, Sink, Transformer
-from .taskgraph import ExecutionGraph, Resources, Task, TaskGraph
+from .graph import Graph
+from .graph import Node
+from .graph import Sink
+from .graph import Transformer
+from .taskgraph import ExecutionGraph
+from .taskgraph import Resources
+from .taskgraph import Task
+from .taskgraph import TaskGraph
 
 
 class _ToTaskGraph(Transformer):
@@ -21,8 +27,7 @@ class _ToTaskGraph(Transformer):
 
 
 def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> TaskGraph:
-    """
-    Transform graph into task graph, with resource allocation for each task.
+    """Transform graph into task graph, with resource allocation for each task.
 
     Params
     ------
@@ -37,7 +42,6 @@ def to_task_graph(graph: Graph, resource_map: dict[str, Resources] = {}) -> Task
 
 
 class _ToExecutionGraph(Transformer):
-
     def __init__(self, state: Callable | None = None):
         self.state = state
 
