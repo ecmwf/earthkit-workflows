@@ -1,5 +1,5 @@
 import json
-from typing import Any, Callable, ParamSpec, cast
+from typing import Any, Callable, Literal, ParamSpec, cast
 
 from pyvis.network import Network
 
@@ -33,24 +33,66 @@ def edge_info(sname, snode, dname, dnode):
     return {"title": f"From: {sname}\nTo: {dname}"}
 
 
-def hierarchical_layout_options() -> dict:
-    return {
-        "layout": {
-            "hierarchical": {
-                "enabled": True,
-                "direction": "LR",
-                "sortMethod": "directed",
-                "shakeTowards": "roots",
+class VisualisationPresets:
+    @staticmethod
+    def hierarchical() -> dict:
+        return {
+            "layout": {
+                "hierarchical": {
+                    "enabled": True,
+                    "direction": "LR",
+                    "sortMethod": "directed",
+                    "shakeTowards": "roots",
+                }
             }
         }
-    }
+
+    @staticmethod
+    def quick() -> dict:
+        return {
+            "layout": {
+                "randomSeed": 42,
+                "improvedLayout": True,
+                "hierarchical": {
+                    "enabled": False,
+                },
+            },
+            "physics": {
+                "enabled": False,
+            },
+        }
+
+    @staticmethod
+    def blob() -> dict:
+        return {
+            "layout": {
+                "randomSeed": 42,
+                "improvedLayout": True,
+                "hierarchical": {
+                    "enabled": False,
+                },
+            },
+            "physics": {
+                "forceAtlas2Based": {"gravitationalConstant": -28, "springLength": 100},
+                "minVelocity": 0.75,
+                "solver": "forceAtlas2Based",
+                "timestep": 0.25,
+            },
+        }
+
+    @staticmethod
+    def none() -> dict:
+        return {}
+
+
+PRESET_OPTIONS = Literal["hierarchical", "quick", "blob", "none"]
 
 
 def to_pyvis(
     graph: Graph,
     node_attrs: dict | Callable[[Node], dict] | None = None,
     edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = None,
-    hierarchical_layout: bool = True,
+    preset: PRESET_OPTIONS = "hierarchical",
     options: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Network:
@@ -68,8 +110,9 @@ def to_pyvis(
     options: dict[str, Any] | None, optional
         Options to pass to the `set_options` method of the network.
         Has priority over `hierarchical_layout`
-    hierarchical_layout:
-        If True, request a hierarchical layout
+    preset:
+        Visualisation preset to use. Options are 'hierarchical', 'blob', 'quick' and 'none'
+        Defaults to 'hierarchical'
     **kwargs
         Passed to the `pyvis.Network` constructor
 
@@ -88,10 +131,8 @@ def to_pyvis(
             net.add_edge(isrc.parent.name, node.name, **eattrs)
 
     options = options or {}
-    if hierarchical_layout:
-        hierarchical_layout_options_dict = hierarchical_layout_options()
-        hierarchical_layout_options_dict.update(options)
-        net.set_options(json.dumps(hierarchical_layout_options_dict))
-    else:
-        net.set_options(json.dumps(options))
+    preset_options = getattr(VisualisationPresets, preset)()
+    preset_options.update(options)
+    net.set_options(json.dumps(preset_options))
+
     return net

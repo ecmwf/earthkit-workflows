@@ -4,7 +4,7 @@ from pyvis.network import Network
 
 from .contextgraph import Communicator, ContextGraph, Processor
 from .graph import Graph, Node
-from .graph.pyvis import _make_attr_func, edge_info, node_info, to_pyvis
+from .graph.pyvis import PRESET_OPTIONS, _make_attr_func, edge_info, node_info, to_pyvis
 from .taskgraph import Task
 
 
@@ -42,7 +42,7 @@ def visualise(
     dest: str,
     node_attrs: dict | Callable[[Node], dict] | None = node_info_ext,
     edge_attrs: dict | Callable[[str, Node, str, Node], dict] | None = edge_info,
-    hierarchical_layout: bool = True,
+    preset: PRESET_OPTIONS = "hierarchical",
     **kwargs,
 ):
     """Visualise a graph with PyVis
@@ -53,6 +53,9 @@ def visualise(
         Input graph
     dest: str
         Path to the generated HTML file
+    preset: str
+        Name of the preset to use for network options.
+        Can be 'hierarchical', 'quick', 'blob', or 'none'.
     **kwargs
         Passed to the `pyvis.Network` constructor
 
@@ -66,7 +69,7 @@ def visualise(
         notebook=True,
         node_attrs=node_attrs,
         edge_attrs=edge_attrs,
-        hierarchical_layout=hierarchical_layout,
+        preset=preset,
         **kwargs,
     )
     return gv.show(dest)
