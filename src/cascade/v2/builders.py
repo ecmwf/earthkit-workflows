@@ -91,8 +91,16 @@ class JobBuilder:
         return replace(self, edges=self.edges.append(new_edge))
 
     def build(self) -> Either[JobInstance, list[str]]:
-        # TODO replace `_isinstance` with a smarter check for self-reg types
-        _isinstance = lambda v, t: t == "Any" or isinstance(v, eval(t))
+        # TODO replace `_isinstance` with a smarter check for self-reg types, reuse fiab/type_system
+        skipped = {
+            "latitude",
+            "longitude",
+            "latlonArea",
+            "Optional[marsParam]",
+            "marsParamList",
+            "grib",
+        }
+        _isinstance = lambda v, t: t == "Any" or t in skipped or isinstance(v, eval(t))
 
         # static input types
         static_kw_errors: Iterable[str] = (
@@ -127,7 +135,13 @@ class JobBuilder:
             if not output_param or not input_param:
                 return
             # TODO replace `issubclass` with a smarter check for self-reg types
-            _issubclass = lambda t1, t2: t2 == "Any" or issubclass(eval(t1), eval(t2))
+            legits = {("grib.earthkit", "grib.mir"), ("grib.mir", "grib.earthkit")}
+            _issubclass = (
+                lambda t1, t2: t2 == "Any"
+                or t1 == t2
+                or (t1, t2) in legits
+                or issubclass(eval(t1), eval(t2))
+            )
             if not _issubclass(output_param, input_param):
                 yield f"edge connects two incompatible nodes: {edge}"
 

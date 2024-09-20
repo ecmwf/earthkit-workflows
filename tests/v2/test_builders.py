@@ -25,7 +25,7 @@ def test_validation():
         .build()
     )
     expected = [
-        "edge connects two incompatible nodes: source_task='source' source_output='__default__' sink_task='sink' sink_input_kw='y' sink_input_ps=None", # noqa: E501
+        "edge connects two incompatible nodes: source_task='source' source_output='__default__' sink_task='sink' sink_input_kw='y' sink_input_ps=None",  # noqa: E501
     ]
     assert sorted(job.e) == sorted(expected)
 
