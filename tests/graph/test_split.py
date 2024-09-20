@@ -60,10 +60,7 @@ def test_split_multi():
         "inputs": {f"input{i}": f"reader-{i}" for i in range(NR)},
         "outputs": [f"output{i}" for i in range(NO1)],
     }
-    assert s0 == {
-        cut.name: {"inputs": {"input": cut.source}, "outputs": []}
-        for cut in cuts_from[0]
-    }
+    assert s0 == {cut.name: {"inputs": {"input": cut.source}, "outputs": []} for cut in cuts_from[0]}
 
     s1 = serialise(parts[1])
     p1_inp = {}
@@ -76,10 +73,7 @@ def test_split_multi():
             w0_inp[cut.dest_input] = cut.name
     assert s1.pop("process-1") == {"inputs": p1_inp, "outputs": [D]}
     assert s1.pop("writer-0") == {"inputs": w0_inp, "outputs": []}
-    assert s1 == {
-        cut.name: {"inputs": {"input": cut.source}, "outputs": []}
-        for cut in cuts_from[1]
-    }
+    assert s1 == {cut.name: {"inputs": {"input": cut.source}, "outputs": []} for cut in cuts_from[1]}
 
     s2 = serialise(parts[2])
     p2_inp = {}
@@ -92,7 +86,4 @@ def test_split_multi():
             w1_inp[cut.dest_input] = cut.name
     assert s2.pop("process-2") == {"inputs": p2_inp, "outputs": ["output0", "output1"]}
     assert s2.pop("writer-1") == {"inputs": w1_inp, "outputs": []}
-    assert s2 == {
-        cut.name: {"inputs": {"input": cut.source}, "outputs": []}
-        for cut in cuts_from[2]
-    }
+    assert s2 == {cut.name: {"inputs": {"input": cut.source}, "outputs": []} for cut in cuts_from[2]}

@@ -80,11 +80,8 @@ class ContextState:
                 return comm
         raise ValueError(f"Communicator {name} not found in context graph")
 
-    def assign_task_to_processor(
-        self, task: Task, processor: Processor, start_time: float, callback: Callable
-    ):
-        """
-        Assign task to processor and schedule callback for task completion.
+    def assign_task_to_processor(self, task: Task, processor: Processor, start_time: float, callback: Callable):
+        """Assign task to processor and schedule callback for task completion.
 
         Params
         ------
@@ -103,13 +100,9 @@ class ContextState:
         if isinstance(task, Task) and isinstance(processor, Processor):
             task.state.end_time = start_time + task.duration
         elif isinstance(task, Communication) and isinstance(processor, Communicator):
-            task.state.end_time = (
-                start_time + task.size / processor.bandwidth + processor.latency
-            )
+            task.state.end_time = start_time + task.size / processor.bandwidth + processor.latency
         else:
-            raise ValueError(
-                f"Invalid task {type(task)} and processor {type(processor)} combination"
-            )
+            raise ValueError(f"Invalid task {type(task)} and processor {type(processor)} combination")
 
         processor.state.end_time = task.state.end_time
         if isinstance(processor, Processor):
@@ -117,8 +110,7 @@ class ContextState:
         self.sim.add_event(task.state.end_time, callback)
 
     def update(self, completed_tasks: list[str]):
-        """
-        Update memory usage of processors and communicators based on completed tasks.
+        """Update memory usage of processors and communicators based on completed tasks.
 
         Params
         ------
@@ -130,8 +122,7 @@ class ContextState:
                     processor.state.memory_usage.remove_task(task)
 
     def idle_processors(self) -> list[Processor | Communicator]:
-        """
-        List of idle processors and communicators.
+        """List of idle processors and communicators.
 
         Returns
         -------
@@ -157,28 +148,21 @@ class ExecutionState:
 
         if with_communication:
             if not isinstance(graph, Schedule):
-                raise ValueError(
-                    "Communication tasks can only be enabled for schedules"
-                )
+                raise ValueError("Communication tasks can only be enabled for schedules")
             for start, end in self.task_graph.edges():
-                start_processor = graph.context_graph.node_dict[
-                    graph.processor(start.name)
-                ]
+                start_processor = graph.context_graph.node_dict[graph.processor(start.name)]
                 end_processor = graph.context_graph.node_dict[graph.processor(end.name)]
                 if start_processor != end_processor:
                     t = self.task_graph._make_communication_task(start, end, TaskState)
                     # Find the communicator which can handle this communication
-                    communicator = graph.context_graph.communicator(
-                        start_processor, end_processor
-                    )
+                    communicator = graph.context_graph.communicator(start_processor, end_processor)
                     self.communication_tasks[t.name] = communicator.name
 
         self.total_tasks = len(list(self.task_graph.nodes()))
 
 
 class Simulator:
-    """
-    Simulator for task execution for graph or schedule. If communication tasks are
+    """Simulator for task execution for graph or schedule. If communication tasks are
     enable, the  simulatordoes not dictate the order of communications, it just begins
     communications as soon as data becomes available.
     """
@@ -201,8 +185,7 @@ class Simulator:
         processor: Processor,
         time: float,
     ):
-        """
-        Callback when task is completed. Updates the state of the task and processor,
+        """Callback when task is completed. Updates the state of the task and processor,
         and triggers next round of task assignments to idle processors.
 
         Params
@@ -224,8 +207,7 @@ class Simulator:
         self.assign_eligible_tasks(time, execution_state, context_state)
 
     def is_task_eligible(self, task: Node, schedule: Graph) -> bool:
-        """
-        Check if a task is eligible for execution based on its predecessors.
+        """Check if a task is eligible for execution based on its predecessors.
 
         Params
         ------
@@ -239,8 +221,7 @@ class Simulator:
         return all(t.name in self.completed_tasks for t in predecessors(schedule, task))
 
     def update_eligible_tasks(self, task: Task, execution: ExecutionState):
-        """
-        Update the eligible tasks for execution based on the completion of a task.
+        """Update the eligible tasks for execution based on the completion of a task.
 
         Params
         ------
@@ -260,21 +241,16 @@ class Simulator:
                         else Simulator.DEFAULT_PROCESSOR
                     )
                     if processor == Simulator.DEFAULT_PROCESSOR:
-                        eligible_tasks = self.eligible.setdefault(
-                            Simulator.DEFAULT_PROCESSOR, []
-                        )
+                        eligible_tasks = self.eligible.setdefault(Simulator.DEFAULT_PROCESSOR, [])
                         if next_task not in eligible_tasks:
                             eligible_tasks.append(next_task)
                     else:
                         if processor in self.eligible:
-                            raise RuntimeError(
-                                f"Processor {processor} already has an eligible task"
-                            )
+                            raise RuntimeError(f"Processor {processor} already has an eligible task")
                         self.eligible[processor] = next_task
 
     def initialise_eligible_tasks(self, graph: TaskGraph | Schedule):
-        """
-        Initialise the eligible tasks for execution based on the graph or
+        """Initialise the eligible tasks for execution based on the graph or
         schedule.
 
         Params
@@ -294,8 +270,7 @@ class Simulator:
             self.eligible[Simulator.DEFAULT_PROCESSOR] = list(sources)
 
     def next_task(self, processor: Processor | Communicator):
-        """
-        Get the next task to be executed by the processor.
+        """Get the next task to be executed by the processor.
 
         Params
         ------
@@ -307,18 +282,12 @@ class Simulator:
             return self.eligible[processor.name].pop(0)
         if isinstance(tasks, Task):
             return self.eligible.pop(processor.name)
-        if (
-            isinstance(processor, Processor)
-            and len(self.eligible.get(Simulator.DEFAULT_PROCESSOR, [])) > 0
-        ):
+        if isinstance(processor, Processor) and len(self.eligible.get(Simulator.DEFAULT_PROCESSOR, [])) > 0:
             return self.eligible[Simulator.DEFAULT_PROCESSOR].pop(0)
         return None
 
-    def assign_eligible_tasks(
-        self, time: float, execution_state: ExecutionState, context_state: ContextState
-    ):
-        """
-        Assign eligible tasks to idle processors.
+    def assign_eligible_tasks(self, time: float, execution_state: ExecutionState, context_state: ContextState):
+        """Assign eligible tasks to idle processors.
 
         Params
         ------
@@ -350,8 +319,7 @@ class Simulator:
         context_graph: ContextGraph,
         with_communication: bool = False,
     ) -> tuple[ExecutionState, ContextState]:
-        """
-        Simulate execution graph with context graph.
+        """Simulate execution graph with context graph.
 
         Params
         ------
@@ -367,9 +335,7 @@ class Simulator:
         execution_state = ExecutionState(graph, with_communication)
         self.reset_state()
         self.initialise_eligible_tasks(execution_state.task_graph)
-        self.assign_eligible_tasks(
-            time=0, execution_state=execution_state, context_state=context_state
-        )
+        self.assign_eligible_tasks(time=0, execution_state=execution_state, context_state=context_state)
         context_state.run()
 
         if len(self.completed_tasks) != execution_state.total_tasks:
@@ -379,11 +345,8 @@ class Simulator:
             )
         return execution_state, context_state
 
-    def execute(
-        self, graph: Graph | Schedule, **kwargs
-    ) -> tuple[ExecutionState, ContextState]:
-        """
-        Execute graph or schedule with context graph.
+    def execute(self, graph: Graph | Schedule, **kwargs) -> tuple[ExecutionState, ContextState]:
+        """Execute graph or schedule with context graph.
 
         Params
         ------

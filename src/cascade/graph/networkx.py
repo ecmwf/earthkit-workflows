@@ -11,7 +11,8 @@ def to_networkx(graph: Graph, serialise=False) -> nx.MultiDiGraph:
 
     If ``serialise`` is true, the node payloads in the output graph are the
     serialised values of the corresponding nodes of the input graph. Otherwise,
-    the node objects of the input graph are passed as is."""
+    the node objects of the input graph are passed as is.
+    """
     graph_s = None if serialise else graph
     g = nx.MultiDiGraph(graph=graph_s, sinks=[s.name for s in graph.sinks])
     for node in graph.nodes():
@@ -46,9 +47,7 @@ def draw_graph(
             g,
             pos,
             edge_labels={
-                e: (a["source_out"] if a["source_out"] != Node.DEFAULT_OUTPUT else "")
-                + "->"
-                + a["dest_in"]
+                e: (a["source_out"] if a["source_out"] != Node.DEFAULT_OUTPUT else "") + "->" + a["dest_in"]
                 for e, a in g.edges.items()
             },
         )

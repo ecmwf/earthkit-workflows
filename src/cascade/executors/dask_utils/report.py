@@ -48,9 +48,7 @@ class Summary:
     def __init__(self, report_body: str):
         self.duration = duration_in_sec(search("; Duration:(.+?) &", report_body))
         self.number_of_tasks = int(search("; number of tasks:(.+?) &", report_body))
-        self.compute_time = duration_in_sec(
-            search("; compute time:(.+?) &", report_body)
-        )
+        self.compute_time = duration_in_sec(search("; compute time:(.+?) &", report_body))
         transfer = search("; transfer time:(.+?) &", report_body)
         if transfer is not None:
             self.transfer_time = duration_in_sec(transfer)
@@ -82,9 +80,7 @@ class TaskStream:
 
     def __init__(self, report_body: str):
         report_dict = json.loads(report_body)
-        task_stream = report_dict[list(report_dict.keys())[0]]["roots"][0][
-            "attributes"
-        ]["tabs"][1]["attributes"]
+        task_stream = report_dict[list(report_dict.keys())[0]]["roots"][0]["attributes"]["tabs"][1]["attributes"]
         key_items = find_key_values("entries", task_stream)
         columns = [item[0] for item in key_items]
         start_index = columns.index("start")
@@ -100,11 +96,7 @@ class TaskStream:
             if "transfer-" in name:
                 task_name = name
             else:
-                task_name = (
-                    key_items[key_index][1][index]
-                    .replace("&lt;", "<")
-                    .replace("&gt;", ">")
-                )
+                task_name = key_items[key_index][1][index].replace("&lt;", "<").replace("&gt;", ">")
 
             self._stream[worker].append(
                 TaskStream.Task(
@@ -117,22 +109,14 @@ class TaskStream:
             )
             # Order tasks by start time
             self._stream[worker].sort(key=lambda x: x.start)
-        self.start = min(
-            [x.start for task_stats in self._stream.values() for x in task_stats]
-        )
-        self.end = max(
-            [x.end for task_stats in self._stream.values() for x in task_stats]
-        )
+        self.start = min([x.start for task_stats in self._stream.values() for x in task_stats])
+        self.end = max([x.end for task_stats in self._stream.values() for x in task_stats])
 
     def wall_time(self) -> float:
-        """
-        Total wall time of task stream in seconds
-        """
+        """Total wall time of task stream in seconds"""
         return (self.end - self.start) / 1000
 
-    def stream(
-        self, exclude_transfer: bool = True
-    ) -> dict[str, list["TaskStream.Task"]]:
+    def stream(self, exclude_transfer: bool = True) -> dict[str, list["TaskStream.Task"]]:
         if not exclude_transfer:
             return self._stream
         new_task_stream = {}
@@ -140,9 +124,7 @@ class TaskStream:
             new_task_stream[worker] = [x for x in tasks if not x.is_transfer()]
         return new_task_stream
 
-    def task_info(
-        self, exclude_transfer: bool = True
-    ) -> dict[str, list["TaskStream.Task"]]:
+    def task_info(self, exclude_transfer: bool = True) -> dict[str, list["TaskStream.Task"]]:
         tasks: dict[str, list["TaskStream.Task"]] = {}
         for task_stats in self._stream.values():
             for task in task_stats:
@@ -161,8 +143,7 @@ class TaskStream:
         return False
 
     def idle_time(self, percentage: bool = False) -> dict[str, float]:
-        """
-        Idle time for each worker, either as a absolute value in seconds or as a
+        """Idle time for each worker, either as a absolute value in seconds or as a
         percentage of total time. Idle time is time when worker is not executing tasks
         or transferring data. Note, extracting idle times from Dask Performance Report
         does not give times matching those displayed in the Dask dashboard.
@@ -180,7 +161,6 @@ class TaskStream:
         for worker, tasks in self._stream.items():
             idle = 0.0
             for index, current_info in enumerate(tasks):
-
                 if index == 0:
                     idle += current_info.start - self.start
                 else:
@@ -202,11 +182,8 @@ class TaskStream:
             worker_stats[worker] = idle * 100 / self.wall_time() if percentage else idle
         return worker_stats
 
-    def transfer_time(
-        self, percentage: bool = False, blocking: bool = True
-    ) -> dict[str, float]:
-        """
-        Time spent on data transfer for each worker, either as a absolute value in seconds or as a
+    def transfer_time(self, percentage: bool = False, blocking: bool = True) -> dict[str, float]:
+        """Time spent on data transfer for each worker, either as a absolute value in seconds or as a
         percentage of total time. For each worker, the total time spent in blocking data transfer
         is returned if blocking is True.
 
@@ -245,14 +222,11 @@ class TaskStream:
             transfer = blocking_time if blocking else total_time
             # Convert to seconds
             transfer /= 1000
-            worker_stats[worker] = (
-                transfer * 100 / self.wall_time() if percentage else transfer
-            )
+            worker_stats[worker] = transfer * 100 / self.wall_time() if percentage else transfer
         return worker_stats
 
     def stats(self, percentage: bool = True) -> tuple[float, float]:
-        """
-        Statistics on time (seconds) or percentage of time spent across all workers being idle or on
+        """Statistics on time (seconds) or percentage of time spent across all workers being idle or on
         blocking data transfer.
 
         Params
@@ -275,9 +249,7 @@ class TaskStream:
 
 
 class Report:
-    """
-    Parses the Summary and Task Stream tabs in the Dask performance report
-    """
+    """Parses the Summary and Task Stream tabs in the Dask performance report"""
 
     def __init__(self, report_file: str):
         with open(report_file) as fp:

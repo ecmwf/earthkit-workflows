@@ -7,7 +7,6 @@ from cascade.schedulers.schedule import Schedule
 
 
 class Executor(abc.ABC):
-
     def __init__(self, config):
         self.config = config
 

@@ -75,9 +75,7 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
     p0 = Processor("process-0", outputs=[f"output{i}" for i in range(nout1)], **p0i)
     p1s = []
     for i in range(2, nout1):
-        p = Processor(
-            f"process-{i-1}", input1=p0.output0, input2=p0.get_output(f"output{i}")
-        )
+        p = Processor(f"process-{i-1}", input1=p0.output0, input2=p0.get_output(f"output{i}"))
         p1s.append(p)
     p2 = Processor(
         f"process-{nout1-1}",
@@ -87,8 +85,7 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
     )
     _ws = ((inp, out) for out in range(nout2) for inp in p1s)
     ws: list[Sink] = [
-        Sink(f"writer-{j}", input1=inp, input2=p2.get_output(f"output{out}"))
-        for j, (inp, out) in enumerate(_ws)
+        Sink(f"writer-{j}", input1=inp, input2=p2.get_output(f"output{out}")) for j, (inp, out) in enumerate(_ws)
     ]
     return Graph(ws)
 
