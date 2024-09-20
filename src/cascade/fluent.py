@@ -157,6 +157,19 @@ class Action:
             sinks[index].outputs = []  # Ensures they are recognised as sinks
         return Graph(sinks)
 
+    def switch(self, action: "Action") -> "Action":
+        """Switch Action class
+
+        Parameters
+        ----------
+        action: Action class to switch to
+
+        Returns
+        -------
+        Action
+        """
+        return action(self.nodes)
+
     def join(
         self,
         other_action: "Action",
