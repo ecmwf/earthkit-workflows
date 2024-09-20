@@ -21,6 +21,20 @@ The executor is responsible for executing the plan created by the scheduler on t
 
 The scheduler is responsible for creating an execution plan for the DAG. For schedulers based on optimization, the scheduler is likely to use a simulated execution as a fitness function for the optimization.
 
+## Development
+
+Install via `pip` with:
+
+```
+$ pip install -e cascade
+```
+
+Install precommit hooks
+```
+$ pip install pre-commit
+$ pre-commit install
+```
+
 ## License
 
 ```
