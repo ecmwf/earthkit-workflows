@@ -1,12 +1,14 @@
 import inspect
+import itertools
 from dataclasses import dataclass, field, replace
-from typing import Callable, Type, cast
+from typing import Callable, Iterable, Iterator, Type, cast
 
 import pyrsistent
 from typing_extensions import Self
 
 from cascade.graph import Node
 from cascade.v2.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
+from cascade.v2.func import Either
 
 
 class TaskBuilder(TaskInstance):
@@ -88,8 +90,61 @@ class JobBuilder:
         )
         return replace(self, edges=self.edges.append(new_edge))
 
-    def build(self) -> JobInstance:
-        return JobInstance(
-            tasks=cast(dict[str, TaskInstance], pyrsistent.thaw(self.nodes)),
-            edges=pyrsistent.thaw(self.edges),
+    def build(self) -> Either[JobInstance, list[str]]:
+        # TODO replace `_isinstance` with a smarter check for self-reg types
+        _isinstance = lambda v, t: t == "Any" or isinstance(v, eval(t))
+
+        # static input types
+        static_kw_errors: Iterable[str] = (
+            f"invalid static input for {task}: {k} needs {instance.definition.input_schema[k]}, got {type(v)}"
+            for task, instance in self.nodes.items()
+            for k, v in instance.static_input_kw.items()
+            if not _isinstance(v, instance.definition.input_schema[k])
         )
+
+        # edge correctness
+        def get_edge_errors(edge: Task2TaskEdge) -> Iterator[str]:
+            source_task = self.nodes.get(edge.source_task, None)
+            if not source_task:
+                yield f"edge pointing from non-existent task {edge.source_task}"
+            else:
+                output_param = source_task.definition.output_schema.get(
+                    edge.source_output, None
+                )
+                if not output_param:
+                    yield f"edge pointing from non-existent param {edge.source_output}"
+            sink_task = self.nodes.get(edge.sink_task, None)
+            if not sink_task:
+                yield f"edge pointing to non-existent task {edge.sink_task}"
+            else:
+                if edge.sink_input_kw is None:
+                    return
+                input_param = sink_task.definition.input_schema.get(
+                    edge.sink_input_kw, None
+                )
+                if not input_param:
+                    yield f"edge pointing to non-existent param {edge.sink_input_kw}"
+            if not output_param or not input_param:
+                return
+            # TODO replace `issubclass` with a smarter check for self-reg types
+            _issubclass = lambda t1, t2: t2 == "Any" or issubclass(eval(t1), eval(t2))
+            if not _issubclass(output_param, input_param):
+                yield f"edge connects two incompatible nodes: {edge}"
+
+        edge_errors: Iterable[str] = (
+            error for edge in self.edges for error in get_edge_errors(edge)
+        )
+
+        # all inputs present
+        # TODO
+
+        errors = list(itertools.chain(static_kw_errors, edge_errors))
+        if errors:
+            return Either.error(errors)
+        else:
+            return Either.ok(
+                JobInstance(
+                    tasks=cast(dict[str, TaskInstance], pyrsistent.thaw(self.nodes)),
+                    edges=pyrsistent.thaw(self.edges),
+                )
+            )

@@ -61,13 +61,8 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             static_input_kw=static_input_kw,
             static_input_ps=static_input_ps,
         )
-    elif (
-        isinstance(node["payload"], dict)
-        and node["payload"].keys() == TaskInstance.model_fields.keys()
-    ):
-        # NOTE this doesnt really work as edges arent covered
-        task = TaskInstance(**node["payload"])
-        edges = []
+    else:
+        raise NotImplementedError(node["payload"])
 
     return task, edges
 

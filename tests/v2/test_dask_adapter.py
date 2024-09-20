@@ -65,6 +65,7 @@ def test_builders():
         .with_node("task2", task2)
         .with_edge("task1", "task2", 0)
         .build()
+        .get_or_raise()
     )
     dask = job2dask(job)
     assert 5 + 4 + 3 + 2 + 1 == get(dask, "task2")
