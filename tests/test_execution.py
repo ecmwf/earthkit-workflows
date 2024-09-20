@@ -14,9 +14,7 @@ from cascade.fluent import from_source
     [
         [functools.partial(np.random.rand, 100, 100), np.ndarray],
         [
-            lambda x=[100, 100]: xr.DataArray(
-                np.random.rand(*x), dims=[f"x{i}" for i in range(len(x))]
-            ),
+            lambda x=[100, 100]: xr.DataArray(np.random.rand(*x), dims=[f"x{i}" for i in range(len(x))]),
             xr.DataArray,
         ],
     ],
@@ -30,16 +28,11 @@ def test_graph_execution(tmpdir, task_graph, output_type):
     assert np.all([isinstance(x, output_type) for x in output.values()])
 
 
-@pytest.mark.parametrize(
-    "func", ["mean", "std", "min", "max", "sum", "prod", "concatenate"]
-)
+@pytest.mark.parametrize("func", ["mean", "std", "min", "max", "sum", "prod", "concatenate"])
 def test_batch_execution(tmpdir, func):
     funcs = [
         np.fromiter(
-            [
-                functools.partial(np.random.randint, 1, 100, size=(2, 3))
-                for _ in range(4)
-            ],
+            [functools.partial(np.random.randint, 1, 100, size=(2, 3)) for _ in range(4)],
             dtype=object,
         )
         for _ in range(5)

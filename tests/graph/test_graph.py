@@ -257,7 +257,5 @@ def test_has_cycle():
     g = multi(5, NO1, 2)
     assert not g.has_cycle()
 
-    g.get_node("process-0").inputs["input0"] = g.get_node(
-        f"process-{NO1-1}"
-    ).get_output("output0")
+    g.get_node("process-0").inputs["input0"] = g.get_node(f"process-{NO1-1}").get_output("output0")
     assert g.has_cycle()

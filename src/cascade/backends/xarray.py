@@ -4,11 +4,8 @@ import xarray as xr
 
 class XArrayBackend:
     @staticmethod
-    def multi_arg_function(
-        name: str, *arrays: xr.DataArray | xr.Dataset, **method_kwargs
-    ) -> xr.DataArray | xr.Dataset:
-        """
-        Apply named function on DataArrays or Datasets. If only a single
+    def multi_arg_function(name: str, *arrays: xr.DataArray | xr.Dataset, **method_kwargs) -> xr.DataArray | xr.Dataset:
+        """Apply named function on DataArrays or Datasets. If only a single
         DataArrays or Datasetst then function is applied
         along an dimension specified in method_kwargs. If multiple  DataArrays
         or Datasets then these are first stacked before function is applied on the
@@ -39,8 +36,7 @@ class XArrayBackend:
         keep_attrs: bool | str = False,
         **method_kwargs,
     ) -> xr.DataArray | xr.Dataset:
-        """
-        Apply named function in numpy on list of DataArrays or Datasets.
+        """Apply named function in numpy on list of DataArrays or Datasets.
 
         Parameters
         ----------
@@ -116,9 +112,7 @@ class XArrayBackend:
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
         if not np.any([dim in a.sizes for a in arrays]):
-            raise ValueError(
-                "Concat must be used on existing dimensions only. Try stack instead."
-            )
+            raise ValueError("Concat must be used on existing dimensions only. Try stack instead.")
         return xr.concat(arrays, dim=dim, **method_kwargs)  # type: ignore # xr/mypy dont coop
 
     @staticmethod
@@ -129,9 +123,7 @@ class XArrayBackend:
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
         if np.any([dim in a.sizes for a in arrays]):
-            raise ValueError(
-                "Stack must be used on non-existing dimensions only. Try concat instead."
-            )
+            raise ValueError("Stack must be used on non-existing dimensions only. Try concat instead.")
 
         ret = xr.concat(arrays, dim=dim, **method_kwargs)  # type: ignore # xr/mypy dont coop
         if axis is not None and axis != 0:
@@ -145,9 +137,7 @@ class XArrayBackend:
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
-        return XArrayBackend.two_arg_function(
-            "add", *arrays, keep_attrs=keep_attrs, **method_kwargs
-        )
+        return XArrayBackend.two_arg_function("add", *arrays, keep_attrs=keep_attrs, **method_kwargs)
 
     @staticmethod
     def subtract(
@@ -155,9 +145,7 @@ class XArrayBackend:
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
-        return XArrayBackend.two_arg_function(
-            "subtract", *arrays, keep_attrs=keep_attrs, **method_kwargs
-        )
+        return XArrayBackend.two_arg_function("subtract", *arrays, keep_attrs=keep_attrs, **method_kwargs)
 
     @staticmethod
     def multiply(
@@ -165,9 +153,7 @@ class XArrayBackend:
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
-        return XArrayBackend.two_arg_function(
-            "multiply", *arrays, keep_attrs=keep_attrs, **method_kwargs
-        )
+        return XArrayBackend.two_arg_function("multiply", *arrays, keep_attrs=keep_attrs, **method_kwargs)
 
     @staticmethod
     def pow(
@@ -175,9 +161,7 @@ class XArrayBackend:
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
-        return XArrayBackend.two_arg_function(
-            "power", *arrays, keep_attrs=keep_attrs, **method_kwargs
-        )
+        return XArrayBackend.two_arg_function("power", *arrays, keep_attrs=keep_attrs, **method_kwargs)
 
     @staticmethod
     def divide(
@@ -185,9 +169,7 @@ class XArrayBackend:
         keep_attrs: bool | str = False,
         **method_kwargs,
     ):
-        return XArrayBackend.two_arg_function(
-            "divide", *arrays, keep_attrs=keep_attrs, **method_kwargs
-        )
+        return XArrayBackend.two_arg_function("divide", *arrays, keep_attrs=keep_attrs, **method_kwargs)
 
     @staticmethod
     def take(

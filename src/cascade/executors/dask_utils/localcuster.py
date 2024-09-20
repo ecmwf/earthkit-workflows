@@ -48,16 +48,12 @@ class LocalCluster(DaskLocalCluster):
             host = ip
 
         if diagnostics_port is not None:
-            warnings.warn(
-                "diagnostics_port has been deprecated. "
-                "Please use `dashboard_address=` instead"
-            )
+            warnings.warn("diagnostics_port has been deprecated. " "Please use `dashboard_address=` instead")
             dashboard_address = diagnostics_port
 
         if threads_per_worker == 0:
             warnings.warn(
-                "Setting `threads_per_worker` to 0 has been deprecated. "
-                "Please set to None or to a specific int."
+                "Setting `threads_per_worker` to 0 has been deprecated. " "Please set to None or to a specific int."
             )
             threads_per_worker = None
 
@@ -114,9 +110,7 @@ class LocalCluster(DaskLocalCluster):
             # Overcommit threads per worker, rather than undercommit
             threads_per_worker = max(1, int(math.ceil(CPU_COUNT / n_workers)))
         if n_workers and "memory_limit" not in worker_kwargs:
-            worker_kwargs["memory_limit"] = parse_memory_limit(
-                "auto", 1, n_workers, logger=logger
-            )
+            worker_kwargs["memory_limit"] = parse_memory_limit("auto", 1, n_workers, logger=logger)
 
         worker_kwargs.update(
             {

@@ -19,9 +19,7 @@ class DepthFirstScheduler(Simulator):
         super().reset_state()
         self.task_allocation = {}
 
-    def assign_eligible_tasks(
-        self, time: float, execution_state: ExecutionState, context_state: ContextState
-    ) -> None:
+    def assign_eligible_tasks(self, time: float, execution_state: ExecutionState, context_state: ContextState) -> None:
         # NOTE a few typing glitches here wrt processor-communicator, should be cleared up
         context_state.update(self.completed_tasks)
         for processor in context_state.idle_processors():
@@ -30,21 +28,15 @@ class DepthFirstScheduler(Simulator):
             mem_usage = processor.state.memory_usage.memory
             pop_index = None
             # Take from back so newly added dependents get picked off first
-            for index in range(
-                len(self.eligible[Simulator.DEFAULT_PROCESSOR]) - 1, -1, -1
-            ):
-                processor_ = cast(
-                    Processor, self.eligible[Simulator.DEFAULT_PROCESSOR][index]
-                )
+            for index in range(len(self.eligible[Simulator.DEFAULT_PROCESSOR]) - 1, -1, -1):
+                processor_ = cast(Processor, self.eligible[Simulator.DEFAULT_PROCESSOR][index])
                 if (mem_usage + processor_.memory) < cast(Processor, processor).memory:
                     pop_index = index
                     break
 
             if pop_index is not None:
                 next_task = self.eligible[Simulator.DEFAULT_PROCESSOR].pop(pop_index)
-                self.task_allocation.setdefault(processor.name, []).append(
-                    next_task.name
-                )
+                self.task_allocation.setdefault(processor.name, []).append(next_task.name)
                 context_state.assign_task_to_processor(
                     next_task,
                     cast(Processor, processor),
@@ -76,8 +68,7 @@ class DepthFirstScheduler(Simulator):
         task_graph: Graph | TaskGraph,
         context_graph: ContextGraph,
     ) -> Schedule:
-        """
-        Schedule tasks in task graph to workers in context graph.
+        """Schedule tasks in task graph to workers in context graph.
 
         Params
         ------

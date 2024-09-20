@@ -67,9 +67,7 @@ class Splitter(Transformer, Generic[K]):
         k, node = tnode
         return (k, node.get_output(output))
 
-    def graph(
-        self, graph: Graph, sinks: list[tuple[K, Sink]]
-    ) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
+    def graph(self, graph: Graph, sinks: list[tuple[K, Sink]]) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
         for k, sink in sinks:
             self.sinks.setdefault(k, []).append(sink)
         return {k: Graph(s) for k, s in self.sinks.items()}, self.cuts
