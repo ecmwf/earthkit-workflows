@@ -21,7 +21,9 @@ def mandelbrot(c, max_iter):
     return n + 1 - np.log(np.log2(abs(z)))
 
 
-def generate_fractal_image(xmin=0, xmax=100, ymin=0, ymax=100, width=200, height=200, max_iter=5):
+def generate_fractal_image(
+    xmin=0, xmax=100, ymin=0, ymax=100, width=200, height=200, max_iter=5
+):
     """Generate a fractal image of the Mandelbrot set."""
     r1 = np.linspace(xmin, xmax, width)
     r2 = np.linspace(ymin, ymax, height)

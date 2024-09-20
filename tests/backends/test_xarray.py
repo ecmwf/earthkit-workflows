@@ -16,7 +16,10 @@ class XarrayBackend(BackendBase):
     )
     def test_multi_arg_dim(self, num_inputs, kwargs, output_shape):
         for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
-            assert self.shape((getattr(backends, func)(*self.input_generator(num_inputs), **kwargs)) == output_shape)
+            assert self.shape(
+                (getattr(backends, func)(*self.input_generator(num_inputs), **kwargs))
+                == output_shape
+            )
 
     def test_concatenate(self):
         input = self.input_generator(3) + self.input_generator(2, (2, 1))
@@ -50,7 +53,9 @@ class XarrayBackend(BackendBase):
         # With dim and axis
         y = backends.stack(*input, axis=2, dim="NEW", coords="minimal")
         assert np.all(x.transpose("dim0", "dim1", "NEW") == y)
-        assert self.shape(backends.stack(*self.input_generator(1), axis=0, dim="NEW")) == (
+        assert self.shape(
+            backends.stack(*self.input_generator(1), axis=0, dim="NEW")
+        ) == (
             1,
             2,
             3,

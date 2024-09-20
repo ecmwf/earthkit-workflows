@@ -30,4 +30,6 @@ def test_depth_first_scheduler(context_graph):
 def test_annealing_scheduler(context_graph, cost_function):
     graph = example_graph(5)
     task_graph = to_task_graph(graph, resource_map(graph))
-    AnnealingScheduler(cost_function, num_temp_levels=10, num_tries=10).schedule(task_graph, context_graph)
+    AnnealingScheduler(cost_function, num_temp_levels=10, num_tries=10).schedule(
+        task_graph, context_graph
+    )

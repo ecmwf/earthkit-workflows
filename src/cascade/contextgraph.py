@@ -4,7 +4,9 @@ import networkx as nx
 
 
 class Processor:
-    def __init__(self, name: str, type: str, speed: float, memory: float, uri: str | None = None):
+    def __init__(
+        self, name: str, type: str, speed: float, memory: float, uri: str | None = None
+    ):
         self.name = name
         self.type = type
         self.speed = speed
@@ -17,7 +19,9 @@ class Processor:
 
 
 class Communicator:
-    def __init__(self, source: Processor, target: Processor, bandwidth: float, latency: float):
+    def __init__(
+        self, source: Processor, target: Processor, bandwidth: float, latency: float
+    ):
         self.source = source.name
         self.target = target.name
         self.bandwidth = bandwidth
@@ -33,7 +37,9 @@ class ContextGraph(nx.Graph):
         self.node_dict = {}
         super().__init__(**attr)
 
-    def add_node(self, name: str, type: str, speed: float, memory: float, uri: str | None = None):
+    def add_node(
+        self, name: str, type: str, speed: float, memory: float, uri: str | None = None
+    ):
         """Add node to context graph
 
         Params
@@ -48,7 +54,9 @@ class ContextGraph(nx.Graph):
         self.node_dict[ex.name] = ex
         super().add_node(ex)
 
-    def add_edge(self, u_of_edge: str, v_of_edge: str, bandwidth: float, latency: float):
+    def add_edge(
+        self, u_of_edge: str, v_of_edge: str, bandwidth: float, latency: float
+    ):
         """Add edge connecting two processors
 
         Params

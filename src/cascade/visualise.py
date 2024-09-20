@@ -77,7 +77,9 @@ def cg_proc_info(proc: Processor) -> dict:
 
 
 def cg_comm_info(comm: Communicator) -> dict:
-    return {"title": f"From: {comm.source}\nTo: {comm.target}\nBandwidth: {comm.bandwidth}\nLatency: {comm.latency}"}
+    return {
+        "title": f"From: {comm.source}\nTo: {comm.target}\nBandwidth: {comm.bandwidth}\nLatency: {comm.latency}"
+    }
 
 
 def visualise_contextgraph(
