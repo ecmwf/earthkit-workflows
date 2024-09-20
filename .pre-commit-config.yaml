@@ -35,7 +35,7 @@ repos:
     # Next line if for documenation cod snippets
     exclude: '^[^_].*_\.py$'
     args:
-    - --line-length=120
+    # - --line-length=120
     - --fix
     - --exit-non-zero-on-fix
     - --preview
