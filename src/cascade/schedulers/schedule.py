@@ -5,7 +5,9 @@ from cascade.graph import Graph, Node, Sink, Source, copy_graph
 
 
 class Schedule(Graph):
-    def __init__(self, task_graph: Graph, context_graph: ContextGraph, task_allocation: dict):
+    def __init__(
+        self, task_graph: Graph, context_graph: ContextGraph, task_allocation: dict
+    ):
         if not Schedule.valid_allocations(task_graph, task_allocation):
             raise ValueError(
                 "Task graph and task allocation combination results in dependency cycle,"
@@ -125,7 +127,9 @@ class Schedule(Graph):
         tasks = self.task_allocation[task_worker]
         next = tasks.index(node.name) + 1
         if next < len(tasks):
-            successors.setdefault(Node.DEFAULT_OUTPUT, []).append((self.get_node(tasks[next]), "allocation"))
+            successors.setdefault(Node.DEFAULT_OUTPUT, []).append(
+                (self.get_node(tasks[next]), "allocation")
+            )
         return successors
 
     def get_predecessors(self, node: Node) -> dict[str, Node | tuple[Node, str]]:

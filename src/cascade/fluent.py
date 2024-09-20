@@ -14,7 +14,9 @@ from .graph import Node as BaseNode
 class Payload:
     """Class for detailing function, args and kwargs to be computing in a graph node"""
 
-    def __init__(self, func: Callable, args: Iterable | None = None, kwargs: dict | None = None):
+    def __init__(
+        self, func: Callable, args: Iterable | None = None, kwargs: dict | None = None
+    ):
         self.args: Iterable | None
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
@@ -104,7 +106,10 @@ class Node(BaseNode):
             # All inputs into Node should also feature in payload - no dangling inputs
             assert payload.args is not None  # mypy confused here
             assert np.all(
-                [x in payload.args for x in [self.input_name(x) for x in range(len(inputs))]]
+                [
+                    x in payload.args
+                    for x in [self.input_name(x) for x in range(len(inputs))]
+                ]
             ), f"Payload {payload} does not use all node inputs {len(inputs)}"
 
         if name is None:
@@ -173,7 +178,9 @@ class Action:
         if match_coord_values:
             for coord, values in self.nodes.coords.items():
                 if coord in other_action.nodes.coords:
-                    other_action.nodes = other_action.nodes.assign_coords(**{str(coord): values})
+                    other_action.nodes = other_action.nodes.assign_coords(
+                        **{str(coord): values}
+                    )
         new_nodes = xr.concat(
             [self.nodes, other_action.nodes],
             dim,
@@ -184,7 +191,9 @@ class Action:
         ret = type(self)(new_nodes)
         return ret
 
-    def transform(self, func: Callable, params: list, dim: str | xr.DataArray) -> "Action":
+    def transform(
+        self, func: Callable, params: list, dim: str | xr.DataArray
+    ) -> "Action":
         """Create new nodes by applying function on action with different
         parameters. The result actions from applying function are joined
         along the specified dimension.
@@ -225,7 +234,9 @@ class Action:
         res._squeeze_dimension(dim_name)
         return res
 
-    def broadcast(self, other_action: "Action", exclude: list[str] | None = None) -> "Action":
+    def broadcast(
+        self, other_action: "Action", exclude: list[str] | None = None
+    ) -> "Action":
         """Broadcast nodes against nodes in other_action
 
         Parameters
@@ -244,7 +255,9 @@ class Action:
                     values.data == self.nodes.coords[key].data
                 ), f"Existing coordinates must match for broadcast. Found mismatch in {key}!"
 
-        broadcasted_nodes = self.nodes.broadcast_like(other_action.nodes, exclude=exclude)
+        broadcasted_nodes = self.nodes.broadcast_like(
+            other_action.nodes, exclude=exclude
+        )
         new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
         it = np.nditer(
             self.nodes.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
@@ -261,7 +274,9 @@ class Action:
         )
         return type(self)(new_nodes_xa)
 
-    def expand(self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0) -> "Action":
+    def expand(
+        self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
+    ) -> "Action":
         """Create new dimension in array of nodes of specified size by
         taking elements of internal data in each node. Indexing is taken along the specified axis
         dimension of internal data and graph execution will fail if
@@ -373,7 +388,10 @@ class Action:
                 lst = batched.nodes.coords[dim].data
                 batched = batched.transform(
                     _batch_transform,
-                    [({dim: lst[i : i + batch_size]}, payload) for i in range(0, len(lst), batch_size)],  # noqa: E203
+                    [
+                        ({dim: lst[i : i + batch_size]}, payload)  # noqa: E203
+                        for i in range(0, len(lst), batch_size)
+                    ],
                     f"batch.{level}.{dim}",
                 )
                 dim = f"batch.{level}.{dim}"
@@ -389,7 +407,13 @@ class Action:
 
         new_coords = {key: batched.nodes.coords[key] for key in new_dims}
         # Propagate scalar coords
-        new_coords.update({k: v for k, v in batched.nodes.coords.items() if k not in batched.nodes.dims})
+        new_coords.update(
+            {
+                k: v
+                for k, v in batched.nodes.coords.items()
+                if k not in batched.nodes.dims
+            }
+        )
         result = type(batched)(
             xr.DataArray(
                 new_nodes,
@@ -407,7 +431,9 @@ class Action:
             )
         return result
 
-    def flatten(self, dim: str = "", axis: int = 0, backend_kwargs: dict = {}) -> "Action":
+    def flatten(
+        self, dim: str = "", axis: int = 0, backend_kwargs: dict = {}
+    ) -> "Action":
         """Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
 
@@ -420,7 +446,9 @@ class Action:
         ------
         Action
         """
-        return self.reduce(Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}), dim)
+        return self.reduce(
+            Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}), dim
+        )
 
     def select(self, criteria: dict, drop: bool = False) -> "Action":
         """Create action contaning nodes match selection criteria
@@ -482,7 +510,9 @@ class Action:
         keep_dim: bool = False,
         backend_kwargs: dict = {},
     ) -> "Action":
-        return self.reduce(Payload(backends.sum, kwargs=backend_kwargs), dim, batch_size, keep_dim)
+        return self.reduce(
+            Payload(backends.sum, kwargs=backend_kwargs), dim, batch_size, keep_dim
+        )
 
     def mean(
         self,
@@ -495,9 +525,13 @@ class Action:
             dim = str(self.nodes.dims[0])
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(backends.mean, kwargs=backend_kwargs), dim, keep_dim)
+            return self.reduce(
+                Payload(backends.mean, kwargs=backend_kwargs), dim, keep_dim
+            )
 
-        return self.sum(dim, batch_size, keep_dim, **backend_kwargs).divide(self.nodes.sizes[dim])
+        return self.sum(dim, batch_size, keep_dim, **backend_kwargs).divide(
+            self.nodes.sizes[dim]
+        )
 
     def std(
         self,
@@ -513,7 +547,11 @@ class Action:
             return self.reduce(Payload(backends.std, kwargs=backend_kwargs), dim)
 
         mean_sq = self.mean(dim, batch_size, keep_dim, **backend_kwargs).power(2)
-        norm = self.power(2).sum(dim, batch_size, keep_dim, **backend_kwargs).divide(self.nodes.sizes[dim])
+        norm = (
+            self.power(2)
+            .sum(dim, batch_size, keep_dim, **backend_kwargs)
+            .divide(self.nodes.sizes[dim])
+        )
         return norm.subtract(mean_sq).power(0.5)
 
     def max(
@@ -523,7 +561,9 @@ class Action:
         keep_dim: bool = False,
         backend_kwargs: dict = {},
     ) -> "Action":
-        return self.reduce(Payload(backends.max, kwargs=backend_kwargs), dim, batch_size, keep_dim)
+        return self.reduce(
+            Payload(backends.max, kwargs=backend_kwargs), dim, batch_size, keep_dim
+        )
 
     def min(
         self,
@@ -532,7 +572,9 @@ class Action:
         keep_dim: bool = False,
         backend_kwargs: dict = {},
     ) -> "Action":
-        return self.reduce(Payload(backends.min, kwargs=backend_kwargs), dim, batch_size, keep_dim)
+        return self.reduce(
+            Payload(backends.min, kwargs=backend_kwargs), dim, batch_size, keep_dim
+        )
 
     def prod(
         self,
@@ -541,12 +583,20 @@ class Action:
         keep_dim: bool = False,
         backend_kwargs: dict = {},
     ) -> "Action":
-        return self.reduce(Payload(backends.prod, kwargs=backend_kwargs), dim, batch_size, keep_dim)
+        return self.reduce(
+            Payload(backends.prod, kwargs=backend_kwargs), dim, batch_size, keep_dim
+        )
 
-    def __two_arg_method(self, method: Callable, other: "Action | float", kwargs) -> "Action":
+    def __two_arg_method(
+        self, method: Callable, other: "Action | float", kwargs
+    ) -> "Action":
         if isinstance(other, Action):
-            return self.join(other, "**datatype**", match_coord_values=True).reduce(Payload(method, kwargs=kwargs))
-        return self.map(Payload(method, args=(Node.input_name(0), other), kwargs=kwargs))
+            return self.join(other, "**datatype**", match_coord_values=True).reduce(
+                Payload(method, kwargs=kwargs)
+            )
+        return self.map(
+            Payload(method, args=(Node.input_name(0), other), kwargs=kwargs)
+        )
 
     def subtract(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
         return self.__two_arg_method(backends.subtract, other, backend_kwargs)
@@ -587,7 +637,9 @@ class Action:
         return self.nodes.sel(**criteria, drop=True).data[()]
 
 
-def _batch_transform(action: Action, selection: dict, payload: Callable | Payload) -> Action:
+def _batch_transform(
+    action: Action, selection: dict, payload: Callable | Payload
+) -> Action:
     selected = action.select(selection, drop=True)
     dim = list(selection.keys())[0]
     if dim not in selected.nodes.dims:
@@ -600,8 +652,12 @@ def _batch_transform(action: Action, selection: dict, payload: Callable | Payloa
     return reduced
 
 
-def _expand_transform(action: Action, index: int, dim: str, axis: int = 0, new_axis: int = 0) -> Action:
-    ret = action.map(Payload(backends.take, [Node.input_name(0), index], {"axis": axis}))
+def _expand_transform(
+    action: Action, index: int, dim: str, axis: int = 0, new_axis: int = 0
+) -> Action:
+    ret = action.map(
+        Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
+    )
     ret._add_dimension(dim, index, new_axis)
     return ret
 
