@@ -374,9 +374,9 @@ class Action:
                 batched = batched.transform(
                     _batch_transform,
                     [
-                        ({dim: lst[i : i + batch_size]}, payload)
+                        ({dim: lst[i : i + batch_size]}, payload)  # noqa: E203
                         for i in range(0, len(lst), batch_size)
-                    ],  # noqa: E203
+                    ],
                     f"batch.{level}.{dim}",
                 )
                 dim = f"batch.{level}.{dim}"
