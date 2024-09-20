@@ -119,7 +119,11 @@ class Graph:
         output), or (parent, output name) tuples.
         """
         return {
-            iname: (isrc.parent if isrc.name == Node.DEFAULT_OUTPUT else (isrc.parent, isrc.name))
+            iname: (
+                isrc.parent
+                if isrc.name == Node.DEFAULT_OUTPUT
+                else (isrc.parent, isrc.name)
+            )
             for iname, isrc in node.inputs.items()
         }
 

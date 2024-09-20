@@ -38,7 +38,9 @@ class _FuseTransformer(Transformer):
         return Graph(sinks)
 
     def transform(self, graph: Graph) -> Graph:
-        self.counter = Counter(isrc.parent for node in graph.nodes() for isrc in node.inputs.values())
+        self.counter = Counter(
+            isrc.parent for node in graph.nodes() for isrc in node.inputs.values()
+        )
         return super().transform(graph)
 
 

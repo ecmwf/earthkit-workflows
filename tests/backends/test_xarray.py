@@ -16,7 +16,10 @@ class XarrayBackend(BackendBase):
     )
     def test_multi_arg_dim(self, num_inputs, kwargs, output_shape):
         for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
-            assert self.shape((getattr(backends, func)(*self.input_generator(num_inputs), **kwargs)) == output_shape)
+            assert self.shape(
+                (getattr(backends, func)(*self.input_generator(num_inputs), **kwargs))
+                == output_shape
+            )
 
     def test_concatenate(self):
         # Note broadcasting in xarray works different to numpy,
@@ -54,7 +57,9 @@ class XarrayBackend(BackendBase):
         # With dim and axis
         y = backends.stack(*input, axis=2, dim="NEW")
         assert np.all(x.transpose("dim0", "dim1", "NEW") == y)
-        assert self.shape(backends.stack(*self.input_generator(1), axis=0, dim="NEW")) == (
+        assert self.shape(
+            backends.stack(*self.input_generator(1), axis=0, dim="NEW")
+        ) == (
             1,
             2,
             3,
@@ -77,7 +82,10 @@ class XarrayBackend(BackendBase):
 class TestXarrayDataArrayBackend(XarrayBackend):
     def input_generator(self, number: int, shape=(2, 3)):
         return [
-            xr.DataArray(np.random.rand(*shape), dims=[f"dim{x}" for x in range(len(shape))]) for _ in range(number)
+            xr.DataArray(
+                np.random.rand(*shape), dims=[f"dim{x}" for x in range(len(shape))]
+            )
+            for _ in range(number)
         ]
 
     def shape(self, array):
