@@ -485,7 +485,9 @@ class Action:
                     )
         return criteria
 
-    def select(self, criteria: dict, drop: bool = False) -> "Action":
+    def select(
+        self, criteria: dict | None = None, drop: bool = False, **kwargs
+    ) -> "Action":
         """Create action contaning nodes match selection criteria
 
         Parameters
@@ -497,6 +499,9 @@ class Action:
         ------
         Action
         """
+        criteria = criteria or {}
+        criteria.update(kwargs)
+
         criteria = self._validate_criteria(criteria)
 
         if len(criteria) == 0:
@@ -506,7 +511,9 @@ class Action:
 
     sel = select
 
-    def iselect(self, criteria: dict, drop: bool = False) -> "Action":
+    def iselect(
+        self, criteria: dict | None = None, drop: bool = False, **kwargs
+    ) -> "Action":
         """
         Create action contaning nodes match index selection criteria
 
@@ -519,6 +526,9 @@ class Action:
         ------
         Action
         """
+        criteria = criteria or {}
+        criteria.update(kwargs)
+
         criteria = self._validate_criteria(criteria)
 
         if len(criteria) == 0:
