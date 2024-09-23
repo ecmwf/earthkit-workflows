@@ -13,13 +13,18 @@ def create_cluster(
     )  # Important to prevent root task overloading
 
     if type == "local":
-        from .localcuster import LocalCluster
+        from .localcluster import LocalCluster
 
         cluster = LocalCluster(**cluster_kwargs)
     elif type == "kube":
         from .kubecluster import KubeCluster
 
         cluster = KubeCluster(**cluster_kwargs)
+
+    elif type == "cuda":
+        from .cudacuster import CudaCluster
+
+        cluster = CudaCluster(**cluster_kwargs)
 
     if adaptive_kwargs is not None:
         cluster.adapt(**adaptive_kwargs)

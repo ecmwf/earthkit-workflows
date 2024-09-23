@@ -220,6 +220,79 @@ class DaskLocalExecutor(Executor):
             return create_context_graph(client_kwargs={"address": cluster})
 
 
+class DaskCudaExecutor(Executor):
+    """Convenience class for DaskExecutor using LocalCUDACluster exposing most
+    common configuration arguments
+
+    Options exposed:
+        CUDA_VISIBLE_DEVICES: str, list of int, or None, default None
+        n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
+        is overridden by the number of processors in schedule context graph
+        threads_per_worker: int, number of threads per Dask worker
+        processes: bool, whether to use processors (True) or threads (False). Defaults to True
+        memory_limit: str, memory limit of each Dask worker. If None, no limit is applied
+        cluster_kwargs: dict, arguments for Dask cluster
+        adaptive_kwargs: dict, arguments for making cluster adaptive (e.g. minimum, maximum)
+    """
+
+    def __init__(
+        self,
+        CUDA_VISIBLE_DEVICES: str | list[int] | None = None,
+        n_workers: int = 1,
+        threads_per_worker: int = 1,
+        processes: bool = True,
+        memory_limit: str | None = "5G",
+        cluster_kwargs: dict | None = None,
+        adaptive_kwargs: dict | None = None,
+    ):
+        self.adaptive_kwargs = adaptive_kwargs
+        self.cluster_kwargs = {
+            "CUDA_VISIBLE_DEVICES": CUDA_VISIBLE_DEVICES,
+            "n_workers": n_workers,
+            "threads_per_worker": threads_per_worker,
+            "processes": processes,
+            "memory_limit": memory_limit,
+        }
+        if cluster_kwargs is not None:
+            self.cluster_kwargs.update(cluster_kwargs)
+
+    def execute(self, schedule: Graph | Schedule, **kwargs: Any) -> Any:
+        """Execute graph with a Dask local cluster and produce a performance report of the execution.
+
+        Params
+        ------
+        graph: Graph or Schedule, task graph to execute. If schedule is provided
+        then annotates nodes with worker and priority according to the schedule
+        report: str, name of performance report output file. If empty, no report is generated
+
+        Returns
+        -------
+        Returns output of graph execution in the form of dictionary containing sink name and
+        corresponding output
+
+        Raises
+        ------
+        RuntimeError if any tasks in the graph have failed
+        """
+        check_consistency(schedule, self.cluster_kwargs, self.adaptive_kwargs)
+        with create_cluster(
+            "cuda", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
+            pprint.pprint(cluster.scheduler_info)
+            return execute(
+                schedule,
+                client_kwargs={"address": cluster},
+                adaptive=(self.adaptive_kwargs is not None),
+                report=kwargs.get("report", ""),
+            )
+
+    def create_context_graph(self) -> ContextGraph:
+        with create_cluster(
+            "cuda", self.cluster_kwargs, self.adaptive_kwargs
+        ) as cluster:
+            return create_context_graph(client_kwargs={"address": cluster})
+
+
 class DaskKubeExecutor(Executor):
     """Convenience class for DaskExecutor using KubeCluster exposing most
     common configuration arguments
