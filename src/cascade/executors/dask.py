@@ -224,6 +224,8 @@ class DaskCudaExecutor(Executor):
     """Convenience class for DaskExecutor using LocalCUDACluster exposing most
     common configuration arguments
 
+    https://docs.rapids.ai/api/dask-cuda/nightly/api/
+
     Options exposed:
         CUDA_VISIBLE_DEVICES: str, list of int, or None, default None
         n_workers: int, number of Dask workers, default is 1. If a schedule is provided, this argument
@@ -238,7 +240,7 @@ class DaskCudaExecutor(Executor):
     def __init__(
         self,
         CUDA_VISIBLE_DEVICES: str | list[int] | None = None,
-        n_workers: int = 1,
+        n_workers: int | None = None,
         threads_per_worker: int = 1,
         processes: bool = True,
         memory_limit: str | None = "5G",
