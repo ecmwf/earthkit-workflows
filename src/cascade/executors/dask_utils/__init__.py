@@ -22,7 +22,7 @@ def create_cluster(
         cluster = KubeCluster(**cluster_kwargs)
 
     elif type == "cuda":
-        from .cudacuster import CudaCluster
+        from .cudacluster import CudaCluster
 
         cluster = CudaCluster(**cluster_kwargs)
 
