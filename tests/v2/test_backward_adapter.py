@@ -2,7 +2,7 @@ from dask.threaded import get
 
 from cascade.graph.samplegraphs import linear
 from cascade.v2.backward import graph2job
-from cascade.v2.dask import job2dask
+from cascade.v2.delayed import job2delayed
 
 
 def test_fluent():
@@ -18,6 +18,6 @@ def test_fluent():
         elif node.is_sink():
             node.payload = (lambda input: input, ["input"], {})
     j = graph2job(g)
-    d = job2dask(j)
+    d = job2delayed(j)
     r = get(d, "writer")
     assert r == N

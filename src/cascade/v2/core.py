@@ -80,9 +80,11 @@ class Host(BaseModel):
 
 
 class Environment(BaseModel):
-    # NOTE missing: comm speed
-    hosts: dict[str, Host]
+    # NOTE missing: comm speed etc
+    # NOTE hosts are str|int because of Dask, but the int wont survive serde so dont use it
+    hosts: dict[str|int, Host]
 
 
 class Schedule(BaseModel):
-    host_task_queues: dict[str, list[str]]
+    # NOTE hosts are str|int because of Dask, but the int wont survive serde so dont use it
+    host_task_queues: dict[str|int, list[str]]

@@ -1,9 +1,13 @@
 from dask.threaded import get
+from dask.distributed import LocalCluster, Client
 
 from cascade.v2.builders import JobBuilder, TaskBuilder
-from cascade.v2.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
-from cascade.v2.dask import job2dask
+from cascade.v2.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance, Host, Environment
+from cascade.v2.delayed import job2delayed
+from cascade.v2.futures import execute_via_futures
+from cascade.v2.scheduler import schedule
 
+# TODO instead of every process launching its own cluster, introduce some global fixture or smth like that
 
 def test_linear():
     """Tests that a two node graph, defined using v2 core, gives correct result upon dask execution"""
@@ -40,8 +44,16 @@ def test_linear():
             )
         ],
     )
-    dask = job2dask(job)
-    assert 5 + 4 + 3 + 2 + 1 == get(dask, "b")
+    delayed = job2delayed(job)
+    expected = 5 + 4 + 3 + 2 + 1 
+    assert expected == get(delayed, "b")
+
+    # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
+    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=':0')
+    env = Environment(hosts={w: Host(memory_mb=1) for w in cluster.workers})
+    sched = schedule(job, env).get_or_raise()
+    result = execute_via_futures(job, sched, ("b", "o"), Client(cluster))
+    assert expected == result
 
 
 def test_builders():
@@ -53,8 +65,8 @@ def test_builders():
     # 1-node graph
     task = TaskBuilder.from_callable(test_func).with_values(x=1, y=2, z=3)
     job = JobInstance(tasks={"task": task}, edges=[])
-    dask = job2dask(job)
-    assert 1 + 2 + 3 == get(dask, "task")
+    delayed = job2delayed(job)
+    assert 1 + 2 + 3 == get(delayed, "task")
 
     # 2-node graph
     task1 = TaskBuilder.from_callable(test_func).with_values(x=1, y=2, z=3)
@@ -67,5 +79,13 @@ def test_builders():
         .build()
         .get_or_raise()
     )
-    dask = job2dask(job)
-    assert 5 + 4 + 3 + 2 + 1 == get(dask, "task2")
+    delayed = job2delayed(job)
+    expected = 5 + 4 + 3 + 2 + 1 
+    assert expected == get(delayed, "task2")
+
+    # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
+    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=':0')
+    env = Environment(hosts={w: Host(memory_mb=1) for w in cluster.workers})
+    sched = schedule(job, env).get_or_raise()
+    result = execute_via_futures(job, sched, ("task2", "__default__"), Client(cluster))
+    assert expected == result

@@ -1,5 +1,5 @@
 """
-Adapter of the core graph definition into dask-based execution
+Adapter of the core graph definition into execution via Dask Delayed
 """
 
 import importlib
@@ -14,7 +14,7 @@ from cascade.v2.views import param_source
 DaskPayload = tuple[Callable, Callable, list[Any], dict[str, Any]]
 
 
-def task2dask(
+def task2delayed(
     task: TaskInstance, input2source: dict[int | str, tuple[str, str]]
 ) -> DaskPayload:
     if task.definition.environment:
@@ -53,7 +53,7 @@ def task2dask(
 DaskJob = dict
 
 
-def job2dask(job: JobInstance) -> DaskJob:
+def job2delayed(job: JobInstance) -> DaskJob:
     task_param_sources = param_source(job.edges)
     for name, instance in job.tasks.items():
         if len(instance.definition.output_schema) > 1:
@@ -61,6 +61,6 @@ def job2dask(job: JobInstance) -> DaskJob:
             raise NotImplementedError(name, instance.definition)
 
     return {
-        name: task2dask(definition, task_param_sources[name])
+        name: task2delayed(definition, task_param_sources[name])
         for name, definition in job.tasks.items()
     }
