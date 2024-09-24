@@ -22,11 +22,7 @@ class XarrayBackend(BackendBase):
             )
 
     def test_concatenate(self):
-        # Note broadcasting in xarray works different to numpy,
-        # where an array with shape (2, 1) can not be broadcasted to (2, 3)
-        # whereas an array with a missing dimension e.g. (2,) can be broadcasted to
-        # shape (2, 3)
-        input = self.input_generator(3) + self.input_generator(2, (2,))
+        input = self.input_generator(3) + self.input_generator(2, (2, 1))
 
         # Without dim
         with pytest.raises(TypeError):
@@ -42,7 +38,7 @@ class XarrayBackend(BackendBase):
     def test_stack(self):
         input = self.input_generator(3) + self.input_generator(2, (2,))
 
-        x = backends.stack(*input, dim="NEW")
+        x = backends.stack(*input, dim="NEW", coords="minimal")
         assert self.shape(x) == (5, 2, 3)
         assert not np.any(np.isnan(self.values(x)))
 
@@ -55,7 +51,7 @@ class XarrayBackend(BackendBase):
             backends.stack(*input, dim="dim0")
 
         # With dim and axis
-        y = backends.stack(*input, axis=2, dim="NEW")
+        y = backends.stack(*input, axis=2, dim="NEW", coords="minimal")
         assert np.all(x.transpose("dim0", "dim1", "NEW") == y)
         assert self.shape(
             backends.stack(*self.input_generator(1), axis=0, dim="NEW")
@@ -71,10 +67,11 @@ class XarrayBackend(BackendBase):
             [[0], {"dim": "dim0"}, (3,)],
             [[[0]], {"dim": "dim0"}, (1, 3)],
             [[[0, 1]], {"dim": "dim1"}, (2, 2)],
-            [[[0, 1]], {"axis": 1, "dim": "dim1"}, (2, 2)],
+            [[[0, 1]], {"dim": 1}, (2, 2)],
+            [[[0, 1]], {"dim": "dim1", "method": "sel"}, (2, 2)],
         ],
     )
-    def test_take_dim(self, args, kwargs, output_shape):
+    def test_take_extended(self, args, kwargs, output_shape):
         output = backends.take(*self.input_generator(1), *args, **kwargs)
         assert self.shape(output) == output_shape
 
@@ -83,7 +80,9 @@ class TestXarrayDataArrayBackend(XarrayBackend):
     def input_generator(self, number: int, shape=(2, 3)):
         return [
             xr.DataArray(
-                np.random.rand(*shape), dims=[f"dim{x}" for x in range(len(shape))]
+                np.random.rand(*shape),
+                dims=[f"dim{x}" for x in range(len(shape))],
+                coords={f"dim{x}": range(shape[x]) for x in range(len(shape))},
             )
             for _ in range(number)
         ]
@@ -103,6 +102,7 @@ class TestXarrayDatasetBackend(XarrayBackend):
                     "test": xr.DataArray(
                         np.random.rand(*shape),
                         dims=[f"dim{x}" for x in range(len(shape))],
+                        coords={f"dim{x}": range(shape[x]) for x in range(len(shape))},
                     )
                 }
             )

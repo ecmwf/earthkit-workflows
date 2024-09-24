@@ -65,7 +65,7 @@ graph = (
     from_source(np.full((2, 2), func), dims=["x", "y"])
     .mean("x")
     .min("y")
-    .expand("z", 3, 1, 0)
+    .expand("z", internal_dim=1, dim_size=3, axis=0)
     .map([lambda x, a=a: x * a for a in range(1, 4)])
     .graph()
 )

@@ -59,9 +59,9 @@ class BackendBase:
     @pytest.mark.parametrize(
         ["args", "kwargs", "output_shape"],
         [
-            [[0], {"axis": 0}, (3,)],
-            [[[0]], {"axis": 0}, (1, 3)],
-            [[[0, 1]], {"axis": 1}, (2, 2)],
+            [[0], {"dim": 0}, (3,)],
+            [[[0]], {"dim": 0}, (1, 3)],
+            [[[0, 1]], {"dim": 1}, (2, 2)],
         ],
     )
     def test_take(self, args, kwargs, output_shape):

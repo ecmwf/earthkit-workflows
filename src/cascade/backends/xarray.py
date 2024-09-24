@@ -123,7 +123,7 @@ class XArrayBackend:
     def stack(
         *arrays: xr.DataArray | xr.Dataset,
         dim: str,
-        axis: int | None = None,
+        axis: int = 0,
         **method_kwargs: dict,
     ) -> xr.DataArray | xr.Dataset:
         if np.any([dim in a.sizes for a in arrays]):
@@ -132,9 +132,11 @@ class XArrayBackend:
             )
 
         ret = xr.concat(arrays, dim=dim, **method_kwargs)  # type: ignore # xr/mypy dont coop
-        if axis is not None and axis != 0:
-            dims = list(ret.sizes.keys())
-            ret = ret.transpose(*dims[1:axis], dim, *dims[axis:])
+        dims = list(ret.sizes.keys())
+        dim_index = dims.index(dim)
+        if axis != dim_index:
+            dims.pop(dim_index)
+            ret = ret.transpose(*dims[:axis], dim, *dims[axis:])
         return ret
 
     @staticmethod
@@ -192,17 +194,13 @@ class XArrayBackend:
         array,
         indices,
         *,
-        axis: int | None = None,
-        dim: str | None = None,
+        dim: int | str,
+        method: str = "isel",
         **method_kwargs,
     ):
         kwargs = {"drop": True}
         kwargs.update(method_kwargs)
-        if axis is None:
-            if dim is None:
-                raise ValueError("Either axis or dim must be specified.")
-            return array.isel({dim: indices}, **kwargs)
-        axis_dim = list(array.sizes.keys())[axis]
-        if dim is not None and dim != axis_dim:
-            raise ValueError(f"Mismatching axis ({axis}) and dim ({dim}) provided.")
-        return array.isel({axis_dim: indices}, **kwargs)
+        if isinstance(dim, int):
+            dim = list(array.sizes.keys())[dim]
+
+        return getattr(array, method)({dim: indices}, **kwargs)

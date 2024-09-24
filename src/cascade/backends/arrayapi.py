@@ -32,7 +32,7 @@ class ArrayAPIBackend:
     def var(*args, **kwargs):
         return _xp_multi_args("var", *args, **kwargs)
 
-    def stack(*args, axis: int | None = None):
+    def stack(*args, axis: int = 0):
         xp = array_api_compat.array_namespace(*args)
         broadcasted = xp.broadcast_arrays(*args)
         return xp.stack(broadcasted, axis=axis)
@@ -56,10 +56,12 @@ class ArrayAPIBackend:
     def pow(*args):
         return args[0] ** args[1]
 
-    def take(array, indices, *, axis: int, **kwargs):
+    def take(array, indices, *, dim: int, **kwargs):
+        if not isinstance(dim, int):
+            raise ValueError("Must provide `dim` as an integer")
         xp = array_api_compat.array_namespace(array)
 
         if hasattr(indices, "__iter__"):
-            return xp.take(array, indices, axis=axis, **kwargs)
-        ret = xp.take(array, [indices], axis=axis, **kwargs)
-        return xp.squeeze(ret, axis=axis)
+            return xp.take(array, indices, axis=dim, **kwargs)
+        ret = xp.take(array, [indices], axis=dim, **kwargs)
+        return xp.squeeze(ret, axis=dim)

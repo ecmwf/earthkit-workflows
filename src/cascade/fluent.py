@@ -1,7 +1,7 @@
 import copy
 import functools
 import hashlib
-from typing import Any, Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Hashable, Iterable, Sequence
 
 import numpy as np
 import xarray as xr
@@ -82,6 +82,9 @@ def custom_hash(string: str) -> str:
     ret = hashlib.sha256()
     ret.update(string.encode())
     return ret.hexdigest()
+
+
+Coord = tuple[str, list[Any]]
 
 
 class Node(BaseNode):
@@ -170,7 +173,7 @@ class Action:
     def join(
         self,
         other_action: "Action",
-        dim: str | xr.DataArray,
+        dim: str | Coord,
         match_coord_values: bool = False,
     ) -> "Action":
         if match_coord_values:
@@ -181,7 +184,7 @@ class Action:
                     )
         new_nodes = xr.concat(
             [self.nodes, other_action.nodes],
-            dim,
+            dim if isinstance(dim, str) else xr.DataArray(dim[1], name=dim[0]),
             combine_attrs="no_conflicts",
             coords="minimal",
             join="exact",
@@ -190,7 +193,7 @@ class Action:
         return ret
 
     def transform(
-        self, func: Callable, params: list, dim: str | xr.DataArray
+        self, func: Callable, params: list, dim: str | Coord, axis: int = 0
     ) -> "Action":
         """Create new nodes by applying function on action with different
         parameters. The result actions from applying function are joined
@@ -201,8 +204,9 @@ class Action:
         func: function with signature func(Action, *args) -> Action
         params: list, containing different arguments to pass into func
         for generating new nodes
-        dim: str or DataArray, name of dimension to join actions or xr.DataArray specifying new dimension name and
+        dim: str or `Coord`, name of dimension to join actions or `Coord` specifying new dimension name and
         coordinate values
+        axis: int, position to insert new dimension
 
         Return
         ------
@@ -214,13 +218,13 @@ class Action:
             dim_name = dim
             dim_values = list(range(len(params)))
         else:
-            dim_name = cast(str, dim.name)  # xarray is rather broad in names
-            dim_values = dim.values
+            dim_name = dim[0]
+            dim_values = dim[1]
 
         for index, param in enumerate(params):
             new_res = func(self, *param)
             if dim_name not in new_res.nodes.coords:
-                new_res._add_dimension(dim_name, dim_values[index])
+                new_res._add_dimension(dim_name, dim_values[index], axis)
             if res is None:
                 res = new_res
             else:
@@ -273,7 +277,12 @@ class Action:
         return type(self)(new_nodes_xa)
 
     def expand(
-        self, dim: str, dim_size: int, axis: int = 0, new_axis: int = 0
+        self,
+        dim: str | Coord,
+        internal_dim: int | str | Coord,
+        dim_size: int | None = None,
+        axis: int = 0,
+        backend_kwargs: dict = {},
     ) -> "Action":
         """Create new dimension in array of nodes of specified size by
         taking elements of internal data in each node. Indexing is taken along the specified axis
@@ -282,17 +291,32 @@ class Action:
 
         Parameters
         ----------
-        dim: str, name of new dimension
-        dim_size: int, size of new dimension
-        axis: int, axis to take values from in internal data of node
-        new_axis: int, position to insert new dimension
+        dim: str or `Coord`, name of dimension or `Coord` specifying new dimension name and
+        coordinate values
+        internal_dim: int, str or DataArray, index or name of internal dimension to expand, or
+        `Coord` specifying dimension name and list of selection criteria
+        dim_size: int | None, size of new dimension. If not given `internal_dim` must be `Coord`
+        axis: int, position to insert new dimension
+        backend_kwargs: dict, kwargs for the underlying backend take method
 
         Return
         ------
         Action
         """
-        params = [(x, dim, axis, new_axis) for x in range(dim_size)]
-        return self.transform(_expand_transform, params, dim)
+        if isinstance(internal_dim, (int, str)):
+            if dim_size is None:
+                raise TypeError(
+                    "If `internal_dim` is str or int, then `dim_size` must be provided"
+                )
+            params = [(i, internal_dim, backend_kwargs) for i in range(dim_size)]
+        else:
+            params = [(x, internal_dim[0], backend_kwargs) for x in internal_dim[1]]
+
+        if not isinstance(dim, str) and len(params) != len(dim[1]):
+            raise ValueError(
+                "Length of values in `dim` must match `dim_size` or length of values in `internal_dim`"
+            )
+        return self.transform(_expand_transform, params, dim, axis=axis)
 
     def map(self, payload: Callable | Payload | np.ndarray[Any, Any]) -> "Action":
         """Apply specified payload on all nodes. If argument is an array of payloads,
@@ -448,7 +472,22 @@ class Action:
             Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}), dim
         )
 
-    def select(self, criteria: dict, drop: bool = False) -> "Action":
+    def _validate_criteria(self, criteria: dict):
+        keys = list(criteria.keys())
+        for key in keys:
+            if key not in self.nodes.dims:
+                if self.nodes.coords.get(key, None) == criteria[key]:
+                    criteria.pop(key)
+                else:
+                    raise NotImplementedError(
+                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims}"
+                        + f"and coords {self.nodes.coords}"
+                    )
+        return criteria
+
+    def select(
+        self, criteria: dict | None = None, drop: bool = False, **kwargs
+    ) -> "Action":
         """Create action contaning nodes match selection criteria
 
         Parameters
@@ -460,20 +499,44 @@ class Action:
         ------
         Action
         """
-        keys = list(criteria.keys())
-        for key in keys:
-            if key not in self.nodes.dims:
-                if self.nodes.coords.get(key, None) == criteria[key]:
-                    criteria.pop(key)
-                else:
-                    raise NotImplementedError(
-                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims}"
-                        + f"and coords {self.nodes.coords}"
-                    )
+        criteria = criteria or {}
+        criteria.update(kwargs)
+
+        criteria = self._validate_criteria(criteria)
+
         if len(criteria) == 0:
             return self
         selected_nodes = self.nodes.sel(**criteria, drop=drop)
         return type(self)(selected_nodes)
+
+    sel = select
+
+    def iselect(
+        self, criteria: dict | None = None, drop: bool = False, **kwargs
+    ) -> "Action":
+        """
+        Create action contaning nodes match index selection criteria
+
+        Parameters
+        ----------
+        criteria: dict, key-value pairs specifying selection criteria
+        drop: bool, drop coord variables in criteria if True
+
+        Return
+        ------
+        Action
+        """
+        criteria = criteria or {}
+        criteria.update(kwargs)
+
+        criteria = self._validate_criteria(criteria)
+
+        if len(criteria) == 0:
+            return self
+        selected_nodes = self.nodes.isel(**criteria, drop=drop)
+        return type(self)(selected_nodes)
+
+    isel = iselect
 
     def concatenate(
         self,
@@ -651,12 +714,13 @@ def _batch_transform(
 
 
 def _expand_transform(
-    action: Action, index: int, dim: str, axis: int = 0, new_axis: int = 0
+    action: Action, index: int | Hashable, dim: int | str, backend_kwargs: dict = {}
 ) -> Action:
     ret = action.map(
-        Payload(backends.take, [Node.input_name(0), index], {"axis": axis})
+        Payload(
+            backends.take, [Node.input_name(0), index], {"dim": dim, **backend_kwargs}
+        )
     )
-    ret._add_dimension(dim, index, new_axis)
     return ret
 
 
