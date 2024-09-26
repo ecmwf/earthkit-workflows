@@ -1,13 +1,21 @@
+from dask.distributed import Client, LocalCluster
 from dask.threaded import get
-from dask.distributed import LocalCluster, Client
 
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance, Host, Environment
+from cascade.low.core import (
+    Environment,
+    Host,
+    JobInstance,
+    Task2TaskEdge,
+    TaskDefinition,
+    TaskInstance,
+)
 from cascade.low.delayed import job2delayed
 from cascade.low.futures import execute_via_futures
 from cascade.low.scheduler import schedule
 
 # TODO instead of every process launching its own cluster, introduce some global fixture or smth like that
+
 
 def test_linear():
     """Tests that a two node graph, defined using cascade.low.core, gives correct result upon dask execution"""
@@ -45,11 +53,11 @@ def test_linear():
         ],
     )
     delayed = job2delayed(job)
-    expected = 5 + 4 + 3 + 2 + 1 
+    expected = 5 + 4 + 3 + 2 + 1
     assert expected == get(delayed, "b")
 
     # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
-    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=':0')
+    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=":0")
     env = Environment(hosts={w: Host(memory_mb=1) for w in cluster.workers})
     sched = schedule(job, env).get_or_raise()
     result = execute_via_futures(job, sched, ("b", "o"), Client(cluster))
@@ -80,11 +88,11 @@ def test_builders():
         .get_or_raise()
     )
     delayed = job2delayed(job)
-    expected = 5 + 4 + 3 + 2 + 1 
+    expected = 5 + 4 + 3 + 2 + 1
     assert expected == get(delayed, "task2")
 
     # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
-    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=':0')
+    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=":0")
     env = Environment(hosts={w: Host(memory_mb=1) for w in cluster.workers})
     sched = schedule(job, env).get_or_raise()
     result = execute_via_futures(job, sched, ("task2", "__default__"), Client(cluster))

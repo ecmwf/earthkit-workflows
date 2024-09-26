@@ -2,7 +2,7 @@ import abc
 from typing import Any
 
 from cascade.contextgraph import ContextGraph
-from cascade.graph.graph import Graph
+from cascade.graph import Graph
 from cascade.schedulers.schedule import Schedule
 
 

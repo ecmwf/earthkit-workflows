@@ -5,7 +5,6 @@ Lowering of the cascade.graph structures into cascade.low representation
 from typing import Any, Callable, cast
 
 from cascade.graph import Graph, Node, serialise
-from cascade.schedulers.schedule import Schedule as FluentSchedule
 from cascade.low.core import (
     JobInstance,
     Schedule,
@@ -13,6 +12,7 @@ from cascade.low.core import (
     TaskDefinition,
     TaskInstance,
 )
+from cascade.schedulers.schedule import Schedule as FluentSchedule
 
 
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:

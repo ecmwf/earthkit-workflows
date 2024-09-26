@@ -1,17 +1,22 @@
 from typing import Iterator
-from dask.distributed import Client, Variable, get_client, as_completed
+
+from dask.distributed import Client, Variable, as_completed, get_client
+
 
 def producer(n: int) -> Iterator[int]:
     for i in range(n):
         print(f"whoa just shipped one fresh {i}")
         yield i
 
+
 def consumer(i: int) -> None:
     print(f"whoa what an {i} did I just receive!")
+
 
 def vanilla_python(n: int) -> None:
     for i in producer(n):
         consumer(i)
+
 
 def futuristic_producer(n: int) -> str:
     client = get_client()
@@ -23,6 +28,7 @@ def futuristic_producer(n: int) -> str:
         var = Variable(f"result[{i}]")
         var.set(fut)
     return f"happily produced {n}"
+
 
 def futuristic_consumer() -> str:
     # client = get_client()

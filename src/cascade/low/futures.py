@@ -9,22 +9,25 @@ Adapter of the core graph definition into execution via Dask Futures
 # - control precisely which futures to launch already -- currently we just throw in first 2 in the queue per host
 # - handle failed states, restarts, etc
 
-from cascade.low.func import ensure, maybe_head
-from dask.distributed import Variable, wait, Client, Future, get_client
-from dataclasses import dataclass
-from typing import Optional, Callable, Any
-from cascade.low.core import JobInstance, TaskDefinition, TaskInstance, Schedule
-from cascade.low.views import param_source
 import logging
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
+
+from dask.distributed import Client, Future, Variable, get_client, wait
+
+from cascade.low.core import JobInstance, Schedule, TaskDefinition, TaskInstance
+from cascade.low.func import ensure, maybe_head
+from cascade.low.views import param_source
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class VariableWiring:
     varName: str
     intoKwarg: Optional[str]
     intoPosition: Optional[int]
-    
+
 
 @dataclass
 class FuturePayload:
@@ -32,8 +35,10 @@ class FuturePayload:
     name: str
     wirings: list[VariableWiring]
 
+
 def get_var_name(task: str, output_key: str) -> str:
     return f"{task}-{output_key}"
+
 
 def execute_future_payload(payload: FuturePayload) -> None:
     logger.debug(f"preparing {payload=}")
@@ -55,10 +60,10 @@ def execute_future_payload(payload: FuturePayload) -> None:
         if w.intoKwarg is not None:
             kwargs[w.intoKwarg] = value
         if w.intoPosition is not None:
-            ensure(args, w.intoPosition) 
+            ensure(args, w.intoPosition)
             args[w.intoPosition] = value
 
-    logger.debug(f"executing func")
+    logger.debug("executing func")
     res = func(*args, **kwargs)
     if len(payload.task.definition.output_schema) > 1:
         raise NotImplementedError
@@ -72,30 +77,36 @@ def execute_future_payload(payload: FuturePayload) -> None:
     res_fut = client.scatter(res)
     res_var.set(res_fut)
 
+
 def task2future(
     name: str, task: TaskInstance, input2source: dict[int | str, tuple[str, str]]
 ) -> FuturePayload:
     return FuturePayload(
-        task=task, 
+        task=task,
         name=name,
         wirings=[
             VariableWiring(
                 varName=get_var_name(v[0], v[1]),
-                intoKwarg = k if isinstance(k, str) else None,
-                intoPosition = k if isinstance(k, int) else None,
+                intoKwarg=k if isinstance(k, str) else None,
+                intoPosition=k if isinstance(k, int) else None,
             )
             for k, v in input2source.items()
-        ]
+        ],
     )
 
-def execute_via_futures(job: JobInstance, schedule: Schedule, final_output: tuple[str, str], client: Client) -> Any:
+
+def execute_via_futures(
+    job: JobInstance, schedule: Schedule, final_output: tuple[str, str], client: Client
+) -> Any:
     task_param_sources = param_source(job.edges)
     future_payloads = {
         task: task2future(task, instance, task_param_sources[task])
         for task, instance in job.tasks.items()
     }
-    
-    host_ongoing: dict[str|int, list[Future]] = {host: [] for host in schedule.host_task_queues.keys()}
+
+    host_ongoing: dict[str | int, list[Future]] = {
+        host: [] for host in schedule.host_task_queues.keys()
+    }
     host_remaining = {host: tasks for host, tasks in schedule.host_task_queues.items()}
     while True:
         for host in schedule.host_task_queues.keys():
@@ -105,15 +116,16 @@ def execute_via_futures(job: JobInstance, schedule: Schedule, final_output: tupl
             while len(host_ongoing[host]) < 2 and len(host_remaining[host]) > 0:
                 nextFutPayload = future_payloads[host_remaining[host].pop(0)]
                 logger.debug(f"submitting {nextFutPayload} on workers {host}")
-                host_ongoing[host].append(client.submit(execute_future_payload, nextFutPayload, workers=host))
+                host_ongoing[host].append(
+                    client.submit(execute_future_payload, nextFutPayload, workers=host)
+                )
         ongoing = [fut for futs in host_ongoing.values() for fut in futs]
         if len(ongoing) > 0:
             logger.debug(f"awaiting on {len(ongoing)} futures")
-            wait(ongoing, return_when='FIRST_COMPLETED')
+            wait(ongoing, return_when="FIRST_COMPLETED")
         else:
-            logger.debug(f"nothing runnin, breaking")
+            logger.debug("nothing runnin, breaking")
             break
-
 
     result = Variable(get_var_name(final_output[0], final_output[1])).get().result()
     for name, instance in job.tasks.items():
