@@ -1,16 +1,16 @@
 from dask.threaded import get
 from dask.distributed import LocalCluster, Client
 
-from cascade.v2.builders import JobBuilder, TaskBuilder
-from cascade.v2.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance, Host, Environment
-from cascade.v2.delayed import job2delayed
-from cascade.v2.futures import execute_via_futures
-from cascade.v2.scheduler import schedule
+from cascade.low.builders import JobBuilder, TaskBuilder
+from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance, Host, Environment
+from cascade.low.delayed import job2delayed
+from cascade.low.futures import execute_via_futures
+from cascade.low.scheduler import schedule
 
 # TODO instead of every process launching its own cluster, introduce some global fixture or smth like that
 
 def test_linear():
-    """Tests that a two node graph, defined using v2 core, gives correct result upon dask execution"""
+    """Tests that a two node graph, defined using cascade.low.core, gives correct result upon dask execution"""
 
     def test_func(x, y, z):
         return x + y + z
@@ -57,7 +57,7 @@ def test_linear():
 
 
 def test_builders():
-    """Tests that a two node graph, defined using v2 builders, gives correct result upon dask execution"""
+    """Tests that a two node graph, defined using cascade.low.builders, gives correct result upon dask execution"""
 
     def test_func(x, y, z):
         return x + y + z

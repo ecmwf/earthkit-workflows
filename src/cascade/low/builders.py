@@ -7,8 +7,8 @@ import pyrsistent
 from typing_extensions import Self
 
 from cascade.graph import Node
-from cascade.v2.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
-from cascade.v2.func import Either
+from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
+from cascade.low.func import Either
 
 
 class TaskBuilder(TaskInstance):

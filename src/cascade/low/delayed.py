@@ -7,9 +7,9 @@ from typing import Any, Callable
 
 import dask.utils
 
-from cascade.v2.core import JobInstance, TaskDefinition, TaskInstance
-from cascade.v2.func import ensure
-from cascade.v2.views import param_source
+from cascade.low.core import JobInstance, TaskDefinition, TaskInstance
+from cascade.low.func import ensure
+from cascade.low.views import param_source
 
 DaskPayload = tuple[Callable, Callable, list[Any], dict[str, Any]]
 

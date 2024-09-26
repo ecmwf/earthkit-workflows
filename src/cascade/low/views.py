@@ -4,7 +4,7 @@ Utility functions and transformers for the core graph objects
 
 from collections import defaultdict
 
-from cascade.v2.core import Task2TaskEdge
+from cascade.low.core import Task2TaskEdge
 
 
 def param_source(

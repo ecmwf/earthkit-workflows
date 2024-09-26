@@ -1,4 +1,4 @@
-from cascade.v2.builders import JobBuilder, TaskBuilder
+from cascade.low.builders import JobBuilder, TaskBuilder
 
 
 def test_validation():

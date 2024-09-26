@@ -9,12 +9,12 @@ Adapter of the core graph definition into execution via Dask Futures
 # - control precisely which futures to launch already -- currently we just throw in first 2 in the queue per host
 # - handle failed states, restarts, etc
 
-from cascade.v2.func import ensure, maybe_head
+from cascade.low.func import ensure, maybe_head
 from dask.distributed import Variable, wait, Client, Future, get_client
 from dataclasses import dataclass
 from typing import Optional, Callable, Any
-from cascade.v2.core import JobInstance, TaskDefinition, TaskInstance, Schedule
-from cascade.v2.views import param_source
+from cascade.low.core import JobInstance, TaskDefinition, TaskInstance, Schedule
+from cascade.low.views import param_source
 import logging
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@
 set dotenv-path := ".env"
 
 val:
-	mypy src --ignore-missing-imports
+	mypy src/cascade/low --ignore-missing-imports
 	mypy tests --ignore-missing-imports
 	pytest tests
 

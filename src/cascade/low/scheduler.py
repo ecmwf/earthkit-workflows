@@ -5,9 +5,9 @@ TODO replace with adapter to cascade.schedulers
 from collections import defaultdict
 from typing import Optional
 
-from cascade.v2.core import Environment, JobInstance, Schedule
-from cascade.v2.func import Either
-from cascade.v2.views import param_source
+from cascade.low.core import Environment, JobInstance, Schedule
+from cascade.low.func import Either
+from cascade.low.views import param_source
 
 
 def schedule(

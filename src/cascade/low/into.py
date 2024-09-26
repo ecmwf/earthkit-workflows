@@ -1,12 +1,12 @@
 """
-Backward-compatibility adapter from the v1/graph definition into the v2/core definition
+Lowering of the cascade.graph structures into cascade.low representation
 """
 
 from typing import Any, Callable, cast
 
 from cascade.graph import Graph, Node, serialise
 from cascade.schedulers.schedule import Schedule as FluentSchedule
-from cascade.v2.core import (
+from cascade.low.core import (
     JobInstance,
     Schedule,
     Task2TaskEdge,

@@ -1,12 +1,12 @@
 from dask.threaded import get
 
 from cascade.graph.samplegraphs import linear
-from cascade.v2.backward import graph2job
-from cascade.v2.delayed import job2delayed
+from cascade.low.into import graph2job
+from cascade.low.delayed import job2delayed
 
 
 def test_fluent():
-    """Tests that a linear dag with process-i being a function +1, when converted to v2.api and then to dask gives
+    """Tests that a linear dag with process-i being a function +1, when lowered and then executed in dask gives
     correct results upon execution"""
     N = 5
     g = linear(N)
