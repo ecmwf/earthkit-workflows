@@ -10,6 +10,8 @@ from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
 
+REGISTRY: dict[str, "Action"] = {}
+
 
 class Payload:
     """Class for detailing function, args and kwargs to be computing in a graph node"""
@@ -157,18 +159,12 @@ class Action:
             sinks[index].outputs = []  # Ensures they are recognised as sinks
         return Graph(sinks)
 
-    def switch(self, action: "Action") -> "Action":
-        """Switch Action class
-
-        Parameters
-        ----------
-        action: Action class to switch to
-
-        Returns
-        -------
-        Action
-        """
-        return action(self.nodes)
+    def __getattr__(self, attr):
+        if attr in REGISTRY:
+            return RegisteredAction(
+                attr, REGISTRY[attr], self
+            )  # When the attr is a registered action class
+        raise AttributeError(f"{self.__class__.__name__} has no attribute {attr!r}")
 
     def join(
         self,
@@ -698,6 +694,52 @@ class Action:
         return self.nodes.sel(**criteria, drop=True).data[()]
 
 
+class RegisteredAction:
+    """Wrapper around registered actions"""
+
+    def __init__(self, name: str, obj: Action, root_self: Action) -> None:
+        self._name = name
+        self._obj = obj
+        self._root_self = root_self
+
+    def __getattr__(self, func):
+        return functools.partial(getattr(self._obj, func), self._root_self)
+
+    def __repr__(self):
+        return f"{self._name!r} registered action at {self._obj.__name__}"
+
+
+def register(name: str, obj: type[Action]):
+    """Register an Action class under `name`
+
+    Will be accessible from the fluent API as `Action().<name>`
+
+    Parameters
+    ----------
+    name : str
+        Name to register Action under
+    obj : type[Action]
+        Action class to register
+
+    Raises
+    ------
+    ValueError
+        If `name` is already registered
+    """
+    if not isinstance(obj, type):
+        raise TypeError(f"obj must be a type of Action, not {type(obj)}")
+
+    if name in REGISTRY:
+        raise ValueError(f"{name} already registered.")
+    REGISTRY[name] = obj
+
+
+def flush_registry():
+    """Flush the registry of all registered actions"""
+    global REGISTRY
+    REGISTRY = {}
+
+
 def _batch_transform(
     action: Action, selection: dict, payload: Callable | Payload
 ) -> Action:
@@ -773,3 +815,6 @@ def from_source(
             coords=payloads.coords,
         ),
     )
+
+
+register("default", Action)
