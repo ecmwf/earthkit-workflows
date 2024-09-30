@@ -1,6 +1,7 @@
 import copy
 import functools
 import hashlib
+import warnings
 from typing import Any, Callable, Hashable, Iterable, Sequence
 
 import numpy as np
@@ -724,13 +725,21 @@ def register(name: str, obj: type[Action]):
     Raises
     ------
     ValueError
-        If `name` is already registered
+        If `name` is an attr on `obj`
     """
+
     if not isinstance(obj, type):
         raise TypeError(f"obj must be a type of Action, not {type(obj)}")
 
     if name in REGISTRY:
-        raise ValueError(f"{name} already registered.")
+        warnings.warn(f"{name} already registered, will not override")
+        return
+
+    if hasattr(obj, name):
+        raise ValueError(
+            f"Action class {obj} already has an attribute {name}, will not override"
+        )
+
     REGISTRY[name] = obj
 
 
@@ -818,3 +827,12 @@ def from_source(
 
 
 register("default", Action)
+
+__all__ = [
+    "Action",
+    "Payload",
+    "Node",
+    "register",
+    "flush_registry",
+    "from_source",
+]
