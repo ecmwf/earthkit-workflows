@@ -1,4 +1,4 @@
-from cascade.graph import Graph, Node, Processor, Sink, Source, Visitor
+from cascade.graph import Graph, Node, Visitor
 from cascade.graph.samplegraphs import disconnected, empty, linear, multi, simple
 
 
@@ -71,14 +71,14 @@ def test_visit_multi():
 
 
 class SourceLister(Visitor):
-    sources: list[Source]
+    sources: list[Node]
     others: list[Node]
 
     def __init__(self):
         self.sources = []
         self.others = []
 
-    def source(self, s: Source):
+    def source(self, s: Node):
         self.sources.append(s)
 
     def node(self, n: Node):
@@ -90,9 +90,9 @@ def test_visit_sources():
     v = SourceLister()
     v.visit(g)
     for s in v.sources:
-        assert isinstance(s, Source)
+        assert s.is_source()
     for n in v.others:
-        assert not isinstance(n, Source)
+        assert not n.is_source()
     snames = [s.name for s in v.sources]
     assert len(snames) == 6
     assert set(snames) == set(f"reader-{i}" for i in range(6))
@@ -104,14 +104,14 @@ def test_visit_sources():
 
 
 class ProcessorLister(Visitor):
-    procs: list[Processor]
+    procs: list[Node]
     others: list[Node]
 
     def __init__(self):
         self.procs = []
         self.others = []
 
-    def processor(self, p: Processor):
+    def processor(self, p: Node):
         self.procs.append(p)
 
     def node(self, n: Node):
@@ -123,9 +123,9 @@ def test_visit_processors():
     v = ProcessorLister()
     v.visit(g)
     for p in v.procs:
-        assert isinstance(p, Processor)
+        assert p.is_processor()
     for n in v.others:
-        assert not isinstance(n, Processor)
+        assert not n.is_processor()
     pnames = [p.name for p in v.procs]
     assert len(pnames) == 4
     assert set(pnames) == set(f"process-{i}" for i in range(4))
@@ -137,14 +137,14 @@ def test_visit_processors():
 
 
 class SinkLister(Visitor):
-    sinks: list[Sink]
-    others: list[Processor]
+    sinks: list[Node]
+    others: list[Node]
 
     def __init__(self):
         self.sinks = []
         self.others = []
 
-    def sink(self, s: Sink):
+    def sink(self, s: Node):
         self.sinks.append(s)
 
     def node(self, n: Node):
@@ -156,9 +156,9 @@ def test_visit_sinks():
     v = SinkLister()
     v.visit(g)
     for s in v.sinks:
-        assert isinstance(s, Sink)
+        assert s.is_sink()
     for n in v.others:
-        assert not isinstance(n, Sink)
+        assert not n.is_sink()
     snames = [s.name for s in v.sinks]
     assert len(snames) == 5
     assert set(snames) == set(f"writer-{i}" for i in range(5))
@@ -170,9 +170,9 @@ def test_visit_sinks():
 
 
 class SegregatedLister(Visitor):
-    sources: list[Source]
-    procs: list[Processor]
-    sinks: list[Sink]
+    sources: list[Node]
+    procs: list[Node]
+    sinks: list[Node]
     others: list[Node]
 
     def __init__(self):
@@ -181,13 +181,13 @@ class SegregatedLister(Visitor):
         self.sinks = []
         self.others = []
 
-    def source(self, s: Source):
+    def source(self, s: Node):
         self.sources.append(s)
 
-    def processor(self, p: Processor):
+    def processor(self, p: Node):
         self.procs.append(p)
 
-    def sink(self, s: Sink):
+    def sink(self, s: Node):
         self.sinks.append(s)
 
     def node(self, n: Node):
@@ -199,11 +199,11 @@ def test_visit_segregated():
     v = SegregatedLister()
     v.visit(g)
     for p in v.sources:
-        assert isinstance(p, Source)
+        assert p.is_source()
     for p in v.procs:
-        assert isinstance(p, Processor)
+        assert p.is_processor()
     for p in v.sinks:
-        assert isinstance(p, Sink)
+        assert p.is_sink()
     assert v.others == []
     sonames = [s.name for s in v.sources]
     assert len(sonames) == 8

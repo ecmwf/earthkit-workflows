@@ -1,19 +1,19 @@
 from typing import Any
 
-from cascade.graph import Graph, Node, Processor, Sink, Source, Transformer
+from cascade.graph import Graph, Node, Transformer
 from cascade.graph.samplegraphs import disconnected, empty, linear, multi, simple
 
 D = Node.DEFAULT_OUTPUT
 
 
 class ToSimple(Transformer):
-    def source(self, s: Source) -> str:
+    def source(self, s: Node) -> str:
         return s.name
 
-    def processor(self, p: Processor, **inputs: Any) -> tuple[str, dict[str, Any]]:
+    def processor(self, p: Node, **inputs: Any) -> tuple[str, dict[str, Any]]:
         return (p.name, inputs)
 
-    def sink(self, s: Sink, **inputs: Any) -> tuple[str, dict[str, Any]]:
+    def sink(self, s: Node, **inputs: Any) -> tuple[str, dict[str, Any]]:
         return s.name, inputs
 
     def output(

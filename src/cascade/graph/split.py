@@ -4,7 +4,7 @@ from struct import pack
 from typing import Callable, Generic, TypeVar
 
 from .graph import Graph
-from .nodes import Node, Sink, Source
+from .nodes import Node, Output
 from .transform import Transformer
 
 K = TypeVar("K", bound=Hashable)
@@ -41,14 +41,14 @@ class Splitter(Transformer, Generic[K]):
 
     key: KeyFunc[K]
     cuts: list[CutEdge[K]]
-    sinks: dict[K, list[Sink]]
+    sinks: dict[K, list[Node]]
 
     def __init__(self, key: KeyFunc[K]):
         self.key = key
         self.cuts = []
         self.sinks = {}
 
-    def node(self, node: Node, **inputs: tuple[K, Node.Output]) -> tuple[K, Node]:
+    def node(self, node: Node, **inputs: tuple[K, Output]) -> tuple[K, Node]:
         k = self.key(node)
         new_inputs = {}
         for iname, (ik, ival) in inputs.items():
@@ -63,18 +63,18 @@ class Splitter(Transformer, Generic[K]):
         node.inputs = new_inputs  # XXX: should we create a copy of node?
         return (k, node)
 
-    def output(self, tnode: tuple[K, Node], output: str) -> tuple[K, Node.Output]:
+    def output(self, tnode: tuple[K, Node], output: str) -> tuple[K, Output]:
         k, node = tnode
         return (k, node.get_output(output))
 
     def graph(
-        self, graph: Graph, sinks: list[tuple[K, Sink]]
+        self, graph: Graph, sinks: list[tuple[K, Node]]
     ) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
         for k, sink in sinks:
             self.sinks.setdefault(k, []).append(sink)
         return {k: Graph(s) for k, s in self.sinks.items()}, self.cuts
 
-    def cut_edge(self, cut: CutEdge[K], sink_in: Node.Output) -> tuple[Sink, Source]:
+    def cut_edge(self, cut: CutEdge[K], sink_in: Output) -> tuple[Node, Node]:
         """Create nodes to replace a cut edge
 
         Parameters
@@ -86,12 +86,12 @@ class Splitter(Transformer, Generic[K]):
 
         Returns
         -------
-        Sink
+        Node
             Sink to replace the start of the edge
-        Source
+        Node
             Source to replace the end of the edge
         """
-        return Sink(cut.name, input=sink_in), Source(cut.name)
+        return Node(cut.name, outputs=[], input=sink_in), Node(cut.name)
 
 
 SplitterType = Callable[[KeyFunc[K]], Splitter[K]]

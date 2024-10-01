@@ -1,13 +1,15 @@
-from cascade.graph import Node, Processor, Sink, fuse_nodes, serialise
+from typing import Any
+
+from cascade.graph import Node, fuse_nodes, serialise
 from cascade.graph.samplegraphs import comb, linear
 
 D = Node.DEFAULT_OUTPUT
 
 
 def fuse_linear(parent: Node, pout: str, child: Node, cin: str) -> Node | None:
-    if not isinstance(parent, Processor):
+    if not parent.is_processor():
         return None
-    if not isinstance(child, Processor):
+    if not child.is_processor():
         return None
     if pout != D:
         return None
@@ -22,7 +24,7 @@ def fuse_linear(parent: Node, pout: str, child: Node, cin: str) -> Node | None:
         payload.extend(parent.payload)
     payload.append(child.name)
     print(f"Fuse {parent.name} ({parent.payload}) with {child.name} -> {payload}")
-    return Processor(
+    return Node(
         f"{parent.name}+{child.name}", child.outputs, payload=payload, **parent.inputs
     )
 
@@ -49,11 +51,11 @@ def fuse_accum(parent: Node, pout: str, child: Node, cin: str) -> Node | None:
         return None
     if len(child.inputs) != 2:
         return None
-    joined = []
+    joined: list[Any] = []
     joined.extend(parent.inputs.values())
     joined.extend(isrc for iname, isrc in child.inputs.items() if iname != cin)
     inputs = {f"input{i}": src for i, src in enumerate(joined)}
-    return Processor(f"accum-{len(joined)}", child.outputs, **inputs)
+    return Node(f"accum-{len(joined)}", child.outputs, **inputs)
 
 
 def test_fuse_comb():
@@ -73,7 +75,7 @@ def test_fuse_comb():
 def test_nofuse_comb():
     N = 8
     g = comb(N)
-    g.sinks.append(Sink("writer-1", input=g.get_node("join-2")))
+    g.sinks.append(Node("writer-1", outputs=[], input=g.get_node("join-2")))
     gf = fuse_nodes(fuse_accum, g)
     assert serialise(gf) == {
         **{f"reader-{i}": {"inputs": {}, "outputs": [D]} for i in range(N)},

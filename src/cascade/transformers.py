@@ -2,7 +2,7 @@ from typing import Callable
 
 from dask.utils import apply
 
-from .graph import Graph, Node, Sink, Transformer
+from .graph import Graph, Node, Output, Transformer
 from .taskgraph import ExecutionGraph, Resources, Task, TaskGraph
 
 
@@ -10,13 +10,13 @@ class _ToTaskGraph(Transformer):
     def __init__(self, resource_map: dict[str, Resources]):
         self.resource_map = resource_map
 
-    def node(self, node: Node, **inputs: Node.Output) -> Task:
+    def node(self, node: Node, **inputs: Output) -> Task:
         newnode = Task(node.name, node.outputs.copy(), node.payload)
         newnode.inputs = inputs
         newnode.resources = self.resource_map.get(node.name, Resources())
         return newnode
 
-    def graph(self, graph: Graph, sinks: list[Sink]) -> TaskGraph:
+    def graph(self, graph: Graph, sinks: list[Node]) -> TaskGraph:
         return TaskGraph(sinks)
 
 
@@ -39,7 +39,7 @@ class _ToExecutionGraph(Transformer):
     def __init__(self, state: Callable | None = None):
         self.state = state
 
-    def node(self, node: Node, **inputs: Node.Output) -> Task:
+    def node(self, node: Node, **inputs: Output) -> Task:
         newnode = Task(node.name, node.outputs.copy(), node.payload)
         if isinstance(node, Task):
             newnode.resources = node.resources
@@ -47,7 +47,7 @@ class _ToExecutionGraph(Transformer):
         newnode.state = self.state() if self.state is not None else None
         return newnode
 
-    def graph(self, graph: Graph, sinks: list[Sink]) -> ExecutionGraph:
+    def graph(self, graph: Graph, sinks: list[Node]) -> ExecutionGraph:
         return ExecutionGraph(sinks)
 
 
@@ -56,7 +56,7 @@ def to_execution_graph(graph: Graph, state: Callable | None = None) -> Execution
 
 
 class _ToDaskGraph(Transformer):
-    def node(self, node: Node, **inputs: Node.Output) -> Node:
+    def node(self, node: Node, **inputs: Output) -> Node:
         new_payload = list(node.payload)
         new_payload[1] = list(new_payload[1])
         for input_name, input in inputs.items():
@@ -68,7 +68,7 @@ class _ToDaskGraph(Transformer):
 
         return newnode
 
-    def graph(self, graph: Graph, sinks: list[Sink]) -> dict:
+    def graph(self, graph: Graph, sinks: list[Node]) -> dict:
         new_graph = Graph(sinks)
         ret = {}
         new_nodes = list(new_graph.nodes(forwards=True))

@@ -1,9 +1,8 @@
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:  # pragma: no cover
-    from .graph import Graph
-
-from .nodes import Node, Processor, Sink, Source
+from cascade.graph.graph import Graph
+from cascade.graph.nodes import Node, Output
+from cascade.graph.visit import node_visit
 
 
 class Transformer:
@@ -42,7 +41,7 @@ class Transformer:
     The return value of this step is the return value of ``transform``.
     """
 
-    def transform(self, graph: "Graph") -> Any:
+    def transform(self, graph: Graph) -> Any:
         """Apply the transformation to the given graph
 
         See ``Transformer`` for details."""
@@ -76,18 +75,9 @@ class Transformer:
         return self.__transform_graph(graph, [done[onode] for onode in graph.sinks])
 
     def __transform(self, node: Node, inputs: dict[str, Any]) -> Any:
-        if isinstance(node, Source) and hasattr(self, "source"):
-            return self.source(node)
-        if isinstance(node, Sink) and hasattr(self, "sink"):
-            return self.sink(node, **inputs)
-        if isinstance(node, Processor) and hasattr(self, "processor"):
-            return self.processor(node, **inputs)
-        if isinstance(node, Node) and hasattr(self, "node"):
-            return self.node(node, **inputs)
-        assert isinstance(node, (Node, Sink, Processor, Source))
-        return node
+        return node_visit(self, node, inputs)
 
-    def __transform_output(self, node: Any, output: Node.Output) -> Any:
+    def __transform_output(self, node: Any, output: Output) -> Any:
         if hasattr(self, "output"):
             return self.output(node, output.name)
         if isinstance(node, dict):
@@ -97,7 +87,7 @@ class Transformer:
         except AttributeError:
             return (node, output)
 
-    def __transform_graph(self, graph: "Graph", sinks: list) -> Any:
+    def __transform_graph(self, graph: Graph, sinks: list[dict[str, Any]]) -> Any:
         if hasattr(self, "graph"):
             return self.graph(graph, sinks)
         return sinks

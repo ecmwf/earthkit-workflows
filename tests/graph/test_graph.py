@@ -2,7 +2,7 @@ import codecs
 
 import pytest
 
-from cascade.graph import Graph, Node, Processor, Sink, Source, Transformer
+from cascade.graph import Graph, Node, Output, Transformer
 from cascade.graph.samplegraphs import disconnected, empty, linear, multi
 
 D = Node.DEFAULT_OUTPUT
@@ -59,29 +59,30 @@ class NameMangler(Transformer):
     def mangle_input(self, iname: str) -> str:
         return self.mangle(iname) if self.mangle_inputs else iname
 
-    def source(self, source: Source) -> Source:
-        return Source(
+    def source(self, source: Node) -> Node:
+        return Node(
             self.mangle_name(source.name),
             [self.mangle_output(out) for out in source.outputs],
         )
 
-    def processor(self, processor: Processor, **inputs: Node.Output) -> Processor:
-        return Processor(
+    def processor(self, processor: Node, **inputs: Output) -> Node:
+        return Node(
             self.mangle_name(processor.name),
             [self.mangle_output(out) for out in processor.outputs],
             **{self.mangle_input(iname): isrc for iname, isrc in inputs.items()},
         )
 
-    def sink(self, sink: Sink, **inputs: Node.Output) -> Sink:
-        return Sink(
+    def sink(self, sink: Node, **inputs: Output) -> Node:
+        return Node(
             self.mangle_name(sink.name),
+            outputs=[],
             **{self.mangle_input(iname): isrc for iname, isrc in inputs.items()},
         )
 
-    def output(self, node: Node, name: str) -> Node.Output:
-        return Node.Output(node, self.mangle_output(name))
+    def output(self, node: Node, name: str) -> Output:
+        return Output(node, self.mangle_output(name))
 
-    def graph(self, graph: Graph, sinks: list[Sink]):
+    def graph(self, graph: Graph, sinks: list[Node]):
         return Graph(sinks)
 
 
@@ -120,23 +121,23 @@ def test_neq_outmangled():
 
 
 def test_neq_outrenamed():
-    r = Source("reader", outputs=["foo", "bar"])
-    w = Sink("writer", input1=r.foo, input2=r.bar)
+    r = Node("reader", outputs=["foo", "bar"])
+    w = Node("writer", outputs=[], input1=r.foo, input2=r.bar)
     g1 = Graph([w])
     foom = NameMangler.mangle("foo")
-    rm = Source("reader", outputs=[foom, "bar"])
-    wm = Sink("writer", input1=rm.get_output(foom), input2=rm.bar)
+    rm = Node("reader", outputs=[foom, "bar"])
+    wm = Node("writer", outputs=[], input1=rm.get_output(foom), input2=rm.bar)
     g2 = Graph([wm])
     assert g1 != g2
     assert not (g1 == g2)
 
 
 def test_neq_payload():
-    r = Source("reader", outputs=["foo", "bar"])
-    w = Sink("writer", input1=r.foo, input2=r.bar)
+    r = Node("reader", outputs=["foo", "bar"])
+    w = Node("writer", outputs=[], input1=r.foo, input2=r.bar)
     g1 = Graph([w])
-    rp = Source("reader", outputs=["foo", "bar"], payload="Hello")
-    wp = Sink("writer", input1=rp.foo, input2=rp.bar)
+    rp = Node("reader", outputs=["foo", "bar"], payload="Hello")
+    wp = Node("writer", outputs=[], input1=rp.foo, input2=rp.bar)
     g2 = Graph([wp])
     assert g1 != g2
     assert not (g1 == g2)
@@ -145,9 +146,9 @@ def test_neq_payload():
 def test_add():
     graphs = []
     for i in range(7):
-        r = Source(f"reader-{i}")
-        p = Processor(f"process-{i}", input=r)
-        w = Sink(f"writer-{i}", input=p)
+        r = Node(f"reader-{i}")
+        p = Node(f"process-{i}", input=r)
+        w = Node(f"writer-{i}", outputs=[], input=p)
         graphs.append(Graph([w]))
     j1 = graphs[0] + graphs[1]
     assert j1 == disconnected(2)

@@ -1,15 +1,15 @@
-from .graph import Graph
-from .nodes import Node, Sink
-from .transform import Transformer
+from cascade.graph.graph import Graph
+from cascade.graph.nodes import Node, Output
+from cascade.graph.transform import Transformer
 
 
 class _Copier(Transformer):
-    def node(self, node: Node, **inputs: Node.Output) -> Node:
+    def node(self, node: Node, **inputs: Output) -> Node:
         newnode = node.copy()
         newnode.inputs = inputs
         return newnode
 
-    def graph(self, graph: Graph, sinks: list[Sink]) -> Graph:
+    def graph(self, graph: Graph, sinks: list[Node]) -> Graph:
         return Graph(sinks)
 
 
