@@ -1,17 +1,12 @@
-from dask.distributed import Client, LocalCluster
+from dask.distributed import LocalCluster
 from dask.threaded import get
 
+from cascade.controller.api import PurgingPolicy
+from cascade.controller.dask_delayed import job2delayed
+from cascade.controller.dask_futures import DaskFuturisticExecutor
+from cascade.controller.impl import CascadeController
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import (
-    Environment,
-    Host,
-    JobInstance,
-    Task2TaskEdge,
-    TaskDefinition,
-    TaskInstance,
-)
-from cascade.low.delayed import job2delayed
-from cascade.low.futures import execute_via_futures
+from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
 from cascade.low.scheduler import schedule
 
 # TODO instead of every process launching its own cluster, introduce some global fixture or smth like that
@@ -57,11 +52,13 @@ def test_linear():
     assert expected == get(delayed, "b")
 
     # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
-    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=":0")
-    env = Environment(hosts={w: Host(memory_mb=1) for w in cluster.workers})
-    sched = schedule(job, env).get_or_raise()
-    result = execute_via_futures(job, sched, ("b", "o"), Client(cluster))
-    assert expected == result
+    with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
+        executor = DaskFuturisticExecutor(cluster)
+        sched = schedule(job, executor.get_environment()).get_or_raise()
+        CascadeController().submit(job, sched, executor, PurgingPolicy())
+        result = executor.fetch_as_value("b", "o")
+        executor.purge("b", "o")
+        assert expected == result
 
 
 def test_builders():
@@ -92,8 +89,10 @@ def test_builders():
     assert expected == get(delayed, "task2")
 
     # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
-    cluster = LocalCluster(n_workers=1, processes=True, dashboard_address=":0")
-    env = Environment(hosts={w: Host(memory_mb=1) for w in cluster.workers})
-    sched = schedule(job, env).get_or_raise()
-    result = execute_via_futures(job, sched, ("task2", "__default__"), Client(cluster))
-    assert expected == result
+    with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
+        executor = DaskFuturisticExecutor(cluster)
+        sched = schedule(job, executor.get_environment()).get_or_raise()
+        CascadeController().submit(job, sched, executor, PurgingPolicy())
+        result = executor.fetch_as_value("task2", "__default__")
+        executor.purge("task2", "__default__")
+        assert expected == result

@@ -26,3 +26,11 @@ def param_source(
                 sink_input = e.sink_input_ps
         rv[e.sink_task][sink_input] = (e.source_task, e.source_output)
     return rv
+
+
+def dependants(edges: list[Task2TaskEdge]) -> dict[tuple[str, str], set[str]]:
+    """Returns map[(source_task, source_output)] = set(sink_task)"""
+    rv: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for e in edges:
+        rv[(e.source_task, e.source_output)].add(e.sink_task)
+    return rv
