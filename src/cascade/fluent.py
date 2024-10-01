@@ -1,8 +1,7 @@
 import copy
 import functools
 import hashlib
-import warnings
-from typing import Any, Callable, Hashable, Iterable, Sequence
+from typing import Any, Callable, Hashable, Iterable, Self, Sequence
 
 import numpy as np
 import xarray as xr
@@ -10,8 +9,6 @@ import xarray as xr
 from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
-
-REGISTRY: dict[str, "Action"] = {}
 
 
 class Payload:
@@ -142,6 +139,9 @@ class Node(BaseNode):
 
 
 class Action:
+
+    REGISTRY: dict[str, Self] = {}
+
     def __init__(self, nodes: xr.DataArray):
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
@@ -160,10 +160,47 @@ class Action:
             sinks[index].outputs = []  # Ensures they are recognised as sinks
         return Graph(sinks)
 
+    @classmethod
+    def register(cls, name: str, obj: type[Self]):
+        """Register an Action class under `name`
+
+        Will be accessible from the fluent API as `Action().<name>`
+
+        Parameters
+        ----------
+        name : str
+            Name to register Action under
+        obj : type[Self]
+            Action class to register
+
+        Raises
+        ------
+        ValueError
+            If `name` is an attr on `obj` or `name` is already registered
+        """
+
+        if not issubclass(obj, Action):
+            raise TypeError(f"obj must be a type of Action, not {type(obj)}")
+
+        if name in cls.REGISTRY:
+            raise ValueError(f"{name} already registered, will not override")
+
+        if hasattr(obj, name):
+            raise ValueError(
+                f"Action class {obj} already has an attribute {name}, will not override"
+            )
+
+        cls.REGISTRY[name] = obj
+
+    @classmethod
+    def flush_registry(cls):
+        """Flush the registry of all registered actions"""
+        cls.REGISTRY = {}
+
     def __getattr__(self, attr):
-        if attr in REGISTRY:
+        if attr in Action.REGISTRY:
             return RegisteredAction(
-                attr, REGISTRY[attr], self
+                attr, Action.REGISTRY[attr], self
             )  # When the attr is a registered action class
         raise AttributeError(f"{self.__class__.__name__} has no attribute {attr!r}")
 
@@ -710,45 +747,6 @@ class RegisteredAction:
         return f"{self._name!r} registered action at {self._obj.__name__}"
 
 
-def register(name: str, obj: type[Action]):
-    """Register an Action class under `name`
-
-    Will be accessible from the fluent API as `Action().<name>`
-
-    Parameters
-    ----------
-    name : str
-        Name to register Action under
-    obj : type[Action]
-        Action class to register
-
-    Raises
-    ------
-    ValueError
-        If `name` is an attr on `obj`
-    """
-
-    if not isinstance(obj, type):
-        raise TypeError(f"obj must be a type of Action, not {type(obj)}")
-
-    if name in REGISTRY:
-        warnings.warn(f"{name} already registered, will not override")
-        return
-
-    if hasattr(obj, name):
-        raise ValueError(
-            f"Action class {obj} already has an attribute {name}, will not override"
-        )
-
-    REGISTRY[name] = obj
-
-
-def flush_registry():
-    """Flush the registry of all registered actions"""
-    global REGISTRY
-    REGISTRY = {}
-
-
 def _batch_transform(
     action: Action, selection: dict, payload: Callable | Payload
 ) -> Action:
@@ -826,13 +824,11 @@ def from_source(
     )
 
 
-register("default", Action)
+Action.register("default", Action)
 
 __all__ = [
     "Action",
     "Payload",
     "Node",
-    "register",
-    "flush_registry",
     "from_source",
 ]
