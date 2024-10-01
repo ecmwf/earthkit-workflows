@@ -1,6 +1,8 @@
 """
-Adapter of the core graph definition into execution via Dask Delayed
+Controller-less execution, via Dask Delayed
 """
+
+# TODO move to cascade.executor, or cascade-dask package
 
 import importlib
 from typing import Any, Callable
