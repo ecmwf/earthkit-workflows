@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import copy
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Self, Sequence
+from typing import Any, Callable, Hashable, Iterable, Sequence
 
 import numpy as np
 import xarray as xr
@@ -140,7 +142,7 @@ class Node(BaseNode):
 
 class Action:
 
-    REGISTRY: dict[str, Self] = {}
+    REGISTRY: dict[str, Action] = {}
 
     def __init__(self, nodes: xr.DataArray):
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
@@ -161,7 +163,7 @@ class Action:
         return Graph(sinks)
 
     @classmethod
-    def register(cls, name: str, obj: type[Self]):
+    def register(cls, name: str, obj: type[Action]):
         """Register an Action class under `name`
 
         Will be accessible from the fluent API as `Action().<name>`
@@ -170,7 +172,7 @@ class Action:
         ----------
         name : str
             Name to register Action under
-        obj : type[Self]
+        obj : type[Action]
             Action class to register
 
         Raises
