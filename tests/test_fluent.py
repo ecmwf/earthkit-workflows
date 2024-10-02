@@ -5,15 +5,7 @@ import numpy as np
 import pytest
 from helpers import mock_action
 
-from cascade.fluent import (
-    Action,
-    Node,
-    Payload,
-    custom_hash,
-    flush_registry,
-    from_source,
-    register,
-)
+from cascade.fluent import Action, Node, Payload, custom_hash, from_source
 from cascade.graph import deserialise, serialise
 
 
@@ -242,7 +234,7 @@ def test_serialisation(tmpdir, task_graph):
 
 def test_invalid_registration():
     with pytest.raises(TypeError):
-        register("test", None)
+        Action.register("test", None)
 
 
 def test_registration():
@@ -252,18 +244,18 @@ def test_registration():
         def test_function(self):
             return self
 
-    register("test", TestingAction)
+    Action.register("test", TestingAction)
     assert hasattr(action, "test")
     assert hasattr(action.test, "test_function")
 
 
 def test_dual_registration():
-    flush_registry()
+    Action.flush_registry()
 
     class TestingAction(Action):
         def test_function(self):
             return self
 
-    register("test", TestingAction)
+    Action.register("test", TestingAction)
     with pytest.raises(ValueError):
-        register("test", TestingAction)
+        Action.register("test", TestingAction)
