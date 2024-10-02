@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 def _task2executable(
-    name: str, task: TaskInstance, input2source: dict[int | str, tuple[str, str]]
+    name: str,
+    task: TaskInstance,
+    job: JobInstance,
+    input2source: dict[int | str, tuple[str, str]],
 ) -> ExecutableTaskInstance:
     return ExecutableTaskInstance(
         task=task,
@@ -34,6 +37,7 @@ def _task2executable(
                 sourceOutput=v[1],
                 intoKwarg=k if isinstance(k, str) else None,
                 intoPosition=k if isinstance(k, int) else None,
+                annotation=job.tasks[v[0]].definition.output_schema[v[1]],
             )
             for k, v in input2source.items()
         ],
@@ -48,7 +52,7 @@ def _submit(
 ) -> None:
     task_param_sources = param_source(job.edges)
     executable_tasks = {
-        task: _task2executable(task, instance, task_param_sources[task])
+        task: _task2executable(task, instance, job, task_param_sources[task])
         for task, instance in job.tasks.items()
     }
     id2task: dict[str, str] = {}

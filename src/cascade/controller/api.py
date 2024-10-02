@@ -28,6 +28,7 @@ class VariableWiring:
     sourceOutput: str
     intoKwarg: Optional[str]
     intoPosition: Optional[int]
+    annotation: str
 
 
 @dataclass

@@ -1,7 +1,7 @@
 from dask.threaded import get
 
+from cascade.controller.dask_delayed import job2delayed
 from cascade.graph.samplegraphs import linear
-from cascade.low.delayed import job2delayed
 from cascade.low.into import graph2job
 
 
