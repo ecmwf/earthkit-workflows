@@ -737,16 +737,27 @@ class Action:
 class RegisteredAction:
     """Wrapper around registered actions"""
 
-    def __init__(self, name: str, obj: Action, root_self: Action) -> None:
+    def __init__(self, name: str, action: type[Action], root_action: Action) -> None:
         self._name = name
-        self._obj = obj
-        self._root_self = root_self
+        self.action = action
+        self.root_action = root_action
 
     def __getattr__(self, func):
-        return functools.partial(getattr(self._obj, func), self._root_self)
+        if not hasattr(self.action, func):
+            raise AttributeError(f"{self.action.__name__} has no attribute {func!r}")
+
+        def cast(origin_action: Action, new_action: type[Action]):
+            return new_action(origin_action.nodes)
+
+        @functools.wraps(getattr(self.action, func))
+        def return_cast(*args, **kwargs):
+            result = getattr(cast(self.root_action, self.action), func)(*args, **kwargs)
+            return cast(result, self.root_action.__class__)
+
+        return return_cast
 
     def __repr__(self):
-        return f"{self._name!r} registered action at {self._obj.__name__}"
+        return f"Registered action: {self._name!r} at {self.action.__qualname__}"
 
 
 def _batch_transform(
