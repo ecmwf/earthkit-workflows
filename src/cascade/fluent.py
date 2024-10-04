@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import functools
 import hashlib
@@ -139,6 +141,9 @@ class Node(BaseNode):
 
 
 class Action:
+
+    REGISTRY: dict[str, Action] = {}
+
     def __init__(self, nodes: xr.DataArray):
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
@@ -157,18 +162,49 @@ class Action:
             sinks[index].outputs = []  # Ensures they are recognised as sinks
         return Graph(sinks)
 
-    def switch(self, action: "Action") -> "Action":
-        """Switch Action class
+    @classmethod
+    def register(cls, name: str, obj: type[Action]):
+        """Register an Action class under `name`
+
+        Will be accessible from the fluent API as `Action().<name>`
 
         Parameters
         ----------
-        action: Action class to switch to
+        name : str
+            Name to register Action under
+        obj : type[Action]
+            Action class to register
 
-        Returns
-        -------
-        Action
+        Raises
+        ------
+        ValueError
+            If `name` is an attr on `obj` or `name` is already registered
         """
-        return action(self.nodes)
+
+        if not issubclass(obj, Action):
+            raise TypeError(f"obj must be a type of Action, not {type(obj)}")
+
+        if name in cls.REGISTRY:
+            raise ValueError(f"{name} already registered, will not override")
+
+        if hasattr(obj, name):
+            raise ValueError(
+                f"Action class {obj} already has an attribute {name}, will not override"
+            )
+
+        cls.REGISTRY[name] = obj
+
+    @classmethod
+    def flush_registry(cls):
+        """Flush the registry of all registered actions"""
+        cls.REGISTRY = {}
+
+    def __getattr__(self, attr):
+        if attr in Action.REGISTRY:
+            return RegisteredAction(
+                attr, Action.REGISTRY[attr], self
+            )  # When the attr is a registered action class
+        raise AttributeError(f"{self.__class__.__name__} has no attribute {attr!r}")
 
     def join(
         self,
@@ -698,6 +734,32 @@ class Action:
         return self.nodes.sel(**criteria, drop=True).data[()]
 
 
+class RegisteredAction:
+    """Wrapper around registered actions"""
+
+    def __init__(self, name: str, action: type[Action], root_action: Action) -> None:
+        self._name = name
+        self.action = action
+        self.root_action = root_action
+
+    def __getattr__(self, func):
+        if not hasattr(self.action, func):
+            raise AttributeError(f"{self.action.__name__} has no attribute {func!r}")
+
+        def cast(origin_action: Action, new_action: type[Action]):
+            return new_action(origin_action.nodes)
+
+        @functools.wraps(getattr(self.action, func))
+        def return_cast(*args, **kwargs):
+            result = getattr(cast(self.root_action, self.action), func)(*args, **kwargs)
+            return cast(result, self.root_action.__class__)
+
+        return return_cast
+
+    def __repr__(self):
+        return f"Registered action: {self._name!r} at {self.action.__qualname__}"
+
+
 def _batch_transform(
     action: Action, selection: dict, payload: Callable | Payload
 ) -> Action:
@@ -773,3 +835,13 @@ def from_source(
             coords=payloads.coords,
         ),
     )
+
+
+Action.register("default", Action)
+
+__all__ = [
+    "Action",
+    "Payload",
+    "Node",
+    "from_source",
+]
