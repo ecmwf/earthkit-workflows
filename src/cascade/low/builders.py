@@ -113,6 +113,7 @@ class JobBuilder:
         # edge correctness
         def get_edge_errors(edge: Task2TaskEdge) -> Iterator[str]:
             source_task = self.nodes.get(edge.source_task, None)
+            output_param = None
             if not source_task:
                 yield f"edge pointing from non-existent task {edge.source_task}"
             else:

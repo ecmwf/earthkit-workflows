@@ -6,3 +6,6 @@ Used to stabilise contract between Cascade graphs and Schedulers and Executors.
 Works on atomic level: a single callable with all necessary information to be
 executed in an isolated process.
 """
+
+# TODO separate the scheduler/execution related concepts from core and schedule
+# into a dedicated (sub)module

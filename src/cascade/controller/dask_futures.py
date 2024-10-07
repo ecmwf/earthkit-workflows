@@ -92,7 +92,10 @@ class DaskFuturisticExecutor:
     def get_environment(self) -> Environment:
         # TODO utilize self.client.benchmark_hardware() or access the worker mem specs
         return Environment(
-            hosts={_worker_id_from(w): Host(memory_mb=1) for w in self.cluster.workers}
+            hosts={
+                _worker_id_from(w): Host(memory_mb=1, cpu=1, gpu=0)
+                for w in self.cluster.workers
+            }
         )
 
     def run_at(self, task: ExecutableTaskInstance, host: str) -> str:

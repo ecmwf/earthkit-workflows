@@ -3,6 +3,7 @@ Core graph data structures -- prescribes most of the API
 """
 
 from base64 import b64decode, b64encode
+from collections import defaultdict
 from typing import Any, Callable, Optional, cast
 
 import cloudpickle
@@ -75,7 +76,9 @@ class JobInstance(BaseModel):
 
 # Execution
 class Host(BaseModel):
-    # NOTE missing: cpu, gpu
+    # NOTE we may want to extend cpu/gpu over time with more rich information
+    cpu: int
+    gpu: int
     memory_mb: int
 
 
@@ -84,5 +87,36 @@ class Environment(BaseModel):
     hosts: dict[str, Host]
 
 
+class TaskExecutionRecord(BaseModel):
+    # NOTE rather crude -- we may want to granularize cpuseconds
+    cpuseconds: int = Field(
+        description="as measured from process start to process end, assuming full cpu util"
+    )
+    memory_mb: int = Field(
+        description="observed rss peak held by the process minus sizes of shared memory inputs"
+    )
+
+
+# possibly made configurable, overridable -- quite job dependent
+no_record_ts = TaskExecutionRecord(cpuseconds=1, memory_mb=1)
+no_record_ds = 1
+
+
+class JobExecutionRecord(BaseModel):
+    tasks: dict[str, TaskExecutionRecord] = Field(
+        default_factory=lambda: defaultdict(lambda: no_record_ts)
+    )
+    datasets_mb: dict[tuple[str, str], int] = Field(
+        default_factory=lambda: defaultdict(lambda: no_record_ds)
+    )  # keyed by (task, output)
+
+    # TODO extend this with some approximation/default from TaskInstance only
+
+
 class Schedule(BaseModel):
     host_task_queues: dict[str, list[str]]
+    unallocated: set[str] = Field(default_factory=set)
+
+    @classmethod
+    def empty(cls):
+        return cls(host_task_queues=defaultdict(list))
