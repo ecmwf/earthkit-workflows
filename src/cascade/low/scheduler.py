@@ -2,17 +2,26 @@
 TODO replace with adapter to cascade.schedulers
 """
 
+import logging
 from collections import defaultdict
 from typing import Optional
 
-from cascade.low.core import Environment, JobInstance, Schedule
+from cascade.low.core import Environment, JobExecutionRecord, JobInstance, Schedule
 from cascade.low.func import Either
 from cascade.low.views import param_source
 
+logger = logging.getLogger(__name__)
+
 
 def schedule(
-    job_instance: JobInstance, environment: Environment
+    job_instance: JobInstance,
+    environment: Environment,
+    execution_record: JobExecutionRecord | None = None,
 ) -> Either[Schedule, str]:
+    if execution_record is not None:
+        logger.warning(
+            "received execution record for schedule calculation, but not supported yet"
+        )
     # simplest impl: assign all to first host to produce *a* viable schedule. To be dropped soon
     if not environment.hosts:
         return Either.error("no hosts given")

@@ -75,13 +75,30 @@ class JobInstance(BaseModel):
 
 # Execution
 class Host(BaseModel):
-    # NOTE missing: cpu, gpu
+    # NOTE we may want to extend cpu/gpu over time with more rich information
+    cpu: int
+    gpu: int
     memory_mb: int
 
 
 class Environment(BaseModel):
     # NOTE missing: comm speed etc
     hosts: dict[str, Host]
+
+
+class TaskExecutionRecord(BaseModel):
+    # NOTE rather crude -- we may want to granularize cpuseconds
+    cpuseconds: int = Field(
+        description="as measured from process start to process end, assuming full cpu util"
+    )
+    memory_mb: int = Field(
+        description="observed rss peak held by the process minus sizes of shared memory inputs"
+    )
+
+
+class JobExecutionRecord(BaseModel):
+    tasks: dict[str, TaskExecutionRecord]
+    datasets_mb: dict[tuple[str, str], int]  # keyed by (task, output)
 
 
 class Schedule(BaseModel):
