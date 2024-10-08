@@ -76,7 +76,8 @@ def _submit(
             ):
                 completed = host_ongoing[host].pop(0)
                 logger.debug(f"finished {completed} on {host}")
-                for v in task_param_sources[id2task[completed]].values():
+                # NOTE we need the `set`, because a task can use the same input twice
+                for v in set(task_param_sources[id2task[completed]].values()):
                     output_dependants[v].remove(id2task[completed])
                     if not output_dependants[v]:
                         logger.debug(f"{v} not needed, purging")

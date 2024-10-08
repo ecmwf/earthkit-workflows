@@ -29,6 +29,7 @@ class HostState:
         self.host = host
         self.record = record
         self.task_inputs: dict[str, set[tuple[str, str]]] = {}
+        self.mem_record = 0
 
     def runnable_tasks(self) -> set[str]:
         logger.debug(
@@ -47,6 +48,8 @@ class HostState:
         consumed_ds = sum((self.record.datasets_mb[e] for e in self.datasets), 0)
         runnable = self.runnable_tasks()
         consumed_ts = sum((self.record.tasks[k].memory_mb for k in runnable), 0)
+        if consumed_ds + consumed_ts > self.mem_record:
+            self.mem_record = consumed_ds + consumed_ts
         return self.host.memory_mb - consumed_ds - consumed_ts
 
     def progress_seconds(self, seconds: int) -> set[str]:
