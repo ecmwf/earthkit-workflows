@@ -3,9 +3,9 @@ Implements the canonical cascade controller
 """
 
 # TODO major improvements
-# - scatter variables to the workers that will need them
+# - scatter variables to the workers that will need them, adapt accordingly purging policy
 # - support for multiple outputs / generators per task
-# - control precisely which futures to launch already -- currently we just throw in first 2 in the queue per host
+# - control precisely which futures to launch already -- currently we just throw in first in the queue per host
 # - handle failed states, restarts, etc
 
 import logging
@@ -60,9 +60,12 @@ def _submit(
     output_dependants: dict[tuple[str, str], set[str]] = {}
     if purging_policy.eager:
         output_dependants = {
-            k: v
+            (h, k): {e for e in v if e in schedule.host_task_queues[h]}
+            for h in schedule.host_task_queues.keys()
             for k, v in dependants(job.edges).items()
-            if v and k not in purging_policy.preserve
+            if v
+            and k not in purging_policy.preserve
+            and k[0] in schedule.host_task_queues[h]
         }
     host_ongoing: dict[str, list[str]] = {
         host: [] for host in schedule.host_task_queues.keys()
@@ -78,11 +81,14 @@ def _submit(
                 logger.debug(f"finished {completed} on {host}")
                 # NOTE we need the `set`, because a task can use the same input twice
                 for v in set(task_param_sources[id2task[completed]].values()):
-                    output_dependants[v].remove(id2task[completed])
-                    if not output_dependants[v]:
+                    logger.debug(
+                        f"about to check purging: {host=}, {v=}, {output_dependants=}, {id2task=}"
+                    )
+                    output_dependants[(host, v)].remove(id2task[completed])
+                    if not output_dependants[(host, v)]:
                         logger.debug(f"{v} not needed, purging")
-                        executor.purge(v[0], v[1])
-            while len(host_ongoing[host]) < 2 and len(host_remaining[host]) > 0:
+                        executor.purge(v[0], v[1], {host})
+            while len(host_ongoing[host]) < 1 and len(host_remaining[host]) > 0:
                 nextTaskName = host_remaining[host].pop(0)
                 nextTask = executable_tasks[nextTaskName]
                 logger.debug(f"submitting {nextTask} on worker {host}")
@@ -91,7 +97,7 @@ def _submit(
                 id2task[nextTaskId] = nextTaskName
         ongoing = set(fut for futs in host_ongoing.values() for fut in futs)
         if len(ongoing) > 0:
-            logger.debug(f"awaiting on {len(ongoing)} futures")
+            logger.debug(f"awaiting on {len(ongoing)} futures {ongoing}")
             executor.wait_some(ongoing)
         else:
             logger.debug("nothing runnin, breaking")

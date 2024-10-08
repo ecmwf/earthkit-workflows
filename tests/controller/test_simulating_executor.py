@@ -58,16 +58,12 @@ def test_simple():
     controller.submit(job, sched_ok, executor_ok, policy)
     assert isclose(executor_ok.total_time_secs, 10 / 2 + 10 / 2)
 
-    with pytest.raises(
-        ValueError, match=r"host run out of memory by 1 after having finished {'task1'}"
-    ):
+    with pytest.raises(ValueError, match=r"host run out of memory by 1"):
         executor_bad1 = SimulatingExecutor(env, record_bad1)
         sched_bad1 = schedule(job, executor_bad1.get_environment()).get_or_raise()
         controller.submit(job, sched_bad1, executor_bad1, policy)
 
-    with pytest.raises(
-        ValueError, match=r"host run out of memory by 1 after having finished {'task1'}"
-    ):
+    with pytest.raises(ValueError, match=r"host run out of memory by 1"):
         executor_bad2 = SimulatingExecutor(env, record_bad2)
         sched_bad2 = schedule(job, executor_bad2.get_environment()).get_or_raise()
         controller.submit(job, sched_bad2, executor_bad2, policy)

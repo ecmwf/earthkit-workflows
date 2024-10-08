@@ -70,15 +70,14 @@ def add_postproc(
             )
             builder.job = builder.job.with_edge("source", node, "b")
         else:
+            e1 = f"pproc{from_layer}-{(i+131)%builder.layers[from_layer]}"
+            e2 = f"pproc{from_layer}-{(i+53)%builder.layers[from_layer]}"
             builder.job = builder.job.with_node(
                 node, TaskBuilder.from_callable(mapDiad)
             )
-            builder.job = builder.job.with_edge(
-                f"pproc{from_layer}-{(i+131)%builder.layers[from_layer]}", node, "a"
-            )
-            builder.job = builder.job.with_edge(
-                f"pproc{from_layer}-{(i+71)%builder.layers[from_layer]}", node, "b"
-            )
+            builder.job = builder.job.with_edge(e1, node, "a")
+            builder.job = builder.job.with_edge(e2, node, "b")
+            # print(f"adding {node} with edges {e1}, {e2}")
         builder.record.tasks[node] = TaskExecutionRecord(
             cpuseconds=runtime, memory_mb=runmem
         )

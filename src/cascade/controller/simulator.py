@@ -32,9 +32,6 @@ class HostState:
         self.mem_record = 0
 
     def runnable_tasks(self) -> set[str]:
-        logger.debug(
-            f"checking for runnable with {self.task_cpusec_remaining=}, {self.datasets=}, {self.task_inputs=}"
-        )
         return {
             k
             for k, v in self.task_cpusec_remaining.items()
@@ -48,18 +45,26 @@ class HostState:
         consumed_ds = sum((self.record.datasets_mb[e] for e in self.datasets), 0)
         runnable = self.runnable_tasks()
         consumed_ts = sum((self.record.tasks[k].memory_mb for k in runnable), 0)
+        logger.debug(
+            f"asking for memory with {self.datasets=} and {runnable=} => {consumed_ds=} + {consumed_ts=}"
+        )
         if consumed_ds + consumed_ts > self.mem_record:
             self.mem_record = consumed_ds + consumed_ts
-        return self.host.memory_mb - consumed_ds - consumed_ts
+            logger.debug(
+                f"peak reached for memory with {self.datasets=} and {runnable=} => {consumed_ds=} + {consumed_ts=}"
+            )
+        if (remaining := self.host.memory_mb - consumed_ds - consumed_ts) < 0:
+            raise ValueError(f"host run out of memory by {-remaining}")
+        return remaining
 
-    def progress_seconds(self, seconds: int) -> set[str]:
+    def progress_seconds(self, seconds: float) -> set[str]:
         runnable = self.runnable_tasks()
-        prog_per_task = (seconds * self.host.cpu) / len(runnable)
-        for e in runnable:
-            self.task_cpusec_remaining[e] -= prog_per_task
         rv = set()
+        if not runnable:
+            return rv
+        prog_per_task = (seconds * self.host.cpu) / len(runnable)
         for t in runnable:
-            if isclose(self.task_cpusec_remaining[t], 0):
+            if isclose(self.task_cpusec_remaining[t], prog_per_task):
                 rv.add(t)
         for t, o in self.record.datasets_mb:
             if t in rv:
@@ -69,10 +74,12 @@ class HostState:
                         o,
                     )
                 )
-        if (overflow := self.remaining_memory_mb()) < 0:
-            raise ValueError(
-                f"host run out of memory by {-overflow} after having finished {rv}"
-            )
+        self.remaining_memory_mb()
+        # NOTE it is important we decrease the cpusec remaining only *after*
+        # we have created the output datasets and checked the remaining memory,
+        # otherwise we would not account for corresponding memory consumption
+        for t in runnable:
+            self.task_cpusec_remaining[t] -= prog_per_task
         return rv
 
     def next_event_in_secs(self) -> float:
@@ -88,7 +95,7 @@ class SimulatingExecutor:
     def __init__(self, env: Environment, record: JobExecutionRecord) -> None:
         self.hosts = {k: HostState(v, record) for k, v in env.hosts.items()}
         self.env = env
-        self.comm_queue: list[tuple[str, str]] = []
+        self.comm_queue: list[str] = []
         self.total_time_secs = 0.0
         self.record = record
 
@@ -99,26 +106,22 @@ class SimulatingExecutor:
         self.hosts[host].task_cpusec_remaining[task.name] = self.record.tasks[
             task.name
         ].cpuseconds
-        if (overflow := self.hosts[host].remaining_memory_mb()) < 0:
-            raise ValueError(
-                f"host {host} run out of memory by {-overflow} when enqueuing task {task.name}"
-            )
+        self.hosts[host].remaining_memory_mb()
         self.hosts[host].task_inputs[task.name] = set(
             (w.sourceTask, w.sourceOutput) for w in task.wirings
         )
-        return task.name
+        return f"{host}-{task.name}"
 
     def scatter(self, taskName: str, outputName: str, hosts: set[str]) -> str:
-        k = (
-            taskName,
-            outputName,
-        )
+        k = f"{taskName}:{outputName}"
         for host in hosts:
-            self.hosts[host].datasets.add(k)
-            if (overflow := self.hosts[host].remaining_memory_mb()) < 0:
-                raise ValueError(
-                    f"host {host} run out of memory by {-overflow} when scattering dataset {taskName}:{outputName}"
+            self.hosts[host].datasets.add(
+                (
+                    taskName,
+                    outputName,
                 )
+            )
+            self.hosts[host].remaining_memory_mb()
         self.comm_queue.append(k)
         return k
 
@@ -143,6 +146,7 @@ class SimulatingExecutor:
         if self.comm_queue:
             rv = {e for e in self.comm_queue}
             self.comm_queue = []
+            logger.debug(f"awaited {rv}")
             return rv
         next_events = [host.next_event_in_secs() for host in self.hosts.values()]
         next_event_at = min(
@@ -151,17 +155,16 @@ class SimulatingExecutor:
         self.total_time_secs += next_event_at
         rv = set()
         for host in self.hosts:
-            rv.update(self.hosts[host].progress_seconds(next_event_at))
+            rv.update(
+                f"{host}-{e}" for e in self.hosts[host].progress_seconds(next_event_at)
+            )
+            self.hosts[host].remaining_memory_mb()
+        logger.debug(f"awaited {rv}")
         return rv
 
     def is_done(self, id_: str) -> bool:
         logger.debug(f"checking for {id_}")
         if id_ in self.comm_queue:
             return True
-        for host in self.hosts:
-            logger.debug(
-                f"checking for {id_} in {host}: {self.hosts[host].task_cpusec_remaining.keys()}"
-            )
-            if id_ in self.hosts[host].task_cpusec_remaining:
-                return isclose(self.hosts[host].task_cpusec_remaining[id_], 0)
-        raise ValueError(f"value {id_} found neither in tasks nor datasets")
+        host, task_name = id_.split("-", 1)
+        return isclose(self.hosts[host].task_cpusec_remaining[task_name], 0)
