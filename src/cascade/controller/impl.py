@@ -3,7 +3,8 @@ Implements the canonical cascade controller
 """
 
 # TODO major improvements
-# - scatter variables to the workers that will need them, adapt accordingly purging policy
+# - smarter scatter -- do beforehand, dictate by scheduler
+# - smarter purges -- per-worker, dictate by scheduler
 # - support for multiple outputs / generators per task
 # - control precisely which futures to launch already -- currently we just throw in first in the queue per host
 # - handle failed states, restarts, etc
@@ -126,6 +127,17 @@ def _submit(
                 environment_state = environment_state.runTaskAt(host, nextTaskName)
                 host_ongoing[host].append(nextTaskId)
                 id2task[nextTaskId] = nextTaskName
+                reqs = {(e.sourceTask, e.sourceOutput) for e in nextTask.wirings}
+                if missing := (reqs - environment_state.ds_of_host(host)):
+                    # TODO this should happen *before* the submit, and be dictated by scheduler
+                    logger.debug(
+                        f"task {nextTaskName} on worker {host} is {missing =}! Scattering."
+                    )
+                    for e in missing:
+                        executor.scatter(e[0], e[1], {host})
+                        environment_state = environment_state.computeDatasetAt(
+                            host, (e[0], e[1])
+                        )
         ongoing = set(fut for futs in host_ongoing.values() for fut in futs)
         if len(ongoing) > 0:
             logger.debug(f"awaiting on {len(ongoing)} futures {ongoing}")

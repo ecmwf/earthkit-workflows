@@ -42,6 +42,20 @@ def test_2l_2sink():
     controller = CascadeController()
     # for calculating the min req mem on a single node
     one_biggie_env = Environment(hosts={"h1": Host(cpu=1, gpu=0, memory_mb=1000)})
+    # memory_mb=23 chosen so that *optimal* partial schedules fit
+    two_tightly_sized = Environment(
+        hosts={
+            "h1": Host(cpu=1, gpu=0, memory_mb=23),
+            "h2": Host(cpu=1, gpu=0, memory_mb=23),
+        }
+    )
+    # memory_mb=28 chosen so that *any* partial schedules fit
+    two_richly_sized = Environment(
+        hosts={
+            "h1": Host(cpu=1, gpu=0, memory_mb=28),
+            "h2": Host(cpu=1, gpu=0, memory_mb=28),
+        }
+    )
 
     job = builder.job.build().get_or_raise()
 
@@ -86,13 +100,7 @@ def test_2l_2sink():
     )  # depends on which sink gets computed first
 
     # sink bfs -- two hosts
-    two_aptly_sized = Environment(
-        hosts={
-            "h1": Host(cpu=1, gpu=0, memory_mb=23),
-            "h2": Host(cpu=1, gpu=0, memory_mb=23),
-        }
-    )
-    executor = SimulatingExecutor(two_aptly_sized, builder.record)
+    executor = SimulatingExecutor(two_tightly_sized, builder.record)
     schedSinkBfs = sink_bfs_redundant_schedule(
         job, executor.get_environment(), builder.record, EnvironmentState()
     ).get_or_raise()
@@ -118,11 +126,14 @@ def test_2l_2sink():
     assert isclose(executor.total_time_secs, 60.0)
 
     # dynamic -- two host
-    executor = SimulatingExecutor(two_aptly_sized, builder.record)
+    executor = SimulatingExecutor(two_richly_sized, builder.record)
     empty_schedule = Schedule.empty()
     dynamic_scheduler = DynamicScheduler(Config(worker_eligible_mem_threshold=1))
-    # TODO not yet working, needs the scatter commands
-    # controller.submit(job, empty_schedule, executor, dynamic_scheduler=dynamic_scheduler)
-    # print("mem1", executor.hosts["h1"].mem_record)
-    # print("mem2", executor.hosts["h2"].mem_record)
-    # print("time", executor.total_time_secs)
+    controller.submit(
+        job, empty_schedule, executor, dynamic_scheduler=dynamic_scheduler
+    )
+    print(executor.total_time_secs)
+    assert (
+        executor.total_time_secs < 49.0
+    )  # can go as low as 37., though not deterministic
+    # mem constrained by executors, in a rather wild manner: sometimes 22&23, other times 17&28, etc
