@@ -1,7 +1,6 @@
 from dask.distributed import LocalCluster
 from dask.threaded import get
 
-from cascade.controller.api import PurgingPolicy
 from cascade.controller.dask_delayed import job2delayed
 from cascade.controller.dask_futures import DaskFuturisticExecutor
 from cascade.controller.impl import CascadeController
@@ -55,7 +54,7 @@ def test_linear():
     with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
         executor = DaskFuturisticExecutor(cluster)
         sched = schedule(job, executor.get_environment()).get_or_raise()
-        CascadeController().submit(job, sched, executor, PurgingPolicy())
+        CascadeController().submit(job, sched, executor)
         result = executor.fetch_as_value("b", "o")
         executor.purge("b", "o")
         assert expected == result
@@ -92,7 +91,7 @@ def test_builders():
     with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
         executor = DaskFuturisticExecutor(cluster)
         sched = schedule(job, executor.get_environment()).get_or_raise()
-        CascadeController().submit(job, sched, executor, PurgingPolicy())
+        CascadeController().submit(job, sched, executor)
         result = executor.fetch_as_value("task2", "__default__")
         executor.purge("task2", "__default__")
         assert expected == result

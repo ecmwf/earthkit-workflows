@@ -1,6 +1,5 @@
 from math import isclose
 
-from cascade.controller.api import PurgingPolicy
 from cascade.controller.impl import CascadeController
 from cascade.controller.simulator import SimulatingExecutor
 from cascade.low.core import Environment, Host
@@ -40,7 +39,6 @@ def test_2l_2sink():
     add_sink(builder, 4, 1, 1, 1, 16)
 
     controller = CascadeController()
-    policy = PurgingPolicy()
     # for calculating the min req mem on a single node
     one_biggie_env = Environment(hosts={"h1": Host(cpu=1, gpu=0, memory_mb=1000)})
 
@@ -52,7 +50,7 @@ def test_2l_2sink():
         job, executor.get_environment(), builder.record, EnvironmentState()
     ).get_or_raise()
     print(schedBfs)
-    controller.submit(job, schedBfs, executor, policy)
+    controller.submit(job, schedBfs, executor)
     print(executor.hosts["h1"].mem_record)
     assert isclose(executor.total_time_secs, 60.0)
     assert (
@@ -65,7 +63,7 @@ def test_2l_2sink():
         job, executor.get_environment(), builder.record, EnvironmentState()
     ).get_or_raise()
     print(schedDfs)
-    controller.submit(job, schedDfs, executor, policy)
+    controller.submit(job, schedDfs, executor)
     print(executor.hosts["h1"].mem_record)
     assert isclose(executor.total_time_secs, 60.0)
     assert (
@@ -78,7 +76,7 @@ def test_2l_2sink():
         job, executor.get_environment(), builder.record, EnvironmentState()
     ).get_or_raise()
     print(schedSinkBfs)
-    controller.submit(job, schedSinkBfs, executor, policy)
+    controller.submit(job, schedSinkBfs, executor)
     print(executor.hosts["h1"].mem_record)
     assert isclose(executor.total_time_secs, 60.0)
     assert executor.hosts["h1"].mem_record in (
@@ -99,7 +97,7 @@ def test_2l_2sink():
     ).get_or_raise()
     print(schedSinkBfs.host_task_queues["h1"])
     print(schedSinkBfs.host_task_queues["h2"])
-    controller.submit(job, schedSinkBfs, executor, policy)
+    controller.submit(job, schedSinkBfs, executor)
     assert isclose(executor.total_time_secs, 47.0)
     print(executor.hosts["h1"].mem_record)
     print(executor.hosts["h2"].mem_record)

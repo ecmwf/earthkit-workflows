@@ -1,4 +1,6 @@
+import logging
 from dataclasses import dataclass, field, replace
+from itertools import chain
 from typing import Callable, Protocol, runtime_checkable
 
 from pyrsistent import PSet
@@ -8,6 +10,8 @@ from typing_extensions import Self
 from cascade.low.core import Environment, JobExecutionRecord, JobInstance, Schedule
 from cascade.low.func import Either
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class EnvironmentState:
@@ -15,34 +19,55 @@ class EnvironmentState:
     Used if we are doing a re-schedule (eg after task crashes or early finishes),
     or by iterative scheduling algorithms"""
 
-    datasetAtHost: PSet[tuple[str, tuple[str, str | int]]] = field(default_factory=pset)
+    datasetAtHost: PSet[tuple[str, tuple[str, str]]] = field(default_factory=pset)
     runningTaskAtHost: PSet[tuple[str, str]] = field(default_factory=pset)
     finishedTaskAtHost: PSet[tuple[str, str]] = field(default_factory=pset)
     # TODO add crash record
+    # TODO optimize the structures -- perhaps dict[host][ts|ds] is better
 
     def finished_tasks(self) -> set[str]:
-        return {e for e, _ in self.finishedTaskAtHost}
+        return {e for _, e in self.finishedTaskAtHost}
 
-    def finishTaskAt(self, host: str, task: str) -> Self:
-        return replace(
-            self,
-            finishedTaskAtHost=self.finishedTaskAtHost.add(
-                (
-                    host,
-                    task,
-                )
-            ),
+    def started_tasks(self) -> set[str]:
+        return {e for _, e in chain(self.finishedTaskAtHost, self.runningTaskAtHost)}
+
+    def available_datasets(self) -> set[tuple[str, str]]:
+        return {e for _, e in self.datasetAtHost}
+
+    def ds_and_ts_of_host(self, host: str) -> tuple[set[tuple[str, str]], set[str]]:
+        """Datasets and running tasks"""
+        return (
+            {e for h, e in self.datasetAtHost if h == host},
+            {e for h, e in self.runningTaskAtHost if h == host},
         )
 
-    def computeDatasetAt(self, host: str, dataset: tuple[str, str | int]) -> Self:
+    def runTaskAt(self, host: str, task: str) -> Self:
+        logger.debug(f"running {task=} at {host=}")
         return replace(
             self,
-            datasetAtHost=self.datasetAtHost.add(
-                (
-                    host,
-                    dataset,
-                )
-            ),
+            runningTaskAtHost=self.runningTaskAtHost.add((host, task)),
+        )
+
+    def finishTaskAt(self, host: str, task: str) -> Self:
+        logger.debug(f"finishing {task=} at {host=}")
+        return replace(
+            self,
+            finishedTaskAtHost=self.finishedTaskAtHost.add((host, task)),
+            runningTaskAtHost=self.runningTaskAtHost.remove((host, task)),
+        )
+
+    def computeDatasetAt(self, host: str, dataset: tuple[str, str]) -> Self:
+        logger.debug(f"computed {dataset=} at {host=}")
+        return replace(
+            self,
+            datasetAtHost=self.datasetAtHost.add((host, dataset)),
+        )
+
+    def purgeDatasetAt(self, host: str, dataset: tuple[str, str]) -> Self:
+        logger.debug(f"purged {dataset=} at {host=}")
+        return replace(
+            self,
+            datasetAtHost=self.datasetAtHost.remove((host, dataset)),
         )
 
 

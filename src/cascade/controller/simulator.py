@@ -45,9 +45,6 @@ class HostState:
         consumed_ds = sum((self.record.datasets_mb[e] for e in self.datasets), 0)
         runnable = self.runnable_tasks()
         consumed_ts = sum((self.record.tasks[k].memory_mb for k in runnable), 0)
-        logger.debug(
-            f"asking for memory with {self.datasets=} and {runnable=} => {consumed_ds=} + {consumed_ts=}"
-        )
         if consumed_ds + consumed_ts > self.mem_record:
             self.mem_record = consumed_ds + consumed_ts
             logger.debug(
@@ -59,7 +56,7 @@ class HostState:
 
     def progress_seconds(self, seconds: float) -> set[str]:
         runnable = self.runnable_tasks()
-        rv = set()
+        rv: set[str] = set()
         if not runnable:
             return rv
         prog_per_task = (seconds * self.host.cpu) / len(runnable)

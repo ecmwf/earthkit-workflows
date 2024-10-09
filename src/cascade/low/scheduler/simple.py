@@ -38,7 +38,7 @@ def bfs_schedule(
     environment_state: EnvironmentState,
 ) -> Either[Schedule, str]:
     schedule: dict[str, list[str]] = defaultdict(list)
-    remaining = set(job_instance.tasks.keys()) - environment_state.finished_tasks()
+    remaining = set(job_instance.tasks.keys()) - environment_state.started_tasks()
 
     task_prereqs: dict[str, set[str]] = {
         k: set(e[0] for e in v.values())
@@ -78,7 +78,7 @@ def dfs_one_worker_schedule(
     }
     schedule = defaultdict(list)
 
-    computed = environment_state.finished_tasks()
+    computed = environment_state.started_tasks()
     remaining = set(job_instance.tasks.keys()) - computed
     touched = set()
 
@@ -120,7 +120,7 @@ def sink_bfs_redundant_schedule(
         k[0]: v for k, v in dependants(job_instance.edges).items()
     }
     schedule: dict[str, list] = defaultdict(list)
-    finished_tasks = environment_state.finished_tasks()
+    started_tasks = environment_state.started_tasks()
 
     sinks = {k for k in job_instance.tasks.keys() if not task_v_out.get(k, set())}
     for host, sink in zip(cycle(environment.hosts), sinks):
@@ -155,7 +155,7 @@ def sink_bfs_redundant_schedule(
             for e in next_batch:
                 queue.remove(e)
                 queue.update(task_v_in.get(e, set()))
-        schedule[host].extend(e for e in rev_schedule[::-1] if e not in finished_tasks)
+        schedule[host].extend(e for e in rev_schedule[::-1] if e not in started_tasks)
     for host in schedule:
         # we make the schedules not contain the same task twice -- it could have happened
         # if multiple sinks got assigned to the same host, and they shared source(s)

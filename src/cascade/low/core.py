@@ -3,6 +3,7 @@ Core graph data structures -- prescribes most of the API
 """
 
 from base64 import b64decode, b64encode
+from collections import defaultdict
 from typing import Any, Callable, Optional, cast
 
 import cloudpickle
@@ -96,9 +97,20 @@ class TaskExecutionRecord(BaseModel):
     )
 
 
+# possibly made configurable, overridable -- quite job dependent
+no_record_ts = TaskExecutionRecord(cpuseconds=1, memory_mb=1)
+no_record_ds = 1
+
+
 class JobExecutionRecord(BaseModel):
-    tasks: dict[str, TaskExecutionRecord]
-    datasets_mb: dict[tuple[str, str], int]  # keyed by (task, output)
+    tasks: dict[str, TaskExecutionRecord] = Field(
+        default_factory=lambda: defaultdict(lambda: no_record_ts)
+    )
+    datasets_mb: dict[tuple[str, str], int] = Field(
+        default_factory=lambda: defaultdict(lambda: no_record_ds)
+    )  # keyed by (task, output)
+
+    # TODO extend this with some approximation/default from TaskInstance only
 
 
 class Schedule(BaseModel):
