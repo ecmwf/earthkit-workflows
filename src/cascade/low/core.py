@@ -115,3 +115,8 @@ class JobExecutionRecord(BaseModel):
 
 class Schedule(BaseModel):
     host_task_queues: dict[str, list[str]]
+    unallocated: set[str] = Field(default_factory=set)
+
+    @classmethod
+    def empty(cls):
+        return cls(host_task_queues=defaultdict(list))

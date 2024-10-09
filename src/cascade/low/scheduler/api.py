@@ -34,6 +34,9 @@ class EnvironmentState:
     def available_datasets(self) -> set[tuple[str, str]]:
         return {e for _, e in self.datasetAtHost}
 
+    def hosts_of_ds(self, dataset: tuple[str, str]) -> set[str]:
+        return {h for h, d in self.datasetAtHost if d == dataset}
+
     def ds_and_ts_of_host(self, host: str) -> tuple[set[tuple[str, str]], set[str]]:
         """Datasets and running tasks"""
         return (

@@ -26,6 +26,7 @@ Simple Dynamic Scheduler
 import logging
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import cast
 
 from cascade.low.core import (
@@ -36,10 +37,16 @@ from cascade.low.core import (
     Schedule,
 )
 from cascade.low.func import Either, maybe_head
-from cascade.low.scheduler.api import ClasslessScheduler, EnvironmentState
+from cascade.low.scheduler.api import EnvironmentState
 from cascade.low.views import param_source
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Config:
+    worker_eligible_mem_threshold: int = 512
+    worker_eligible_cpu_threshold: int = 1
 
 
 def _host_free_mb_cpu(
@@ -61,6 +68,7 @@ def dynamic_schedule(
     environment: Environment,
     execution_record: JobExecutionRecord,
     environment_state: EnvironmentState,
+    config: Config,
 ) -> Either[Schedule, str]:
     schedule = defaultdict(list)
     remaining = set(job_instance.tasks.keys()) - environment_state.started_tasks()
@@ -79,23 +87,29 @@ def dynamic_schedule(
         for host in environment.hosts
     }
 
-    # this should probably be made configurable / depend on env, esp the mem limit
+    logger.debug(f"{host_free_mb_cpu=}")
     ok_hosts = {
         host
         for host in environment.hosts
-        if host_free_mb_cpu[host][0] >= 512 and host_free_mb_cpu[host][1] >= 1
+        if host_free_mb_cpu[host][0] >= config.worker_eligible_mem_threshold
+        and host_free_mb_cpu[host][1] >= config.worker_eligible_cpu_threshold
     }
 
     if not ok_hosts:
-        logger.warning("unable to find any eligible worker")
-        return Either.ok(Schedule(host_task_queues=schedule))
+        logger.debug("unable to find any eligible worker")
+        return Either.ok(Schedule(host_task_queues=schedule, unallocated=remaining))
 
     task_prereqs: dict[str, set[str]] = {
-        k: set(e[0] for e in v.values())
+        k: set((e[0], e[1]) for e in v.values())
         for k, v in param_source(job_instance.edges).items()
     }
     available_ds = environment_state.available_datasets()
-    runnable = {task for task in remaining if task_prereqs[task] <= available_ds}
+    logger.debug(f"{available_ds=}")
+    logger.debug(f"{remaining=}")
+    runnable = {
+        task for task in remaining if task_prereqs.get(task, set()) <= available_ds
+    }
+    logger.debug(f"{runnable=}")
 
     for task in runnable:
         task_outputs = execution_record.datasets_mb.get(
@@ -109,14 +123,15 @@ def dynamic_schedule(
         )
         task_cost = execution_record.tasks[task].memory_mb + task_outputs
         maybe_host = None
-        maybe_transf = sys.maxint
-        maybe_misfit = sys.maxint
+        maybe_transf = sys.maxsize
+        maybe_misfit = sys.maxsize
         for host in ok_hosts:
             misfit = task_cost - host_free_mb_cpu[host][0]
-            missing_ds = task_prereqs[task] - host_ds_ts[host][0]
+            missing_ds = task_prereqs.get(task, set()) - host_ds_ts[host][0]
             transf = sum((execution_record.datasets_mb[e] for e in missing_ds), 0)
             if misfit < 0:
                 misfit = 0
+            logger.debug(f"considering {host=} for {task=} -> {misfit=}, {transf=}")
             if maybe_misfit >= misfit and maybe_transf > transf:
                 maybe_misfit = misfit
                 maybe_transf = transf
@@ -125,7 +140,25 @@ def dynamic_schedule(
             schedule[host].append(task)
             ok_hosts.remove(host)
 
-    return Either.ok(Schedule(host_task_queues=schedule))
+    unallocated = remaining - {task for queue in schedule.values() for task in queue}
+    logger.debug(f"finished with {schedule=}, {unallocated=}")
+    return Either.ok(Schedule(host_task_queues=schedule, unallocated=unallocated))
 
 
-DynamicScheduler = lambda: ClasslessScheduler(dynamic_schedule)
+class DynamicScheduler:
+    def __init__(self, config: Config):
+        self.config = config
+
+    def schedule(
+        self,
+        job_instance: JobInstance,
+        environment: Environment,
+        execution_record: JobExecutionRecord | None,
+        environment_state: EnvironmentState,
+    ) -> Either[Schedule, str]:
+        if not environment.hosts:
+            return Either.error("no hosts given")
+
+        return dynamic_schedule(
+            job_instance, environment, execution_record, environment_state, self.config
+        )

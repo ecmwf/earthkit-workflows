@@ -2,8 +2,9 @@ from math import isclose
 
 from cascade.controller.impl import CascadeController
 from cascade.controller.simulator import SimulatingExecutor
-from cascade.low.core import Environment, Host
+from cascade.low.core import Environment, Host, Schedule
 from cascade.low.scheduler.api import EnvironmentState
+from cascade.low.scheduler.dynamic import Config, DynamicScheduler
 from cascade.low.scheduler.simple import (
     bfs_schedule,
     dfs_one_worker_schedule,
@@ -105,3 +106,23 @@ def test_2l_2sink():
         10,
         19,
     }
+
+    # dynamic -- one host
+    executor = SimulatingExecutor(one_biggie_env, builder.record)
+    empty_schedule = Schedule.empty()
+    dynamic_scheduler = DynamicScheduler(Config(worker_eligible_mem_threshold=1))
+    controller.submit(
+        job, empty_schedule, executor, dynamic_scheduler=dynamic_scheduler
+    )
+    assert executor.hosts["h1"].mem_record <= 25
+    assert isclose(executor.total_time_secs, 60.0)
+
+    # dynamic -- two host
+    executor = SimulatingExecutor(two_aptly_sized, builder.record)
+    empty_schedule = Schedule.empty()
+    dynamic_scheduler = DynamicScheduler(Config(worker_eligible_mem_threshold=1))
+    # TODO not yet working, needs the scatter commands
+    # controller.submit(job, empty_schedule, executor, dynamic_scheduler=dynamic_scheduler)
+    # print("mem1", executor.hosts["h1"].mem_record)
+    # print("mem2", executor.hosts["h2"].mem_record)
+    # print("time", executor.total_time_secs)
