@@ -1,0 +1,116 @@
+import logging
+import multiprocessing.resource_tracker
+import socket
+import time
+from multiprocessing.shared_memory import SharedMemory
+from typing import Callable, Type, TypeVar
+
+import cascade.shm.api as api
+
+logger = logging.getLogger(__name__)
+
+
+class AllocatedBuffer:
+    def __init__(
+        self,
+        shmid: str,
+        l: int,
+        create: bool,
+        close_callback: Callable[[], None] | None,
+    ):
+        self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
+        self.l = l
+        self.readonly = not create
+        self.close_callback = close_callback
+
+    def view(self) -> memoryview:
+        if not self.shm:
+            raise ValueError("shm already closed: {shm._name}")  # type: ignore # _name
+        mv = self.shm.buf[: self.l]
+        if self.readonly:
+            mv = mv.toreadonly()
+        return mv
+
+    def close(self) -> None:
+        if self.shm is not None:
+            self.shm.close()
+            # TODO eleminate in favour of track=False, once we are on python 3.13+
+            multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
+            self.shm = None
+        if self.close_callback:
+            self.close_callback()
+
+    # TODO context manager
+
+
+T = TypeVar("T", bound=api.Comm)
+
+
+def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 1.0) -> T:
+    timeout_i = 0.1
+    while timeout_sec > 0:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client_port = api.get_client_port()
+        sock.connect(("localhost", client_port))
+        logger.debug(f"sending message {comm}")
+        sock.send(api.ser(comm))
+        response_raw = sock.recv(1024)  # TODO or recv(4) + recv(int.from_bytes)?
+        sock.close()
+        response_com = api.deser(response_raw)
+        logger.debug(f"received response {response_com}")
+        if not isinstance(response_com, resp_class):
+            raise TypeError(type(response_com))
+        if hasattr(response_com, "error") and response_com.error:
+            if response_com.error == "wait":
+                logger.debug(f"gotten a wait, will sleep for {timeout_i}")
+                time.sleep(timeout_i)
+                timeout_sec -= timeout_i
+                timeout_i *= 2
+                timeout_i = min(timeout_i, timeout_sec)
+                continue
+            raise ValueError(response_com.error)
+        return response_com
+    raise TimeoutError
+
+
+def close_callback(key: str, rdid: str) -> None:
+    comm = api.CloseCallback(key=key, rdid=rdid)
+    _send_command(comm, api.OkResponse)
+
+
+def allocate(key: str, l: int, timeout_sec: float = 3.0) -> AllocatedBuffer:
+    comm = api.AllocateRequest(key=key, l=l)
+    resp = _send_command(comm, api.AllocateResponse, timeout_sec)
+    callback = lambda: close_callback(key, "")
+    return AllocatedBuffer(shmid=resp.shmid, l=l, create=True, close_callback=callback)
+
+
+def get(key: str, timeout_sec: float = 3.0) -> AllocatedBuffer:
+    comm = api.GetRequest(key=key)
+    resp = _send_command(comm, api.GetResponse, timeout_sec)
+    callback = lambda: close_callback(key, resp.rdid)
+    return AllocatedBuffer(
+        shmid=resp.shmid, l=resp.l, create=False, close_callback=callback
+    )
+
+
+def shutdown() -> None:
+    comm = api.ShutdownCommand()
+    _send_command(comm, api.OkResponse)
+
+
+def ensure() -> None:
+    comm = api.StatusInquiry()
+    while True:
+        try:
+            _send_command(comm, api.OkResponse)
+        except ConnectionRefusedError:
+            time.sleep(0.1)
+            continue
+        break
+
+
+def get_free_space() -> int:
+    comm = api.FreeSpaceRequest()
+    resp = _send_command(comm, api.FreeSpaceResponse)
+    return resp.free_space

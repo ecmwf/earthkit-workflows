@@ -1,0 +1,74 @@
+import logging
+import signal
+import socket
+from typing import Any
+
+import cascade.shm.api as api
+import cascade.shm.dataset as dataset
+
+logger = logging.getLogger(__name__)
+
+
+class LocalServer:
+    """Handles the socket communication, and the invocation of dataset.Manager which has the business logic"""
+
+    def __init__(self, port: int, capacity: int | None = None):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        server = ("0.0.0.0", port)
+        self.sock.bind(server)
+        self.manager = dataset.Manager(capacity)
+        signal.signal(signal.SIGINT, self.atexit)
+        signal.signal(signal.SIGTERM, self.atexit)
+
+    def receive(self) -> tuple[api.Comm, str]:
+        b, addr = self.sock.recvfrom(1024)  # TODO or recv(4) + recv(int.from_bytes)?
+        return api.deser(b), addr
+
+    def respond(self, comm: api.Comm, address: str) -> None:
+        self.sock.sendto(api.ser(comm), address)
+
+    def atexit(self, signum: int, frame: Any) -> None:
+        self.manager.atexit()
+        self.sock.close()
+
+    def start(self):
+        while True:
+            payload, client = self.receive()
+            if isinstance(payload, api.AllocateRequest):
+                shmid, error = self.manager.add(payload.key, payload.l)
+                if error:
+                    response = api.AllocateResponse(shmid="", error=error)
+                else:
+                    response = api.AllocateResponse(shmid=shmid, error="")
+            elif isinstance(payload, api.CloseCallback):
+                self.manager.close_callback(payload.key, payload.rdid)
+                response = api.OkResponse()
+            elif isinstance(payload, api.GetRequest):
+                shmid, l, rdid, error = self.manager.get(payload.key)
+                if error:
+                    response = api.GetResponse(shmid="", l=0, rdid=rdid, error=error)
+                else:
+                    response = api.GetResponse(shmid=shmid, l=l, rdid=rdid, error="")
+            elif isinstance(payload, api.ShutdownCommand):
+                response = api.OkResponse()
+                self.respond(response, client)
+                break
+            elif isinstance(payload, api.StatusInquiry):
+                response = api.OkResponse()
+            elif isinstance(payload, api.FreeSpaceRequest):
+                free_space = self.manager.free_space
+                response = api.FreeSpaceResponse(free_space=free_space)
+            else:
+                raise ValueError(f"unsupported: {type(payload)}")
+            self.respond(response, client)
+
+
+def entrypoint(port: int, capacity: int | None = None):
+    # TODO init logging
+    server = LocalServer(port, capacity)
+    try:
+        server.start()
+    except Exception as e:
+        # we always get a Bad file descriptor due to sigterm handler calling sock close mid-read
+        logger.warning(f"shutdown issue: {e}")
+    server.atexit(0, None)
