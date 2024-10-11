@@ -4,6 +4,8 @@ from typing import Protocol, Type, runtime_checkable
 
 from typing_extensions import Self
 
+# TODO too much manual serde... either automate it based on dataclass field inspection, or just pickle it
+# (mind the server.recv/client.recv comment tho)
 
 def ser_str(s: str) -> bytes:
     return len(s).to_bytes(4, "big") + s.encode("ascii")

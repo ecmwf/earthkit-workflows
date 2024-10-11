@@ -8,10 +8,6 @@ Abstraction of shared memory, keeps track of:
 Manages the to-disk-and-back persistence
 """
 
-# TODO:
-# - add threadpool for the disk operations
-#   - add locks for the dataset status changes?
-
 import hashlib
 import logging
 import subprocess
@@ -20,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum, auto
 from multiprocessing.shared_memory import SharedMemory
+import threading
 
 import cascade.shm.algorithms as algorithms
 import cascade.shm.disk as disk
@@ -57,7 +54,28 @@ class Dataset:
 
 
 class Manager:
-    """Keeps track of what is registered, how large it is, and under what name"""
+    """Keeps track of what is registered, how large it is, and under what name.
+
+    Notes about thread safety: this class is _generally_ single-threaded, except for
+    the `callback` functions present in the pageout/pagein functions, which will be
+    called from within shm.Disk's threadpool.
+
+    1/ For pagein, the situation is simple -- _before_ launching the thread, we set
+    the dataset status to `paged_in`, which prevents another thread from being launched.
+    Only after the thread in its callback puts the status back to `in_memory` as its
+    last action can another thread be launched -- so we are thread-safe.
+
+    2/ For pageout, we employ two locks, one for the initiation of the global pageout,
+    one for decrement of counter. The first lock is locked before any thread is launched,
+    and unlocked as the last thread finishes. As before, before threads are launched,
+    in the main thread we set dataset status to `paging_out`, preventing interference
+    with other main thread operation that could come later. The second lock prevents
+    the paging out threads interfering with each other.
+
+    3/ All threads are called with try-catch, and no matter what the locks would attempt
+    a release at the end, so barring deaths of thread pools we should not deadlock
+    ourselves.
+    """
 
     def __init__(self, capacity: int | None = None) -> None:
         # key is as understood by the external apps
@@ -66,7 +84,9 @@ class Manager:
             capacity = get_capacity()
         self.capacity = capacity
         self.free_space = capacity
-        self.purging = False
+        self.pageout_all = threading.Lock()
+        self.pageout_one = threading.Lock()
+        self.pageout_count = 0
         self.disk = disk.Disk()
 
     def add(self, key: str, size: int) -> tuple[str, str]:
@@ -113,20 +133,32 @@ class Manager:
             else:
                 self.datasets[key].ongoing_reads.remove(rdid)
 
-    def page_out(self, ds: Dataset) -> None:
+    def page_out(self, key: str) -> None:
+        ds = self.datasets[key]
         if ds.status != DatasetStatus.in_memory and not bool(ds.ongoing_reads):
             raise ValueError(f"invalid page out on {ds}")
         ds.status = DatasetStatus.paging_out
-        self.disk.page_out(ds.shmid)
-        # TODO have the restore return early, the status update as callback
-        ds.status = DatasetStatus.on_disk
-        self.free_space += ds.size
-        logger.debug(f"paged out {ds}, free space is now {self.free_space}")
+        def callback(ok: bool) -> None:
+            if ok:
+                ds.status = DatasetStatus.on_disk
+                logger.debug(f"pageout of {ds} finished")
+                with self.pageout_one:
+                    self.free_space += ds.size
+                    self.pageout_count -= 1
+                    if self.pageout_count == 0:
+                        self.pageout_all.release()
+            else:
+                logger.error(f"pageout of {ds} failed, marking bad")
+                self.purge(key)
+                with self.pageout_one:
+                    self.pageout_count -= 1
+                    if self.pageout_count == 0:
+                        self.pageout_all.release()
+        self.disk.page_out(ds.shmid, callback)
 
     def page_out_at_least(self, amount: int) -> None:
-        if self.purging:
+        if not self.pageout_all.acquire(blocking=False):
             return
-        self.purging = True
         candidates = (
             algorithms.Entity(
                 key, ds.created, ds.retrieved_first, ds.retrieved_last, ds.size
@@ -134,23 +166,26 @@ class Manager:
             for key, ds in self.datasets.items()
             if ds.status == DatasetStatus.in_memory
         )
-        for winner in algorithms.lottery(candidates, amount):
-            logger.debug(f"purging lottery {winner = }")
-            self.page_out(self.datasets[winner])
-        # TODO replace the purging with some barrier; check for it at the beginning and instead wait
-        self.purging = False
+        winners = algorithms.lottery(candidates, amount)
+        self.pageout_count = len(winners)
+        for winner in winners:
+            self.page_out(winner)
 
-    def page_in(self, ds: Dataset) -> None:
+    def page_in(self, key: str) -> None:
+        ds = self.datasets[key]
         if ds.status != DatasetStatus.on_disk:
             raise ValueError(f"invalid restore on {ds}")
         ds.status = DatasetStatus.paged_in
         if self.free_space < ds.size:
             raise ValueError("insufficient space")
         self.free_space -= ds.size
-        self.disk.page_in(ds.shmid, ds.size)
-        # TODO have the restore return early, the status update as callback, return the wait
-        ds.status = DatasetStatus.in_memory
-        # return "", 0, "", "wait"
+        def callback(ok: bool):
+            if ok:
+                ds.status = DatasetStatus.in_memory
+            else:
+                logger.error(f"pagein of {ds} failed, marking bad")
+                self.purge(key)
+        self.disk.page_in(ds.shmid, ds.size, callback)
 
     def get(self, key: str) -> tuple[str, int, str, str]:
         ds = self.datasets[key]
@@ -164,7 +199,8 @@ class Manager:
             if ds.size > self.free_space:
                 self.page_out_at_least(ds.size - self.free_space)
                 return "", 0, "", "wait"
-            self.page_in(ds)
+            self.page_in(key)
+            return "", 0, "", "wait"
         if ds.status != DatasetStatus.in_memory:
             assert_never(ds.status)
         while True:
@@ -179,22 +215,26 @@ class Manager:
         return ds.shmid, ds.size, rdid, ""
 
     def purge(self, key: str) -> None:
-        ds = self.datasets.pop(key)
-        if ds.status in (
-            DatasetStatus.created,
-            DatasetStatus.paging_out,
-            DatasetStatus.paged_in,
-        ):
-            logger.warning(f"calling purge in unsafe status: {key}, {ds.status}")
-        elif ds.status == DatasetStatus.on_disk:
-            logger.warning(f"skipping purge because is on disk: {key}, {ds.status}")
-            return
-        elif ds.status != DatasetStatus.in_memory:
-            assert_never(ds.status)
-        shm = SharedMemory(ds.shmid, create=False)
-        shm.unlink()
-        shm.close()
-        self.free_space += ds.size
+        try:
+            ds = self.datasets.pop(key)
+            if ds.status in (
+                DatasetStatus.created,
+                DatasetStatus.paging_out,
+                DatasetStatus.paged_in,
+            ):
+                logger.warning(f"calling purge in unsafe status: {key}, {ds.status}")
+            elif ds.status == DatasetStatus.on_disk:
+                logger.warning(f"skipping purge because is on disk: {key}, {ds.status}")
+                return
+            elif ds.status != DatasetStatus.in_memory:
+                assert_never(ds.status)
+            shm = SharedMemory(ds.shmid, create=False)
+            shm.unlink()
+            shm.close()
+            with self.pageout_one:
+                self.free_space += ds.size
+        except Exception:
+            logger.exception("failed to purge {key}, free space may be incorrect, /dev/shm may have leaked")
 
     def atexit(self) -> None:
         keys = list(self.datasets.keys())
