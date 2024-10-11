@@ -41,6 +41,3 @@ Usage:
  - at the end of the worker's lifecycle, you may invoke `shm.client.shutdown` to free the /dev/shm and persisted data,
    or rely on sigterm handler do it for you
 """
-
-# TODO:
-# - add timed leases on the allocate/read statuses, to recover from

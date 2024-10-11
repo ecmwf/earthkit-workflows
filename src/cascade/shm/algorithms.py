@@ -54,6 +54,7 @@ def lottery(entities: Iterable[Entity], amount: int) -> list[str]:
         if freed >= amount:
             return winners
 
+    # NOTE this also includes stale_create. But stale_read are purged earlier
     consumedNevr = sorted(consumedNevr, key=lambda e: -e.created)
     for e in consumedNevr:
         winners.append(e.key)

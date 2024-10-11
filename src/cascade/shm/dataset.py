@@ -41,6 +41,11 @@ class DatasetStatus(int, Enum):
     paged_in = auto()
 
 
+FIFTEEN_MINUTES = int(15 * 60 * 1e9)
+STALE_CREATE = FIFTEEN_MINUTES
+STALE_READ = FIFTEEN_MINUTES
+
+
 @dataclass
 class Dataset:
     shmid: str
@@ -48,9 +53,22 @@ class Dataset:
     status: DatasetStatus
 
     created: int
-    ongoing_reads: set[str]
+    ongoing_reads: dict[str, int]
     retrieved_first: int
     retrieved_last: int
+
+    def is_pageoutable(self, ref_time: int) -> bool:
+        created_stale = (
+            self.status == DatasetStatus.created
+            and ref_time - self.created > STALE_CREATE
+        )
+        no_fresh_read = (
+            not (self.ongoing_reads)
+            or ref_time - max(self.ongoing_reads.values()) > STALE_READ
+        )
+        return created_stale or (
+            self.status == DatasetStatus.in_memory and no_fresh_read
+        )
 
 
 class Manager:
@@ -110,7 +128,7 @@ class Manager:
             created=time.time_ns(),
             retrieved_first=0,
             retrieved_last=0,
-            ongoing_reads=set(),
+            ongoing_reads={},
         )
         return shmid, ""
 
@@ -131,12 +149,12 @@ class Manager:
                     f"unexpected/redundant remove of ongoing reader: {key}, {rdid}"
                 )
             else:
-                self.datasets[key].ongoing_reads.remove(rdid)
+                self.datasets[key].ongoing_reads.pop(rdid)
 
     def page_out(self, key: str) -> None:
         ds = self.datasets[key]
         if ds.status != DatasetStatus.in_memory and not bool(ds.ongoing_reads):
-            raise ValueError(f"invalid page out on {ds}")
+            logger.warning(f"risky page out on {ds}, assuming staledness")
         ds.status = DatasetStatus.paging_out
 
         def callback(ok: bool) -> None:
@@ -166,7 +184,7 @@ class Manager:
                 key, ds.created, ds.retrieved_first, ds.retrieved_last, ds.size
             )
             for key, ds in self.datasets.items()
-            if ds.status == DatasetStatus.in_memory
+            if ds.is_pageoutable(time.time_ns())
         )
         winners = algorithms.lottery(candidates, amount)
         self.pageout_count = len(winners)
@@ -211,8 +229,8 @@ class Manager:
             rdid = str(uuid.uuid4())[:8]
             if rdid not in ds.ongoing_reads:
                 break
-        ds.ongoing_reads.add(rdid)
         retrieved = time.time_ns()
+        ds.ongoing_reads[rdid] = retrieved
         if ds.retrieved_first == 0:
             ds.retrieved_first = retrieved
         ds.retrieved_last = retrieved
