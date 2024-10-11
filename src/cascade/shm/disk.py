@@ -2,12 +2,12 @@
 Handles disk operations
 """
 
-from concurrent.futures import ThreadPoolExecutor
+import logging
 import multiprocessing.resource_tracker
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable
-import logging
 
 logger = logging.getLogger(__name__)
 

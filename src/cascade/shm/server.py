@@ -34,32 +34,40 @@ class LocalServer:
     def start(self):
         while True:
             payload, client = self.receive()
-            if isinstance(payload, api.AllocateRequest):
-                shmid, error = self.manager.add(payload.key, payload.l)
-                if error:
-                    response = api.AllocateResponse(shmid="", error=error)
+            try:
+                if isinstance(payload, api.AllocateRequest):
+                    shmid, error = self.manager.add(payload.key, payload.l)
+                    if error:
+                        response = api.AllocateResponse(shmid="", error=error)
+                    else:
+                        response = api.AllocateResponse(shmid=shmid, error="")
+                elif isinstance(payload, api.CloseCallback):
+                    self.manager.close_callback(payload.key, payload.rdid)
+                    response = api.OkResponse()
+                elif isinstance(payload, api.GetRequest):
+                    shmid, l, rdid, error = self.manager.get(payload.key)
+                    if error:
+                        response = api.GetResponse(
+                            shmid="", l=0, rdid=rdid, error=error
+                        )
+                    else:
+                        response = api.GetResponse(
+                            shmid=shmid, l=l, rdid=rdid, error=""
+                        )
+                elif isinstance(payload, api.ShutdownCommand):
+                    response = api.OkResponse()
+                    self.respond(response, client)
+                    break
+                elif isinstance(payload, api.StatusInquiry):
+                    response = api.OkResponse()
+                elif isinstance(payload, api.FreeSpaceRequest):
+                    free_space = self.manager.free_space
+                    response = api.FreeSpaceResponse(free_space=free_space)
                 else:
-                    response = api.AllocateResponse(shmid=shmid, error="")
-            elif isinstance(payload, api.CloseCallback):
-                self.manager.close_callback(payload.key, payload.rdid)
-                response = api.OkResponse()
-            elif isinstance(payload, api.GetRequest):
-                shmid, l, rdid, error = self.manager.get(payload.key)
-                if error:
-                    response = api.GetResponse(shmid="", l=0, rdid=rdid, error=error)
-                else:
-                    response = api.GetResponse(shmid=shmid, l=l, rdid=rdid, error="")
-            elif isinstance(payload, api.ShutdownCommand):
-                response = api.OkResponse()
-                self.respond(response, client)
-                break
-            elif isinstance(payload, api.StatusInquiry):
-                response = api.OkResponse()
-            elif isinstance(payload, api.FreeSpaceRequest):
-                free_space = self.manager.free_space
-                response = api.FreeSpaceResponse(free_space=free_space)
-            else:
-                raise ValueError(f"unsupported: {type(payload)}")
+                    raise ValueError(f"unsupported: {type(payload)}")
+            except Exception as e:
+                logger.exception("failure during handling of {payload}")
+                response = api.OkResponse(error=repr(e))
             self.respond(response, client)
 
 

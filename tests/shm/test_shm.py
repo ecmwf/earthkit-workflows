@@ -1,3 +1,4 @@
+import re
 from multiprocessing import Process
 
 import pytest
@@ -21,6 +22,9 @@ def test_shm_simple():
 
         with pytest.raises(ValueError, match=r"shm already closed"):
             buf.view()
+
+        with pytest.raises(ValueError, match=re.escape("KeyError('missing_data')")):
+            client.get("missing_data")
 
         buf = client.get("my_data")
         assert buf.view() == b"a" * 7

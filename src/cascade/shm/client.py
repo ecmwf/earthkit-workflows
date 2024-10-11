@@ -58,8 +58,8 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 1.0)
         sock.close()
         response_com = api.deser(response_raw)
         logger.debug(f"received response {response_com}")
-        if not isinstance(response_com, resp_class):
-            raise TypeError(type(response_com))
+        # NOTE we first check for presence of error, and only then for Type,
+        # because a server error may change response class
         if hasattr(response_com, "error") and response_com.error:
             if response_com.error == "wait":
                 logger.debug(f"gotten a wait, will sleep for {timeout_i}")
@@ -69,6 +69,8 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 1.0)
                 timeout_i = min(timeout_i, timeout_sec)
                 continue
             raise ValueError(response_com.error)
+        if not isinstance(response_com, resp_class):
+            raise TypeError(type(response_com))
         return response_com
     raise TimeoutError
 

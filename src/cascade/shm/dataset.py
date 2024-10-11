@@ -11,12 +11,12 @@ Manages the to-disk-and-back persistence
 import hashlib
 import logging
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass
 from enum import Enum, auto
 from multiprocessing.shared_memory import SharedMemory
-import threading
 
 import cascade.shm.algorithms as algorithms
 import cascade.shm.disk as disk
@@ -138,6 +138,7 @@ class Manager:
         if ds.status != DatasetStatus.in_memory and not bool(ds.ongoing_reads):
             raise ValueError(f"invalid page out on {ds}")
         ds.status = DatasetStatus.paging_out
+
         def callback(ok: bool) -> None:
             if ok:
                 ds.status = DatasetStatus.on_disk
@@ -154,6 +155,7 @@ class Manager:
                     self.pageout_count -= 1
                     if self.pageout_count == 0:
                         self.pageout_all.release()
+
         self.disk.page_out(ds.shmid, callback)
 
     def page_out_at_least(self, amount: int) -> None:
@@ -179,12 +181,14 @@ class Manager:
         if self.free_space < ds.size:
             raise ValueError("insufficient space")
         self.free_space -= ds.size
+
         def callback(ok: bool):
             if ok:
                 ds.status = DatasetStatus.in_memory
             else:
                 logger.error(f"pagein of {ds} failed, marking bad")
                 self.purge(key)
+
         self.disk.page_in(ds.shmid, ds.size, callback)
 
     def get(self, key: str) -> tuple[str, int, str, str]:
@@ -234,7 +238,9 @@ class Manager:
             with self.pageout_one:
                 self.free_space += ds.size
         except Exception:
-            logger.exception("failed to purge {key}, free space may be incorrect, /dev/shm may have leaked")
+            logger.exception(
+                "failed to purge {key}, free space may be incorrect, /dev/shm may have leaked"
+            )
 
     def atexit(self) -> None:
         keys = list(self.datasets.keys())

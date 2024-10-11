@@ -43,5 +43,4 @@ Usage:
 """
 
 # TODO:
-# - add try-catches in the server so that it doesnt just die
 # - add timed leases on the allocate/read statuses, to recover from
