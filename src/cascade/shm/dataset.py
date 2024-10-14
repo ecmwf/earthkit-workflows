@@ -95,11 +95,20 @@ class Manager:
     ourselves.
     """
 
+    # TODO go through the controller-calling-purge scenario and make the threads more robust
+
     def __init__(self, capacity: int | None = None) -> None:
         # key is as understood by the external apps
         self.datasets: dict[str, Dataset] = {}
+        default_capacity = get_capacity()
         if not capacity:
-            capacity = get_capacity()
+            capacity = default_capacity
+        elif capacity > default_capacity:
+            # TODO introduce capacity setter api which includes this check
+            logger.warning(
+                f"configured with more capacity than available, trimming to {default_capacity}"
+            )
+            capacity = default_capacity
         self.capacity = capacity
         self.free_space = capacity
         self.pageout_all = threading.Lock()

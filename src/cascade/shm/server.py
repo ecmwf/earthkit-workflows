@@ -1,4 +1,5 @@
 import logging
+import logging.config
 import signal
 import socket
 from typing import Any
@@ -63,6 +64,23 @@ class LocalServer:
                 elif isinstance(payload, api.FreeSpaceRequest):
                     free_space = self.manager.free_space
                     response = api.FreeSpaceResponse(free_space=free_space)
+                elif isinstance(payload, api.PurgeRequest):
+                    self.manager.purge(payload.key)
+                    response = api.OkResponse()
+                elif isinstance(payload, api.DatasetStatusRequest):
+                    ds = self.manager.datasets.get(payload.key, None)
+                    if not ds:
+                        status = api.DatasetStatus.not_present
+                    elif ds.status == dataset.DatasetStatus.created:
+                        status = api.DatasetStatus.not_present
+                    elif ds.status in (
+                        dataset.DatasetStatus.in_memory,
+                        dataset.DatasetStatus.paging_out,
+                        dataset.DatasetStatus.on_disk,
+                        dataset.DatasetStatus.paged_in,
+                    ):
+                        status = api.DatasetStatus.ready
+                    response = api.DatasetStatusResponse(status=status)
                 else:
                     raise ValueError(f"unsupported: {type(payload)}")
             except Exception as e:
@@ -71,8 +89,11 @@ class LocalServer:
             self.respond(response, client)
 
 
-def entrypoint(port: int, capacity: int | None = None):
-    # TODO init logging
+def entrypoint(
+    port: int, capacity: int | None = None, logging_config: dict | None = None
+):
+    if logging_config:
+        logging.config.dictConfig(logging_config)
     server = LocalServer(port, capacity)
     try:
         server.start()

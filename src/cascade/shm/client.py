@@ -25,7 +25,7 @@ class AllocatedBuffer:
 
     def view(self) -> memoryview:
         if not self.shm:
-            raise ValueError("shm already closed: {shm._name}")  # type: ignore # _name
+            raise ValueError("shm already closed!")
         mv = self.shm.buf[: self.l]
         if self.readonly:
             mv = mv.toreadonly()
@@ -94,6 +94,17 @@ def get(key: str, timeout_sec: float = 3.0) -> AllocatedBuffer:
     return AllocatedBuffer(
         shmid=resp.shmid, l=resp.l, create=False, close_callback=callback
     )
+
+
+def purge(key: str) -> None:
+    comm = api.PurgeRequest(key=key)
+    _ = _send_command(comm, api.OkResponse)
+
+
+def status(key: str) -> api.DatasetStatus:
+    comm = api.DatasetStatusRequest(key=key)
+    response = _send_command(comm, api.DatasetStatusResponse)
+    return response.status
 
 
 def shutdown() -> None:

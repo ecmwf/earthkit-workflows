@@ -1,11 +1,13 @@
 import os
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Protocol, Type, runtime_checkable
 
 from typing_extensions import Self
 
 # TODO too much manual serde... either automate it based on dataclass field inspection, or just pickle it
 # (mind the server.recv/client.recv comment tho)
+# Also, consider switching from GetRequest, PurgeRequest, to DatasetRequest(get|purge|...)
 
 
 def ser_str(s: str) -> bytes:
@@ -38,6 +40,51 @@ class GetRequest:
     def deser(cls, data: bytes) -> Self:
         key, _ = deser_str(data)
         return cls(key=key)
+
+
+@dataclass
+class PurgeRequest:
+    key: str
+
+    def ser(self) -> bytes:
+        return ser_str(self.key)
+
+    @classmethod
+    def deser(cls, data: bytes) -> Self:
+        key, _ = deser_str(data)
+        return cls(key=key)
+
+
+@dataclass
+class DatasetStatusRequest:
+    key: str
+
+    def ser(self) -> bytes:
+        return ser_str(self.key)
+
+    @classmethod
+    def deser(cls, data: bytes) -> Self:
+        key, _ = deser_str(data)
+        return cls(key=key)
+
+
+class DatasetStatus(int, Enum):
+    not_ready = auto()
+    ready = auto()
+    not_present = auto()
+
+
+@dataclass
+class DatasetStatusResponse:
+    status: DatasetStatus
+
+    def ser(self) -> bytes:
+        return self.status.value.to_bytes(4, "big")
+
+    @classmethod
+    def deser(cls, data: bytes) -> Self:
+        status, _ = DatasetStatus(int.from_bytes(data[:4], "big")), data[4:]
+        return cls(status=status)
 
 
 @dataclass
@@ -168,6 +215,8 @@ b2c: dict[bytes, Type[Comm]] = {
     b"\x08": FreeSpaceResponse,
     b"\x09": OkResponse,
     b"\x0a": CloseCallback,
+    b"\x0b": PurgeRequest,
+    b"\x0c": DatasetStatusRequest,
 }
 c2b: dict[Type[Comm], bytes] = {v: k for k, v in b2c.items()}
 
