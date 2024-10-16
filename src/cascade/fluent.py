@@ -11,6 +11,7 @@ import xarray as xr
 from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
+from .graph import deduplicate_nodes
 
 
 class Payload:
@@ -149,7 +150,8 @@ class Action:
         self.nodes = nodes
 
     def graph(self) -> Graph:
-        """Creates graph from the nodes of the action.
+        """Creates graph from the nodes of the action, removing 
+        duplicate nodes. Assumes node names are unique.
 
         Return
         ------
@@ -160,7 +162,9 @@ class Action:
         for index in range(len(sinks)):
             sinks[index] = sinks[index].copy()
             sinks[index].outputs = []  # Ensures they are recognised as sinks
-        return Graph(sinks)
+        
+        pred = lambda a, b: (a.name == b.name and a.payload == b.payload)
+        return deduplicate_nodes(Graph(sinks), pred)
 
     @classmethod
     def register(cls, name: str, obj: type[Action]):
