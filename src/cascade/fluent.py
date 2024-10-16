@@ -9,7 +9,7 @@ import numpy as np
 import xarray as xr
 
 from . import backends
-from .graph import Graph
+from .graph import Graph, deduplicate_nodes
 from .graph import Node as BaseNode
 
 
@@ -160,7 +160,7 @@ class Action:
         for index in range(len(sinks)):
             sinks[index] = sinks[index].copy()
             sinks[index].outputs = []  # Ensures they are recognised as sinks
-        return Graph(sinks)
+        return deduplicate_nodes(Graph(sinks))
 
     @classmethod
     def register(cls, name: str, obj: type[Action]):
