@@ -63,6 +63,7 @@ def execute_task(task: ExecutableTaskInstance) -> None:
     for w in task.wirings:
         logger.debug(f"about to get input {w}")
         value = _get_output(w.sourceTask, w.sourceOutput).get().result()
+        logger.debug(f"input {w} has value {value}")
         if w.intoKwarg is not None:
             kwargs[w.intoKwarg] = value
         if w.intoPosition is not None:
@@ -70,16 +71,21 @@ def execute_task(task: ExecutableTaskInstance) -> None:
             args[w.intoPosition] = value
 
     logger.debug("executing func")
-    res = func(*args, **kwargs)
+    try:
+        res = func(*args, **kwargs)
+    except Exception:
+        logger.exception(f"{task.name=} failed in execution")
+        raise
     if len(task.task.definition.output_schema) > 1:
         raise NotImplementedError
     output_key = maybe_head(task.task.definition.output_schema.keys())
     if not output_key:
-        raise ValueError
-    res_var = _get_output(task.name, output_key)
-    client = get_client()
-    res_fut = client.scatter(res)
-    res_var.set(res_fut)
+        logger.warning(f"no output key for task {task.name}!")
+    else:
+        res_var = _get_output(task.name, output_key)
+        client = get_client()
+        res_fut = client.scatter(res)
+        res_var.set(res_fut)
 
 
 class DaskFuturisticExecutor:
@@ -144,4 +150,7 @@ class DaskFuturisticExecutor:
         return finished
 
     def is_done(self, id_: str, timeout: int | None = None) -> bool:
+        if self.futures[id_].status == 'error':
+            logger.error(f"future {id_} failed")
+            raise ValueError(id_) # TODO better
         return self.futures[id_].done()

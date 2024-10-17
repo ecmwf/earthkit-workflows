@@ -16,7 +16,7 @@ from math import isclose
 from typing import Any
 
 from cascade.controller.api import ExecutableTaskInstance
-from cascade.low.core import Environment, Host, JobExecutionRecord
+from cascade.low.core import Environment, Host, JobExecutionRecord, JobInstance, TaskExecutionRecord
 
 logger = logging.getLogger(__name__)
 
@@ -165,3 +165,14 @@ class SimulatingExecutor:
             return True
         host, task_name = id_.split("-", 1)
         return isclose(self.hosts[host].task_cpusec_remaining[task_name], 0)
+
+def placeholder_execution_record(job: JobInstance) -> JobExecutionRecord:
+    """We can't just use default factories with simulator because we need the datasets to have the right keys"""
+    return JobExecutionRecord(
+        tasks={t: TaskExecutionRecord(cpuseconds=1, memory_mb=1) for t in job.tasks},
+        datasets_mb={
+            (t, o): 1
+            for (t, i) in job.tasks.items()
+            for o in i.definition.output_schema
+        }
+    )

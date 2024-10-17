@@ -2,6 +2,7 @@
 Lowering of the cascade.graph structures into cascade.low representation
 """
 
+import logging
 from typing import Any, Callable, cast
 
 from cascade.graph import Graph, Node, serialise
@@ -14,6 +15,8 @@ from cascade.low.core import (
 )
 from cascade.schedulers.schedule import Schedule as FluentSchedule
 
+
+logger = logging.getLogger(__name__)
 
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
 
@@ -48,7 +51,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
                     sink_input_kw=None,
                 )
             )
-            static_input_ps[i] = None
+            static_input_ps[rev_lookup[param]] = None
 
         if node["outputs"] != [Node.DEFAULT_OUTPUT] and node["outputs"]:
             raise NotImplementedError("multiple outputs are not supported yet")
