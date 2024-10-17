@@ -32,7 +32,11 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         rev_lookup: dict[str, int] = {}
         for i, e in enumerate(args):
             static_input_ps[i] = e
-            rev_lookup[e] = i
+            # NOTE we may get a "false positive", ie, what is a genuine static string param ending up in rev_lookup
+            # But it doesnt hurt, since we only pick `node["inputs"]` later on only.
+            # Furthermore, we don't need rev lookup into kwargs since cascade fluent doesnt support that
+            if isinstance(e, str):
+                rev_lookup[e] = i
         edges = []
         for param, other in node["inputs"].items():
             edges.append(
