@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from math import isclose
 from typing import Any
 
-from cascade.controller.api import ExecutableTaskInstance
-from cascade.low.core import Environment, Host, JobExecutionRecord
+from cascade.controller.api import ExecutableTaskInstance, ExecutableSubgraph
+from cascade.low.core import Environment, Host, JobExecutionRecord, JobInstance, TaskExecutionRecord
 
 logger = logging.getLogger(__name__)
 
@@ -99,15 +99,18 @@ class SimulatingExecutor:
     def get_environment(self) -> Environment:
         return self.env
 
-    def run_at(self, task: ExecutableTaskInstance, host: str) -> str:
-        self.hosts[host].task_cpusec_remaining[task.name] = self.record.tasks[
-            task.name
-        ].cpuseconds
-        self.hosts[host].remaining_memory_mb()
-        self.hosts[host].task_inputs[task.name] = set(
-            (w.sourceTask, w.sourceOutput) for w in task.wirings
-        )
-        return f"{host}-{task.name}"
+    def run_at(self, subgraph: ExecutableSubgraph, host: str) -> str:
+        id_ = ":".join(f"{host}-{task.name}" for task in subgraph.tasks)
+
+        for task in subgraph.tasks:
+            self.hosts[host].task_cpusec_remaining[task.name] = self.record.tasks[
+                task.name
+            ].cpuseconds
+            self.hosts[host].remaining_memory_mb()
+            self.hosts[host].task_inputs[task.name] = set(
+                (w.sourceTask, w.sourceOutput) for w in task.wirings
+            )
+        return id_
 
     def scatter(self, taskName: str, outputName: str, hosts: set[str]) -> str:
         k = f"{taskName}:{outputName}"
@@ -163,5 +166,19 @@ class SimulatingExecutor:
         logger.debug(f"checking for {id_}")
         if id_ in self.comm_queue:
             return True
-        host, task_name = id_.split("-", 1)
-        return isclose(self.hosts[host].task_cpusec_remaining[task_name], 0)
+        host_task_name = [sid.split("-", 1) for sid in id_.split(":")]
+        return all(
+            isclose(self.hosts[host].task_cpusec_remaining[task_name], 0)
+            for host, task_name in host_task_name
+        )
+
+def placeholder_execution_record(job: JobInstance) -> JobExecutionRecord:
+    """We can't just use default factories with simulator because we need the datasets to have the right keys"""
+    return JobExecutionRecord(
+        tasks={t: TaskExecutionRecord(cpuseconds=1, memory_mb=1) for t in job.tasks},
+        datasets_mb={
+            (t, o): 1
+            for (t, i) in job.tasks.items()
+            for o in i.definition.output_schema
+        }
+    )
