@@ -2,6 +2,7 @@
 Lowering of the cascade.graph structures into cascade.low representation
 """
 
+import logging
 from typing import Any, Callable, cast
 
 from cascade.graph import Graph, Node, serialise
@@ -11,9 +12,11 @@ from cascade.low.core import (
     Task2TaskEdge,
     TaskDefinition,
     TaskInstance,
+    NO_OUTPUT_PLACEHOLDER,
 )
 from cascade.schedulers.schedule import Schedule as FluentSchedule
 
+logger = logging.getLogger(__name__)
 
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
 
@@ -32,7 +35,11 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         rev_lookup: dict[str, int] = {}
         for i, e in enumerate(args):
             static_input_ps[i] = e
-            rev_lookup[e] = i
+            # NOTE we may get a "false positive", ie, what is a genuine static string param ending up in rev_lookup
+            # But it doesnt hurt, since we only pick `node["inputs"]` later on only.
+            # Furthermore, we don't need rev lookup into kwargs since cascade fluent doesnt support that
+            if isinstance(e, str):
+                rev_lookup[e] = i
         edges = []
         for param, other in node["inputs"].items():
             edges.append(
@@ -44,7 +51,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
                     sink_input_kw=None,
                 )
             )
-            static_input_ps[i] = None
+            static_input_ps[rev_lookup[param]] = None
 
         if node["outputs"] != [Node.DEFAULT_OUTPUT] and node["outputs"]:
             raise NotImplementedError("multiple outputs are not supported yet")
@@ -54,7 +61,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             environment=[],
             entrypoint="",
             input_schema=input_schema,
-            output_schema={e: "Any" for e in node["outputs"]},
+            output_schema={e: "Any" for e in node["outputs"]} if node["outputs"] else {NO_OUTPUT_PLACEHOLDER: "str"},
         )
         task = TaskInstance(
             definition=definition,
@@ -82,7 +89,7 @@ def schedule2schedule(fluent_schedule: FluentSchedule) -> tuple[JobInstance, Sch
     job_instance = graph2job(fluent_schedule)
     schedule = Schedule(
         host_task_queues={
-            cast(str, k): cast(list[str], list(v))
+            cast(str, k): [cast(list[str], list(v))]
             for k, v in fluent_schedule.task_allocation.items()
         }
     )

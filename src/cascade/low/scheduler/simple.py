@@ -37,7 +37,7 @@ def bfs_schedule(
     execution_record: JobExecutionRecord | None,
     environment_state: EnvironmentState,
 ) -> Either[Schedule, str]:
-    schedule: dict[str, list[str]] = defaultdict(list)
+    schedule: dict[str, list[list[str]]] = defaultdict(list)
     remaining = set(job_instance.tasks.keys()) - environment_state.started_tasks()
 
     task_prereqs: dict[str, set[str]] = {
@@ -53,7 +53,7 @@ def bfs_schedule(
         if not computable:
             return Either.error("job instance contains a cycle")
         for t, h in zip(computable, cycle(environment.hosts)):
-            schedule[h].append(t)
+            schedule[h].append([t])
             remaining.remove(t)
     return Either.ok(Schedule(host_task_queues=schedule))
 
@@ -67,7 +67,7 @@ def dfs_one_worker_schedule(
     execution_record: JobExecutionRecord | None,
     environment_state: EnvironmentState,
 ) -> Either[Schedule, str]:
-    schedule: dict[str, list[str]] = defaultdict(list)
+    schedule: dict[str, list[list[str]]] = defaultdict(list)
     host = maybe_head(environment.hosts)
     if host is None:
         return Either.error("this scheduler compatible with exactly one worker only")
@@ -92,7 +92,7 @@ def dfs_one_worker_schedule(
             visit(v_in)
         computed.add(node)
         remaining.remove(node)
-        schedule[host].append(node)
+        schedule[host].append([node])
 
     while True:
         candidate = maybe_head(remaining)
@@ -119,7 +119,7 @@ def sink_bfs_redundant_schedule(
     task_v_out: dict[str, set[str]] = {
         k[0]: v for k, v in dependants(job_instance.edges).items()
     }
-    schedule: dict[str, list] = defaultdict(list)
+    schedule: dict[str, list[str]] = defaultdict(list)
     started_tasks = environment_state.started_tasks()
 
     sinks = {k for k in job_instance.tasks.keys() if not task_v_out.get(k, set())}
@@ -163,7 +163,8 @@ def sink_bfs_redundant_schedule(
         schedule[host] = [
             e for e in schedule[host] if e not in uniq and not cast(bool, uniq.add(e))
         ]
-    return Either.ok(Schedule(host_task_queues=schedule))
+    schedule_upcast = {h: [[ee] for ee in e] for h, e in schedule.items()}
+    return Either.ok(Schedule(host_task_queues=schedule_upcast))
 
 
 SinkBFSRedundantScheduler = lambda: ClasslessScheduler(sink_bfs_redundant_schedule)

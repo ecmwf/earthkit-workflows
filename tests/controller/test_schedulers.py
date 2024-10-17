@@ -10,6 +10,7 @@ from cascade.low.scheduler.simple import (
     dfs_one_worker_schedule,
     sink_bfs_redundant_schedule,
 )
+from cascade.low.scheduler.transformers import FusingTransformer
 
 from .util import BuilderGroup, add_large_source, add_postproc, add_sink
 
@@ -59,6 +60,9 @@ def test_2l_2sink():
 
     job = builder.job.build().get_or_raise()
 
+    # transformers
+    fusing = FusingTransformer()
+
     # bfs
     executor = SimulatingExecutor(one_biggie_env, builder.record)
     schedBfs = bfs_schedule(
@@ -72,6 +76,15 @@ def test_2l_2sink():
         executor.hosts["h1"].mem_record <= 23
     )  # observed to oscillate between 19 and 23
 
+    # bfs fusion
+    executor = SimulatingExecutor(one_biggie_env, builder.record)
+    schedBfsF = fusing.transform(bfs_schedule(
+        job, executor.get_environment(), builder.record, EnvironmentState()
+    ).get_or_raise(), builder.record)
+    controller.submit(job, schedBfsF, executor)
+    assert isclose(executor.total_time_secs, 60.0)
+    assert executor.hosts["h1"].mem_record == 49 # no fine purges
+
     # dfs
     executor = SimulatingExecutor(one_biggie_env, builder.record)
     schedDfs = dfs_one_worker_schedule(
@@ -84,6 +97,17 @@ def test_2l_2sink():
     assert (
         executor.hosts["h1"].mem_record <= 25
     )  # observed to oscillate between 19 and 25
+
+    # dfs fusion
+    executor = SimulatingExecutor(one_biggie_env, builder.record)
+    schedDfsF = fusing.transform(dfs_one_worker_schedule(
+        job, executor.get_environment(), builder.record, EnvironmentState()
+    ).get_or_raise(), builder.record)
+    controller.submit(job, schedDfsF, executor)
+    assert isclose(executor.total_time_secs, 60.0)
+    assert (
+        executor.hosts["h1"].mem_record == 49 # no fine purges
+    )
 
     # sink bfs -- one host
     executor = SimulatingExecutor(one_biggie_env, builder.record)

@@ -23,6 +23,7 @@ Simple Dynamic Scheduler
 # An intermediate step would just order eligible task in order of their salience, ie, the weight/size
 # of the subtrees they unlock, the shallowest & lightest first
 
+import time
 import logging
 import sys
 from collections import defaultdict
@@ -60,6 +61,7 @@ def _host_free_mb_cpu(
     )  # NOTE crude -- better score would consider task runtimes or remaining cpusec
     mbs_ts = sum((execution_record.tasks[t].memory_mb for t in host_tasks), 0)
     mbs_ds = sum((execution_record.datasets_mb[d] for d in host_datasets), 0)
+    logger.debug(f"host {host} has {mbs_ts=} and {mbs_ds=}")
     return cpu, host.memory_mb - mbs_ts - mbs_ds
 
 
@@ -70,7 +72,7 @@ def dynamic_schedule(
     environment_state: EnvironmentState,
     config: Config,
 ) -> Either[Schedule, str]:
-    schedule = defaultdict(list)
+    schedule: dict[str, list[list[str]]] = defaultdict(list)
     remaining = set(job_instance.tasks.keys()) - environment_state.started_tasks()
     if len(remaining) == 0:
         return Either.ok(Schedule(host_task_queues=schedule))
@@ -99,7 +101,7 @@ def dynamic_schedule(
         logger.debug("unable to find any eligible worker")
         return Either.ok(Schedule(host_task_queues=schedule, unallocated=remaining))
 
-    task_prereqs: dict[str, set[str]] = {
+    task_prereqs: dict[str, set[tuple[str, str]]] = {
         k: set((e[0], e[1]) for e in v.values())
         for k, v in param_source(job_instance.edges).items()
     }
@@ -137,10 +139,10 @@ def dynamic_schedule(
                 maybe_transf = transf
                 maybe_host = host
         if maybe_host:
-            schedule[host].append(task)
+            schedule[host].append([task])
             ok_hosts.remove(host)
 
-    unallocated = remaining - {task for queue in schedule.values() for task in queue}
+    unallocated = remaining - {task for queue in schedule.values() for subgraph in queue for task in subgraph}
     logger.debug(f"finished with {schedule=}, {unallocated=}")
     return Either.ok(Schedule(host_task_queues=schedule, unallocated=unallocated))
 
@@ -148,17 +150,23 @@ def dynamic_schedule(
 class DynamicScheduler:
     def __init__(self, config: Config):
         self.config = config
+        self.cum_time = 0
 
     def schedule(
         self,
         job_instance: JobInstance,
         environment: Environment,
-        execution_record: JobExecutionRecord | None,
+        execution_record: JobExecutionRecord,
         environment_state: EnvironmentState,
     ) -> Either[Schedule, str]:
         if not environment.hosts:
             return Either.error("no hosts given")
 
-        return dynamic_schedule(
+        this_start = time.perf_counter_ns()
+        res = dynamic_schedule(
             job_instance, environment, execution_record, environment_state, self.config
         )
+        this_took = time.perf_counter_ns() - this_start
+        logger.debug(f"this run of dyn sched took {this_took / 1e9: .3f}")
+        self.cum_time += this_took
+        return res

@@ -16,9 +16,10 @@ The scheduler will also assumes there is no other workload running on said execu
 
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, runtime_checkable
+from typing_extensions import Self
 
 from cascade.low.core import Any, Environment, JobInstance, Schedule, TaskInstance
-
+from cascade.low.views import dependants
 
 @dataclass
 class VariableWiring:
@@ -38,16 +39,23 @@ class ExecutableTaskInstance:
     task: TaskInstance
     name: str
     wirings: list[VariableWiring]
+    published_outputs: set[str]
+
+@dataclass
+class ExecutableSubgraph:
+    tasks: list[ExecutableTaskInstance]
 
 
 @runtime_checkable
 class Executor(Protocol):
+    # TODO update the is_done, wait_some and return values in favour of just using
+    # EnvironmentState as input/output argument
     def get_environment(self) -> Environment:
         """Used by the scheduler to build a schedule"""
         raise NotImplementedError
 
-    def run_at(self, task: ExecutableTaskInstance, host: str) -> str:
-        """Run a task at the host asap.
+    def run_at(self, subgraph: ExecutableSubgraph, host: str) -> str:
+        """Run a subgraph at the host asap.
         Return a unique id which can be later awaited"""
         raise NotImplementedError
 
@@ -93,6 +101,17 @@ class PurgingPolicy:
     eager: bool = field(default=True)
     preserve: set[tuple[str, str]] = field(default_factory=set)
 
+    @classmethod
+    def default(cls, job: JobInstance) -> Self:
+        """Sets preserve=True for all sinks of the graph"""
+        task_dependants = dependants(job.edges)
+        preserve = {
+            (task, output)
+            for task, instance in job.tasks.items()
+            for output in instance.definition.output_schema.keys()
+            if not task_dependants[(task, output)]
+        }
+        return cls(eager=True, preserve=preserve)
 
 @runtime_checkable
 class Controller(Protocol):
