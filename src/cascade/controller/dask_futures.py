@@ -89,20 +89,25 @@ def execute_task(task: ExecutableTaskInstance) -> None:
 
 
 class DaskFuturisticExecutor:
-    def __init__(self, cluster: Cluster):
+    def __init__(self, cluster: Cluster, environment: Environment|None = None):
         self.cluster = cluster
         self.client = Client(cluster)
         self.futures: dict[str, Future] = {}
         self.task2future: dict[str, str] = {}
+        # TODO utilize self.client.benchmark_hardware() or access the worker mem specs
+        if not environment:
+            environment = Environment(
+                hosts={
+                    _worker_id_from(w): Host(memory_mb=1, cpu=1, gpu=0)
+                    for w in self.cluster.workers
+                }
+            )
+        if set(environment.hosts.keys()) != set(_worker_id_from(w) for w in self.cluster.workers):
+            raise ValueError(f"inconsistency between {environment=} and {self.cluster.workers=}")
+        self.environment = environment
 
     def get_environment(self) -> Environment:
-        # TODO utilize self.client.benchmark_hardware() or access the worker mem specs
-        return Environment(
-            hosts={
-                _worker_id_from(w): Host(memory_mb=1, cpu=1, gpu=0)
-                for w in self.cluster.workers
-            }
-        )
+        return self.environment
 
     def run_at(self, task: ExecutableTaskInstance, host: str) -> str:
         fut = self.client.submit(execute_task, task, workers=_worker_id_to(host))
@@ -150,6 +155,7 @@ class DaskFuturisticExecutor:
         return finished
 
     def is_done(self, id_: str, timeout: int | None = None) -> bool:
+        logger.debug(f"inquiring completion of {id_}")
         if self.futures[id_].status == 'error':
             logger.error(f"future {id_} failed")
             raise ValueError(id_) # TODO better

@@ -84,8 +84,11 @@ def _submit(
         for task, instance in job.tasks.items()
     }
     id2task: dict[str, str] = {}
-    task2output: dict[str, tuple[str, str]] = {
-        task: (task, cast(str, maybe_head(instance.definition.output_schema)))
+    task2outputs: dict[str, list[tuple[str, str]]] = {
+        task: [
+            (task, e)
+            for e in instance.definition.output_schema
+        ]
         for task, instance in job.tasks.items()
     }
     task_dependants = dependants(job.edges)
@@ -98,6 +101,7 @@ def _submit(
         logger.debug(f"{host_ongoing=}")
         logger.debug(f"{host_remaining=}")
         for host in executor.get_environment().hosts.keys():
+            logger.debug(f"checking {host=} for completions")
             while len(host_ongoing[host]) > 0 and executor.is_done(
                 host_ongoing[host][0]
             ):
@@ -106,9 +110,8 @@ def _submit(
                 environment_state = environment_state.finishTaskAt(
                     host, id2task[completed]
                 )
-                environment_state = environment_state.computeDatasetAt(
-                    host, task2output[id2task[completed]]
-                )
+                for output in task2outputs[id2task[completed]]:
+                    environment_state = environment_state.computeDatasetAt(host, output)
                 for v in set(task_param_sources[id2task[completed]].values()):
                     if not is_dataset_needed(
                         schedule, task_dependants, v, purging_policy, environment_state
@@ -122,14 +125,9 @@ def _submit(
             while len(host_ongoing[host]) < 1 and len(host_remaining.get(host, [])) > 0:
                 nextTaskName = host_remaining[host].pop(0)
                 nextTask = executable_tasks[nextTaskName]
-                logger.debug(f"submitting {nextTaskName} on worker {host}")
-                nextTaskId = executor.run_at(nextTask, host)
-                environment_state = environment_state.runTaskAt(host, nextTaskName)
-                host_ongoing[host].append(nextTaskId)
-                id2task[nextTaskId] = nextTaskName
                 reqs = {(e.sourceTask, e.sourceOutput) for e in nextTask.wirings}
                 if missing := (reqs - environment_state.ds_of_host(host)):
-                    # TODO this should happen *before* the submit, and be dictated by scheduler
+                    # TODO this should be dictated by scheduler
                     logger.debug(
                         f"task {nextTaskName} on worker {host} is {missing =}! Scattering."
                     )
@@ -138,6 +136,11 @@ def _submit(
                         environment_state = environment_state.computeDatasetAt(
                             host, (e[0], e[1])
                         )
+                logger.debug(f"submitting {nextTaskName} on worker {host}")
+                nextTaskId = executor.run_at(nextTask, host)
+                environment_state = environment_state.runTaskAt(host, nextTaskName)
+                host_ongoing[host].append(nextTaskId)
+                id2task[nextTaskId] = nextTaskName
         ongoing = set(fut for futs in host_ongoing.values() for fut in futs)
         if len(ongoing) > 0:
             logger.debug(f"awaiting on {len(ongoing)} futures {ongoing}")
@@ -150,6 +153,7 @@ def _submit(
             schedule = dynamic_scheduler.schedule(
                 job, executor.get_environment(), execution_record, environment_state
             ).get_or_raise()
+            logger.debug(f"obtained new schedule {schedule}")
             host_remaining = {
                 host: queue for host, queue in schedule.host_task_queues.items()
             }
