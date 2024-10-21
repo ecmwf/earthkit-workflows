@@ -72,7 +72,7 @@ def dynamic_schedule(
     environment_state: EnvironmentState,
     config: Config,
 ) -> Either[Schedule, str]:
-    schedule = defaultdict(list)
+    schedule: dict[str, list[list[str]]] = defaultdict(list)
     remaining = set(job_instance.tasks.keys()) - environment_state.started_tasks()
     if len(remaining) == 0:
         return Either.ok(Schedule(host_task_queues=schedule))
@@ -101,7 +101,7 @@ def dynamic_schedule(
         logger.debug("unable to find any eligible worker")
         return Either.ok(Schedule(host_task_queues=schedule, unallocated=remaining))
 
-    task_prereqs: dict[str, set[str]] = {
+    task_prereqs: dict[str, set[tuple[str, str]]] = {
         k: set((e[0], e[1]) for e in v.values())
         for k, v in param_source(job_instance.edges).items()
     }
@@ -139,10 +139,10 @@ def dynamic_schedule(
                 maybe_transf = transf
                 maybe_host = host
         if maybe_host:
-            schedule[host].append(task)
+            schedule[host].append([task])
             ok_hosts.remove(host)
 
-    unallocated = remaining - {task for queue in schedule.values() for task in queue}
+    unallocated = remaining - {task for queue in schedule.values() for subgraph in queue for task in subgraph}
     logger.debug(f"finished with {schedule=}, {unallocated=}")
     return Either.ok(Schedule(host_task_queues=schedule, unallocated=unallocated))
 
@@ -156,7 +156,7 @@ class DynamicScheduler:
         self,
         job_instance: JobInstance,
         environment: Environment,
-        execution_record: JobExecutionRecord | None,
+        execution_record: JobExecutionRecord,
         environment_state: EnvironmentState,
     ) -> Either[Schedule, str]:
         if not environment.hosts:

@@ -16,8 +16,8 @@ from typing import Any, Callable
 from dask.distributed import Client, Future, Variable, get_client, wait
 from dask.distributed.deploy.cluster import Cluster
 
-from cascade.controller.api import ExecutableTaskInstance
-from cascade.low.core import Environment, Host, TaskDefinition
+from cascade.controller.api import ExecutableTaskInstance, ExecutableSubgraph
+from cascade.low.core import Environment, Host, TaskDefinition, NO_OUTPUT_PLACEHOLDER
 from cascade.low.func import ensure, maybe_head
 
 logger = logging.getLogger(__name__)
@@ -46,46 +46,62 @@ def _get_output(task: str, output_key: str) -> Variable:
 
 
 # wrapper to be the target of the Dask Future
-def execute_task(task: ExecutableTaskInstance) -> None:
-    logger.debug(f"preparing {task=}")
-    func: Callable
-    if task.task.definition.func is not None:
-        func = TaskDefinition.func_dec(task.task.definition.func)
-    else:
-        raise NotImplementedError
-        # TODO just importlib parse task.task.definition.entrypoint
-    kwargs = task.task.static_input_kw.copy()
-    args: list[Any] = []
-    for i, a in task.task.static_input_ps.items():
-        ensure(args, i)
-        args[i] = a
+def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
+    logger.debug(f"preparing {subgraph=}")
+    local_outputs: dict[tuple[str, str], Any] = {} # TODO replace with eg zict to handle overflows
+    for task in subgraph.tasks:
+        func: Callable
+        if task.task.definition.func is not None:
+            func = TaskDefinition.func_dec(task.task.definition.func)
+        else:
+            raise NotImplementedError
+            # TODO just importlib parse task.task.definition.entrypoint
+        kwargs = task.task.static_input_kw.copy()
+        args: list[Any] = []
+        for i, a in task.task.static_input_ps.items():
+            ensure(args, i)
+            args[i] = a
 
-    for w in task.wirings:
-        logger.debug(f"about to get input {w}")
-        value = _get_output(w.sourceTask, w.sourceOutput).get().result()
-        logger.debug(f"input {w} has value {value}")
-        if w.intoKwarg is not None:
-            kwargs[w.intoKwarg] = value
-        if w.intoPosition is not None:
-            ensure(args, w.intoPosition)
-            args[w.intoPosition] = value
+        for w in task.wirings:
+            if (w.sourceTask, w.sourceOutput) in local_outputs:
+                logger.debug(f"about to get input {w} from in-process mem")
+                value = local_outputs[(w.sourceTask, w.sourceOutput)]
+            else:
+                logger.debug(f"about to get input {w} from dask var")
+                value = _get_output(w.sourceTask, w.sourceOutput).get().result()
+            logger.debug(f"input {w} has value {value}")
+            if w.intoKwarg is not None:
+                kwargs[w.intoKwarg] = value
+            if w.intoPosition is not None:
+                ensure(args, w.intoPosition)
+                args[w.intoPosition] = value
 
-    logger.debug("executing func")
-    try:
-        res = func(*args, **kwargs)
-    except Exception:
-        logger.exception(f"{task.name=} failed in execution")
-        raise
-    if len(task.task.definition.output_schema) > 1:
-        raise NotImplementedError
-    output_key = maybe_head(task.task.definition.output_schema.keys())
-    if not output_key:
-        logger.warning(f"no output key for task {task.name}!")
-    else:
-        res_var = _get_output(task.name, output_key)
-        client = get_client()
-        res_fut = client.scatter(res)
-        res_var.set(res_fut)
+        if len(task.task.definition.output_schema) > 1:
+            raise NotImplementedError
+        output_key = maybe_head(task.task.definition.output_schema.keys())
+        if not output_key:
+            raise ValueError(f"no output key for task {task.name}!")
+
+        logger.debug("executing func")
+        try:
+            res = func(*args, **kwargs)
+        except Exception:
+            logger.exception(f"{task.name=} failed in execution")
+            raise
+        if output_key == NO_OUTPUT_PLACEHOLDER:
+            if res is not None:
+                logger.warning(f"gotten output of type {type(res)} where none was expected!")
+            else:
+                res = "ok"
+
+        # TODO purge local outputs that won't be needed later in the process
+
+        local_outputs[(task.name, output_key)] = res
+        if output_key in task.published_outputs:
+            res_var = _get_output(task.name, output_key)
+            client = get_client()
+            res_fut = client.scatter(res)
+            res_var.set(res_fut)
 
 
 class DaskFuturisticExecutor:
@@ -109,19 +125,21 @@ class DaskFuturisticExecutor:
     def get_environment(self) -> Environment:
         return self.environment
 
-    def run_at(self, task: ExecutableTaskInstance, host: str) -> str:
-        fut = self.client.submit(execute_task, task, workers=_worker_id_to(host))
+    def run_at(self, subgraph: ExecutableSubgraph, host: str) -> str:
+        fut = self.client.submit(execute_subgraph, subgraph, workers=_worker_id_to(host))
         while True:
             # NOTE I originally tried fut._uid, but that appears to be recycled?
             id_ = str(uuid.uuid4())
             if id_ not in self.futures:
                 break
         self.futures[id_] = fut
-        if task.name in self.task2future:
-            logger.warning(
-                f"task {task.name} has already had future {self.task2future[task.name]}, assuming retry and overriding"
-            )
-        self.task2future[task.name] = id_
+        for task in subgraph.tasks:
+            if task.name in self.task2future:
+                logger.warning(
+                    f"task {task.name} has already had future {self.task2future[task.name]}, assuming retry and overriding"
+                )
+            self.task2future[task.name] = id_
+            logger.debug(f"registering {task.name} under future {id_}")
         return id_
 
     def scatter(self, taskName: str, outputName: str, hosts: set[str]) -> str:

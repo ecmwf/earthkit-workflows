@@ -41,3 +41,6 @@ Usage:
  - at the end of the worker's lifecycle, you may invoke `shm.client.shutdown` to free the /dev/shm and persisted data,
    or rely on sigterm handler do it for you
 """
+
+# TODO it is worth considering bundling low-sized outputs (eg the "ok" no-output-placeholders) into a common page to
+# reduce overhead (though the gains may be system dependent, possibly none)

@@ -12,9 +12,9 @@ from cascade.low.core import (
     Task2TaskEdge,
     TaskDefinition,
     TaskInstance,
+    NO_OUTPUT_PLACEHOLDER,
 )
 from cascade.schedulers.schedule import Schedule as FluentSchedule
-
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             environment=[],
             entrypoint="",
             input_schema=input_schema,
-            output_schema={e: "Any" for e in node["outputs"]},
+            output_schema={e: "Any" for e in node["outputs"]} if node["outputs"] else {NO_OUTPUT_PLACEHOLDER: "str"},
         )
         task = TaskInstance(
             definition=definition,
@@ -89,7 +89,7 @@ def schedule2schedule(fluent_schedule: FluentSchedule) -> tuple[JobInstance, Sch
     job_instance = graph2job(fluent_schedule)
     schedule = Schedule(
         host_task_queues={
-            cast(str, k): cast(list[str], list(v))
+            cast(str, k): [cast(list[str], list(v))]
             for k, v in fluent_schedule.task_allocation.items()
         }
     )

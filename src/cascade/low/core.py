@@ -13,6 +13,10 @@ from pydantic import BaseModel, Field
 # double field dict[str] and dict[int]. However, that won't survive serde -- you end up with ints being
 # strings
 
+# NOTE We want *every* task to have an output, to simplify reasoning wrt completion.
+# Thus, if there are no genuine outputs, we insert a `placeholder: str` output
+# and expect every executor to generate some value like "ok" in such case
+NO_OUTPUT_PLACEHOLDER = "__NO_OUTPUT__"
 
 # Definitions
 class TaskDefinition(BaseModel):
@@ -114,7 +118,7 @@ class JobExecutionRecord(BaseModel):
 
 
 class Schedule(BaseModel):
-    host_task_queues: dict[str, list[str]]
+    host_task_queues: dict[str, list[list[str]]] # element of task queue is a fused subgraph == list of tasks
     unallocated: set[str] = Field(default_factory=set)
 
     @classmethod
