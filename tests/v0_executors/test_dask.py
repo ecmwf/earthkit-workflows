@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from cascade.executors.dask import DaskLocalExecutor
-from cascade.executors.dask_utils.report import Report, TaskStream, duration_in_sec
-from cascade.schedulers.depthfirst import DepthFirstScheduler
+from cascade.v0_executors.dask import DaskLocalExecutor
+from cascade.v0_executors.dask_utils.report import Report, TaskStream, duration_in_sec
+from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
 
 
 class MockTaskStream(TaskStream):

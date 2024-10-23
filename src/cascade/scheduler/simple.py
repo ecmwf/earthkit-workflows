@@ -25,7 +25,7 @@ from typing import cast
 
 from cascade.low.core import Environment, JobExecutionRecord, JobInstance, Schedule
 from cascade.low.func import Either, maybe_head
-from cascade.low.scheduler.api import ClasslessScheduler, EnvironmentState
+from cascade.scheduler.api import ClasslessScheduler, EnvironmentState
 from cascade.low.views import dependants, param_source
 
 logger = logging.getLogger(__name__)

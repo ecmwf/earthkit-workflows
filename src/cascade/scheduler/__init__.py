@@ -1,7 +1,7 @@
 from cascade.low.core import Environment, JobExecutionRecord, JobInstance, Schedule
 from cascade.low.func import Either
-from cascade.low.scheduler.api import EnvironmentState, Scheduler
-from cascade.low.scheduler.simple import BFSScheduler
+from cascade.scheduler.api import EnvironmentState, Scheduler
+from cascade.scheduler.simple import BFSScheduler
 
 
 def schedule(

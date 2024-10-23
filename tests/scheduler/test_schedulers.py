@@ -1,16 +1,16 @@
 from math import isclose
 
 from cascade.controller.impl import CascadeController
-from cascade.controller.simulator import SimulatingExecutor
+from cascade.executors.simulator import SimulatingExecutor
 from cascade.low.core import Environment, Host, Schedule
-from cascade.low.scheduler.api import EnvironmentState
-from cascade.low.scheduler.dynamic import Config, DynamicScheduler
-from cascade.low.scheduler.simple import (
+from cascade.scheduler.api import EnvironmentState
+from cascade.scheduler.dynamic import Config, DynamicScheduler
+from cascade.scheduler.simple import (
     bfs_schedule,
     dfs_one_worker_schedule,
     sink_bfs_redundant_schedule,
 )
-from cascade.low.scheduler.transformers import FusingTransformer
+from cascade.scheduler.transformers import FusingTransformer
 
 from .util import BuilderGroup, add_large_source, add_postproc, add_sink
 

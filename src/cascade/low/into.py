@@ -14,7 +14,7 @@ from cascade.low.core import (
     TaskInstance,
     NO_OUTPUT_PLACEHOLDER,
 )
-from cascade.schedulers.schedule import Schedule as FluentSchedule
+from cascade.v0_schedulers.schedule import Schedule as FluentSchedule
 
 logger = logging.getLogger(__name__)
 

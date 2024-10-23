@@ -4,8 +4,8 @@ import pytest
 from schedule_utils import example_graph
 
 from cascade.graph import Graph
-from cascade.schedulers.anneal import AnnealingScheduler
-from cascade.schedulers.depthfirst import DepthFirstScheduler
+from cascade.v0_schedulers.anneal import AnnealingScheduler
+from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
 from cascade.taskgraph import Resources
 from cascade.transformers import to_task_graph
 

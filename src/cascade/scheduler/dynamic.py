@@ -38,7 +38,7 @@ from cascade.low.core import (
     Schedule,
 )
 from cascade.low.func import Either, maybe_head
-from cascade.low.scheduler.api import EnvironmentState
+from cascade.scheduler.api import EnvironmentState
 from cascade.low.views import param_source
 
 logger = logging.getLogger(__name__)

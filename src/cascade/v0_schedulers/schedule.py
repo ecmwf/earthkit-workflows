@@ -1,6 +1,6 @@
 from typing import Iterable, Iterator
 
-from cascade.contextgraph import ContextGraph
+from cascade.v0_contextgraph import ContextGraph
 from cascade.graph import Graph, Node, copy_graph
 
 

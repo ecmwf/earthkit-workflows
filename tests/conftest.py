@@ -3,7 +3,7 @@ import functools
 import numpy as np
 import pytest
 
-from cascade.contextgraph import ContextGraph
+from cascade.v0_contextgraph import ContextGraph
 from cascade.fluent import Payload, from_source
 
 

@@ -1,8 +1,8 @@
 import pytest
 
-from cascade.executors.dask import DaskLocalExecutor
+from cascade.v0_executors.dask import DaskLocalExecutor
 from cascade.profiler import memray_profile, meters_profile
-from cascade.schedulers.depthfirst import DepthFirstScheduler
+from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
 
 
 @pytest.mark.parametrize("schedule", [False, True])

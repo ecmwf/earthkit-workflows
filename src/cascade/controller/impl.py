@@ -22,8 +22,8 @@ from cascade.controller.api import (
 )
 from cascade.low.core import JobExecutionRecord, JobInstance, Schedule, TaskInstance
 from cascade.low.func import maybe_head
-from cascade.low.scheduler.api import EnvironmentState, Scheduler
-from cascade.low.scheduler.dynamic import DynamicScheduler
+from cascade.scheduler.api import EnvironmentState, Scheduler
+from cascade.scheduler.dynamic import DynamicScheduler
 from cascade.low.views import dependants, param_source
 
 logger = logging.getLogger(__name__)
