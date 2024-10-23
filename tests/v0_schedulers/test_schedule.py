@@ -3,7 +3,7 @@ from contextlib import nullcontext as does_not_raise
 import pytest
 from schedule_utils import example_graph
 
-from cascade.schedulers.schedule import Schedule
+from cascade.v0_schedulers.schedule import Schedule
 
 
 @pytest.mark.parametrize(

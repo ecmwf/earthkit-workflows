@@ -2,7 +2,7 @@ from typing import Callable
 
 from pyvis.network import Network
 
-from .contextgraph import Communicator, ContextGraph, Processor
+from cascade.v0_contextgraph import Communicator, ContextGraph, Processor
 from .graph import Graph, Node
 from .graph.pyvis import PRESET_OPTIONS, _make_attr_func, edge_info, node_info, to_pyvis
 from .taskgraph import Task

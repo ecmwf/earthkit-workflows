@@ -6,7 +6,7 @@ import psutil
 from dask.distributed import get_worker
 from distributed.comm import connect
 
-from cascade.contextgraph import ContextGraph
+from cascade.v0_contextgraph import ContextGraph
 
 
 class NetworkBenchmark:

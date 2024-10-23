@@ -4,11 +4,11 @@ import pytest
 
 from cascade.controller.api import PurgingPolicy
 from cascade.controller.impl import CascadeController
-from cascade.controller.simulator import SimulatingExecutor
+from cascade.executors.simulator import SimulatingExecutor
 from cascade.graph import Node
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import Environment, Host, JobExecutionRecord, TaskExecutionRecord
-from cascade.low.scheduler import schedule
+from cascade.scheduler import schedule
 
 
 def test_simple():

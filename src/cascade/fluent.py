@@ -192,7 +192,7 @@ class Action:
                 f"Action class {obj} already has an attribute {name}, will not override"
             )
 
-        cls.REGISTRY[name] = obj
+        cls.REGISTRY[name] = obj # type: ignore
 
     @classmethod
     def flush_registry(cls):
@@ -540,9 +540,9 @@ class Action:
 
         criteria = self._validate_criteria(criteria)
 
-        if len(criteria) == 0:
+        if len(criteria) == 0: # type: ignore
             return self
-        selected_nodes = self.nodes.sel(**criteria, drop=drop)
+        selected_nodes = self.nodes.sel(**criteria, drop=drop) # type: ignore
         return type(self)(selected_nodes)
 
     sel = select
@@ -567,9 +567,9 @@ class Action:
 
         criteria = self._validate_criteria(criteria)
 
-        if len(criteria) == 0:
+        if len(criteria) == 0: # type: ignore
             return self
-        selected_nodes = self.nodes.isel(**criteria, drop=drop)
+        selected_nodes = self.nodes.isel(**criteria, drop=drop) # type: ignore
         return type(self)(selected_nodes)
 
     isel = iselect

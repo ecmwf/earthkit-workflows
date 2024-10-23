@@ -3,10 +3,10 @@ from contextlib import nullcontext as does_not_raise
 import pytest
 from schedule_utils import example_graph
 
-from cascade.contextgraph import ContextGraph, Processor
-from cascade.schedulers.depthfirst import DepthFirstScheduler
-from cascade.schedulers.schedule import Schedule
-from cascade.schedulers.simulate import (
+from cascade.v0_contextgraph import ContextGraph, Processor
+from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
+from cascade.v0_schedulers.schedule import Schedule
+from cascade.v0_schedulers.simulate import (
     CommunicatorState,
     ContextState,
     ExecutionState,

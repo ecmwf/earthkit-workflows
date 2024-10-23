@@ -1,12 +1,12 @@
 from dask.distributed import LocalCluster
 from dask.threaded import get
 
-from cascade.controller.dask_delayed import job2delayed
-from cascade.controller.dask_futures import DaskFuturisticExecutor
+from cascade.executors.dask_delayed import job2delayed
+from cascade.executors.dask_futures import DaskFuturisticExecutor
 from cascade.controller.impl import CascadeController
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
-from cascade.low.scheduler import schedule
+from cascade.scheduler import schedule
 
 # TODO instead of every process launching its own cluster, introduce some global fixture or smth like that
 
