@@ -3,6 +3,7 @@ Core graph data structures -- prescribes most of the API
 """
 
 from base64 import b64decode, b64encode
+from dataclasses import dataclass
 from collections import defaultdict
 from typing import Any, Callable, Optional, cast
 
@@ -47,20 +48,24 @@ class TaskDefinition(BaseModel):
     def func_enc(f: Callable) -> str:
         return b64encode(cloudpickle.dumps(f)).decode("ascii")
 
+TaskId = str
+
+@dataclass(frozen=True)
+class DatasetId:
+    task: TaskId
+    output: str
 
 class Task2TaskEdge(BaseModel):
-    source_task: str
-    source_output: str
-    sink_task: str
+    source: DatasetId
+    sink_task: TaskId
     sink_input_kw: Optional[str]
     sink_input_ps: Optional[int]
 
 
 class JobDefinition(BaseModel):
     # NOTE may be redundant altogether as not used rn -- or maybe useful with ProductDefinitions
-    definitions: dict[str, TaskDefinition]
+    definitions: dict[TaskId, TaskDefinition]
     edges: list[Task2TaskEdge]
-
 
 # Instances
 class TaskInstance(BaseModel):
@@ -72,23 +77,25 @@ class TaskInstance(BaseModel):
         description="input parameters for the entrypoint. Must be json/msgpack-serializable"
     )
 
-
 class JobInstance(BaseModel):
-    tasks: dict[str, TaskInstance]
+    tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
 
+    def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
+        return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}
+
+WorkerId = str
 
 # Execution
-class Host(BaseModel):
+class Worker(BaseModel):
     # NOTE we may want to extend cpu/gpu over time with more rich information
     cpu: int
     gpu: int
     memory_mb: int
 
-
 class Environment(BaseModel):
     # NOTE missing: comm speed etc
-    hosts: dict[str, Host]
+    workers: dict[WorkerId, Worker]
 
 
 class TaskExecutionRecord(BaseModel):
@@ -105,22 +112,12 @@ class TaskExecutionRecord(BaseModel):
 no_record_ts = TaskExecutionRecord(cpuseconds=1, memory_mb=1)
 no_record_ds = 1
 
-
 class JobExecutionRecord(BaseModel):
-    tasks: dict[str, TaskExecutionRecord] = Field(
+    tasks: dict[TaskId, TaskExecutionRecord] = Field(
         default_factory=lambda: defaultdict(lambda: no_record_ts)
     )
-    datasets_mb: dict[tuple[str, str], int] = Field(
+    datasets_mb: dict[DatasetId, int] = Field(
         default_factory=lambda: defaultdict(lambda: no_record_ds)
     )  # keyed by (task, output)
 
     # TODO extend this with some approximation/default from TaskInstance only
-
-
-class Schedule(BaseModel):
-    host_task_queues: dict[str, list[list[str]]] # element of task queue is a fused subgraph == list of tasks
-    unallocated: set[str] = Field(default_factory=set)
-
-    @classmethod
-    def empty(cls):
-        return cls(host_task_queues=defaultdict(list))

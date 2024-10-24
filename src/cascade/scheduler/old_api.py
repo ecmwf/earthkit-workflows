@@ -2,16 +2,25 @@ import logging
 from dataclasses import dataclass, field, replace
 from itertools import chain
 from typing import Callable, Protocol, runtime_checkable, Iterable, cast
+from collections import defaultdict
 
+from pydantic import BaseModel, Field
 from pyrsistent import PSet
 from pyrsistent import s as pset
 from typing_extensions import Self
 
-from cascade.low.core import Environment, JobExecutionRecord, JobInstance, Schedule
+from cascade.low.core import Environment, JobExecutionRecord, JobInstance
 from cascade.low.func import Either
 
 logger = logging.getLogger(__name__)
 
+class Schedule(BaseModel):
+    host_task_queues: dict[str, list[list[str]]] # element of task queue is a fused subgraph == list of tasks
+    unallocated: set[str] = Field(default_factory=set)
+
+    @classmethod
+    def empty(cls):
+        return cls(host_task_queues=defaultdict(list))
 
 @dataclass
 class EnvironmentState:
