@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import (
+    Type,
     Any,
     Callable,
     Generic,
@@ -86,3 +87,21 @@ def ensure(l: list, i: int) -> None:
     """Ensures list l has at least i elements, for a safe l[i] = ..."""
     if (k := (i + 1 - len(l))) > 0:
         l.extend([None] * k)
+
+
+@runtime_checkable
+class Monoid(Protocol):
+
+    @abstractmethod
+    def __add__(self, other: Self) -> Self:
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def empty(cls) -> Self:
+        raise NotImplementedError
+
+TMonoid = TypeVar("TMonoid", bound=Monoid)
+
+def msum(i: Iterable[TMonoid], t: Type[TMonoid]) -> TMonoid:
+    return sum(i, start=t.empty())

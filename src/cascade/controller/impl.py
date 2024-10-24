@@ -117,9 +117,10 @@ def _submit(
                         if not is_dataset_needed(
                             schedule, task_dependants, v, purging_policy, environment_state
                         ):
-                            logger.debug(f"{v} not needed, purging")
-                            for other_host in environment_state.hosts_of_ds(v):
-                                executor.purge(v[0], v[1], {other_host})
+                            purge_at = environment_state.hosts_of_ds(v)
+                            logger.debug(f"{v} not needed, purging at {purge_at}")
+                            executor.purge(v[0], v[1], purge_at)
+                            for other_host in purge_at:
                                 environment_state = environment_state.purgeDatasetAt(
                                     other_host, (v[0], v[1])
                                 )
