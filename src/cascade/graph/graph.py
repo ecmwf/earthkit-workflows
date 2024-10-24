@@ -62,6 +62,11 @@ class Graph:
         self.sinks.extend(other.sinks)
         return self
 
+    @classmethod
+    def empty(cls) -> "Graph":
+        """Just making this a monoid"""
+        return cls(sinks=[])
+
     def nodes(self, forwards=False) -> Iterator[Node]:
         """Iterate over nodes of the graph
 
