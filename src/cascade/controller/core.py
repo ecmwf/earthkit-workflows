@@ -8,14 +8,14 @@ from collections import defaultdict
 from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId
 
 class DatasetStatus(int, Enum):
-    preparing = 0
-    available = 1
+    preparing = 0 # set by controller
+    available = 1 # set by executor
 
 class TaskStatus(int, Enum):
-    enqueued = 0
-    running = 1
-    succeeded = 2
-    failed = 3
+    enqueued = 0 # set by controller
+    running = 1 # set by executor
+    succeeded = 2 # set by executor
+    failed = 3 # set by executor
 
 class State:
     """Captures what is where -- datasets, running tasks, ... Used for decision making and progress tracking"""

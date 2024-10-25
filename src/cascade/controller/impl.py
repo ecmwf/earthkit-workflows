@@ -31,5 +31,6 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> None:
             act(executor, state, actions)
         logger.debug("about to await executor")
         events = executor.wait_some()
-        logger.debug(f"received {len(events)} events")
+        if isinstance(events, list):
+            logger.debug(f"received {len(events)} events")
         notify(state, events, taskInputs)
