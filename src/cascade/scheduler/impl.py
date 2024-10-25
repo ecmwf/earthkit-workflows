@@ -18,7 +18,6 @@ def naive_bfs_layers(job: JobInstance, record: JobExecutionRecord, completed: se
 
     # TODO proper topo decompo algo
     while remaining:
-        logger.debug(f"{remaining=}")
         this_layer: list[str] = []
         for e in remaining:
             if not task_prereqs.get(e, set()).intersection(remaining):
@@ -26,6 +25,7 @@ def naive_bfs_layers(job: JobInstance, record: JobExecutionRecord, completed: se
         if not this_layer:
             return Either.error("job instance contains a cycle")
         layers.append(this_layer)
+        logger.debug(f"appended {this_layer}")
         for e in this_layer:
             remaining.remove(e)
     return Either.ok(Schedule(layers=layers))

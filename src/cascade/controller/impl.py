@@ -22,15 +22,16 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> None:
 
     while True:
         actions = plan(schedule, state, env, job, taskInputs)
-        if not actions:
-            logger.debug("no actions planned, breaking")
-            if len(schedule.layers) > 0:
-                raise ValueError(f"no actions planned but schedule not empty: {schedule}")
-            break
-        for action in actions:
+        if actions:
             act(executor, state, actions)
         logger.debug("about to await executor")
         events = executor.wait_some()
-        if isinstance(events, list):
-            logger.debug(f"received {len(events)} events")
+        logger.debug(f"received {len(events)} events")
         notify(state, events, taskInputs)
+        if not actions and not events:
+            logger.debug("neither events nor actions, breaking")
+            break
+
+
+    if len(schedule.layers) > 0:
+        raise ValueError(f"controller finished but schedule not empty: {schedule}")

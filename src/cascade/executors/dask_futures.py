@@ -196,7 +196,7 @@ class DaskFuturisticExecutor:
     def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         return _get_output(dataset_id).get().result()
 
-    def wait_some(self, timeout_sec: int | None = None) -> Iterable[Event]:
+    def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():
             return self.eq.drain()
 

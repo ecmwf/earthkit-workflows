@@ -58,7 +58,7 @@ class InstantExecutor():
         return self.env
 
     def submit(self, action: ActionSubmit) -> None:
-        self.submit_done(action)
+        self.eq.submit_done(action)
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
         self.eq.transmit_done(action)
@@ -72,5 +72,5 @@ class InstantExecutor():
     def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         raise NotImplementedError
 
-    def wait_some(self, timeout_sec: int | None = None) -> Iterable[Event]:
+    def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         return self.eq.drain()

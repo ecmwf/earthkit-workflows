@@ -128,7 +128,7 @@ class SimulatingExecutor:
     def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         raise NotImplementedError
 
-    def wait_some(self, timeout_sec: int | None = None) -> Iterable[Event]:
+    def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():
             return self.eq.drain()
 
@@ -144,11 +144,12 @@ class SimulatingExecutor:
         rv = []
         for worker in self.workers:
             tasks, datasets = self.workers[worker].progress_seconds(next_event_at)
-            rv.append(Event(
-                at=worker,
-                ts_trans=[(task, TaskStatus.succeeded) for task in tasks],
-                ds_trans=[(dataset, DatasetStatus.available) for dataset in datasets],
-            ))
+            if len(tasks) > 0 or len(datasets) > 0:
+                rv.append(Event(
+                    at=worker,
+                    ts_trans=[(task, TaskStatus.succeeded) for task in tasks],
+                    ds_trans=[(dataset, DatasetStatus.available) for dataset in datasets],
+                ))
         return rv
 
 def placeholder_execution_record(job: JobInstance) -> JobExecutionRecord:

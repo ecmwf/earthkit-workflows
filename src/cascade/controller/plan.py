@@ -1,13 +1,18 @@
 """
-Given a Schedule and State, issue which Actions should happen next
+Given a Schedule and current State, issue which Actions should happen next
+
+In effect, this is a dynamic scheduler, which utilizes the graph decomposition represented by
+the (static) Schedule.
 """
+
+# TODO many suboptimalities here, cf individual TODOs below
 
 import logging
 
 from cascade.scheduler.core import Schedule
 from cascade.low.core import JobInstance, DatasetId, WorkerId, TaskId, Environment
 from cascade.low.func import maybe_head
-from cascade.controller.core import State, TaskStatus, Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit
+from cascade.controller.core import State, TaskStatus, Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, DatasetStatus
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +31,11 @@ def get_available_workers(state: State, env: Environment) -> set[WorkerId]:
 def reasonable_assignment(workers: set[WorkerId], state: State, env: Environment, tasks: list[TaskId], taskInputs: dict[TaskId, set[DatasetId]]) -> dict[WorkerId, list[TaskId]]:
     """Returns which workers should compute which tasks"""
     # TODO consider required memory transfers etc
-    available_somewhere = set(state.ds2worker.keys())
+    # NOTE consider status=preparing too? Probably too early
+    available_somewhere = set(w for w, w2s in state.ds2worker.items() if DatasetStatus.available in set(w2s.values()))
+    logger.debug(f"trying to assign given datasets {available_somewhere}")
     computable = {task for task in tasks if taskInputs.get(task, set()) <= available_somewhere}
+    logger.debug(f"identified computable tasks {computable}")
     return {
         worker_id: [task_id]
         for worker_id, task_id in zip(workers, computable)
@@ -36,36 +44,34 @@ def reasonable_assignment(workers: set[WorkerId], state: State, env: Environment
 def convert(assignment: dict[WorkerId, list[TaskId]], state: State, job: JobInstance, taskInputs: dict[TaskId, set[DatasetId]]) -> list[Action]:
     """Converts the assignment into actions -- which may be data transfers or subgraphs"""
     # TODO multiple optimizations required here:
-    # - fuse tasks, trim outputs
-    # - transmit from workers that have available already
-    # - fuse transmits
+    # - transmit from workers that are close
+    # - fuse transmits?
+    # - fuse tasks (then trim outputs)
     actions: list[Action] = []
     for worker_id, tasks in assignment.items():
         available_ds = set(state.worker2ds[worker_id])
         for task_id in tasks:
             missing = taskInputs.get(task_id, set()) - available_ds
             outputs = job.outputs_of(task_id)
-            if not missing:
+            for e in missing:
+                fr = maybe_head(state.ds2worker[e].keys())
+                if not fr:
+                    raise ValueError(f"cannot find host with dataset {e}")
                 actions.append(
-                    ActionSubmit(
-                        at=worker_id,
-                        tasks=[task_id],
-                        outputs = outputs,
-                    ),
-                )
-            else:
-                for e in missing:
-                    fr = maybe_head(state.ds2worker[e].keys())
-                    if not fr:
-                        raise ValueError(f"cannot find host with dataset {e}")
-                    actions.append(
-                        ActionDatasetTransmit(
-                            ds={e},
-                            fr={fr},
-                            to={worker_id},
-                        )
+                    ActionDatasetTransmit(
+                        ds={e},
+                        fr={fr},
+                        to={worker_id},
                     )
-                available_ds.update(missing)
+                )
+            available_ds.update(missing)
+            actions.append(
+                ActionSubmit(
+                    at=worker_id,
+                    tasks=[task_id],
+                    outputs = outputs,
+                )
+            )
             available_ds.update(outputs)
     return actions
 
@@ -89,7 +95,11 @@ def plan(schedule: Schedule, state: State, env: Environment, job: JobInstance, t
         logger.debug(f"planning with {current_layer=} of {layer_idx=} and {available_workers=}")
         next_assignment = reasonable_assignment(available_workers, state, env, current_layer, taskInputs)
         if not next_assignment:
-            layer_idx += 1 # TODO suboptimal -- possibly we'd like to jump further, or assign in fusing mode instead
+            # TODO this needs instead bfs to siblings of the layer, once its a tree,
+            # or dfs & fuse -- but no need to go down to sink
+            logger.debug(f"no assignment found, skipping to next layer")
+            layer_idx += 1
+            continue
         logger.debug(f"processing {next_assignment = }")
         actions += convert(next_assignment, state, job, taskInputs)
         layer_idx = schedule.schedule_from_layer((t for ts in next_assignment.values() for t in ts), layer_idx)

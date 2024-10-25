@@ -36,6 +36,6 @@ class Executor(Protocol):
 
     # TODO consider alternative implementation with `def reconcile(state: State) -> State
     # which replaces the `notify` module as well
-    def wait_some(self, timeout_sec: int | None = None) -> Iterable[Event]:
+    def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         """Blocks until timeout elapses or some events are emitted"""
         raise NotImplementedError
