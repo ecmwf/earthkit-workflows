@@ -40,6 +40,14 @@ class SimpleEventQueue():
             for worker in action.to
         ])
 
+    def submit_done(self, action: ActionSubmit) -> None:
+        event = Event(
+            at=action.at,
+            ts_trans=[(task, TaskStatus.succeeded) for task in action.tasks],
+            ds_trans=[(dataset, DatasetStatus.available) for dataset in action.outputs],
+        )
+        self.add([event])
+
 class InstantExecutor():
     def __init__(self, workers: int, job: JobInstance) -> None:
         self.env = Environment(workers={f"w{i}": Worker(cpu=1, gpu=0, memory_mb=sys.maxsize) for i in range(workers)})
@@ -50,22 +58,7 @@ class InstantExecutor():
         return self.env
 
     def submit(self, action: ActionSubmit) -> None:
-        self.eq.add([
-            Event(
-                at=action.at,
-                ts_trans=[(task, TaskStatus.succeeded)],
-                ds_trans=[],
-            )
-            for task in action.tasks
-        ])
-        self.eq.add([
-            Event(
-                at=action.at,
-                ds_trans=[(dataset, DatasetStatus.available)],
-                ts_trans=[],
-            )
-            for dataset in action.outputs
-        ])
+        self.submit_done(action)
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
         self.eq.transmit_done(action)
