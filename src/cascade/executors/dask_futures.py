@@ -170,14 +170,18 @@ class DaskFuturisticExecutor:
         self.environment = environment
         self.job = job
         self.param_source = param_source(job.edges)
+        self.cnt = 0
 
     def get_environment(self) -> Environment:
         return self.environment
 
     def submit(self, action: ActionSubmit) -> None:
         fut = self.client.submit(execute_subgraph, build_subgraph(action, self.job, self.param_source), workers=_worker_id_to(action.at))
-        self.fid2action[fut._uid] = action
-        self.fid2future[fut._uid] = fut
+        logger.debug(f"assigned {self.cnt} to future for {action=}")
+        # NOTE we could have gone with uuid but just monotonic counter is simpler. Don't use fut._uid -- it doesnt seem to change!
+        self.fid2action[self.cnt] = action
+        self.fid2future[self.cnt] = fut
+        self.cnt += 1
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
         logger.warning("ignoring transmit due to everything-broadcasted")
@@ -202,14 +206,16 @@ class DaskFuturisticExecutor:
             return self.eq.drain()
 
         running = list(self.fid2future.values())
+        rev = {fut: id_ for id_, fut in self.fid2future.items()}
         logger.debug(f"awaiting on {running}")
         result = wait(running, return_when="FIRST_COMPLETED", timeout=timeout_sec)
         logger.debug(f"awaited futures {result}")
         for fut in result.done:
+            id_ = rev[fut]
             if fut.status == 'error':
                 logger.error(f"future {fut} corresponding to {self.fid2action[fut._uid]} failed")
                 raise ValueError(fut)
-            self.eq.submit_done(self.fid2action.pop(fut._uid))
-            self.fid2future.pop(fut._uid)
+            self.eq.submit_done(self.fid2action.pop(id_))
+            self.fid2future.pop(id_)
 
         return self.eq.drain()

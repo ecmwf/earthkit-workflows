@@ -8,11 +8,9 @@ import cascade.low.into
 from dask.distributed import LocalCluster
 from cascade.executors.dask_delayed import job2delayed
 from cascade.executors.dask_futures import DaskFuturisticExecutor
-from cascade.controller.impl import CascadeController
+from cascade.controller.impl import run
 import cascade.scheduler
-from cascade.scheduler.api import Scheduler
-from cascade.scheduler.dynamic import DynamicScheduler, Config as DsConfig
-from cascade.scheduler.transformers import FusingTransformer
+from cascade.scheduler.impl import naive_bfs_layers
 import cascade.low.core
 import cascade.executors.simulator
 import time
@@ -29,9 +27,8 @@ from cascade.low.func import assert_never
 def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
     job = cascade.low.into.graph2job(graph)
     exe_rec = cascade.executors.simulator.placeholder_execution_record(job)
-    dyn: Scheduler|None = None
+    schedule = naive_bfs_layers(job, exe_rec, set()).get_or_raise()
     shm: Process|None = None
-    fusing = FusingTransformer()
     start_raw = time.perf_counter_ns()
     if isinstance(opts, api.DaskDelayed):
         Cascade(graph).execute()
@@ -41,20 +38,12 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         shm_api.publish_client_port(port)
         shm = Process(target=shm_server.entrypoint, args=(port, gb4, fiab_logging))
         shm.start()
-        controller = CascadeController()
-        executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024))
-        if opts.dyn_sched:
-            schedule = cascade.scheduler.Schedule.empty()
-            dyn = DynamicScheduler(DsConfig(worker_eligible_mem_threshold=1))
-        else:
-            schedule = cascade.scheduler.schedule(job, executor.get_environment()).get_or_raise()
-        if opts.fusing:
-            schedule = fusing.transform(schedule)
+        fiab_executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024), job)
         start_fine = time.perf_counter_ns()
         try:
-            controller.submit(job, schedule, executor, dynamic_scheduler=dyn, execution_record=exe_rec)
+            run(job, fiab_executor, schedule)
             logging.info("controller in fiab done")
-            executor.procwatch.join()
+            fiab_executor.procwatch.join()
         except Exception as e:
             shm_client.shutdown()
             raise
@@ -64,29 +53,20 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         sinks = [k for k in cnts if cnts[k] == 0]
         get(dly, sinks)
     elif isinstance(opts, api.DaskFutures):
-        env = cascade.low.core.Environment(hosts={
-            f'{i}': cascade.low.core.Host(cpu=1, gpu=0, memory_mb=1024)
+        env = cascade.low.core.Environment(workers={
+            f'{i}': cascade.low.core.Worker(cpu=1, gpu=0, memory_mb=1024)
             for i in range(opts.workers)
         })
         with LocalCluster(n_workers=opts.workers, processes=True, dashboard_address=":0") as clu:
             start_fine = time.perf_counter_ns()
-            exe = DaskFuturisticExecutor(clu, env)
-            if opts.dyn_sched:
-                sched = cascade.scheduler.Schedule.empty()
-                dyn = DynamicScheduler(DsConfig(worker_eligible_mem_threshold=1))
-            else:
-                sched = cascade.scheduler.schedule(job, exe.get_environment()).get_or_raise()
-            if opts.fusing:
-                sched = fusing.transform(sched)
-            CascadeController().submit(job, sched, exe, dynamic_scheduler=dyn, execution_record=exe_rec)
+            dask_executor = DaskFuturisticExecutor(clu, job, env)
+            run(job, dask_executor, schedule)
     else:
         assert_never(opts)
     end_raw = time.perf_counter_ns()
     if isinstance(opts, api.DaskFutures|api.Fiab):
         print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
         print(f"in-cluster time: {(end_raw - start_fine) / 1e9: .3f}")
-        if isinstance(dyn, DynamicScheduler):
-            print(f"total time in dynamic scheduler: {dyn.cum_time / 1e9: .3f}")
     else:
         print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
     if isinstance(opts, api.Fiab):
