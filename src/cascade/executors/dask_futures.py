@@ -16,7 +16,7 @@ from dask.distributed import Client, Future, Variable, get_client, wait
 from dask.distributed.deploy.cluster import Cluster
 
 from cascade.low.views import param_source
-from cascade.controller.core import DatasetStatus, TaskStatus, Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge, TaskInstance
+from cascade.controller.core import Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge, TaskInstance
 from cascade.executors.instant import SimpleEventQueue
 from cascade.low.core import Environment, Worker, TaskDefinition, NO_OUTPUT_PLACEHOLDER, DatasetId, TaskId, WorkerId, JobInstance
 from cascade.low.func import ensure, maybe_head
@@ -64,8 +64,29 @@ class ExecutableTaskInstance:
 
 @dataclass
 class ExecutableSubgraph:
+    # TODO this and friends is actually used in fiab as well -- make this first class api citizen
     tasks: list[ExecutableTaskInstance]
     published_outputs: set[DatasetId]
+
+def build_subgraph(action: ActionSubmit, job: JobInstance, param_source: dict[TaskId, dict[int|str, DatasetId]]) -> ExecutableSubgraph:
+    tasks = [
+        ExecutableTaskInstance(
+            name=task,
+            task=job.tasks[task],
+            wirings=[
+                VariableWiring(
+                    source=dataset_id,
+                    intoKwarg=k if isinstance(k, str) else None,
+                    intoPosition=k if isinstance(k, int) else None,
+                    annotation=job.tasks[dataset_id.task].definition.output_schema[dataset_id.output],
+                )
+                for k, dataset_id in param_source[task].items()
+            ]
+        )
+        for task in action.tasks
+    ]
+    return ExecutableSubgraph(tasks=tasks, published_outputs=action.outputs)
+
 
 # wrapper to be the target of the Dask Future
 def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
@@ -150,31 +171,11 @@ class DaskFuturisticExecutor:
         self.job = job
         self.param_source = param_source(job.edges)
 
-    def _build_executable(self, action: ActionSubmit) -> ExecutableSubgraph:
-        tasks = [
-            ExecutableTaskInstance(
-                name=task,
-                task=self.job.tasks[task],
-                wirings=[
-                    VariableWiring(
-                        source=dataset_id,
-                        intoKwarg=k if isinstance(k, str) else None,
-                        intoPosition=k if isinstance(k, int) else None,
-                        annotation=self.job.tasks[dataset_id.task].definition.output_schema[dataset_id.output],
-                    )
-                    for k, dataset_id in self.param_source[task].items()
-                ]
-            )
-            for task in action.tasks
-        ]
-        return ExecutableSubgraph(tasks=tasks, published_outputs=action.outputs)
-
-
     def get_environment(self) -> Environment:
         return self.environment
 
     def submit(self, action: ActionSubmit) -> None:
-        fut = self.client.submit(execute_subgraph, self._build_executable(action), workers=_worker_id_to(action.at))
+        fut = self.client.submit(execute_subgraph, build_subgraph(action, self.job, self.param_source), workers=_worker_id_to(action.at))
         self.fid2action[fut._uid] = action
         self.fid2future[fut._uid] = fut
 
