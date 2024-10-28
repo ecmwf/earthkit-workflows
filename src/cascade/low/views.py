@@ -4,14 +4,15 @@ Utility functions and transformers for the core graph objects
 
 from collections import defaultdict
 
-from cascade.low.core import Task2TaskEdge
+from cascade.low.core import Task2TaskEdge, DatasetId
 
+# TODO make these a cached property of JobInstance?
 
 def param_source(
     edges: list[Task2TaskEdge],
-) -> dict[str, dict[int | str, tuple[str, str]]]:
+) -> dict[str, dict[int | str, DatasetId]]:
     """Returns map[sink_task][sink_input] = (source_task, source_output)"""
-    rv: dict[str, dict[int | str, tuple[str, str]]] = defaultdict(lambda: defaultdict(lambda: {}))  # type: ignore
+    rv: dict[str, dict[int | str, DatasetId]] = defaultdict(lambda: defaultdict(lambda: {}))  # type: ignore
     for e in edges:
         sink_input: int | str
         if e.sink_input_kw is not None:
@@ -24,13 +25,13 @@ def param_source(
                 raise TypeError
             else:
                 sink_input = e.sink_input_ps
-        rv[e.sink_task][sink_input] = (e.source_task, e.source_output)
+        rv[e.sink_task][sink_input] = e.source
     return rv
 
 
-def dependants(edges: list[Task2TaskEdge]) -> dict[tuple[str, str], set[str]]:
+def dependants(edges: list[Task2TaskEdge]) -> dict[DatasetId, set[str]]:
     """Returns map[(source_task, source_output)] = set(sink_task)"""
-    rv: dict[tuple[str, str], set[str]] = defaultdict(set)
+    rv: dict[DatasetId, set[str]] = defaultdict(set)
     for e in edges:
-        rv[(e.source_task, e.source_output)].add(e.sink_task)
+        rv[e.source].add(e.sink_task)
     return rv

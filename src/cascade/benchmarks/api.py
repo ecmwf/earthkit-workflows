@@ -15,13 +15,9 @@ class DaskThreaded:
 @dataclass
 class DaskFutures:
     workers: int
-    dyn_sched: bool
-    fusing: bool
 
 @dataclass
 class Fiab:
-    dyn_sched: bool
-    fusing: bool
     workers: int
 
 Options = DaskDelayed|DaskThreaded|DaskFutures|Fiab

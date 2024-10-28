@@ -1,15 +1,25 @@
 """
-Controller-less execution, via Dask Delayed
-"""
+Dask Delayed based execution
 
-# TODO move to cascade.executor, or cascade-dask package
+Does *not* implement the cascade.controller.executor interface, as the underlying
+Dask interface does not provide the capabilities. Thus this is for controller-free
+and scheduler-free regime.
+
+Usage:
+```
+    job: JobInstance = ...
+    client: dask.Client = ...
+    output_task_name: str = ...
+    client.get(job2delayed(job), output_task_name)
+```
+"""
 
 import importlib
 from typing import Any, Callable
 
 import dask.utils
 
-from cascade.low.core import JobInstance, TaskDefinition, TaskInstance
+from cascade.low.core import JobInstance, TaskDefinition, TaskInstance, DatasetId
 from cascade.low.func import ensure
 from cascade.low.views import param_source
 
@@ -17,7 +27,7 @@ DaskPayload = tuple[Callable, Callable, list[Any], dict[str, Any]]
 
 
 def task2delayed(
-    task: TaskInstance, input2source: dict[int | str, tuple[str, str]]
+    task: TaskInstance, input2source: dict[int | str, DatasetId]
 ) -> DaskPayload:
     if task.definition.environment:
         raise NotImplementedError(task.definition.environment)
@@ -36,12 +46,12 @@ def task2delayed(
         ensure(args, k)
         args[k] = v
     kwargs: dict[str, Any] = task.static_input_kw.copy()
-    for s, (onode, _) in input2source.items():
-        if isinstance(s, str):
+    for position, source_dataset in input2source.items():
+        if isinstance(position, str):
             raise NotImplementedError("dask doesnt support kwargs dyn args")
-        elif isinstance(s, int):
-            ensure(args, s)
-            args[s] = onode
+        elif isinstance(position, int):
+            ensure(args, position)
+            args[position] = source_dataset.task
 
     rv = (
         dask.utils.apply,

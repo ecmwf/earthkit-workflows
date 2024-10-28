@@ -3,10 +3,11 @@ from dask.threaded import get
 
 from cascade.executors.dask_delayed import job2delayed
 from cascade.executors.dask_futures import DaskFuturisticExecutor
-from cascade.controller.impl import CascadeController
+from cascade.controller.impl import run
+from cascade.controller.core import ActionDatasetPurge
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
-from cascade.scheduler import schedule
+from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance, JobExecutionRecord, DatasetId
+from cascade.scheduler.impl import naive_bfs_layers
 
 # TODO instead of every process launching its own cluster, introduce some global fixture or smth like that
 
@@ -38,8 +39,7 @@ def test_linear():
         },
         edges=[
             Task2TaskEdge(
-                source_task="a",
-                source_output="o",
+                source=DatasetId("a", "o"),
                 sink_task="b",
                 sink_input_ps=0,
                 sink_input_kw=None,
@@ -52,11 +52,12 @@ def test_linear():
 
     # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
     with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
-        executor = DaskFuturisticExecutor(cluster)
-        sched = schedule(job, executor.get_environment()).get_or_raise()
-        CascadeController().submit(job, sched, executor)
-        result = executor.fetch_as_value("b", "o")
-        executor.purge("b", "o")
+        executor = DaskFuturisticExecutor(cluster, job)
+        schedule = naive_bfs_layers(job, JobExecutionRecord(), set()).get_or_raise()
+        run(job, executor, schedule)
+        output_id = DatasetId("b", "o")
+        result = executor.fetch_as_value(output_id)
+        executor.purge(ActionDatasetPurge(ds={output_id}, at={"0"}))
         assert expected == result
 
 
@@ -89,9 +90,11 @@ def test_builders():
 
     # NOTE processes=False kinda buggy, complaints about unreleased futures... maybe some gil-caused quirk
     with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
-        executor = DaskFuturisticExecutor(cluster)
-        sched = schedule(job, executor.get_environment()).get_or_raise()
-        CascadeController().submit(job, sched, executor)
-        result = executor.fetch_as_value("task2", "__default__")
-        executor.purge("task2", "__default__")
+        executor = DaskFuturisticExecutor(cluster, job)
+        schedule = naive_bfs_layers(job, JobExecutionRecord(), set()).get_or_raise()
+        run(job, executor, schedule)
+        output_id = DatasetId("task2", "__default__")
+        result = executor.fetch_as_value(output_id)
+        executor.purge(ActionDatasetPurge(ds={output_id}, at={"0"}))
         assert expected == result
+
