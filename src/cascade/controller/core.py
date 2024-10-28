@@ -3,7 +3,7 @@ Core data structures: State, Event and Action
 """
 
 from enum import Enum
-from dataclasses import dataclass
+from pydantic import BaseModel
 from collections import defaultdict
 from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId
 
@@ -28,25 +28,21 @@ class State:
         self.purging_tracker = purging_tracker
         self.purging_queue: list[DatasetId] = []
 
-@dataclass
-class Event:
+class Event(BaseModel):
     at: WorkerId
     ds_trans: list[tuple[DatasetId, DatasetStatus]]
     ts_trans: list[tuple[TaskId, TaskStatus]]
 
-@dataclass
-class ActionDatasetPurge:
+class ActionDatasetPurge(BaseModel):
     ds: set[DatasetId]
     at: set[WorkerId]
 
-@dataclass
-class ActionDatasetTransmit:
+class ActionDatasetTransmit(BaseModel):
     ds: set[DatasetId]
     fr: set[WorkerId]
     to: set[WorkerId]
 
-@dataclass
-class ActionSubmit:
+class ActionSubmit(BaseModel):
     at: WorkerId
     tasks: list[TaskId]
     outputs: set[DatasetId] # this is presumably subset of tasks -- some need not be published

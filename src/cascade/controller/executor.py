@@ -27,11 +27,13 @@ class Executor(Protocol):
     def fetch_as_url(self, dataset_id: DatasetId) -> str:
         """URL for downloading a particular result. Does not block, result does
         not need to be ready."""
+        # TODO extend the interface with host
         raise NotImplementedError
 
     def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         """A particular result as a value. If not ready, blocks. Fetching itself
         is also blocking."""
+        # TODO extend the interface with host
         raise NotImplementedError
 
     # TODO consider alternative implementation with `def reconcile(state: State) -> State
