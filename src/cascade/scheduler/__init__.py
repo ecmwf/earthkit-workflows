@@ -1,17 +1,16 @@
-from cascade.low.core import Environment, JobExecutionRecord, JobInstance, Schedule
-from cascade.low.func import Either
-from cascade.scheduler.api import EnvironmentState, Scheduler
-from cascade.scheduler.simple import BFSScheduler
+"""
+Implementation of schedulers.
 
+The scheduler is intended as follows:
+ - for a (static) JobInstance object, we create a graph decomposition which we call "schedule".
+   This is independent of the environment -- we just determine a rough order in which tasks should
+   be completed, and which allows parallel execution
+ - the Schedule object is given to the Controller, which inside the `plan` action then proceeds
+   through it, using the current state of the environment to issue commands to executor
 
-def schedule(
-    job_instance: JobInstance,
-    environment: Environment,
-    execution_record: JobExecutionRecord | None = None,
-    scheduler: Scheduler | None = None,
-) -> Either[Schedule, str]:
-    if scheduler is None:
-        scheduler = BFSScheduler()
-    return scheduler.schedule(
-        job_instance, environment, execution_record, EnvironmentState()
-    )
+In other words, the schedulers here are rather graph decomposition for efficient dynamic scheduling at runtime
+"""
+
+# TODO
+# - change the Schedule structure from layer-linear to layer-tree
+# - order within layers -- consider leaf weights, prioritize paths according to weight-freed

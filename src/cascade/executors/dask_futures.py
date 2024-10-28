@@ -7,17 +7,18 @@ Caveats:
  - Does not support fetch_by_url -- raises exception when tempted in such fashion.
 """
 
-# TODO move to cascade.executor, or cascade-dask package
-
 import logging
 import uuid
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
+from dataclasses import dataclass
 
 from dask.distributed import Client, Future, Variable, get_client, wait
 from dask.distributed.deploy.cluster import Cluster
 
-from cascade.controller.api import ExecutableTaskInstance, ExecutableSubgraph
-from cascade.low.core import Environment, Host, TaskDefinition, NO_OUTPUT_PLACEHOLDER
+from cascade.low.views import param_source
+from cascade.controller.core import Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge, TaskInstance
+from cascade.executors.instant import SimpleEventQueue
+from cascade.low.core import Environment, Worker, TaskDefinition, NO_OUTPUT_PLACEHOLDER, DatasetId, TaskId, WorkerId, JobInstance
 from cascade.low.func import ensure, maybe_head
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,56 @@ def _worker_id_to(v: str) -> str | int:
 
 
 # we rely on variables for cross task comms
-def _get_output(task: str, output_key: str) -> Variable:
-    return Variable(f"{task}-{output_key}")
+def _get_output(dataset_id: DatasetId) -> Variable:
+    return Variable(f"{dataset_id.task}-{dataset_id.output}")
+
+@dataclass
+class VariableWiring:
+    """A view of source of an edge, ie, how a TaskInstance obtains a dynamic input"""
+
+    source: DatasetId
+    intoKwarg: str|None
+    intoPosition: int|None
+    annotation: str
+
+@dataclass
+class ExecutableTaskInstance:
+    """A wrapper around TaskInstance that contains necessary means of execution"""
+
+    task: TaskInstance
+    name: str
+    wirings: list[VariableWiring]
+
+@dataclass
+class ExecutableSubgraph:
+    # TODO this and friends is actually used in fiab as well -- make this first class api citizen
+    tasks: list[ExecutableTaskInstance]
+    published_outputs: set[DatasetId]
+
+def build_subgraph(action: ActionSubmit, job: JobInstance, param_source: dict[TaskId, dict[int|str, DatasetId]]) -> ExecutableSubgraph:
+    tasks = [
+        ExecutableTaskInstance(
+            name=task,
+            task=job.tasks[task],
+            wirings=[
+                VariableWiring(
+                    source=dataset_id,
+                    intoKwarg=k if isinstance(k, str) else None,
+                    intoPosition=k if isinstance(k, int) else None,
+                    annotation=job.tasks[dataset_id.task].definition.output_schema[dataset_id.output],
+                )
+                for k, dataset_id in param_source[task].items()
+            ]
+        )
+        for task in action.tasks
+    ]
+    return ExecutableSubgraph(tasks=tasks, published_outputs=action.outputs)
 
 
 # wrapper to be the target of the Dask Future
 def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
     logger.debug(f"preparing {subgraph=}")
-    local_outputs: dict[tuple[str, str], Any] = {} # TODO replace with eg zict to handle overflows
+    local_outputs: dict[DatasetId, Any] = {} # TODO replace with eg zict to handle overflows
     for task in subgraph.tasks:
         func: Callable
         if task.task.definition.func is not None:
@@ -63,12 +106,12 @@ def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
             args[i] = a
 
         for w in task.wirings:
-            if (w.sourceTask, w.sourceOutput) in local_outputs:
+            if w.source in local_outputs:
                 logger.debug(f"about to get input {w} from in-process mem")
-                value = local_outputs[(w.sourceTask, w.sourceOutput)]
+                value = local_outputs[w.source]
             else:
                 logger.debug(f"about to get input {w} from dask var")
-                value = _get_output(w.sourceTask, w.sourceOutput).get().result()
+                value = _get_output(w.source).get().result()
             logger.debug(f"input {w} has value {value}")
             if w.intoKwarg is not None:
                 kwargs[w.intoKwarg] = value
@@ -96,85 +139,83 @@ def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
 
         # TODO purge local outputs that won't be needed later in the process
 
-        local_outputs[(task.name, output_key)] = res
-        if output_key in task.published_outputs:
-            res_var = _get_output(task.name, output_key)
+        output_id = DatasetId(task.name, output_key)
+        local_outputs[output_id] = res
+        if output_id in subgraph.published_outputs:
+            logger.debug(f"scattering for {output_id}")
+            res_var = _get_output(output_id)
             client = get_client()
             res_fut = client.scatter(res)
             res_var.set(res_fut)
+            logger.debug(f"result {output_id} represented with {res_fut}")
 
 
 class DaskFuturisticExecutor:
-    def __init__(self, cluster: Cluster, environment: Environment|None = None):
+    def __init__(self, cluster: Cluster, job: JobInstance, environment: Environment|None = None):
         self.cluster = cluster
         self.client = Client(cluster)
-        self.futures: dict[str, Future] = {}
-        self.task2future: dict[str, str] = {}
+        self.fid2action: dict[str, ActionSubmit] = {}
+        self.fid2future: dict[str, Future] = {}
+        self.eq = SimpleEventQueue()
         # TODO utilize self.client.benchmark_hardware() or access the worker mem specs
         if not environment:
             environment = Environment(
-                hosts={
-                    _worker_id_from(w): Host(memory_mb=1, cpu=1, gpu=0)
+                workers={
+                    _worker_id_from(w): Worker(memory_mb=1, cpu=1, gpu=0)
                     for w in self.cluster.workers
                 }
             )
-        if set(environment.hosts.keys()) != set(_worker_id_from(w) for w in self.cluster.workers):
+        if set(environment.workers.keys()) != set(_worker_id_from(w) for w in self.cluster.workers):
             raise ValueError(f"inconsistency between {environment=} and {self.cluster.workers=}")
         self.environment = environment
+        self.job = job
+        self.param_source = param_source(job.edges)
+        self.cnt = 0
 
     def get_environment(self) -> Environment:
         return self.environment
 
-    def run_at(self, subgraph: ExecutableSubgraph, host: str) -> str:
-        fut = self.client.submit(execute_subgraph, subgraph, workers=_worker_id_to(host))
-        while True:
-            # NOTE I originally tried fut._uid, but that appears to be recycled?
-            id_ = str(uuid.uuid4())
-            if id_ not in self.futures:
-                break
-        self.futures[id_] = fut
-        for task in subgraph.tasks:
-            if task.name in self.task2future:
-                logger.warning(
-                    f"task {task.name} has already had future {self.task2future[task.name]}, assuming retry and overriding"
-                )
-            self.task2future[task.name] = id_
-            logger.debug(f"registering {task.name} under future {id_}")
-        return id_
+    def submit(self, action: ActionSubmit) -> None:
+        fut = self.client.submit(execute_subgraph, build_subgraph(action, self.job, self.param_source), workers=_worker_id_to(action.at))
+        logger.debug(f"assigned {self.cnt} to future for {action=}")
+        # NOTE we could have gone with uuid but just monotonic counter is simpler. Don't use fut._uid -- it doesnt seem to change!
+        self.fid2action[self.cnt] = action
+        self.fid2future[self.cnt] = fut
+        self.cnt += 1
 
-    def scatter(self, taskName: str, outputName: str, hosts: set[str]) -> str:
+    def transmit(self, action: ActionDatasetTransmit) -> None:
+        logger.warning("ignoring transmit due to everything-broadcasted")
         # NOTE see the caveat at the top -- we don't finegrain
-        if taskName not in self.task2future:
-            raise ValueError(
-                f"task computing this output hasn't been submitted: {taskName}, {outputName}"
-            )
-        return self.task2future[taskName]
+        self.eq.transmit_done(action)
+    
+    def purge(self, action: ActionDatasetPurge) -> None:
+        logger.warning("ignoring purge's host spec {action.at}")
+        # NOTE see the caveat at the top -- we don't finegrain
+        for ds in action.ds:
+            var = _get_output(ds)
+            var.delete()
 
-    def purge(
-        self, taskName: str, outputName: str, hosts: set[str] | None = None
-    ) -> None:
-        if hosts:
-            logger.warning("param host given, but ignored")
-        var = _get_output(taskName, outputName)
-        var.delete()
-
-    def fetch_as_url(self, taskName: str, outputName: str) -> str:
+    def fetch_as_url(self, dataset_id: DatasetId) -> str:
         raise NotImplementedError
 
-    def fetch_as_value(self, taskName: str, outputName: str) -> Any:
-        return _get_output(taskName, outputName).get().result()
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
+        return _get_output(dataset_id).get().result()
 
-    def wait_some(self, ids: set[str], timeout_sec: int | None = None) -> set[str]:
-        futs = [self.futures[e] for e in ids]
-        finished = set(
-            e._uid
-            for e in wait(futs, return_when="FIRST_COMPLETED", timeout=timeout_sec).done
-        )
-        return finished
+    def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
+        if self.eq.any():
+            return self.eq.drain()
 
-    def is_done(self, id_: str, timeout: int | None = None) -> bool:
-        logger.debug(f"inquiring completion of {id_}")
-        if self.futures[id_].status == 'error':
-            logger.error(f"future {id_} failed")
-            raise ValueError(id_) # TODO better
-        return self.futures[id_].done()
+        running = list(self.fid2future.values())
+        rev = {fut: id_ for id_, fut in self.fid2future.items()}
+        logger.debug(f"awaiting on {running}")
+        result = wait(running, return_when="FIRST_COMPLETED", timeout=timeout_sec)
+        logger.debug(f"awaited futures {result}")
+        for fut in result.done:
+            id_ = rev[fut]
+            if fut.status == 'error':
+                logger.error(f"future {fut} corresponding to {self.fid2action[fut._uid]} failed")
+                raise ValueError(fut)
+            self.eq.submit_done(self.fid2action.pop(id_))
+            self.fid2future.pop(id_)
+
+        return self.eq.drain()

@@ -7,14 +7,13 @@ from typing import Any, Callable, cast
 
 from cascade.graph import Graph, Node, serialise
 from cascade.low.core import (
+    DatasetId,
     JobInstance,
-    Schedule,
     Task2TaskEdge,
     TaskDefinition,
     TaskInstance,
     NO_OUTPUT_PLACEHOLDER,
 )
-from cascade.v0_schedulers.schedule import Schedule as FluentSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +43,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         for param, other in node["inputs"].items():
             edges.append(
                 Task2TaskEdge(
-                    source_task=other,
-                    source_output=Node.DEFAULT_OUTPUT,
+                    source=DatasetId(other, Node.DEFAULT_OUTPUT),
                     sink_task=name,
                     sink_input_ps=rev_lookup[param],
                     sink_input_kw=None,
@@ -83,14 +81,3 @@ def graph2job(graph: Graph) -> JobInstance:
         edges += task_edges
         tasks[node_name] = task
     return JobInstance(tasks=tasks, edges=edges)
-
-
-def schedule2schedule(fluent_schedule: FluentSchedule) -> tuple[JobInstance, Schedule]:
-    job_instance = graph2job(fluent_schedule)
-    schedule = Schedule(
-        host_task_queues={
-            cast(str, k): [cast(list[str], list(v))]
-            for k, v in fluent_schedule.task_allocation.items()
-        }
-    )
-    return job_instance, schedule

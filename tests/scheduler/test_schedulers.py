@@ -1,18 +1,17 @@
 from math import isclose
+from typing import Callable
 
-from cascade.controller.impl import CascadeController
+from cascade.controller.impl import run
 from cascade.executors.simulator import SimulatingExecutor
-from cascade.low.core import Environment, Host, Schedule
-from cascade.scheduler.api import EnvironmentState
-from cascade.scheduler.dynamic import Config, DynamicScheduler
-from cascade.scheduler.simple import (
-    bfs_schedule,
-    dfs_one_worker_schedule,
-    sink_bfs_redundant_schedule,
+from cascade.low.core import Environment, Worker, TaskId, JobInstance
+from cascade.low.views import param_source
+from cascade.scheduler.core import Schedule, Scheduler
+from cascade.scheduler.impl import (
+    naive_bfs_layers,
+    naive_dfs_layers,
 )
-from cascade.scheduler.transformers import FusingTransformer
 
-from .util import BuilderGroup, add_large_source, add_postproc, add_sink
+from .util import get_job1
 
 # NOTE I use gigabytes & minutes in comments here, but the code actually operates with megabytes and seconds...
 # consider it a readability simplification, otherwise we'd have *60 and *1024 all over the place
@@ -21,143 +20,44 @@ from .util import BuilderGroup, add_large_source, add_postproc, add_sink
 
 
 def test_2l_2sink():
-    builder = BuilderGroup()
-    # data source: 10 minutes consuming 6G mem and producing 4G output
-    add_large_source(builder, 10, 6, 4)
-    # first processing layer -- each node selects disjoint 1G subset, in 1 minute and with 2G overhead
-    add_postproc(builder, 0, 4, 1, 2, 1)
-    # second processing layer -- 2 medium compute nodes, 6 minutes and 4G overhead, 1g output
-    add_postproc(builder, 1, 2, 6, 4, 1)
-    # sink for this branch, no big overhead/runtime
-    # 2G output == prev layer has 2 nodes with 1G output each
-    add_sink(builder, 2, 1, 1, 1, 2)
-
-    # two more layers, parallel to the previous one: first reads layer 1, second reads the previous.
-    # Less compute heavy and less mem, but 8 nodes each
-    add_postproc(builder, 1, 8, 2, 1, 1)
-    add_postproc(builder, 3, 8, 2, 1, 2)
-    # sink for this branch, no big overhead/runtime
-    # 16G output == prev layer has 8 nodes with 2G output each
-    add_sink(builder, 4, 1, 1, 1, 16)
-
-    controller = CascadeController()
-    # for calculating the min req mem on a single node
-    one_biggie_env = Environment(hosts={"h1": Host(cpu=1, gpu=0, memory_mb=1000)})
-    # memory_mb=23 chosen so that *optimal* partial schedules fit
-    two_tightly_sized = Environment(
-        hosts={
-            "h1": Host(cpu=1, gpu=0, memory_mb=23),
-            "h2": Host(cpu=1, gpu=0, memory_mb=23),
-        }
-    )
-    # memory_mb=28 chosen so that *any* partial schedules fit
-    two_richly_sized = Environment(
-        hosts={
-            "h1": Host(cpu=1, gpu=0, memory_mb=28),
-            "h2": Host(cpu=1, gpu=0, memory_mb=28),
-        }
-    )
-
-    job = builder.job.build().get_or_raise()
-
-    # transformers
-    fusing = FusingTransformer()
-
-    # bfs
-    executor = SimulatingExecutor(one_biggie_env, builder.record)
-    schedBfs = bfs_schedule(
-        job, executor.get_environment(), builder.record, EnvironmentState()
-    ).get_or_raise()
-    print(schedBfs)
-    controller.submit(job, schedBfs, executor)
-    print(executor.hosts["h1"].mem_record)
-    assert isclose(executor.total_time_secs, 60.0)
-    assert (
-        executor.hosts["h1"].mem_record <= 23
-    )  # observed to oscillate between 19 and 23
-
-    # bfs fusion
-    executor = SimulatingExecutor(one_biggie_env, builder.record)
-    schedBfsF = fusing.transform(bfs_schedule(
-        job, executor.get_environment(), builder.record, EnvironmentState()
-    ).get_or_raise(), builder.record)
-    controller.submit(job, schedBfsF, executor)
-    assert isclose(executor.total_time_secs, 60.0)
-    assert executor.hosts["h1"].mem_record == 49 # no fine purges
-
-    # dfs
-    executor = SimulatingExecutor(one_biggie_env, builder.record)
-    schedDfs = dfs_one_worker_schedule(
-        job, executor.get_environment(), builder.record, EnvironmentState()
-    ).get_or_raise()
-    print(schedDfs)
-    controller.submit(job, schedDfs, executor)
-    print(executor.hosts["h1"].mem_record)
-    assert isclose(executor.total_time_secs, 60.0)
-    assert (
-        executor.hosts["h1"].mem_record <= 25
-    )  # observed to oscillate between 19 and 25
-
-    # dfs fusion
-    executor = SimulatingExecutor(one_biggie_env, builder.record)
-    schedDfsF = fusing.transform(dfs_one_worker_schedule(
-        job, executor.get_environment(), builder.record, EnvironmentState()
-    ).get_or_raise(), builder.record)
-    controller.submit(job, schedDfsF, executor)
-    assert isclose(executor.total_time_secs, 60.0)
-    assert (
-        executor.hosts["h1"].mem_record == 49 # no fine purges
-    )
-
-    # sink bfs -- one host
-    executor = SimulatingExecutor(one_biggie_env, builder.record)
-    schedSinkBfs = sink_bfs_redundant_schedule(
-        job, executor.get_environment(), builder.record, EnvironmentState()
-    ).get_or_raise()
-    print(schedSinkBfs)
-    controller.submit(job, schedSinkBfs, executor)
-    print(executor.hosts["h1"].mem_record)
-    assert isclose(executor.total_time_secs, 60.0)
-    assert executor.hosts["h1"].mem_record in (
-        19,
-        23,
-    )  # depends on which sink gets computed first
-
-    # sink bfs -- two hosts
-    executor = SimulatingExecutor(two_tightly_sized, builder.record)
-    schedSinkBfs = sink_bfs_redundant_schedule(
-        job, executor.get_environment(), builder.record, EnvironmentState()
-    ).get_or_raise()
-    print(schedSinkBfs.host_task_queues["h1"])
-    print(schedSinkBfs.host_task_queues["h2"])
-    controller.submit(job, schedSinkBfs, executor)
-    assert isclose(executor.total_time_secs, 47.0)
-    print(executor.hosts["h1"].mem_record)
-    print(executor.hosts["h2"].mem_record)
-    assert {executor.hosts["h1"].mem_record, executor.hosts["h2"].mem_record} == {
-        10,
-        19,
+    job, record = get_job1()
+    task_inputs = {
+        task_id: set(task_param_source.values())
+        for task_id, task_param_source in param_source(job.edges).items()
     }
 
-    # dynamic -- one host
-    executor = SimulatingExecutor(one_biggie_env, builder.record)
-    empty_schedule = Schedule.empty()
-    dynamic_scheduler = DynamicScheduler(Config(worker_eligible_mem_threshold=1))
-    controller.submit(
-        job, empty_schedule, executor, dynamic_scheduler=dynamic_scheduler
+    # for calculating the min req mem on a single node
+    one_biggie_env = Environment(workers={"w1": Worker(cpu=1, gpu=0, memory_mb=1000)})
+    # memory_mb=18 chosen so that currently worst-case schedule fits
+    two_tightly_sized = Environment(
+        workers={
+            "w1": Worker(cpu=1, gpu=0, memory_mb=21),
+            "w2": Worker(cpu=1, gpu=0, memory_mb=21),
+        }
     )
-    assert executor.hosts["h1"].mem_record <= 25
-    assert isclose(executor.total_time_secs, 60.0)
 
-    # dynamic -- two host
-    executor = SimulatingExecutor(two_richly_sized, builder.record)
-    empty_schedule = Schedule.empty()
-    dynamic_scheduler = DynamicScheduler(Config(worker_eligible_mem_threshold=1))
-    controller.submit(
-        job, empty_schedule, executor, dynamic_scheduler=dynamic_scheduler
-    )
-    print(executor.total_time_secs)
-    assert (
-        executor.total_time_secs < 49.0
-    )  # can go as low as 37., though not deterministic
-    # mem constrained by executors, in a rather wild manner: sometimes 22&23, other times 17&28, etc
+    def test(environment: Environment, scheduler: Scheduler) -> tuple[float, dict[str, int]]:
+        executor = SimulatingExecutor(environment, task_inputs, record)
+        schedule = scheduler(job, record, set()).get_or_raise()
+        run(job, executor, schedule)
+        return executor.total_time_secs, {w_id: w_in.mem_record for w_id, w_in in executor.workers.items()}
+
+    r = test(one_biggie_env, naive_bfs_layers)
+    assert isclose(r[0], 60.0)
+    assert 19 <= r[1]["w1"] and r[1]["w1"] <= 23  # oscillation observed
+    print(r[1])
+
+    r = test(one_biggie_env, naive_dfs_layers)
+    assert isclose(r[0], 60.0)
+    assert 19 <= r[1]["w1"] and r[1]["w1"] <= 25  # oscillation observed
+    print(r[1])
+
+    r = test(two_tightly_sized, naive_bfs_layers)
+    assert r[0] < 49.0
+    assert max(r[1].values()) <= 18 # usually 17, min oscillates in 9,13
+    # print(r[1])
+
+    r = test(two_tightly_sized, naive_dfs_layers)
+    assert r[0] < 49.0
+    assert max(r[1].values()) <= 21 # usually 17, min oscillates in 12,16
+    # print(r[1])

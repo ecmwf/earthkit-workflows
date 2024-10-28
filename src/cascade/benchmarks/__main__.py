@@ -24,7 +24,7 @@ from cascade.graph import Graph
 import logging
 from cascade.graph import deduplicate_nodes
 
-def main(job: str, executor: str, dynamic: bool, workers: int, fusing: bool) -> None:
+def main(job: str, executor: str, workers: int) -> None:
     os.environ["CLOUDPICKLE"] = "yes" # for fiab desers
     logging.basicConfig(level="INFO", format="{asctime}:{levelname}:{name}:{process}:{message:1.10000}", style="{")
     logging.getLogger("cascade").setLevel(level="DEBUG")
@@ -33,11 +33,11 @@ def main(job: str, executor: str, dynamic: bool, workers: int, fusing: bool) -> 
 
     match executor:
         case "fiab":
-            opts = api.Fiab(dyn_sched=dynamic, fusing=fusing, workers=workers)
+            opts = api.Fiab(workers=workers)
         case "dask.delayed":
             opts = api.DaskDelayed()
         case "dask.futures":
-            opts = api.DaskFutures(workers=workers, dyn_sched=dynamic, fusing=fusing)
+            opts = api.DaskFutures(workers=workers)
         case "dask.threaded":
             opts = api.DaskThreaded()
         case _:

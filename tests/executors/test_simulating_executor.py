@@ -2,13 +2,13 @@ from math import isclose
 
 import pytest
 
-from cascade.controller.api import PurgingPolicy
-from cascade.controller.impl import CascadeController
+from cascade.controller.impl import run
 from cascade.executors.simulator import SimulatingExecutor
 from cascade.graph import Node
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import Environment, Host, JobExecutionRecord, TaskExecutionRecord
-from cascade.scheduler import schedule
+from cascade.low.core import Environment, Worker, JobExecutionRecord, TaskExecutionRecord, DatasetId
+from cascade.low.views import param_source
+from cascade.scheduler.impl import naive_bfs_layers
 
 
 def test_simple():
@@ -26,9 +26,13 @@ def test_simple():
         .build()
         .get_or_raise()
     )
-    env = Environment(hosts={"h1": Host(cpu=2, gpu=0, memory_mb=2)})
+    task_inputs = {
+        task_id: set(task_param_source.values())
+        for task_id, task_param_source in param_source(job.edges).items()
+    }
+    env = Environment(workers={"w1": Worker(cpu=2, gpu=0, memory_mb=2)})
     record_ok = JobExecutionRecord(
-        datasets_mb={("task1", Node.DEFAULT_OUTPUT): 1},
+        datasets_mb={DatasetId("task1", Node.DEFAULT_OUTPUT): 1},
         tasks={
             "task1": TaskExecutionRecord(cpuseconds=10, memory_mb=1),
             "task2": TaskExecutionRecord(cpuseconds=10, memory_mb=1),
@@ -36,7 +40,7 @@ def test_simple():
     )
     # will fail when starting task2 because task2 wont fit
     record_bad1 = JobExecutionRecord(
-        datasets_mb={("task1", Node.DEFAULT_OUTPUT): 1},
+        datasets_mb={DatasetId("task1", Node.DEFAULT_OUTPUT): 1},
         tasks={
             "task1": TaskExecutionRecord(cpuseconds=10, memory_mb=1),
             "task2": TaskExecutionRecord(cpuseconds=10, memory_mb=2),
@@ -44,26 +48,24 @@ def test_simple():
     )
     # will fail when starting task2 because dataset wont fit
     record_bad2 = JobExecutionRecord(
-        datasets_mb={("task1", Node.DEFAULT_OUTPUT): 2},
+        datasets_mb={DatasetId("task1", Node.DEFAULT_OUTPUT): 2},
         tasks={
             "task1": TaskExecutionRecord(cpuseconds=10, memory_mb=1),
             "task2": TaskExecutionRecord(cpuseconds=10, memory_mb=1),
         },
     )
-    controller = CascadeController()
-    policy = PurgingPolicy()
 
-    executor_ok = SimulatingExecutor(env, record_ok)
-    sched_ok = schedule(job, executor_ok.get_environment()).get_or_raise()
-    controller.submit(job, sched_ok, executor_ok, policy)
-    assert isclose(executor_ok.total_time_secs, 10 / 2 + 10 / 2)
+    def run_with_record(record: JobExecutionRecord) -> float:
+        executor = SimulatingExecutor(env, task_inputs, record)
+        schedule = naive_bfs_layers(job, record, set()).get_or_raise()
+        run(job, executor, schedule)
+        return executor.total_time_secs
 
-    with pytest.raises(ValueError, match=r"host run out of memory by 1"):
-        executor_bad1 = SimulatingExecutor(env, record_bad1)
-        sched_bad1 = schedule(job, executor_bad1.get_environment()).get_or_raise()
-        controller.submit(job, sched_bad1, executor_bad1, policy)
+    ok_run = run_with_record(record_ok)
+    assert isclose(ok_run, 10 / 2 + 10 / 2)
 
-    with pytest.raises(ValueError, match=r"host run out of memory by 1"):
-        executor_bad2 = SimulatingExecutor(env, record_bad2)
-        sched_bad2 = schedule(job, executor_bad2.get_environment()).get_or_raise()
-        controller.submit(job, sched_bad2, executor_bad2, policy)
+    with pytest.raises(ValueError, match=r"worker run out of memory by 1"):
+        run_with_record(record_bad1)
+
+    with pytest.raises(ValueError, match=r"worker run out of memory by 1"):
+        run_with_record(record_bad2)
