@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from pydantic import BaseModel
 from typing import (
     Type,
     Any,
@@ -105,3 +106,8 @@ TMonoid = TypeVar("TMonoid", bound=Monoid)
 
 def msum(i: Iterable[TMonoid], t: Type[TMonoid]) -> TMonoid:
     return sum(i, start=t.empty())
+
+B = TypeVar("B", bound=BaseModel)
+def pyd_replace(model: B, **kwargs) -> B:
+    """Like dataclasses.replace but for pydantic"""
+    return model.model_copy(update=kwargs)

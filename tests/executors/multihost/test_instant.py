@@ -33,14 +33,14 @@ def wait_for(client: httpx.Client, root_url: str) -> None:
             time.sleep(2)
     raise ValueError(f"failed to start {root_url}: no more retries")
 
-def launch_cluster_and_run(workers: int, job: JobInstance):
+def launch_cluster_and_run(start: int, workers: int, job: JobInstance):
     client = httpx.Client()
-    urls = [f"http://localhost:{5432+i}" for i in range(workers)]
+    urls = [f"http://localhost:{start+i}" for i in range(workers)]
     ps = [
         Process(target=launch_instant_executor, args=(int(url.rsplit(":",1)[1]),job))
         for url in urls
     ]
-    executor: RouterExecutor
+    executor: RouterExecutor|None = None
     try:
         for p in ps:
             p.start()
@@ -63,9 +63,7 @@ def test_instant_simple():
     # 1-node graph
     task = TaskBuilder.from_callable(test_func).with_values(x=1, y=2, z=3)
     job = JobInstance(tasks={"task": task}, edges=[])
-    launch_cluster_and_run(1, job)
-
-    print("next task")
+    launch_cluster_and_run(5400, 1, job)
 
     # 2-node graph
     task1 = TaskBuilder.from_callable(test_func).with_values(x=1, y=2, z=3)
@@ -78,7 +76,7 @@ def test_instant_simple():
         .build()
         .get_or_raise()
     )
-    launch_cluster_and_run(1, job)
+    launch_cluster_and_run(5410, 1, job)
 
     
     # TODO simulating

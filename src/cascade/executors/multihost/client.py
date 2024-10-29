@@ -12,6 +12,7 @@ from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionD
 from cascade.executors.multihost.worker_server import TransmitPayload
 from typing import Any
 from cascade.low.core import Environment
+from cascade.low.func import pyd_replace
 import logging
 
 logger = logging.getLogger(__name__)
@@ -108,8 +109,11 @@ class Client():
         while True:
             self.sync[host].finish()
             result = self.clients[host].get(f"/wait_some")
-            for e in result.json():
-                self.writer.put(Event(**e))
+            j = result.json()
+            for e in j: #result.json():
+                event = Event(**e)
+                event = pyd_replace(event, at=f"{host}:{event.at}")
+                self.writer.put(event)
 
     def wait_some(self, timeout_secs: int|None) -> None:
         # check for exception, restart if needed

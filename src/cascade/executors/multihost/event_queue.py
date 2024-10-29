@@ -10,6 +10,9 @@ import time
 from queue import Queue, Empty
 from cascade.controller.core import Event
 from typing import cast
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Writer():
     def __init__(self, q: Queue) -> None:
@@ -24,8 +27,8 @@ class Reader():
     def __init__(self, q: Queue) -> None:
         self.q = q
 
-    def _get_one(self, timeout_secs: int|None) -> Event:
-        rv = self.q.get(True if timeout_secs is not None else False, timeout_secs)
+    def _get_one(self, block: bool, timeout_secs: int|None) -> Event:
+        rv = self.q.get(block, timeout_secs)
         # NOTE the task_done is currently extraneous but it doesn't hurt to be safe
         self.q.task_done()
         return cast(Event, rv)
@@ -36,9 +39,9 @@ class Reader():
         block any further. If timeout elapses before any item is obtained, this returns empty list."""
         results: list[Event] = []
         try:
-            results.append(self._get_one(timeout_secs))
+            results.append(self._get_one(True, timeout_secs))
             while True:
-                results.append(self._get_one(None))
+                results.append(self._get_one(False, None))
         except Empty:
             pass
         return results

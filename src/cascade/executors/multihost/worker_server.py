@@ -21,6 +21,8 @@ from typing import AsyncIterator, TypedDict
 from contextlib import asynccontextmanager
 import httpx
 
+logger = logging.getLogger(__name__)
+
 class TransmitPayload(BaseModel):
     # corresponds to ActionDatasetTransmit -- but since it happens across workers, we cant
     # just reuse the original model
@@ -50,6 +52,7 @@ async def get_environment(request: Request) -> Response:
 # put, (ActionSubmit) -> ()
 async def submit(request: Request) -> Response:
     action = ActionSubmit(**(await request.json()))
+    logger.debug(f"recieved submit {action=}")
     request.state.executor.submit(action)
     return ok_response
 
@@ -106,6 +109,7 @@ async def fetch_as_value(request: Request) -> Response:
 async def wait_some(request: Request) -> Response:
     executor = request.state.executor
     events = executor.wait_some() # TODO add somehow await here
+    logger.debug(f"reporting {events=}")
     return OrjsonResponse([e.model_dump() for e in events])
 
 def build_app(executor: Executor, is_debug: bool = False):

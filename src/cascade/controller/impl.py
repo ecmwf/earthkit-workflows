@@ -24,16 +24,12 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
         actions = plan(schedule, state, env, job, taskInputs)
         if actions:
             act(executor, state, actions)
-        logger.debug("about to await executor")
-        events = executor.wait_some()
-        logger.debug(f"received {len(events)} events")
-        notify(state, events, taskInputs)
-        if not state.remaining and not events:
-            logger.debug("no events received, no tasks remaining -- breaking")
+        if state.remaining:
+            logger.debug("about to await executor because of {state.remaining}")
+            events = executor.wait_some()
+            logger.debug(f"received {len(events)} events")
+            notify(state, events, taskInputs)
+        if not schedule.layers and not state.remaining:
             break
-        else:
-            logger.debug(f"remaining tasks {state.remaining}")
 
-    if len(schedule.layers) > 0:
-        raise ValueError(f"controller finished but schedule not empty: {schedule}")
     return state
