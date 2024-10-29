@@ -42,6 +42,7 @@ class State(TypedDict):
     client: httpx.AsyncClient
 
 async def status(request: Request) -> Response:
+    print("gotten status")
     return ok_response
 
 # get, () -> (Environment)
