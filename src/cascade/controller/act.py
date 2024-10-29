@@ -33,6 +33,7 @@ def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
             for task in action.tasks:
                 state.worker2ts[action.at][task] = TaskStatus.enqueued
                 state.ts2worker[task][action.at] = TaskStatus.enqueued
+                state.remaining.add(task)
             for dataset in action.outputs:
                 state.worker2ds[action.at][dataset] = DatasetStatus.preparing
                 state.ds2worker[dataset][action.at] = DatasetStatus.preparing

@@ -7,7 +7,7 @@ For simulation and tests
 import sys
 import logging
 from typing import Iterable, Any
-from cascade.low.core import DatasetId, TaskId, JobInstance, Environment, Worker
+from cascade.low.core import DatasetId, TaskId, JobInstance, Environment, Worker, WorkerId
 from cascade.controller.core import DatasetStatus, TaskStatus, Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,10 @@ class SimpleEventQueue():
 
     def add(self, events: list[Event]) -> None:
         self.event_queue += events
+
+    def store_done(self, worker: WorkerId, dataset: DatasetId) -> None:
+        # convenience for finished stores
+        self.add([Event(at=worker, ds_trans=[(dataset, DatasetStatus.available)], ts_trans=[])])
 
     def transmit_done(self, action: ActionDatasetTransmit) -> None:
         # convenience for no-op transmits
@@ -66,11 +70,14 @@ class InstantExecutor():
     def purge(self, action: ActionDatasetPurge) -> None:
         pass
 
-    def fetch_as_url(self, dataset_id: DatasetId) -> str:
-        raise NotImplementedError
+    def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
+        return ""
 
-    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
-        raise NotImplementedError
+    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+        return b""
+
+    def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
+        self.eq.store_done(worker, dataset_id)
 
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         return self.eq.drain()

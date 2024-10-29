@@ -1,7 +1,25 @@
 """
 Simple facade in front of (any) `controller.executor` implementation. Works in the same
-process/thread as the executor itself -- suboptimal especially wrt the data transmit calls
+process/thread as the executor itself -- presumably suboptimal wrt the data transmit calls.
+
+Most calls are trivially forwarded to the underlying executor, except for `transmit` which
+needs to initiate its own connection, and `wait_some` which needs to introduce an async
+wrapper.
 """
+
+from pydantic import BaseModel
+from cascade.low.core import DatasetId
+from cascade.controller.executor import Executor
+from cascade.controller.core import ActionSubmit, ActionDatasetPurge
+from starlette.responses import Response, JSONResponse, StreamingResponse, PlainTextResponse
+from starlette.requests import Request
+from starlette.applications import Starlette
+from starlette.routing import Route
+import logging
+import orjson
+from typing import AsyncIterator, TypedDict
+from contextlib import asynccontextmanager
+import httpx
 
 class TransmitPayload(BaseModel):
     # corresponds to ActionDatasetTransmit -- but since it happens across workers, we cant
@@ -11,23 +29,105 @@ class TransmitPayload(BaseModel):
     this_worker: str
     datasets: list[DatasetId]
 
+class OrjsonResponse(JSONResponse):
+    def render(self, content: dict|list) -> bytes:
+        return orjson.dumps(content)
 
-# get
-def get_environment():
-    raise NotImplementedError
+ok_response = Response()
 
-# put
-def submit(): # ActionSubmit
-    raise NotImplementedError
+class State(TypedDict):
+    executor: Executor
+    client: httpx.AsyncClient
 
-# post
-def transmit(): # TransmitPayload
-    raise NotImplementedError
+async def status(request: Request) -> Response:
+    return ok_response
 
-# post
-def purge(): # ActionDatasetPurge
-    raise NotImplementedError
+# get, () -> (Environment)
+async def get_environment(request: Request) -> Response:
+    env = request.state.executor.get_environment()
+    return OrjsonResponse(env.model_dump())
 
-# get
-def wait_some(): # returns: list[Events]
-    raise NotImplementedError
+# put, (ActionSubmit) -> ()
+async def submit(request: Request) -> Response:
+    action = ActionSubmit(**(await request.json()))
+    request.state.executor.submit(action)
+    return ok_response
+
+# put, ({worker}/{dataset_id}) -> ()
+async def store_value(request: Request) -> Response:
+    worker: str = request.path_params['worker']
+    task: str = request.path_params['dataset_task']
+    output: str = request.path_params['dataset_output']
+    dataset = DatasetId(task, output)
+    data = await request.body()
+    request.state.executor.store_value(worker, dataset, data)
+    return ok_response
+
+# post, (TransmitPayload) -> ()
+async def transmit(request: Request) -> Response:
+    # TODO async read from executor, async stream to other party? Or submit whole thing to thread pool?
+    payload = TransmitPayload(**(await request.json()))
+    executor = request.state.executor
+    client = request.state.client
+    url_base = f"{payload.other_url}/store_value/{payload.other_worker}"
+    for dataset in payload.datasets:
+        data = executor.fetch_as_value(dataset, payload.this_worker)
+        url = f"{url_base}/{dataset.task}/{dataset.output}"
+        rv = await client.put(url, content=data)
+    return ok_response
+
+# post, (ActionDatasetPurge) -> ()
+async def purge(request: Request) -> Response: 
+    action = ActionDatasetPurge(**(await request.json()))
+    request.state.executor.purge(action)
+    return ok_response
+
+# get, ({worker}/{dataset_id}) -> (str)
+async def fetch_as_url(request: Request) -> Response:
+    worker: str = request.path_params['worker']
+    task: str = request.path_params['dataset_task']
+    output: str = request.path_params['dataset_output']
+    dataset = DatasetId(task, output)
+    url = request.state.executor.fetch_as_url(worker, dataset)
+    return PlainTextResponse(url)
+
+# get, ({worker}/{dataset_id}) -> (Any)
+async def fetch_as_value(request: Request) -> Response:
+    worker: str = request.path_params['worker']
+    task: str = request.path_params['dataset_task']
+    output: str = request.path_params['dataset_output']
+    dataset = DatasetId(task, output)
+    value = request.state.executor.fetch_as_value(worker, dataset)
+    if not isinstance(value, bytes):
+        raise TypeError("expected bytes in {dataset=}, gotten {type(value)} instead")
+    return Response(value, media_type='application/octet-stream')
+
+# get, () -> (list[Events])
+async def wait_some(request: Request) -> Response:
+    executor = request.state.executor
+    events = executor.wait_some() # TODO add somehow await here
+    return OrjsonResponse([e.model_dump() for e in events])
+
+def build_app(executor: Executor, is_debug: bool = False):
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[State]:
+        client = httpx.AsyncClient()
+        yield {"executor": executor, "client": client }
+        await client.aclose()
+
+    return Starlette(
+        debug=is_debug,
+        routes = [
+            Route('/status', status, methods=["GET", "HEAD"]),
+            Route('/get_environment', get_environment, methods=["GET"]),
+            Route('/submit', submit, methods=["PUT"]),
+            Route('/transmit', transmit, methods=["POST"]),
+            Route('/purge', purge, methods=["POST"]),
+            Route('/fetch_as_url/{worker}/{dataset_task}/{dataset_output}', fetch_as_url, methods=["GET"]),
+            Route('/fetch_as_value/{worker}/{dataset_task}/{dataset_output}', fetch_as_value, methods=["GET"]),
+            Route('/store_value/{worker}/{dataset_task}/{dataset_output}', store_value, methods=["PUT"]),
+            Route('/wait_some', wait_some, methods=["GET"]),
+        ],
+        lifespan=lifespan,
+    )

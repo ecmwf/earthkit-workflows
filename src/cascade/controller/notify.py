@@ -26,4 +26,9 @@ def notify(state: State, events: Iterable[Event], taskInputs: dict[TaskId, set[D
                     if not state.purging_tracker[sourceDataset]:
                         state.purging_tracker.pop(sourceDataset)
                         state.purging_queue.append(sourceDataset)
+                if task_id in state.remaining:
+                    logger.debug(f"{task_id} succeeded, removing")
+                    state.remaining.remove(task_id)
+                else:
+                    logger.warning(f"{task_id} succeeded but removal from eremaining impossible")
     return state

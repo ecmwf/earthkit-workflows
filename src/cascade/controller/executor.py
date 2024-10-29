@@ -4,7 +4,7 @@ Defines the Executor protocol
 
 from typing import runtime_checkable, Protocol, Iterable, Any
 from cascade.low.core import Environment
-from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event
+from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId
 
 @runtime_checkable
 class Executor(Protocol):
@@ -24,17 +24,19 @@ class Executor(Protocol):
         """Listed hosts should asap free said dataset."""
         raise NotImplementedError
 
-    def fetch_as_url(self, dataset_id: DatasetId) -> str:
+    def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         """URL for downloading a particular result. Does not block, result does
         not need to be ready."""
-        # TODO extend the interface with host
         raise NotImplementedError
 
-    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
         """A particular result as a value. If not ready, blocks. Fetching itself
         is also blocking."""
-        # TODO extend the interface with host
         raise NotImplementedError
+
+    def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
+        """Uploads a particular dataset to the worker, to be utilized by subsequent submits.
+        Expected usage only in multi-executor setting, to facilitate cross-executor data transfer."""
 
     # TODO consider alternative implementation with `def reconcile(state: State) -> State
     # which replaces the `notify` module as well

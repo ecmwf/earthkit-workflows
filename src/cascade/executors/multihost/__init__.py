@@ -23,4 +23,5 @@ The submodules:
    we submit a request for each worker to a thread pool where they block and return the value into this queue
    (in the `client`). The router/proxy reads from this queue -- blocking until first result, then consuming
    as much in a non-blocking fashion as possible (to presumably gather results from previous call).
+ - `__main__` showcases in a simple CLI app how to spawn a worker or a router
 """

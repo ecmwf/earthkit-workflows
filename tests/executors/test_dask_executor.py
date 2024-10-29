@@ -54,9 +54,10 @@ def test_linear():
     with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
         executor = DaskFuturisticExecutor(cluster, job)
         schedule = naive_bfs_layers(job, JobExecutionRecord(), set()).get_or_raise()
-        run(job, executor, schedule)
+        state = run(job, executor, schedule)
         output_id = DatasetId("b", "o")
-        result = executor.fetch_as_value(output_id)
+        worker_id = state.ds2worker[output_id]
+        result = executor.fetch_as_value(worker_id, output_id)
         executor.purge(ActionDatasetPurge(ds={output_id}, at={"0"}))
         assert expected == result
 
@@ -92,9 +93,10 @@ def test_builders():
     with LocalCluster(n_workers=1, processes=True, dashboard_address=":0") as cluster:
         executor = DaskFuturisticExecutor(cluster, job)
         schedule = naive_bfs_layers(job, JobExecutionRecord(), set()).get_or_raise()
-        run(job, executor, schedule)
+        state = run(job, executor, schedule)
         output_id = DatasetId("task2", "__default__")
-        result = executor.fetch_as_value(output_id)
+        worker_id = state.ds2worker[output_id]
+        result = executor.fetch_as_value(worker_id, output_id)
         executor.purge(ActionDatasetPurge(ds={output_id}, at={"0"}))
         assert expected == result
 

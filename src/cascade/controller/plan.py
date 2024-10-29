@@ -59,9 +59,9 @@ def convert(assignment: dict[WorkerId, list[TaskId]], state: State, job: JobInst
                     raise ValueError(f"cannot find host with dataset {e}")
                 actions.append(
                     ActionDatasetTransmit(
-                        ds={e},
-                        fr={fr},
-                        to={worker_id},
+                        ds=[e],
+                        fr=[fr],
+                        to=[worker_id],
                     )
                 )
             available_ds.update(missing)
@@ -69,7 +69,7 @@ def convert(assignment: dict[WorkerId, list[TaskId]], state: State, job: JobInst
                 ActionSubmit(
                     at=worker_id,
                     tasks=[task_id],
-                    outputs = outputs,
+                    outputs = list(outputs),
                 )
             )
             available_ds.update(outputs)
@@ -78,7 +78,7 @@ def convert(assignment: dict[WorkerId, list[TaskId]], state: State, job: JobInst
 def purges(schedule: Schedule, state: State) -> list[Action]:
     """Given remaining schedule, identify unnecessary datasets"""
     actions: list[Action] = [
-        ActionDatasetPurge(ds={e}, at=set(state.ds2worker[e].keys()))
+        ActionDatasetPurge(ds=[e], at=list(state.ds2worker[e].keys()))
         for e in state.purging_queue
     ]
     state.purging_queue = []

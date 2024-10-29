@@ -16,7 +16,7 @@ from dask.distributed import Client, Future, Variable, get_client, wait
 from dask.distributed.deploy.cluster import Cluster
 
 from cascade.low.views import param_source
-from cascade.controller.core import Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge, TaskInstance
+from cascade.controller.core import Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge, TaskInstance, WorkerId
 from cascade.executors.instant import SimpleEventQueue
 from cascade.low.core import Environment, Worker, TaskDefinition, NO_OUTPUT_PLACEHOLDER, DatasetId, TaskId, WorkerId, JobInstance
 from cascade.low.func import ensure, maybe_head
@@ -85,8 +85,15 @@ def build_subgraph(action: ActionSubmit, job: JobInstance, param_source: dict[Ta
         )
         for task in action.tasks
     ]
-    return ExecutableSubgraph(tasks=tasks, published_outputs=action.outputs)
+    return ExecutableSubgraph(tasks=tasks, published_outputs=set(action.outputs))
 
+def publish_dataset(dataset_id: DatasetId, data: Any) -> None:
+    logger.debug(f"scattering for {dataset_id}")
+    res_var = _get_output(dataset_id)
+    client = get_client()
+    res_fut = client.scatter(data)
+    res_var.set(res_fut)
+    logger.debug(f"result {dataset_id} represented with {res_fut}")
 
 # wrapper to be the target of the Dask Future
 def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
@@ -142,20 +149,14 @@ def execute_subgraph(subgraph: ExecutableSubgraph) -> None:
         output_id = DatasetId(task.name, output_key)
         local_outputs[output_id] = res
         if output_id in subgraph.published_outputs:
-            logger.debug(f"scattering for {output_id}")
-            res_var = _get_output(output_id)
-            client = get_client()
-            res_fut = client.scatter(res)
-            res_var.set(res_fut)
-            logger.debug(f"result {output_id} represented with {res_fut}")
-
+            publish_dataset(output_id, res)
 
 class DaskFuturisticExecutor:
     def __init__(self, cluster: Cluster, job: JobInstance, environment: Environment|None = None):
         self.cluster = cluster
         self.client = Client(cluster)
-        self.fid2action: dict[str, ActionSubmit] = {}
-        self.fid2future: dict[str, Future] = {}
+        self.fid2action: dict[int, ActionSubmit] = {}
+        self.fid2future: dict[int, Future] = {}
         self.eq = SimpleEventQueue()
         # TODO utilize self.client.benchmark_hardware() or access the worker mem specs
         if not environment:
@@ -195,11 +196,16 @@ class DaskFuturisticExecutor:
             var = _get_output(ds)
             var.delete()
 
-    def fetch_as_url(self, dataset_id: DatasetId) -> str:
+    def fetch_as_url(self, host: WorkerId, dataset_id: DatasetId) -> str:
         raise NotImplementedError
 
-    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, host: WorkerId, dataset_id: DatasetId) -> Any:
         return _get_output(dataset_id).get().result()
+
+    def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
+        publish_dataset(dataset_id, data)
+        # TODO is it done instantly? Maybe await that future?
+        self.eq.store_done(worker, dataset_id)
 
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():

@@ -10,7 +10,7 @@ from cascade.controller.plan import plan
 
 logger = logging.getLogger(__name__)
 
-def run(job: JobInstance, executor: Executor, schedule: Schedule) -> None:
+def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
     env = executor.get_environment()
     paramSource = param_source(job.edges)
     taskInputs = {
@@ -28,10 +28,12 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> None:
         events = executor.wait_some()
         logger.debug(f"received {len(events)} events")
         notify(state, events, taskInputs)
-        if not actions and not events:
-            logger.debug("neither events nor actions, breaking")
+        if not state.remaining and not events:
+            logger.debug("no events received, no tasks remaining -- breaking")
             break
-
+        else:
+            logger.debug(f"remaining tasks {state.remaining}")
 
     if len(schedule.layers) > 0:
         raise ValueError(f"controller finished but schedule not empty: {schedule}")
+    return state

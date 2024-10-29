@@ -16,7 +16,7 @@ from math import isclose
 from typing import Any, Iterable
 
 from cascade.controller.core import DatasetStatus, TaskStatus, Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge
-from cascade.low.core import Environment, Worker, JobExecutionRecord, JobInstance, TaskExecutionRecord, TaskId, DatasetId
+from cascade.low.core import Environment, Worker, JobExecutionRecord, JobInstance, TaskExecutionRecord, TaskId, DatasetId, WorkerId
 from cascade.executors.instant import SimpleEventQueue
 
 logger = logging.getLogger(__name__)
@@ -120,13 +120,16 @@ class SimulatingExecutor:
 
     def purge(self, action: ActionDatasetPurge) -> None:
         for worker in action.at:
-            self.workers[worker].datasets -= action.ds
+            self.workers[worker].datasets -= set(action.ds)
 
-    def fetch_as_url(self, dataset_id: DatasetId) -> str:
-        raise NotImplementedError
+    def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
+        return ""
 
-    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
-        raise NotImplementedError
+    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+        return b""
+
+    def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
+        self.eq.store_done(worker, dataset_id)
 
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():

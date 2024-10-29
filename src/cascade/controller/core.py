@@ -25,6 +25,7 @@ class State:
         self.ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]] = defaultdict(dict)
         self.ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]] = defaultdict(dict)
         self.worker2ts: dict[WorkerId, dict[TaskId, TaskStatus]] = defaultdict(dict)
+        self.remaining: set[TaskId] = set()
         self.purging_tracker = purging_tracker
         self.purging_queue: list[DatasetId] = []
 
@@ -34,17 +35,17 @@ class Event(BaseModel):
     ts_trans: list[tuple[TaskId, TaskStatus]]
 
 class ActionDatasetPurge(BaseModel):
-    ds: set[DatasetId]
-    at: set[WorkerId]
+    ds: list[DatasetId]
+    at: list[WorkerId]
 
 class ActionDatasetTransmit(BaseModel):
-    ds: set[DatasetId]
-    fr: set[WorkerId]
-    to: set[WorkerId]
+    ds: list[DatasetId]
+    fr: list[WorkerId]
+    to: list[WorkerId]
 
 class ActionSubmit(BaseModel):
     at: WorkerId
     tasks: list[TaskId]
-    outputs: set[DatasetId] # this is presumably subset of tasks -- some need not be published
+    outputs: list[DatasetId] # this is presumably subset of tasks -- some need not be published
 
 Action = ActionDatasetPurge|ActionDatasetTransmit|ActionSubmit
