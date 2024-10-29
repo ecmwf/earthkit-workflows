@@ -81,10 +81,15 @@ class Client():
         if rv.status_code != 200:
             raise ValueError(rv)
 
-    def transmit(self, frHostId: str, frWorkerId: WorkerId, toHostId: str, toWorkerId: WorkerId, ds: list[DatasetId]) -> None:
+    def transmit_local(self, hostId: str, action: ActionDatasetTransmit) -> None:
+        rv = self.clients[hostId].post('transmit_local', json=action.model_dump())
+        if rv.status_code != 200:
+            raise ValueError(rv)
+
+    def transmit_remote(self, frHostId: str, frWorkerId: WorkerId, toHostId: str, toWorkerId: WorkerId, ds: list[DatasetId]) -> None:
         other_url = str(self.clients[toHostId].base_url)
         payload = TransmitPayload(other_url=other_url, other_worker=toWorkerId, this_worker=frWorkerId, datasets=ds)
-        rv = self.clients[frHostId].post('/transmit', json=payload.model_dump())
+        rv = self.clients[frHostId].post('/transmit_remote', json=payload.model_dump())
         if rv.status_code != 200:
             raise ValueError(rv)
 

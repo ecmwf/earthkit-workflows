@@ -25,7 +25,7 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
         if actions:
             act(executor, state, actions)
         if state.remaining:
-            logger.debug("about to await executor because of {state.remaining}")
+            logger.debug(f"about to await executor because of {state.remaining}")
             events = executor.wait_some()
             logger.debug(f"received {len(events)} events")
             notify(state, events, taskInputs)

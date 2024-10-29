@@ -2,6 +2,7 @@
 Runs actual job: controller + scheduler + executor
 """
 
+import httpx
 import logging
 from cascade import Cascade
 import cascade.low.into
@@ -23,6 +24,39 @@ import cascade.shm.client as shm_client
 from forecastbox.utils import logging_config as fiab_logging
 import cascade.benchmarks.api as api
 from cascade.low.func import assert_never
+import uvicorn
+from cascade.executors.multihost.impl import RouterExecutor
+from cascade.executors.multihost.worker_server import build_app
+
+def wait_for(client: httpx.Client, root_url: str) -> None:
+    """Calls /status endpoint, retry on ConnectError"""
+    i = 0
+    while i < 3:
+        try:
+            rc = client.get(f"{root_url}/status")
+            if not rc.status_code == 200:
+                raise ValueError(f"failed to start {root_url}: {rc}")
+            return
+        except httpx.ConnectError:
+            i += 1
+            time.sleep(2)
+    raise ValueError(f"failed to start {root_url}: no more retries")
+
+def launch_fiab_host(workers: int, port: int, job: cascade.low.core.JobInstance) -> None:
+    try:
+        logging.config.dictConfig(fiab_logging)
+        gb4 = 4 * (1024**3)
+        shm_api.publish_client_port(port + 1000)
+        shm_pref = f"s{port%20}"
+        shm = Process(target=shm_server.entrypoint, args=(port + 1000, gb4, fiab_logging, shm_pref))
+        shm.start()
+        shm_client.ensure()
+        executor = SingleHostExecutor(ExecutorConfig(2, 1024), job)
+        app = build_app(executor)
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level=None, log_config=None)
+    finally:
+        shm_client.shutdown()
+        shm.terminate()
 
 def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
     job = cascade.low.into.graph2job(graph)
@@ -39,9 +73,11 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         shm = Process(target=shm_server.entrypoint, args=(port, gb4, fiab_logging))
         shm.start()
         fiab_executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024), job)
-        start_fine = time.perf_counter_ns()
+        shm_client.ensure()
         try:
+            start_fine = time.perf_counter_ns()
             run(job, fiab_executor, schedule)
+            end_fine = time.perf_counter_ns()
             logging.info("controller in fiab done")
             fiab_executor.procwatch.join()
         except Exception as e:
@@ -58,15 +94,34 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
             for i in range(opts.workers)
         })
         with LocalCluster(n_workers=opts.workers, processes=True, dashboard_address=":0") as clu:
-            start_fine = time.perf_counter_ns()
             dask_executor = DaskFuturisticExecutor(clu, job, env)
+            start_fine = time.perf_counter_ns()
             run(job, dask_executor, schedule)
+            end_fine = time.perf_counter_ns()
+    elif isinstance(opts, api.MultiHost):
+        start = 8000
+        urls = [f"http://localhost:{start+i}" for i in range(opts.hosts)]
+        ps = [Process(target=launch_fiab_host, args=(opts.workers_per_host, start+i, job)) for i in range(opts.hosts)]
+        for p in ps:
+            p.start()
+        try:
+            client = httpx.Client()
+            for u in urls:
+                wait_for(client, u)
+            router_executor = RouterExecutor(urls)
+            start_fine = time.perf_counter_ns()
+            run(job, router_executor, schedule)
+            end_fine = time.perf_counter_ns()
+        finally:
+            router_executor.shutdown()
+            for p in ps:
+                p.terminate()
     else:
         assert_never(opts)
     end_raw = time.perf_counter_ns()
-    if isinstance(opts, api.DaskFutures|api.Fiab):
+    if isinstance(opts, api.DaskFutures|api.Fiab|api.MultiHost):
         print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
-        print(f"in-cluster time: {(end_raw - start_fine) / 1e9: .3f}")
+        print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")
     else:
         print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
     if isinstance(opts, api.Fiab):

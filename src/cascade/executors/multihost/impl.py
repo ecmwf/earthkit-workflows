@@ -41,9 +41,15 @@ class RouterExecutor():
         self.client.submit(host, lAction)
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
+        if len(action.fr) != 1 or len(action.to) != 1:
+            raise NotImplementedError("too many from/to in {action=}")
         frHost, frWorker = self._worker_expand(cast(str, maybe_head(action.fr)))
-        toHost, toWorker = self._worker_expand(cast(str, maybe_head(action.fr)))
-        self.client.transmit(frHost, frWorker, toHost, toWorker, list(action.ds))
+        toHost, toWorker = self._worker_expand(cast(str, maybe_head(action.to)))
+        if frHost == toHost:
+            lAction = pyd_replace(action, fr=[frWorker], to=[toWorker])
+            self.client.transmit_local(frHost, lAction)
+        else:
+            self.client.transmit_remote(frHost, frWorker, toHost, toWorker, list(action.ds))
 
     def purge(self, action: ActionDatasetPurge) -> None:
         subs = [self._worker_expand(e) for e in action.at]

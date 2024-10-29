@@ -10,7 +10,7 @@ wrapper.
 from pydantic import BaseModel
 from cascade.low.core import DatasetId
 from cascade.controller.executor import Executor
-from cascade.controller.core import ActionSubmit, ActionDatasetPurge
+from cascade.controller.core import ActionSubmit, ActionDatasetPurge, ActionDatasetTransmit
 from starlette.responses import Response, JSONResponse, StreamingResponse, PlainTextResponse
 from starlette.requests import Request
 from starlette.applications import Starlette
@@ -68,16 +68,25 @@ async def store_value(request: Request) -> Response:
     return ok_response
 
 # post, (TransmitPayload) -> ()
-async def transmit(request: Request) -> Response:
+async def transmit_remote(request: Request) -> Response:
     # TODO async read from executor, async stream to other party? Or submit whole thing to thread pool?
     payload = TransmitPayload(**(await request.json()))
     executor = request.state.executor
     client = request.state.client
     url_base = f"{payload.other_url}/store_value/{payload.other_worker}"
     for dataset in payload.datasets:
-        data = executor.fetch_as_value(dataset, payload.this_worker)
+        logger.debug(f"fetching {dataset=} for transmit")
+        data = executor.fetch_as_value(payload.this_worker, dataset)
         url = f"{url_base}/{dataset.task}/{dataset.output}"
-        rv = await client.put(url, content=data)
+        logger.debug(f"transmitting {dataset=}")
+        rv = await client.put(url, content=bytes(data.view()))
+        data.close()
+    return ok_response
+
+# post, (ActionDatasetTransmit) -> ()
+async def transmit_local(request: Request) -> Response:
+    action = ActionDatasetTransmit(**(await request.json()))
+    request.state.executor.transmit(action)
     return ok_response
 
 # post, (ActionDatasetPurge) -> ()
@@ -127,7 +136,8 @@ def build_app(executor: Executor, is_debug: bool = False):
             Route('/status', status, methods=["GET", "HEAD"]),
             Route('/get_environment', get_environment, methods=["GET"]),
             Route('/submit', submit, methods=["PUT"]),
-            Route('/transmit', transmit, methods=["POST"]),
+            Route('/transmit_remote', transmit_remote, methods=["POST"]),
+            Route('/transmit_local', transmit_local, methods=["POST"]),
             Route('/purge', purge, methods=["POST"]),
             Route('/fetch_as_url/{worker}/{dataset_task}/{dataset_output}', fetch_as_url, methods=["GET"]),
             Route('/fetch_as_value/{worker}/{dataset_task}/{dataset_output}', fetch_as_value, methods=["GET"]),

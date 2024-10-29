@@ -97,7 +97,7 @@ class Manager:
 
     # TODO go through the controller-calling-purge scenario and make the threads more robust
 
-    def __init__(self, capacity: int | None = None) -> None:
+    def __init__(self, prefix: str, capacity: int | None = None) -> None:
         # key is as understood by the external apps
         self.datasets: dict[str, Dataset] = {}
         default_capacity = get_capacity()
@@ -115,6 +115,7 @@ class Manager:
         self.pageout_one = threading.Lock()
         self.pageout_count = 0
         self.disk = disk.Disk()
+        self.prefix = prefix
 
     def add(self, key: str, size: int) -> tuple[str, str]:
         # TODO round the size up to page multiple?
@@ -128,7 +129,7 @@ class Manager:
 
         h = hashlib.new("md5", usedforsecurity=False)
         h.update((key).encode())
-        shmid = h.hexdigest()[:24]
+        shmid = self.prefix + h.hexdigest()[:(24 - len(self.prefix))]
 
         self.datasets[key] = Dataset(
             shmid=shmid,

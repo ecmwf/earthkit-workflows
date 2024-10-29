@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 class LocalServer:
     """Handles the socket communication, and the invocation of dataset.Manager which has the business logic"""
 
-    def __init__(self, port: int, capacity: int | None = None):
+    def __init__(self, port: int, shm_pref: str, capacity: int | None = None):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server = ("0.0.0.0", port)
         self.sock.bind(server)
-        self.manager = dataset.Manager(capacity)
+        self.manager = dataset.Manager(shm_pref, capacity)
         signal.signal(signal.SIGINT, self.atexit)
         signal.signal(signal.SIGTERM, self.atexit)
 
@@ -90,11 +90,11 @@ class LocalServer:
 
 
 def entrypoint(
-    port: int, capacity: int | None = None, logging_config: dict | None = None
+    port: int, capacity: int | None = None, logging_config: dict | None = None, shm_pref: str = "shm"
 ):
     if logging_config:
         logging.config.dictConfig(logging_config)
-    server = LocalServer(port, capacity)
+    server = LocalServer(port, shm_pref, capacity)
     try:
         server.start()
     except Exception as e:
