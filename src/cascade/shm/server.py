@@ -95,6 +95,7 @@ def entrypoint(
     if logging_config:
         logging.config.dictConfig(logging_config)
     server = LocalServer(port, shm_pref, capacity)
+    logger.info(f"shm server starting on {port=} with {capacity=} and prefix {shm_pref}")
     try:
         server.start()
     except Exception as e:

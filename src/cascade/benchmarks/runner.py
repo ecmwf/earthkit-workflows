@@ -2,6 +2,8 @@
 Runs actual job: controller + scheduler + executor
 """
 
+import os
+import signal
 import httpx
 import logging
 from cascade import Cascade
@@ -51,12 +53,14 @@ def launch_fiab_host(workers: int, port: int, job: cascade.low.core.JobInstance)
         shm = Process(target=shm_server.entrypoint, args=(port + 1000, gb4, fiab_logging, shm_pref))
         shm.start()
         shm_client.ensure()
-        executor = SingleHostExecutor(ExecutorConfig(2, 1024), job)
+        executor = SingleHostExecutor(ExecutorConfig(workers, 1024), job)
         app = build_app(executor)
         uvicorn.run(app, host="0.0.0.0", port=port, log_level=None, log_config=None)
     finally:
+        print(f"shutting down shm {os.getpid()}")
         shm_client.shutdown()
         shm.terminate()
+        print(f"shutdown done {os.getpid()}")
 
 def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
     job = cascade.low.into.graph2job(graph)
@@ -115,7 +119,16 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         finally:
             router_executor.shutdown()
             for p in ps:
-                p.terminate()
+                print(f"interrupt {p.pid}", flush=True)
+                os.kill(p.pid, signal.SIGINT)
+            for p in ps:
+                print(f"join {p.pid}", flush=True)
+                p.join(1)
+            for p in ps:
+                print(f"inquire {p.pid}", flush=True)
+                if p.is_alive():
+                    print(f"terminate {p.pid}", flush=True)
+                    p.terminate()
     else:
         assert_never(opts)
     end_raw = time.perf_counter_ns()

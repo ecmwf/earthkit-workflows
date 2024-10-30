@@ -70,7 +70,7 @@ class Client():
     def shutdown(self) -> None:
         for v in self.clients.values():
             v.close()
-        self.tp.shutdown(wait=False, cancel_futures=True)
+        self.tp.shutdown(wait=True, cancel_futures=True)
 
     def get_envs(self) -> dict[str, Environment]:
         return self.envs

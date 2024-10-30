@@ -31,4 +31,6 @@ def notify(state: State, events: Iterable[Event], taskInputs: dict[TaskId, set[D
                     state.remaining.remove(task_id)
                 else:
                     logger.warning(f"{task_id} succeeded but removal from eremaining impossible")
+            elif task_status == TaskStatus.failed:
+                raise ValueError(f"failure of {task_id}")
     return state

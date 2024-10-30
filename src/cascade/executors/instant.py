@@ -52,6 +52,14 @@ class SimpleEventQueue():
         )
         self.add([event])
 
+    def submit_failed(self, action: ActionSubmit) -> None:
+        event = Event(
+            at=action.at,
+            ts_trans=[(task, TaskStatus.failed) for task in action.tasks],
+            ds_trans=[],
+        )
+        self.add([event])
+
 class InstantExecutor():
     def __init__(self, workers: int, job: JobInstance) -> None:
         self.env = Environment(workers={f"w{i}": Worker(cpu=1, gpu=0, memory_mb=sys.maxsize) for i in range(workers)})
