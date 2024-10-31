@@ -15,9 +15,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 class RouterExecutor():
-    def __init__(self, urls: list[str]):
+    def __init__(self, urls: dict[str, str]):
         """The remote hosts *must* already be running -- this calls the `get_environment` inside in a blocking fash"""
-        urls_lookup = {f"h{i}": url for i, url in enumerate(urls)}
+        urls_lookup = {host: url for host, url in urls.items()}
         writer, self.eq = build_queue()
         self.client = Client(writer, urls_lookup)
         self.env = Environment(workers={

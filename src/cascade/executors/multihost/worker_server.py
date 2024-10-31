@@ -20,6 +20,7 @@ import orjson
 from typing import AsyncIterator, TypedDict
 from contextlib import asynccontextmanager
 import httpx
+from cascade.controller.tracing import mark
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class TransmitPayload(BaseModel):
     other_worker: str
     this_worker: str
     datasets: list[DatasetId]
+    tracing_ctx_host: str
 
 class OrjsonResponse(JSONResponse):
     def render(self, content: dict|list) -> bytes:
@@ -75,9 +77,11 @@ async def transmit_remote(request: Request) -> Response:
     client = request.state.client
     url_base = f"{payload.other_url}/store_value/{payload.other_worker}"
     for dataset in payload.datasets:
+        mark({"dataset": dataset.task, "action": "transmitStarted", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
         logger.debug(f"fetching {dataset=} for transmit")
         data = executor.fetch_as_value(payload.this_worker, dataset)
         url = f"{url_base}/{dataset.task}/{dataset.output}"
+        mark({"dataset": dataset.task, "action": "transmitLoaded", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
         logger.debug(f"transmitting {dataset=}")
         rv = await client.put(url, content=bytes(data.view()))
         data.close()

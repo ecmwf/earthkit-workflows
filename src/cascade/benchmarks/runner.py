@@ -44,16 +44,16 @@ def wait_for(client: httpx.Client, root_url: str) -> None:
             time.sleep(2)
     raise ValueError(f"failed to start {root_url}: no more retries")
 
-def launch_fiab_host(workers: int, port: int, job: cascade.low.core.JobInstance) -> None:
+def launch_fiab_host(workers: int, host_id: int, port: int, job: cascade.low.core.JobInstance) -> None:
     try:
         logging.config.dictConfig(fiab_logging)
         gb4 = 4 * (1024**3)
         shm_api.publish_client_port(port + 1000)
-        shm_pref = f"s{port%20}"
+        shm_pref = f"s{host_id}_"
         shm = Process(target=shm_server.entrypoint, args=(port + 1000, gb4, fiab_logging, shm_pref))
         shm.start()
         shm_client.ensure()
-        executor = SingleHostExecutor(ExecutorConfig(workers, 1024), job)
+        executor = SingleHostExecutor(ExecutorConfig(workers, 1024), job, {"host": f"h{host_id}"})
         app = build_app(executor)
         uvicorn.run(app, host="0.0.0.0", port=port, log_level=None, log_config=None)
     finally:
@@ -76,7 +76,7 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         shm_api.publish_client_port(port)
         shm = Process(target=shm_server.entrypoint, args=(port, gb4, fiab_logging))
         shm.start()
-        fiab_executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024), job)
+        fiab_executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024), job, {"host": "fiab"})
         shm_client.ensure()
         try:
             start_fine = time.perf_counter_ns()
@@ -104,13 +104,13 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
             end_fine = time.perf_counter_ns()
     elif isinstance(opts, api.MultiHost):
         start = 8000
-        urls = [f"http://localhost:{start+i}" for i in range(opts.hosts)]
-        ps = [Process(target=launch_fiab_host, args=(opts.workers_per_host, start+i, job)) for i in range(opts.hosts)]
+        urls = {f"h{i}": f"http://localhost:{start+i}" for i in range(opts.hosts)}
+        ps = [Process(target=launch_fiab_host, args=(opts.workers_per_host, i, start+i, job)) for i in range(opts.hosts)]
         for p in ps:
             p.start()
         try:
             client = httpx.Client()
-            for u in urls:
+            for u in urls.values():
                 wait_for(client, u)
             router_executor = RouterExecutor(urls)
             start_fine = time.perf_counter_ns()

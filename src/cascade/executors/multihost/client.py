@@ -88,7 +88,7 @@ class Client():
 
     def transmit_remote(self, frHostId: str, frWorkerId: WorkerId, toHostId: str, toWorkerId: WorkerId, ds: list[DatasetId]) -> None:
         other_url = str(self.clients[toHostId].base_url)
-        payload = TransmitPayload(other_url=other_url, other_worker=toWorkerId, this_worker=frWorkerId, datasets=ds)
+        payload = TransmitPayload(other_url=other_url, other_worker=toWorkerId, this_worker=frWorkerId, datasets=ds, tracing_ctx_host=toHostId)
         rv = self.clients[frHostId].post('/transmit_remote', json=payload.model_dump())
         if rv.status_code != 200:
             raise ValueError(rv)
