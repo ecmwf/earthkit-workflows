@@ -84,7 +84,7 @@ class LocalServer:
                 else:
                     raise ValueError(f"unsupported: {type(payload)}")
             except Exception as e:
-                logger.exception("failure during handling of {payload}")
+                logger.exception(f"failure during handling of {payload}")
                 response = api.OkResponse(error=repr(e))
             self.respond(response, client)
 

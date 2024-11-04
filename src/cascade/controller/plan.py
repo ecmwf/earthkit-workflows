@@ -13,6 +13,7 @@ from cascade.scheduler.core import Schedule
 from cascade.low.core import JobInstance, DatasetId, WorkerId, TaskId, Environment
 from cascade.low.func import maybe_head
 from cascade.controller.core import State, TaskStatus, Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, DatasetStatus
+from cascade.controller.views import project_colocation
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def convert(assignment: dict[WorkerId, list[TaskId]], state: State, job: JobInst
     """Converts the assignment into actions -- which may be data transfers or subgraphs"""
     # TODO multiple optimizations required here:
     # - transmit from workers that are close
+    # - respect colocations: dont transmit to two workers in the same coloc at once
     # - fuse transmits?
     # - fuse tasks (then trim outputs)
     actions: list[Action] = []
@@ -78,7 +80,10 @@ def convert(assignment: dict[WorkerId, list[TaskId]], state: State, job: JobInst
 def purges(schedule: Schedule, state: State) -> list[Action]:
     """Given remaining schedule, identify unnecessary datasets"""
     actions: list[Action] = [
-        ActionDatasetPurge(ds=[e], at=list(state.ds2worker[e].keys()))
+        ActionDatasetPurge(
+            ds=[e],
+            at=project_colocation(list(state.ds2worker[e].keys()), state.worker_colocations),
+        )
         for e in state.purging_queue
     ]
     state.purging_queue = []

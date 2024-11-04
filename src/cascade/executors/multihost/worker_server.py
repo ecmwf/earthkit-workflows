@@ -10,7 +10,7 @@ wrapper.
 from pydantic import BaseModel
 from cascade.low.core import DatasetId
 from cascade.controller.executor import Executor
-from cascade.controller.core import ActionSubmit, ActionDatasetPurge, ActionDatasetTransmit
+from cascade.controller.core import ActionSubmit, ActionDatasetPurge, ActionDatasetTransmit, Event, TransmitPayload
 from starlette.responses import Response, JSONResponse, StreamingResponse, PlainTextResponse
 from starlette.requests import Request
 from starlette.applications import Starlette
@@ -18,20 +18,10 @@ from starlette.routing import Route
 import logging
 import orjson
 from typing import AsyncIterator, TypedDict
+from cascade.executors.multihost.worker_queue import WorkerQueue
 from contextlib import asynccontextmanager
-import httpx
-from cascade.controller.tracing import mark
 
 logger = logging.getLogger(__name__)
-
-class TransmitPayload(BaseModel):
-    # corresponds to ActionDatasetTransmit -- but since it happens across workers, we cant
-    # just reuse the original model
-    other_url: str
-    other_worker: str
-    this_worker: str
-    datasets: list[DatasetId]
-    tracing_ctx_host: str
 
 class OrjsonResponse(JSONResponse):
     def render(self, content: dict|list) -> bytes:
@@ -41,7 +31,7 @@ ok_response = Response()
 
 class State(TypedDict):
     executor: Executor
-    client: httpx.AsyncClient
+    queue: WorkerQueue
 
 async def status(request: Request) -> Response:
     print("gotten status")
@@ -65,26 +55,18 @@ async def store_value(request: Request) -> Response:
     task: str = request.path_params['dataset_task']
     output: str = request.path_params['dataset_output']
     dataset = DatasetId(task, output)
+    logger.debug(f"about to store value for {dataset}")
     data = await request.body()
+    logger.debug(f"obtained {len(data)} bytes to store value for {dataset}")
     request.state.executor.store_value(worker, dataset, data)
     return ok_response
 
 # post, (TransmitPayload) -> ()
 async def transmit_remote(request: Request) -> Response:
-    # TODO async read from executor, async stream to other party? Or submit whole thing to thread pool?
+    # submits into a (sync) queue so that gets processed in another thread
+    # results/failures are picked from `wait_some` later
     payload = TransmitPayload(**(await request.json()))
-    executor = request.state.executor
-    client = request.state.client
-    url_base = f"{payload.other_url}/store_value/{payload.other_worker}"
-    for dataset in payload.datasets:
-        mark({"dataset": dataset.task, "action": "transmitStarted", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
-        logger.debug(f"fetching {dataset=} for transmit")
-        data = executor.fetch_as_value(payload.this_worker, dataset)
-        url = f"{url_base}/{dataset.task}/{dataset.output}"
-        mark({"dataset": dataset.task, "action": "transmitLoaded", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
-        logger.debug(f"transmitting {dataset=}")
-        rv = await client.put(url, content=bytes(data.view()))
-        data.close()
+    request.state.queue.submit_transmit(payload)
     return ok_response
 
 # post, (ActionDatasetTransmit) -> ()
@@ -121,8 +103,7 @@ async def fetch_as_value(request: Request) -> Response:
 
 # get, () -> (list[Events])
 async def wait_some(request: Request) -> Response:
-    executor = request.state.executor
-    events = executor.wait_some() # TODO add somehow await here
+    events = await request.state.queue.wait_some()
     logger.debug(f"reporting {events=}")
     return OrjsonResponse([e.model_dump() for e in events])
 
@@ -130,9 +111,9 @@ def build_app(executor: Executor, is_debug: bool = False):
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[State]:
-        client = httpx.AsyncClient()
-        yield {"executor": executor, "client": client }
-        await client.aclose()
+        queue = WorkerQueue(executor)
+        yield {"executor": executor, "queue": queue}
+        queue.shutdown()
 
     return Starlette(
         debug=is_debug,

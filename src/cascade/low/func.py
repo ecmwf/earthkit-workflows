@@ -1,5 +1,7 @@
 from abc import abstractmethod
 from pydantic import BaseModel
+from time import perf_counter_ns
+from functools import wraps
 from typing import (
     Type,
     Any,
@@ -111,3 +113,12 @@ B = TypeVar("B", bound=BaseModel)
 def pyd_replace(model: B, **kwargs) -> B:
     """Like dataclasses.replace but for pydantic"""
     return model.model_copy(update=kwargs)
+
+def simple_timer(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        start = perf_counter_ns()
+        rv = f(*args, **kwargs)
+        end = perf_counter_ns()
+        return rv, end-start
+    return wrapper

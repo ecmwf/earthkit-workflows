@@ -89,26 +89,26 @@ def wait_for(client: httpx.Client, root_url: str) -> None:
 
 def launch_cluster_and_run(start: int, kind: str, workers: int, job: JobInstance):
     client = httpx.Client()
-    urls = [f"http://localhost:{start+i}" for i in range(workers)]
+    urls = {f"h{i}": f"http://localhost:{start+i}" for i in range(workers)}
     ps = [
         Process(target=launch_executor, args=(int(url.rsplit(":",1)[1]),kind, job))
-        for url in urls
+        for url in urls.values()
     ]
     executor: RouterExecutor|None = None
     try:
         for p in ps:
             p.start()
-        for url in urls:
+        for url in urls.values():
             wait_for(client, url)
         executor = RouterExecutor(urls)
         schedule = naive_bfs_layers(job, JobExecutionRecord(), set()).get_or_raise()
         run(job, executor, schedule)
     finally:
+        if executor is not None:
+            executor.shutdown()
         for p in ps:
             if p.is_alive():
                 p.terminate()
-        if executor is not None:
-            executor.shutdown()
 
 def test_instant_simple():
     def test_func(x: int, y: int, z: int) -> int:

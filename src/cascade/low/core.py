@@ -94,9 +94,11 @@ class Worker(BaseModel):
     memory_mb: int
 
 class Environment(BaseModel):
-    # NOTE missing: comm speed etc
     workers: dict[WorkerId, Worker]
-
+    colocations: list[list[WorkerId]] = Field(
+        default_factory=list,
+        description="the first appx of comm speed -- colocation assumes instant implicit broadcast",
+    )
 
 class TaskExecutionRecord(BaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds

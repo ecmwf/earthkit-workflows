@@ -30,10 +30,12 @@ class _Sync():
     def finish(self) -> None:
         """One or more work tasks have been finished. Blocks until more work available."""
         self.transitioned.acquire()
-        if not self.work_available:
-            self.transitioned.wait()
-        else:
-            self.work_available = False
+        try:
+            if not self.work_available:
+                self.transitioned.wait()
+            else:
+                self.work_available = False
+        finally:
             self.transitioned.release()
 
     def notify(self) -> None:
@@ -65,12 +67,18 @@ class Client():
             )
         }
         self.writer = writer
+        self.running = True
         self.futs = {k: self.tp.submit(self._perpetual_wait, k) for k in urls}
 
     def shutdown(self) -> None:
+        self.running = False
+        for host in self.clients:
+            self.sync[host].notify()
+        # NOTE be careful here, not waiting on futures results in hanging processes,
+        # and closing the client before the futures complete causes the future to freeze
+        self.tp.shutdown(wait=True, cancel_futures=True)
         for v in self.clients.values():
             v.close()
-        self.tp.shutdown(wait=True, cancel_futures=True)
 
     def get_envs(self) -> dict[str, Environment]:
         return self.envs
@@ -111,21 +119,33 @@ class Client():
 
     def _perpetual_wait(self, host: str) -> None:
         # TODO we dont propagate the timeout_secs here -- but then currently its always None so no harm done
-        while True:
-            self.sync[host].finish()
-            result = self.clients[host].get(f"/wait_some")
-            j = result.json()
-            for e in j: #result.json():
-                event = Event(**e)
-                event = pyd_replace(event, at=f"{host}:{event.at}")
-                self.writer.put(event)
+        try:
+            while True:
+                logger.debug(f"about to finish for {host}")
+                self.sync[host].finish()
+                if not self.running:
+                    break
+                logger.debug(f"about to wait-some for {host}")
+                # TODO we need the timeout to be sufficiently large, we dont have a recovery scenario yet
+                result = self.clients[host].get(f"/wait_some", timeout=60.0)
+                j = result.json()
+                for e in j: #result.json():
+                    event = Event(**e)
+                    event = pyd_replace(event, at=f"{host}:{event.at}")
+                    logger.debug(f"putting to queue: {event=}")
+                    self.writer.put(event)
+        except Exception as e:
+            logger.error(f"perpetual wait failed with: {repr(e)}")
+            raise
 
     def wait_some(self, timeout_secs: int|None) -> None:
         # check for exception, restart if needed
         for host in self.clients:
+            logger.debug(f"checking future for {host=}")
             if self.futs[host].done():
                 logger.error(f"unexpectedly finished future for {host} with exc {self.futs[host].exception()}")
                 self._perpetual_wait(host)
         # notify that `wait_some` should be called again
         for host in self.clients:
+            logger.debug(f"notify for {host=}")
             self.sync[host].notify()

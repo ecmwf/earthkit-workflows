@@ -20,11 +20,16 @@ class RouterExecutor():
         urls_lookup = {host: url for host, url in urls.items()}
         writer, self.eq = build_queue()
         self.client = Client(writer, urls_lookup)
-        self.env = Environment(workers={
+        colocations=[
+            [f"{outer}:{inner}" for inner, worker in localEnv.workers.items()]
+            for outer, localEnv in self.client.get_envs().items()
+        ] # TODO possibly respect inner executor's own colocations?
+        workers={
             f"{outer}:{inner}": worker
             for outer, localEnv in self.client.get_envs().items()
             for inner, worker in localEnv.workers.items()
-        })
+        }
+        self.env = Environment(workers=workers, colocations=colocations)
         
     def _worker_expand(self, full_worker: str) -> tuple[str, str]:
         """GlobalWorkerId -> RemoteHostId, LocalWorkerId"""
@@ -70,8 +75,9 @@ class RouterExecutor():
         return self.client.store_value(host, localWorker, dataset_id, data)
 
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
+        logger.debug("about to issue wait some")
         self.client.wait_some(timeout_sec)
-        # TODO translation of ids back
+        logger.debug("about to read events from queue")
         return self.eq.get(timeout_sec)
 
     def shutdown(self):

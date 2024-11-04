@@ -35,5 +35,6 @@ def test_serde():
         other_worker="worker1",
         this_worker="worker2",
         datasets=[DatasetId("t1", "o1"), DatasetId("t2", "o2")],
+        tracing_ctx_host="host1",
     )
     there_and_back_again(transmit_rem)

@@ -5,6 +5,7 @@ Implements the mutation of State after an Executor has reported some Events
 import logging
 from typing import Iterable
 from cascade.controller.core import State, Event, TaskStatus
+from cascade.controller.views import transition_dataset
 from cascade.low.core import TaskId, DatasetId
 
 logger = logging.getLogger(__name__)
@@ -14,9 +15,10 @@ def notify(state: State, events: Iterable[Event], taskInputs: dict[TaskId, set[D
     # Thus the caller always *must* use the return value and cease using the input.
     for event in events:
         logger.debug(f"received {event = }")
+        if event.failures:
+            raise ValueError(event.failures)
         for dataset_id, dataset_status in event.ds_trans:
-            state.worker2ds[event.at][dataset_id] = dataset_status 
-            state.ds2worker[dataset_id][event.at] = dataset_status
+            state = transition_dataset(state, event.at, dataset_id, dataset_status)
         for task_id, task_status in event.ts_trans:
             state.worker2ts[event.at][task_id] = task_status
             state.ts2worker[task_id][event.at] = task_status
