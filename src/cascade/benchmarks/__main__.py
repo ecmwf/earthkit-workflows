@@ -42,6 +42,8 @@ def main(job: str, executor: str, workers: int, hosts: int|None = None) -> None:
             opts = api.DaskThreaded()
         case "multihost":
             opts = api.MultiHost(hosts=hosts, workers_per_host=workers)
+        case "zmq":
+            opts = api.ZmqBackbone(hosts=hosts, workers_per_host=workers)
         case _:
             raise NotImplementedError(executor)
 

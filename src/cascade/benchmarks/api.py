@@ -25,5 +25,9 @@ class MultiHost:
     workers_per_host: int
     hosts: int
     
+@dataclass
+class ZmqBackbone:
+    workers_per_host: int
+    hosts: int
 
-Options = DaskDelayed|DaskThreaded|DaskFutures|Fiab|MultiHost
+Options = DaskDelayed|DaskThreaded|DaskFutures|Fiab|MultiHost|ZmqBackbone

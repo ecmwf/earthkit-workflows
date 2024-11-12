@@ -1,17 +1,16 @@
-from cascade.low.core import DatasetId
+from cascade.low.core import DatasetId, Environment
 from cascade.controller.core import ActionSubmit, ActionDatasetPurge, Event, DatasetStatus, TaskStatus, ActionDatasetTransmit
 from cascade.executors.multihost.worker_server import TransmitPayload
 import orjson
 from typing import TypeVar
 from pydantic import BaseModel
+from cascade.executors.backbone.serde import Message, serialize, deserialize, RegisterRequest, RegisterResponse, Shutdown, DataTransmitObject
 
-B = TypeVar("B", bound=BaseModel)
-def there_and_back_again(b: B) -> B:
-    dump = b.model_dump()
-    raw = orjson.dumps(dump)
-    proc = orjson.loads(raw)
-    model = b.__class__(**proc)
-    assert b == model
+M = TypeVar("M", bound=Message)
+def there_and_back_again(m: M) -> None:
+    s = serialize(m)
+    r = deserialize(s)
+    assert m == r
 
 def test_serde():
     submit = ActionSubmit(at="worker1", tasks=["t1", "t2"], outputs={DatasetId("t1", "o1"), DatasetId("t2", "o2")})
@@ -38,3 +37,19 @@ def test_serde():
         tracing_ctx_host="host1",
     )
     there_and_back_again(transmit_rem)
+
+    register_req = RegisterRequest(
+        url="tcp://localhost:123",
+        host_id="h1",
+        environment=Environment(
+            workers={},
+        ),
+    )
+    there_and_back_again(register_req)
+    there_and_back_again(RegisterResponse())
+    there_and_back_again(Shutdown())
+    there_and_back_again(DataTransmitObject(
+        worker_id="h0:w1",
+        dataset_id=DatasetId("t1", "o1"),
+        data=b";;123abc;;@@",
+    ))

@@ -131,7 +131,7 @@ class Client():
                 j = result.json()
                 for e in j: #result.json():
                     event = Event(**e)
-                    event = pyd_replace(event, at=f"{host}:{event.at}")
+                    # event = pyd_replace(event, at=f"{host}:{event.at}")
                     logger.debug(f"putting to queue: {event=}")
                     self.writer.put(event)
         except Exception as e:

@@ -1,0 +1,79 @@
+"""
+Adapter between a backbone and an instance of Executor that runs on the host
+"""
+
+import logging
+from cascade.controller.executor import Executor
+from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId, TransmitPayload, DatasetStatus
+from cascade.executors.backbone.interface import Backbone
+from cascade.executors.backbone.serde import RegisterRequest, RegisterResponse, Shutdown, DataTransmitObject
+from cascade.low.func import assert_never
+from cascade.shm.client import AllocatedBuffer
+from cascade.controller.tracing import mark
+
+logger = logging.getLogger(__name__)
+
+class BackboneLocalExecutor():
+    def __init__(self, executor: Executor, backbone: Backbone):
+        self.executor = executor
+        self.backbone = backbone
+        self.executor.register_event_callback(self.backbone.send_event_callback())
+        self.shutdown = False
+
+
+    def _send_data(self, payload: TransmitPayload) -> None:
+        callback = self.backbone.send_event_callback()
+        for dataset in payload.datasets:
+            try:
+                mark({"dataset": dataset.task, "action": "transmitStarted", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                data = self.executor.fetch_as_value(payload.this_worker, dataset)
+                mark({"dataset": dataset.task, "action": "transmitLoaded", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                if isinstance(data, AllocatedBuffer):
+                    data_raw = bytes(data.view()) # NOTE unfortunate -- zmq supports going with view, but that needs a serde extension
+                else:
+                    data_raw = data
+                dto = DataTransmitObject(
+                    worker_id=payload.other_worker,
+                    dataset_id=dataset,
+                    data=data_raw,
+                )
+                self.backbone.send_data(payload.other_url, dto)
+                if isinstance(data, AllocatedBuffer):
+                    data.close()
+                event = Event(at=payload.other_worker, ts_trans=[], ds_trans=[(dataset, DatasetStatus.available)])
+            except Exception as ex:
+                event = Event(failures=[f"data transmit failed with {repr(ex)}"], at=payload.this_worker)
+            callback(event)
+            logger.debug(f"callback of {event} finished")
+
+    def recv_loop(self) -> None:
+        while not self.shutdown:
+            for m in self.backbone.recv_messages():
+                if isinstance(m, ActionSubmit):
+                    self.executor.submit(m)
+                elif isinstance(m, ActionDatasetPurge):
+                    self.executor.purge(m)
+                elif isinstance(m, ActionDatasetTransmit):
+                    raise TypeError
+                elif isinstance(m, TransmitPayload):
+                    self._send_data(m)
+                elif isinstance(m, Event):
+                    # TODO this is a very poor hack. We just need to ensure the right p.join happen
+                    if hasattr(self.executor, "procwatch"):
+                        tasks = {ts[0] for ts in m.ts_trans}
+                        logger.debug(f"noted finish of {tasks=}")
+                        futs = {k for k, v in self.executor.fid2action.items() if set(v.tasks).intersection(tasks)}
+                        logger.debug(f"will proc join {futs=}")
+                        self.executor.procwatch.spawn_available(should_wait=futs)
+                elif isinstance(m, RegisterRequest):
+                    raise TypeError
+                elif isinstance(m, RegisterResponse):
+                    raise TypeError
+                elif isinstance(m, Shutdown):
+                    logger.debug("shutting down")
+                    self.executor.shutdown()
+                    self.shutdown = True
+                elif isinstance(m, DataTransmitObject):
+                    self.executor.store_value(m.worker_id, m.dataset_id, m.data)
+                else:
+                    assert_never(m)

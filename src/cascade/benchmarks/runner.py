@@ -29,6 +29,9 @@ from cascade.low.func import assert_never
 import uvicorn
 from cascade.executors.multihost.impl import RouterExecutor
 from cascade.executors.multihost.worker_server import build_app
+from cascade.executors.backbone.zmq import ZmqBackbone
+from cascade.executors.backbone.local import BackboneLocalExecutor
+from cascade.executors.backbone.executor import BackboneExecutor
 
 def wait_for(client: httpx.Client, root_url: str) -> None:
     """Calls /status endpoint, retry on ConnectError"""
@@ -53,7 +56,7 @@ def launch_fiab_host(workers: int, host_id: int, port: int, job: cascade.low.cor
         shm = Process(target=shm_server.entrypoint, args=(port + 1000, gb4, fiab_logging, shm_pref))
         shm.start()
         shm_client.ensure()
-        executor = SingleHostExecutor(ExecutorConfig(workers, 1024), job, {"host": f"h{host_id}"})
+        executor = SingleHostExecutor(ExecutorConfig(workers, 1024, f"h{host_id}"), job)
         app = build_app(executor)
         uvicorn.run(app, host="0.0.0.0", port=port, log_level=None, log_config=None)
     finally:
@@ -61,6 +64,37 @@ def launch_fiab_host(workers: int, host_id: int, port: int, job: cascade.low.cor
         shm_client.shutdown()
         shm.terminate()
         print(f"shutdown done {os.getpid()}")
+
+def launch_zmq_fiab(workers: int, host_id: int, port: int, job: cascade.low.core.JobInstance) -> None:
+    try:
+        logging.config.dictConfig(fiab_logging)
+        gb4 = 4 * (1024**3)
+        shm_api.publish_client_port(port + host_id + 1000)
+        shm_pref = f"s{host_id}_"
+        shm = Process(target=shm_server.entrypoint, args=(port + host_id + 1000, gb4, fiab_logging, shm_pref))
+        shm.start()
+        shm_client.ensure()
+        executor = SingleHostExecutor(ExecutorConfig(workers, 1024, f"h{host_id}"), job)
+        self_url = f"tcp://localhost:{port+host_id+1}"
+        controller_url = f"tcp://localhost:{port}"
+        backbone = ZmqBackbone(self_url, controller_url=controller_url, environment=executor.get_environment(), host_id=f"h{host_id}")
+        adapter = BackboneLocalExecutor(executor, backbone)
+        adapter.recv_loop()
+    finally:
+        shm_client.shutdown()
+        shm.terminate()
+
+def launch_zmq_ctrl(hosts: int, port: int, job: cascade.low.core.JobInstance) -> None:
+    logging.config.dictConfig(fiab_logging)
+    controller_url = f"tcp://localhost:{port}"
+    backbone = ZmqBackbone(controller_url, expected_workers=hosts)
+    executor = BackboneExecutor(backbone)
+    exe_rec = cascade.executors.simulator.placeholder_execution_record(job)
+    schedule = naive_bfs_layers(job, exe_rec, set()).get_or_raise()
+    start_fine = time.perf_counter_ns()
+    run(job, executor, schedule)
+    end_fine = time.perf_counter_ns()
+    print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")
 
 def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
     job = cascade.low.into.graph2job(graph)
@@ -76,7 +110,7 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         shm_api.publish_client_port(port)
         shm = Process(target=shm_server.entrypoint, args=(port, gb4, fiab_logging))
         shm.start()
-        fiab_executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024), job, {"host": "fiab"})
+        fiab_executor = SingleHostExecutor(ExecutorConfig(opts.workers, 1024, "fiab"), job)
         shm_client.ensure()
         try:
             start_fine = time.perf_counter_ns()
@@ -129,6 +163,16 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
                 if p.is_alive():
                     print(f"terminate {p.pid}", flush=True)
                     p.terminate()
+    elif isinstance(opts, api.ZmqBackbone):
+        port = 8000
+        cp = Process(target=launch_zmq_ctrl, args=(opts.hosts, port, job))
+        cp.start()
+        ps = [Process(target=launch_zmq_fiab, args=(opts.workers_per_host, i, port, job)) for i in range(opts.hosts)]
+        for p in ps:
+            p.start()
+        cp.join()
+        for p in ps:
+            p.join()
     else:
         assert_never(opts)
     end_raw = time.perf_counter_ns()

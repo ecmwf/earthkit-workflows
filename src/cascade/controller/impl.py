@@ -52,8 +52,10 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
     purging_tracker = dependants(job.edges)
     state = State(purging_tracker, colocated_workers(env))
 
-    while True:
+    while schedule.layers or state.remaining:
+        # plan
         actions = plan(schedule, state, env, job, taskInputs)
+        # act
         if actions:
             state, tAct = simple_timer(act)(executor, state, actions)
         remaining_tasks = {
@@ -62,12 +64,13 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
             for worker, status in state.ts2worker[task].items()
         }
         tWait = None
+        # wait
         if remaining_tasks:
             logger.debug(f"about to await executor because of {remaining_tasks=}")
             events, tWait = simple_timer(executor.wait_some)()
             notify(state, events, taskInputs)
             logger.debug(f"received {len(events)} events")
         tracingReport(actions, tAct, tWait, remaining_tasks, events)
-        if not schedule.layers and not state.remaining:
-            break
+    logger.debug(f"job finished, shutting down executor")
+    executor.shutdown()
     return state

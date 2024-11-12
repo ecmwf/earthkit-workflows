@@ -207,6 +207,9 @@ class DaskFuturisticExecutor:
         # TODO is it done instantly? Maybe await that future?
         self.eq.store_done(worker, dataset_id)
 
+    def shutdown(self) -> None:
+        pass
+
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():
             return self.eq.drain()
@@ -225,3 +228,6 @@ class DaskFuturisticExecutor:
             self.fid2future.pop(id_)
 
         return self.eq.drain()
+
+    def register_event_callback(self, callback: Callable[[Event], None]) -> None:
+        raise NotImplementedError

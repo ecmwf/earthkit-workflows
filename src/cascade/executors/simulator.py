@@ -13,7 +13,7 @@ Assumes:
 import logging
 from dataclasses import dataclass
 from math import isclose
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable
 
 from cascade.controller.core import DatasetStatus, TaskStatus, Event, ActionDatasetTransmit, ActionSubmit, ActionDatasetPurge
 from cascade.low.core import Environment, Worker, JobExecutionRecord, JobInstance, TaskExecutionRecord, TaskId, DatasetId, WorkerId
@@ -131,6 +131,9 @@ class SimulatingExecutor:
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
         self.eq.store_done(worker, dataset_id)
 
+    def shutdown(self) -> None:
+        pass
+
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():
             return self.eq.drain()
@@ -154,6 +157,9 @@ class SimulatingExecutor:
                     ds_trans=[(dataset, DatasetStatus.available) for dataset in datasets],
                 ))
         return rv
+ 
+    def register_event_callback(self, callback: Callable[[Event], None]) -> None:
+        raise NotImplementedError
 
 def placeholder_execution_record(job: JobInstance) -> JobExecutionRecord:
     """We can't just use default factories with simulator because we need the datasets to have the right keys"""

@@ -28,6 +28,7 @@ import logging
 import cascade.shm.server as shm_server
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
+from cascade.controller.executor import Executor
 
 logging.getLogger("httpcore").setLevel("ERROR")
 
@@ -57,7 +58,7 @@ def launch_executor(port: int, kind: str, job: JobInstance):
             shm = Process(target=shm_server.entrypoint, args=(port + 1000, gb4, fiab_logging))
             shm.start()
             shm_client.ensure()
-            executor = SingleHostExecutor(ExecutorConfig(2, 1024), job)
+            executor = SingleHostExecutor(ExecutorConfig(2, 1024, "fiab"), job)
         else:
             raise NotImplementedError(kind)
         try:
@@ -110,7 +111,7 @@ def launch_cluster_and_run(start: int, kind: str, workers: int, job: JobInstance
             if p.is_alive():
                 p.terminate()
 
-def test_instant_simple():
+def test_simple():
     def test_func(x: int, y: int, z: int) -> int:
         return x + y + z
 
