@@ -64,6 +64,9 @@ class SimpleEventQueue():
         )
         self.add([event])
 
+    def register_event_callback(self, callback: Callable[[Event], None]) -> None:
+        self.event_callbacks.append(callback)
+
 class InstantExecutor():
     def __init__(self, workers: int, job: JobInstance, host_id: str = "hInstant") -> None:
         self.env = Environment(workers={f"{host_id}:w{i}": Worker(cpu=1, gpu=0, memory_mb=sys.maxsize) for i in range(workers)})
@@ -98,4 +101,4 @@ class InstantExecutor():
         return self.eq.drain()
 
     def register_event_callback(self, callback: Callable[[Event], None]) -> None:
-        self.eq.event_callbacks.append(callback)
+        self.eq.register_event_callback(callback)

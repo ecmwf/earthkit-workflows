@@ -12,12 +12,14 @@ from cascade.executors.backbone.executor import BackboneExecutor
 from cascade.executors.backbone.zmq import ZmqBackbone
 from cascade.graph import Node
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import Environment, JobExecutionRecord, TaskExecutionRecord, JobInstance
+from cascade.low.core import Environment, JobExecutionRecord, TaskExecutionRecord, JobInstance, Worker
 from cascade.scheduler.impl import naive_bfs_layers, naive_dfs_layers
 import cascade.shm.server as shm_server
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 from cascade.controller.executor import Executor
+from cascade.executors.simulator import SimulatingExecutor, placeholder_execution_record
+from cascade.low.views import param_source
 
 def launch_executor(port_start: int, idx: int, job: JobInstance, kind: str) -> None:
     from forecastbox.utils import logging_config as fiab_logging
@@ -40,6 +42,14 @@ def launch_executor(port_start: int, idx: int, job: JobInstance, kind: str) -> N
         executor = SingleHostExecutor(ExecutorConfig(1, 1024, f"h{idx}"), job)
     elif kind == "instant":
         executor = InstantExecutor(workers=1, job=job, host_id=f"h{idx}")
+    elif kind == "simulating":
+        env = Environment(workers={f"h{idx}:w0": Worker(cpu=1, gpu=0, memory_mb=1024)})
+        task_inputs = {
+            task_id: set(task_param_source.values())
+            for task_id, task_param_source in param_source(job.edges).items()
+        }
+        record = placeholder_execution_record(job)
+        executor = SimulatingExecutor(env, task_inputs, record)
     else:
         raise NotImplementedError(kind)
 
@@ -68,13 +78,10 @@ def launch_and_run(port_start: int, job: JobInstance, kind: str, workers: int) -
         threads.append(Process(target=launch_executor, args=(port_start, idx+1, job, kind)))
         threads[idx].start()
     ctrl_thread.join()
-    print("going to individuals")
     for t in threads:
-        print("a t")
         t.join()
 
 def test_simple() -> None:
-    return
     def simple_func(a: int, b: int) -> int:
         return a + b
 
@@ -93,6 +100,7 @@ def test_simple() -> None:
     port_start = 5565
     launch_and_run(port_start, job, "instant", 1)
     launch_and_run(port_start + 10, job, "fiab", 1)
+    launch_and_run(port_start + 20, job, "simulating", 1)
 
 def test_transmit() -> None:
     def data_gen(a: int) -> int:
@@ -119,6 +127,8 @@ def test_transmit() -> None:
     )
     port_start = 5575
     # TODO the problem here is that the instant executor finishes too fast, and not all
-    # messages from the client get accepted by the controller
+    # messages from the client get accepted by the controller. So even though the run is
+    # ok, the process remains hanging at the end
     # launch_and_run(port_start, job, "instant", 2)
     launch_and_run(port_start + 10, job, "fiab", 2)
+    launch_and_run(port_start + 20, job, "simulating", 2)

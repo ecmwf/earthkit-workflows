@@ -107,6 +107,7 @@ class SimulatingExecutor:
             self.workers[action.at].remaining_memory_mb()
             self.workers[action.at].task_inputs[task] = self.task_inputs.get(task, set())
             self.workers[action.at].outputs.update(action.outputs)
+        self._advance()
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
         available = {ds for worker in action.fr for ds in self.workers[worker].datasets}
@@ -114,8 +115,7 @@ class SimulatingExecutor:
             if dataset not in available:
                 raise ValueError(f"{action=} not possible as we only have {available=}")
             for worker in action.to:
-                self.workers[worker].datasets.add(dataset)
-                self.workers[worker].remaining_memory_mb()
+                self.store_value(worker, dataset)
         self.eq.transmit_done(action)
 
     def purge(self, action: ActionDatasetPurge) -> None:
@@ -129,7 +129,9 @@ class SimulatingExecutor:
         return b""
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
-        self.eq.store_done(worker, dataset_id)
+        self.workers[worker].datasets.add(dataset_id)
+        self.workers[worker].remaining_memory_mb()
+        self._advance()
 
     def shutdown(self) -> None:
         pass
@@ -137,29 +139,30 @@ class SimulatingExecutor:
     def wait_some(self, timeout_sec: int | None = None) -> list[Event]:
         if self.eq.any():
             return self.eq.drain()
+        else:
+            raise ValueError("wait issued without anything progressible")
 
+    def _advance(self):
         next_event_at: float|None = None
         for worker_state in self.workers.values(): # min() except handling for empty seq
             worker_event_at = worker_state.next_event_in_secs()
             if worker_event_at > 0 and (next_event_at is None or worker_event_at < next_event_at):
                 next_event_at = worker_event_at
         if next_event_at is None:
-            return []
+            return
         logger.debug(f"waited for {next_event_at}")
         self.total_time_secs += next_event_at
-        rv = []
         for worker in self.workers:
             tasks, datasets = self.workers[worker].progress_seconds(next_event_at)
             if len(tasks) > 0 or len(datasets) > 0:
-                rv.append(Event(
+                self.eq.add([Event(
                     at=worker,
                     ts_trans=[(task, TaskStatus.succeeded) for task in tasks],
                     ds_trans=[(dataset, DatasetStatus.available) for dataset in datasets],
-                ))
-        return rv
+                )])
  
     def register_event_callback(self, callback: Callable[[Event], None]) -> None:
-        raise NotImplementedError
+        self.eq.register_event_callback(callback)
 
 def placeholder_execution_record(job: JobInstance) -> JobExecutionRecord:
     """We can't just use default factories with simulator because we need the datasets to have the right keys"""
