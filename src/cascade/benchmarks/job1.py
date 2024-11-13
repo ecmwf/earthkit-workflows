@@ -16,7 +16,7 @@ END_STEP=60     # Can increase to a number divisible by 6 up to 240
 NUM_ENSEMBLES=2 # Can increase up to 50
 
 params = {
-    "GRID": "O320",     # For higher memory usage increase to O640 or O1280
+    "GRID": "O320",     # Valid: O320, O640 or O1280; mem goes up
     "DATE": "20241015",
     "CLIM_DATE": "20241014",
 }
@@ -120,7 +120,7 @@ def download_inputs():
                 "grid": params["GRID"],
             }
             data = earthkit.data.from_source("mars", **ekp)
-            with open(f"/home/vojta/warehouse/ecmwf/cascEx1/data_{number}_{step}.grib", 'wb') as f:
+            with open(f"{data_root}/data_{number}_{step}.grib", 'wb') as f:
                 data.write(f)
 
 def download_climatology():

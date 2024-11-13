@@ -29,7 +29,8 @@ def get_capacity() -> int:
     r = subprocess.run(
         ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"], check=True, capture_output=True
     )
-    avail = r.stdout.decode("ascii").split("\n", 1)[1].strip()
+    # be careful -- hpc clusters have typically more rich output of findmnt
+    avail = r.stdout.decode("ascii").split("\n")[1].strip()
     return int(avail)
 
 

@@ -11,7 +11,8 @@ from typing import Callable
 HostId = str
 
 # TODO split in server and client interfaces, but mind the overlap
-# TODO split the data/message recv interfaces?
+# TODO split the data/message recv interfaces? The data part could be
+# quite well integrated with shm, do zero copy etc
 
 @runtime_checkable
 class Backbone(Protocol):
