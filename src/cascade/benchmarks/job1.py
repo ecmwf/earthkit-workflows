@@ -12,6 +12,8 @@ from cascade.fluent import Payload
 import earthkit.data
 
 data_root = "~/warehouse/ecmwf/cascEx1"
+# data_root = "/ec/res4/hpcperm/ecm6012/gribs/casc_g01/"
+
 END_STEP=60     # Can increase to a number divisible by 6 up to 240
 NUM_ENSEMBLES=2 # Can increase up to 50
 

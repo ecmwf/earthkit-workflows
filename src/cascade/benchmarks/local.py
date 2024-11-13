@@ -1,6 +1,8 @@
 """
-Runs actual job: controller + scheduler + executor
+Runs actual job: controller + scheduler + executor, in a local (single physical host) mode
 """
+
+# TODO rework, simplify
 
 import os
 import signal
@@ -96,8 +98,7 @@ def launch_zmq_ctrl(hosts: int, port: int, job: cascade.low.core.JobInstance) ->
     end_fine = time.perf_counter_ns()
     print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")
 
-def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
-    job = cascade.low.into.graph2job(graph)
+def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
     exe_rec = cascade.executors.simulator.placeholder_execution_record(job)
     schedule = naive_bfs_layers(job, exe_rec, set()).get_or_raise()
     shm: Process|None = None
@@ -153,8 +154,9 @@ def run_job_on(graph: cascade.graph.Graph, opts: api.Options):
         finally:
             router_executor.shutdown()
             for p in ps:
-                print(f"interrupt {p.pid}", flush=True)
-                os.kill(p.pid, signal.SIGINT)
+                if p.pid:
+                    print(f"interrupt {p.pid}", flush=True)
+                    os.kill(p.pid, signal.SIGINT)
             for p in ps:
                 print(f"join {p.pid}", flush=True)
                 p.join(1)
