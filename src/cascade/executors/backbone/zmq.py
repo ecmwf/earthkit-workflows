@@ -81,6 +81,11 @@ class ZmqBackbone:
             # consider storing the context in the thread local; otherwise we have extra io thread
             context = zmq.Context() 
             socket = context.socket(zmq.PUSH)
+            # TODO this should instead report to the local backbone only, because when the controller
+            # is unreachable, we want the backbone process to hold on to the controller report, not the
+            # task's process. If the linger below would be None, we hang infinitely in case the controller
+            # has sent a shutdown prior
+            socket.set(zmq.LINGER, 1000)
             socket.connect(controller_url)
             b = serialize(event)
             logger.debug(f"callback {event} send controller")
@@ -127,3 +132,6 @@ class ZmqBackbone:
 
     def url_of(self, host: HostId) -> str:
         return self.urls[host]
+
+    def shutdown(self) -> None:
+        self.context.destroy()

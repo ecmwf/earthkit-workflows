@@ -37,6 +37,9 @@ class Backbone(Protocol):
     def url_of(self, host: HostId) -> str:
         raise NotImplementedError
 
+    def shutdown(self) -> None:
+        raise NotImplementedError
+
 def merge_environments(environments: list[Environment]) -> Environment:
     """Utility function to handle global environment and make it colocation-aware"""
     workers = {

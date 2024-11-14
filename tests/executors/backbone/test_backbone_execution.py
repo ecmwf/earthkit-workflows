@@ -132,3 +132,38 @@ def test_transmit() -> None:
     # launch_and_run(port_start, job, "instant", 2)
     launch_and_run(port_start + 10, job, "fiab", 2)
     launch_and_run(port_start + 20, job, "simulating", 2)
+
+def test_failure() -> None:
+    """Tests that the cluster correctly exists when a task crashes, as opposed to hanging
+    infinitely"""
+    def i_may_crash(a: int) -> int:
+        if a == 0:
+            raise ValueError("zero crash")
+        else:
+            return 1
+
+    def i_wait(a: int) -> int:
+        import time
+        time.sleep(0.1)
+        return 1
+
+    task1 = TaskBuilder.from_callable(i_may_crash).with_values(a=0)
+    job1 = (
+        JobBuilder()
+        .with_node("task1", task1)
+        .build()
+        .get_or_raise()
+    )
+
+    port_start = 5575
+    launch_and_run(port_start, job1, "fiab", 1)
+
+    task2 = TaskBuilder.from_callable(i_wait).with_values(a=0)
+    job2 = (
+        JobBuilder()
+        .with_node("task1", task1)
+        .with_node("task2", task2)
+        .build()
+        .get_or_raise()
+    )
+    launch_and_run(port_start + 10, job2, "fiab", 2)

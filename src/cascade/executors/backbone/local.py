@@ -59,6 +59,8 @@ class BackboneLocalExecutor():
                     self._send_data(m)
                 elif isinstance(m, Event):
                     # TODO this is a very poor hack. We just need to ensure the right p.join happen
+                    # TODO we are fail to react when no Event comes due to proc crash. It sounds like the executor
+                    # should have a thread to check states of processes, and send Failure events in case
                     if hasattr(self.executor, "procwatch"):
                         tasks = {ts[0] for ts in m.ts_trans}
                         logger.debug(f"noted finish of {tasks=}")
@@ -70,8 +72,11 @@ class BackboneLocalExecutor():
                 elif isinstance(m, RegisterResponse):
                     raise TypeError
                 elif isinstance(m, Shutdown):
-                    logger.debug("shutting down")
+                    logger.debug("shutting down local executor")
                     self.executor.shutdown()
+                    logger.debug("shutting down local backbone")
+                    self.backbone.shutdown()
+                    logger.debug("exiting recv loop")
                     self.shutdown = True
                 elif isinstance(m, DataTransmitObject):
                     self.executor.store_value(m.worker_id, m.dataset_id, m.data)

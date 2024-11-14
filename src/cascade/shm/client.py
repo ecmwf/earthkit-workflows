@@ -46,7 +46,7 @@ class AllocatedBuffer:
 T = TypeVar("T", bound=api.Comm)
 
 
-def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 1.0) -> T:
+def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0) -> T:
     timeout_i = 0.1
     while timeout_sec > 0:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
