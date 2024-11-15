@@ -2,6 +2,7 @@
 One particular job suite for benchmarking: prob, efi ensms
 """
 
+from pathlib import Path
 from ppcascade.fluent import from_source
 from cascade.fluent import from_source as c_from_source
 from ppcascade.utils.window import Range
@@ -11,16 +12,16 @@ from cascade.cascade import Cascade
 from cascade.fluent import Payload
 import earthkit.data
 
-data_root = "~/warehouse/ecmwf/cascEx1"
+data_root = str(Path.home() / "warehouse" / "ecmwf" / "cascEx2")
 # data_root = "/ec/res4/hpcperm/ecm6012/gribs/casc_g01/"
 
 END_STEP=60     # Can increase to a number divisible by 6 up to 240
-NUM_ENSEMBLES=2 # Can increase up to 50
+NUM_ENSEMBLES=10 # Can increase up to 50
 
 params = {
-    "GRID": "O320",     # Valid: O320, O640 or O1280; mem goes up
-    "DATE": "20241015",
-    "CLIM_DATE": "20241014",
+    "GRID": "O640",     # Valid: O320, O640 or O1280; mem goes up
+    "DATE": "20241111",
+    "CLIM_DATE": "20241110",
 }
 
 files = [
@@ -145,5 +146,5 @@ def download_climatology():
             data.write(f)
 
 if __name__ == "__main__":
-    download_inputs()
+    # download_inputs()
     download_climatology()

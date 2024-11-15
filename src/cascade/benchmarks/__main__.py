@@ -30,6 +30,11 @@ from cascade.graph import Graph
 import logging
 from cascade.graph import deduplicate_nodes
 import cascade.low.into
+from cascade.scheduler.impl import naive_bfs_layers, naive_dfs_layers
+from cascade.executors.simulator import placeholder_execution_record
+import logging
+
+logger = logging.getLogger("cascade.benchmarks")
 
 def main(job: str, executor: str, workers: int, hosts: int|None = None, dist: str = "local", controller_url: str|None = None, host_id: int|None = None) -> None:
     os.environ["CLOUDPICKLE"] = "yes" # for fiab desers
@@ -82,6 +87,13 @@ def main(job: str, executor: str, workers: int, hosts: int|None = None, dist: st
         if controller_url is None or hosts is None:
             raise ValueError
         launch_zmq_controller(hosts, controller_url, jobInstance)
+    elif dist == "schedule":
+        exe_rec = placeholder_execution_record(jobInstance)
+        # bfs logs itself layer per layer
+        _ = naive_bfs_layers(jobInstance, exe_rec, set()).get_or_raise()
+        dfs_layers = naive_dfs_layers(jobInstance, exe_rec, set()).get_or_raise().layers
+        dfs_layers_str = ", ".join([e[0][:3] for e in dfs_layers])
+        logger.debug(f"dfs is {dfs_layers_str}")
     else:
         raise NotImplementedError(dist)
 

@@ -11,4 +11,8 @@ The module is organised as follows:
  - notify, plan and act are implementation modules
  - impl is an implementation of the Controller protocol, via bundling the notify, plan, and act
    into the controller loop. This is the job execution entrypoint
+
+There are three auxiliary modules: views, dynamic and assignments, with not a great boundary.
+Especially the latter two would best belong to the `cascade.scheduler` module instead, in some
+organised fashion.
 """

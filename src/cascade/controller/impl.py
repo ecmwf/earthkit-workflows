@@ -53,7 +53,7 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
     state = State(purging_tracker, colocated_workers(env))
 
     try:
-        while schedule.layers or state.remaining:
+        while schedule.computable or state.remaining:
             # plan
             actions = plan(schedule, state, env, job, taskInputs)
             # act

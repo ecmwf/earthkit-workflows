@@ -90,7 +90,8 @@ def wait_for(client: httpx.Client, root_url: str) -> None:
 
 def launch_cluster_and_run(start: int, kind: str, workers: int, job: JobInstance):
     client = httpx.Client()
-    urls = {f"h{i}": f"http://localhost:{start+i}" for i in range(workers)}
+    # TODO fix
+    urls = {f"hInstant": f"http://localhost:{start+i}" for i in range(workers)}
     ps = [
         Process(target=launch_executor, args=(int(url.rsplit(":",1)[1]),kind, job))
         for url in urls.values()

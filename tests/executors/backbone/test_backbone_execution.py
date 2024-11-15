@@ -43,7 +43,10 @@ def launch_executor(port_start: int, idx: int, job: JobInstance, kind: str) -> N
     elif kind == "instant":
         executor = InstantExecutor(workers=1, job=job, host_id=f"h{idx}")
     elif kind == "simulating":
-        env = Environment(workers={f"h{idx}:w0": Worker(cpu=1, gpu=0, memory_mb=1024)})
+        env = Environment(
+            workers={f"h{idx}:w0": Worker(cpu=1, gpu=0, memory_mb=1024)},
+            colocations=[[f"h{idx}:w0"]],
+        )
         task_inputs = {
             task_id: set(task_param_source.values())
             for task_id, task_param_source in param_source(job.edges).items()

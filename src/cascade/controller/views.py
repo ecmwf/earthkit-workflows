@@ -24,6 +24,20 @@ def project_colocation(workers: list[WorkerId], colocated: dict[WorkerId, set[Wo
         chosen.add(worker)
     return chosen
 
+def get_host2datasets(state: State, environment: Environment) -> dict[str, set[DatasetId]]:
+    # NOTE there is unfortunate mind split when it comes to "does worker identity matter"?
+    # For current workers, not because the processes are short lived. But if that ceases to be
+    # then this method makes less sense. If it would never matter, then this method should instead
+    # become State's field
+    return {
+        colocation[0].split(':', 1)[0]: {
+            dataset
+            for dataset, status in state.worker2ds[colocation[0]].items()
+            if status == DatasetStatus.available
+        }
+        for colocation in environment.colocations
+    }
+
 def transition_dataset(state: State, source: WorkerId, dataset: DatasetId, to: DatasetStatus) -> State:
     """Ensures valid update of State internal structures, including dataset broadcast in colocated workers"""
     # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.

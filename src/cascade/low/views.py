@@ -4,7 +4,7 @@ Utility functions and transformers for the core graph objects
 
 from collections import defaultdict
 
-from cascade.low.core import Task2TaskEdge, DatasetId
+from cascade.low.core import Task2TaskEdge, DatasetId, TaskId
 
 # TODO make these a cached property of JobInstance?
 
@@ -29,9 +29,9 @@ def param_source(
     return rv
 
 
-def dependants(edges: list[Task2TaskEdge]) -> dict[DatasetId, set[str]]:
+def dependants(edges: list[Task2TaskEdge]) -> dict[DatasetId, set[TaskId]]:
     """Returns map[(source_task, source_output)] = set(sink_task)"""
-    rv: dict[DatasetId, set[str]] = defaultdict(set)
+    rv: dict[DatasetId, set[TaskId]] = defaultdict(set)
     for e in edges:
         rv[e.source].add(e.sink_task)
     return rv

@@ -107,6 +107,13 @@ class SimulatingExecutor:
             self.workers[action.at].remaining_memory_mb()
             self.workers[action.at].task_inputs[task] = self.task_inputs.get(task, set())
             self.workers[action.at].outputs.update(action.outputs)
+        # TODO this makes the total time secs effectively broken! All workers advance immediately,
+        # which causes the wait some to report at worse granularity, at the cumulative time to
+        # not represent parallelism. But fixing this requires making sure to not break the backbone
+        # based event driven. Possibly:
+        # - make advance keyed by worker
+        # - add the 'next event in' to the Event
+        # - casculate
         self._advance()
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
@@ -115,7 +122,7 @@ class SimulatingExecutor:
             if dataset not in available:
                 raise ValueError(f"{action=} not possible as we only have {available=}")
             for worker in action.to:
-                self.store_value(worker, dataset)
+                self.store_value(worker, dataset, b'')
         self.eq.transmit_done(action)
 
     def purge(self, action: ActionDatasetPurge) -> None:

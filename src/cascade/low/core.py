@@ -84,6 +84,7 @@ class JobInstance(BaseModel):
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}
 
+# TODO dataclass with host,worker ids
 WorkerId = str
 
 # Execution

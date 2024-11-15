@@ -28,7 +28,7 @@ def naive_bfs_layers(job: JobInstance, record: JobExecutionRecord, completed: se
         logger.debug(f"appended {this_layer}")
         for e in this_layer:
             remaining.remove(e)
-    return Either.ok(Schedule(layers=layers))
+    return Either.ok(Schedule(layers=layers, record=record))
 
 def naive_dfs_layers(job: JobInstance, record: JobExecutionRecord, completed: set[TaskId]) -> Either[Schedule, str]:
     """Ignores record, decomposes graphs into single-element dfs layers. Order of layers arbitrary"""
@@ -59,4 +59,4 @@ def naive_dfs_layers(job: JobInstance, record: JobExecutionRecord, completed: se
             break
         visit(candidate)
 
-    return Either.ok(Schedule(layers=layers))
+    return Either.ok(Schedule(layers=layers, record=record))
