@@ -90,11 +90,11 @@ def plan(schedule: Schedule, state: State, environment: Environment, job: JobIns
     layer_idx: int|None = 0
     available_workers = get_available_workers(state, environment)
     logger.debug(f"about to start planning with {available_workers=} and {schedule.computable=}")
-    available_datasets = set(d for d, w2s in state.ds2worker.items() if DatasetStatus.available in set(w2s.values()))
     assignment = fitness_assignment(environment, available_workers, state, taskInputs, job, schedule)
     logger.debug(f"processing {assignment = }")
     actions += convert(assignment, state, job, taskInputs)
     assigned_tasks = [t for tl in assignment.values() for t in tl]
+    available_datasets = set(d for d, w2s in state.ds2worker.items() if DatasetStatus.available in set(w2s.values()))
     assume_computed(schedule, available_datasets, assigned_tasks, taskInputs, job)
 
     logger.debug(f"planned {actions = }")

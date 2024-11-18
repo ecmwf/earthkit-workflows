@@ -34,13 +34,17 @@ def fitness_assignment(environment: Environment, availableWorkers: set[WorkerId]
       - NOTE: this choice means we prefer future transmits over present transmits. The other option would be to choose here by fitness solely
     """
     assignment: dict[WorkerId, list[TaskId]] = defaultdict(list)
-    computable = set(schedule.computable)
+    availableGlobally = set(d for d, w2s in state.ds2worker.items() if DatasetStatus.available in set(w2s.values()))
+    # the schedule.computable represents "assuming everything ongoing has been computed", so may not necessarily be
+    # computable immediately. We thus filter for computable-given-current-state. TODO this should be avoidable by
+    # merging State and Schedule
+    computable = {e for e in schedule.computable if taskInputs.get(e, set()) <= availableGlobally}
     remaining = {task for layer in schedule.layers for task in layer}.union(computable)
     host2datasets = get_host2datasets(state, environment)
     hosts = [colocation[0].split(":", 1)[0] for colocation in environment.colocations]
         
     while availableWorkers and computable:
-        logger.debug(f"assignment round with {availableWorkers=} and {computable=}")
+        logger.debug(f"assignment round with {availableWorkers=} and {len(computable)=}:")
         hostsWithWorker = {w.split(":", 1)[0] for w in availableWorkers}
         taskValues = get_task_values(schedule)
         task2hostAvailability = {
@@ -77,7 +81,7 @@ def fitness_assignment(environment: Environment, availableWorkers: set[WorkerId]
                 for task in computable:
                     isBestAvail = task2hostAvailability[task][host] == bestAvailability
                     isMaxValue = taskValues[task] > choice_value
-                    if isMaxFit and isBestAvail and isMaxValue:
+                    if isBestAvail and isMaxValue:
                         any((workerId := e) for e in availableWorkers if e.split(":", 1)[0] == host)
                         choice = (workerId, task)
                         choice_value = taskValues[task]
