@@ -149,7 +149,7 @@ class SimulatingExecutor:
         else:
             raise ValueError("wait issued without anything progressible")
 
-    def _advance(self):
+    def _advance(self) -> None:
         next_event_at: float|None = None
         for worker_state in self.workers.values(): # min() except handling for empty seq
             worker_event_at = worker_state.next_event_in_secs()

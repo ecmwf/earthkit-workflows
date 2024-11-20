@@ -9,7 +9,7 @@ from cascade.executors.backbone.interface import Backbone
 from cascade.executors.backbone.serde import RegisterRequest, RegisterResponse, Shutdown, DataTransmitObject
 from cascade.low.func import assert_never
 from cascade.shm.client import AllocatedBuffer
-from cascade.controller.tracing import mark
+from cascade.controller.tracing import mark, TransmitLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +25,9 @@ class BackboneLocalExecutor():
         callback = self.backbone.send_event_callback()
         for dataset in payload.datasets:
             try:
-                mark({"dataset": dataset.task, "action": "transmitStarted", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "source": payload.this_worker, "target": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
                 data = self.executor.fetch_as_value(payload.this_worker, dataset)
-                mark({"dataset": dataset.task, "action": "transmitLoaded", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "source": payload.this_worker, "target": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
                 if isinstance(data, AllocatedBuffer):
                     data_raw = bytes(data.view()) # NOTE unfortunate -- zmq supports going with view, but that needs a serde extension
                 else:

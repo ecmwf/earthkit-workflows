@@ -8,7 +8,7 @@ from cascade.controller.core import State, Action, ActionDatasetPurge, ActionDat
 from cascade.low.func import assert_never
 from cascade.controller.views import transition_dataset
 from typing import Iterable
-from cascade.controller.tracing import mark
+from cascade.controller.tracing import mark, TaskLifecycle, TransmitLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +26,14 @@ def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
             executor.purge(action)
         elif isinstance(action, ActionDatasetTransmit):
             for dataset in action.ds:
-                for worker in action.to:
-                    mark({"dataset": dataset.task, "action": "transmitPlanned", "worker": worker, "host": "controller"})
-                    state = transition_dataset(state, worker, dataset, DatasetStatus.preparing)
+                for target in action.to:
+                    for source in action.fr:
+                        mark({"dataset": dataset.task, "action": TransmitLifecycle.planned, "source": source, "target": target, "host": "controller"})
+                        state = transition_dataset(state, target, dataset, DatasetStatus.preparing)
             executor.transmit(action)
         elif isinstance(action, ActionSubmit):
             for task in action.tasks:
-                mark({"task": task, "action": "taskPlanned", "worker": action.at, "host": "controller"})
+                mark({"task": task, "action": TaskLifecycle.planned, "worker": action.at, "host": "controller"})
                 state.worker2ts[action.at][task] = TaskStatus.enqueued
                 state.ts2worker[task][action.at] = TaskStatus.enqueued
                 state.remaining.add(task)

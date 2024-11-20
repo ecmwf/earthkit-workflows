@@ -34,6 +34,7 @@ from cascade.executors.multihost.worker_server import build_app
 from cascade.executors.backbone.zmq import ZmqBackbone
 from cascade.executors.backbone.local import BackboneLocalExecutor
 from cascade.executors.backbone.executor import BackboneExecutor
+from cascade.controller.tracing import trace, Microtrace
 
 def wait_for(client: httpx.Client, root_url: str) -> None:
     """Calls /status endpoint, retry on ConnectError"""
@@ -179,9 +180,9 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
         assert_never(opts)
     end_raw = time.perf_counter_ns()
     if isinstance(opts, api.DaskFutures|api.Fiab|api.MultiHost):
-        print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
+        trace(Microtrace.total_incluster, end_fine - start_fine)
         print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")
-    else:
-        print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
+    trace(Microtrace.total_e2e, end_raw - start_raw)
+    print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
     if isinstance(opts, api.Fiab):
         shm_client.shutdown()

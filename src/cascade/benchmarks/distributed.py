@@ -20,6 +20,7 @@ from cascade.executors.backbone.local import BackboneLocalExecutor
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 import socket
+from cascade.controller.tracing import trace, Microtrace
 
 def launch_zmq_worker(workers: int, controller_url: str, host_id: int, job: cascade.low.core.JobInstance):
     self_url = f"tcp://{socket.gethostname()}:6001"
@@ -49,4 +50,5 @@ def launch_zmq_controller(hosts: int, controller_url: str, job: cascade.low.core
     start_fine = time.perf_counter_ns()
     run(job, executor, schedule)
     end_fine = time.perf_counter_ns()
+    trace(Microtrace.total_incluster, end_fine - start_fine)
     print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")

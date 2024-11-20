@@ -89,7 +89,7 @@ def plan(schedule: Schedule, state: State, environment: Environment, job: JobIns
 
     layer_idx: int|None = 0
     available_workers = get_available_workers(state, environment)
-    logger.debug(f"about to start planning with {available_workers=} and {schedule.computable=}")
+    logger.debug(f"about to start planning with {available_workers=} and {len(schedule.computable)=}")
     assignment = fitness_assignment(environment, available_workers, state, taskInputs, job, schedule)
     logger.debug(f"processing {assignment = }")
     actions += convert(assignment, state, job, taskInputs)

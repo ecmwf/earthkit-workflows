@@ -10,15 +10,13 @@ from cascade.controller.act import act
 from cascade.controller.plan import plan
 from cascade.controller.views import colocated_workers
 from time import perf_counter_ns
-from cascade.controller.tracing import mark
-from cascade.low.func import assert_never, simple_timer
+from cascade.controller.tracing import mark, label, ControllerPhases, Microtrace, timer
+from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
-def tracingReport(actions: list[Action], tAct: int, tWait: int|None, remainingTasks: dict[WorkerId, TaskStatus], events: list[Event]) -> None:
-    # NOTE this way won't yield easily total idle time -- a worker is idle if reported here as idle for `tWait` _and_ for the next report's `tAct`
-    # NOTE worker is considered busy *iff* it has any task assigned -- but the task may only be enqueued
-    d: dict[str, Any] = {"host": "controller", "action": "controllerReport", "actDuration": tAct, "waitDuration": tWait, "actionsTransmit": 0, "actionsSubmit": 0, "actionsPurge": 0, "eventsTransmited": 0, "eventsComputed": 0, "eventsStarted": 0}
+def summarise_actions(actions: list[Action]) -> dict:
+    d = {"actionsPurge": 0, "actionsTransmit": 0, "actionsSubmit": 0}
     for action in actions:
         if isinstance(action, ActionDatasetPurge):
             d["actionsPurge"] += 1
@@ -28,6 +26,10 @@ def tracingReport(actions: list[Action], tAct: int, tWait: int|None, remainingTa
             d["actionsSubmit"] += 1
         else:
             assert_never(action)
+    return d
+
+def summarise_events(events: list[Event]) -> dict:
+    d = {"eventsStarted": 0, "eventsComputed": 0, "eventsTransmited": 0}
     for event in events:
         for ts in event.ts_trans:
             if ts[1] == TaskStatus.running:
@@ -37,9 +39,7 @@ def tracingReport(actions: list[Action], tAct: int, tWait: int|None, remainingTa
         if not event.ts_trans:
             for ds in event.ds_trans:
                 d["eventsTransmited"] += 1
-    d["busyWorkers"] = len(set(remainingTasks.keys()))
-    d["progressingTasks"] = len(remainingTasks.values())
-    mark(d)
+    return d
 
 def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
     env = executor.get_environment()
@@ -51,31 +51,30 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
     }
     purging_tracker = dependants(job.edges)
     state = State(purging_tracker, colocated_workers(env))
+    label("host", "controller")
+    events: list[Event] = []
 
     try:
         while schedule.computable or state.remaining:
-            # plan
-            actions = plan(schedule, state, env, job, taskInputs)
-            # act
+            mark({"action": ControllerPhases.plan, **summarise_events(events)})
+            actions = timer(plan, Microtrace.ctrl_plan)(schedule, state, env, job, taskInputs)
+
+            mark({"action": ControllerPhases.act, **summarise_actions(actions)})
             if actions:
-                state, tAct = simple_timer(act)(executor, state, actions)
-            remaining_tasks = {
-                worker: status
-                for task in state.remaining
-                for worker, status in state.ts2worker[task].items()
-            }
+                state = timer(act, Microtrace.ctrl_act)(executor, state, actions)
             tWait = None
-            # wait
-            if remaining_tasks:
-                logger.debug(f"about to await executor because of {remaining_tasks=}")
-                events, tWait = simple_timer(executor.wait_some)()
-                notify(state, events, taskInputs)
+
+            mark({"action": ControllerPhases.wait})
+            if state.remaining:
+                logger.debug(f"about to await executor because of {state.remaining=}")
+                events = timer(executor.wait_some, Microtrace.ctrl_wait)()
+                timer(notify, Microtrace.ctrl_notify)(state, events, taskInputs)
                 logger.debug(f"received {len(events)} events")
-            tracingReport(actions, tAct, tWait, remaining_tasks, events)
     except Exception:
         logger.error("crash in controller, shuting down")
         raise
     finally:
+        mark({"action": ControllerPhases.shutdown})
         logger.debug(f"shutting down executor")
         executor.shutdown()
     return state

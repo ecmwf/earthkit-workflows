@@ -11,7 +11,7 @@ from cascade.controller.executor import Executor
 import httpx
 from concurrent.futures import ThreadPoolExecutor
 from cascade.controller.core import Event, TransmitPayload, DatasetStatus
-from cascade.controller.tracing import mark
+from cascade.controller.tracing import mark, TransmitLifecycle
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,11 @@ class WorkerQueue():
             client = self.client
             url_base = f"{payload.other_url}/store_value/{payload.other_worker}"
             for dataset in payload.datasets:
-                mark({"dataset": dataset.task, "action": "transmitStarted", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
                 logger.debug(f"fetching {dataset=} for transmit")
                 data = executor.fetch_as_value(payload.this_worker, dataset)
                 url = f"{url_base}/{dataset.task}/{dataset.output}"
-                mark({"dataset": dataset.task, "action": "transmitLoaded", "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
                 logger.debug(f"transmitting {dataset=}")
                 callResult = client.put(url, content=bytes(data.view()))
                 logger.debug(f"transmit of {dataset=} finished with {callResult}")
