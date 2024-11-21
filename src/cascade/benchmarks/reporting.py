@@ -40,6 +40,9 @@ def taskDurations(tasks: pd.DataFrame) -> pd.DataFrame:
     return durations
 
 def transmitDurations(transmits: pd.DataFrame) -> pd.DataFrame:
+    if transmits.shape[0] == 0:
+        return transmits
+
     mode_fix = transmits[~transmits['mode'].isna()].set_index(['dataset', 'target'])['mode']
     lookup = mode_fix[~mode_fix.index.duplicated(keep='last')]
     transmits = transmits.set_index(['dataset', 'target']).drop(columns='mode').join(lookup).reset_index()
@@ -49,7 +52,7 @@ def transmitDurations(transmits: pd.DataFrame) -> pd.DataFrame:
     lookup = source_fix[~source_fix.index.duplicated(keep='last')]
     transmits = transmits.set_index(['dataset', 'target']).drop(columns='source').join(lookup).reset_index()
 
-    durations = transmits.pivot(index=['dataset', 'target', 'mode'], columns=['action'], values=['at'])
+    durations = transmits.pivot(index=['dataset', 'target', 'source', 'mode'], columns=['action'], values=['at'])
     durations.columns = [name[1] for name in durations.columns]
     durations = durations.reset_index()
 
@@ -106,6 +109,7 @@ def logParse(files: Iterable[str]) -> dict[str, pd.DataFrame]:
         'transmits': pd.DataFrame(marks['transmit']),
     }
     rv['task_durations'] = taskDurations(rv['tasks'])
+    rv['transmit_durations'] = transmitDurations(rv['transmits'])
     return rv
 
 if __name__ == "__main__":

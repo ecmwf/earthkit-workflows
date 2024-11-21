@@ -40,11 +40,12 @@ class BackboneLocalExecutor():
                 self.backbone.send_data(payload.other_url, dto)
                 if isinstance(data, AllocatedBuffer):
                     data.close()
-                event = Event(at=payload.other_worker, ts_trans=[], ds_trans=[(dataset, DatasetStatus.available)])
+                # event = Event(at=payload.other_worker, ts_trans=[], ds_trans=[(dataset, DatasetStatus.available)])
             except Exception as ex:
-                event = Event(failures=[f"data transmit failed with {repr(ex)}"], at=payload.this_worker)
-            callback(event)
-            logger.debug(f"callback of {event} finished")
+                # NOTE in case of success, we rely on the other party to submit
+                event = Event(failures=[f"data transmit of {dataset} failed with {repr(ex)}"], at=payload.this_worker)
+                callback(event)
+                logger.debug(f"callback of {event} finished")
 
     def recv_loop(self) -> None:
         while not self.shutdown:
