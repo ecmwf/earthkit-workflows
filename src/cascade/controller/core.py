@@ -22,14 +22,16 @@ class TaskStatus(int, Enum):
 class State:
     """Captures what is where -- datasets, running tasks, ... Used for decision making and progress tracking"""
 
-    def __init__(self, purging_tracker: dict[DatasetId, set[TaskId]], worker_colocations: dict[WorkerId, set[WorkerId]]):
+    def __init__(self, purging_tracker: dict[DatasetId, set[TaskId]], outputs: set[DatasetId], worker_colocations: dict[WorkerId, set[WorkerId]]):
         self.worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]] = defaultdict(dict)
         self.ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]] = defaultdict(dict)
         self.ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]] = defaultdict(dict)
         self.worker2ts: dict[WorkerId, dict[TaskId, TaskStatus]] = defaultdict(dict)
         self.remaining: set[TaskId] = set()
         self.purging_tracker = purging_tracker
+        self.outputs: dict[DatasetId, Any] = {e: None for e in outputs}
         self.purging_queue: list[DatasetId] = []
+        self.fetching_queue: dict[DatasetId, WorkerId] = {}
         self.worker_colocations = worker_colocations
 
 class Event(BaseModel):
@@ -39,6 +41,8 @@ class Event(BaseModel):
     # catch-all for when something irreparable goes wrong at the executor.
     # TODO replace with fine-grained retriable causes
     failures: list[str] = Field(default_factory=list)
+    # TODO str here is b64 of bytes... fix!
+    ds_fetch: list[tuple[DatasetId, str]] = Field(default_factory=list)
 
 class ActionDatasetPurge(BaseModel):
     ds: list[DatasetId]

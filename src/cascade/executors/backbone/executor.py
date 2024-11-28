@@ -5,6 +5,7 @@ Adapter between the controller and backbone
 from typing import Iterable, Any, Callable, cast
 from cascade.low.core import Environment
 from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId, TransmitPayload
+from cascade.executors.backbone.serde import DatasetFetch
 from cascade.executors.backbone.interface import Backbone
 
 class BackboneExecutor():
@@ -34,6 +35,10 @@ class BackboneExecutor():
 
     def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         raise NotImplementedError
+
+    def lazyfetch_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+        host_id = worker.split(':', 1)[0]
+        self.backbone.send_message(host_id, DatasetFetch(worker=worker, dataset=dataset_id))
 
     def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
         raise NotImplementedError

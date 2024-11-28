@@ -23,7 +23,7 @@ os.environ["LD_LIBRARY_PATH"] = ":".join(ld_ext)
 import fire
 import cascade.benchmarks.api as api
 import cascade.benchmarks.job1 as job1
-from cascade.benchmarks.distributed import launch_zmq_worker, launch_zmq_controller
+from cascade.benchmarks.distributed import launch_zmq_worker, launch_zmq_controller, ZmqWorkerHostSpec, ZmqControllerSpec
 from cascade.low.func import msum
 from cascade.benchmarks.local import run_job_on as run_locally
 from cascade.graph import Graph
@@ -80,13 +80,16 @@ def main(job: str, executor: str, workers: int, hosts: int|None = None, dist: st
             raise NotImplementedError
         if controller_url is None or host_id is None:
             raise ValueError
-        launch_zmq_worker(workers, controller_url, host_id, jobInstance)
+        wspec = ZmqWorkerHostSpec(workers=workers, zmq_port=6000, shm_port=6001, shm_vol_gb=4)
+        cspec = ZmqControllerSpec(job=jobInstance, url=controller_url)
+        launch_zmq_worker(wspec, host_id, cspec)
     elif dist == "controller":
         if executor != "zmq":
             raise NotImplementedError
         if controller_url is None or hosts is None:
             raise ValueError
-        launch_zmq_controller(hosts, controller_url, jobInstance)
+        cspec = ZmqControllerSpec(job=jobInstance, url=controller_url)
+        launch_zmq_controller(hosts, cspec)
     elif dist == "schedule":
         exe_rec = placeholder_execution_record(jobInstance)
         # bfs logs itself layer per layer

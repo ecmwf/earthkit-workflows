@@ -20,7 +20,7 @@ class MicrotraceAccumulator:
 def taskDurations(tasks: pd.DataFrame) -> pd.DataFrame:
     durations = tasks.pivot(index=['task', 'worker'], columns=['action'], values=['at'])
     durations = durations.reset_index()
-    durations.columns = ['task', 'worker'] + [e[1] for e in durations.columns[2:]]
+    durations.columns = ['task', 'worker'] + [e[1] for e in durations.columns[2:]] # type: ignore
     planned = "task_planned" # controller planned the task to run at a worker
     enqueued = "task_enqueued" # worker received the task and put into its internal queue
     started = "task_started" # a process executing this task is ready and imported
@@ -53,7 +53,7 @@ def transmitDurations(transmits: pd.DataFrame) -> pd.DataFrame:
     transmits = transmits.set_index(['dataset', 'target']).drop(columns='source').join(lookup).reset_index()
 
     durations = transmits.pivot(index=['dataset', 'target', 'source', 'mode'], columns=['action'], values=['at'])
-    durations.columns = [name[1] for name in durations.columns]
+    durations.columns = [name[1] for name in durations.columns] # type: ignore
     durations = durations.reset_index()
 
     durations = durations.assign(total=durations.completed - durations.planned)
@@ -70,7 +70,7 @@ def logParse(files: Iterable[str]) -> dict[str, pd.DataFrame]:
         e: MicrotraceAccumulator()
         for e in Microtrace
     }
-    marks = {
+    marks: dict[str, list] = {
         'ctrl': [],
         'transmit': [],
         'task': [],
@@ -89,7 +89,7 @@ def logParse(files: Iterable[str]) -> dict[str, pd.DataFrame]:
                     for kv in data.split(';'):
                         k, v = kv.split('=', 1)
                         try:
-                            v = int(v)
+                            v = int(v) # type: ignore
                             mark[k] = v
                         except ValueError:
                             mark[k] = v

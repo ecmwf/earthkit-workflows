@@ -17,6 +17,7 @@ from cascade.controller.impl import run
 import cascade.scheduler
 from cascade.scheduler.impl import naive_bfs_layers
 import cascade.low.core
+from cascade.low.core import DatasetId
 import cascade.executors.simulator
 import time
 from dask.threaded import get
@@ -35,6 +36,8 @@ from cascade.executors.backbone.zmq import ZmqBackbone
 from cascade.executors.backbone.local import BackboneLocalExecutor
 from cascade.executors.backbone.executor import BackboneExecutor
 from cascade.controller.tracing import trace, Microtrace
+from cascade.controller.executor import Executor
+from typing import Any
 
 def wait_for(client: httpx.Client, root_url: str) -> None:
     """Calls /status endpoint, retry on ConnectError"""
@@ -99,13 +102,23 @@ def launch_zmq_ctrl(hosts: int, port: int, job: cascade.low.core.JobInstance) ->
     end_fine = time.perf_counter_ns()
     print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")
 
-def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
+def maybe_get(executor: Executor, outputId: DatasetId|None) -> Any|None:
+    if outputId is None:
+        return None
+    else:
+        some_worker = list(executor.get_environment().workers.keys())[0]
+        return executor.fetch_as_value(some_worker, outputId)
+
+def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options, outputId: DatasetId|None = None) -> Any|None:
+    rv: Any|None = None
     exe_rec = cascade.executors.simulator.placeholder_execution_record(job)
     schedule = naive_bfs_layers(job, exe_rec, set()).get_or_raise()
     shm: Process|None = None
     start_raw = time.perf_counter_ns()
     if isinstance(opts, api.DaskDelayed):
-        Cascade(graph).execute()
+        # we'd need the original graph, and we'd need to get rv somehow
+        # Cascade(graph).execute()
+        raise NotImplementedError
     elif isinstance(opts, api.Fiab):
         gb4 = 4 * (1024**3)
         port = 12345
@@ -119,6 +132,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
             run(job, fiab_executor, schedule)
             end_fine = time.perf_counter_ns()
             logging.info("controller in fiab done")
+            rv = maybe_get(fiab_executor, outputId)
             fiab_executor.procwatch.join()
         except Exception as e:
             shm_client.shutdown()
@@ -128,6 +142,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
         cnts = {k: sum(1 for v in dly.values() if k in v[2]) for k in dly}
         sinks = [k for k in cnts if cnts[k] == 0]
         get(dly, sinks)
+        # TODO rv?
     elif isinstance(opts, api.DaskFutures):
         env = cascade.low.core.Environment(workers={
             f'{i}': cascade.low.core.Worker(cpu=1, gpu=0, memory_mb=1024)
@@ -138,6 +153,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
             start_fine = time.perf_counter_ns()
             run(job, dask_executor, schedule)
             end_fine = time.perf_counter_ns()
+            rv = maybe_get(dask_executor, outputId)
     elif isinstance(opts, api.MultiHost):
         start = 8000
         urls = {f"h{i}": f"http://localhost:{start+i}" for i in range(opts.hosts)}
@@ -152,6 +168,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
             start_fine = time.perf_counter_ns()
             run(job, router_executor, schedule)
             end_fine = time.perf_counter_ns()
+            rv = maybe_get(router_executor, outputId)
         finally:
             router_executor.shutdown()
             for p in ps:
@@ -186,3 +203,4 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options):
     print(f"total elapsed time: {(end_raw - start_raw) / 1e9: .3f}")
     if isinstance(opts, api.Fiab):
         shm_client.shutdown()
+    return rv

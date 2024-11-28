@@ -41,7 +41,9 @@ def summarise_events(events: list[Event]) -> dict:
                 d["eventsTransmited"] += 1
     return d
 
-def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
+def run(job: JobInstance, executor: Executor, schedule: Schedule, outputs: set[DatasetId]|None = None) -> State:
+    if outputs is None:
+        outputs = set()
     env = executor.get_environment()
     logger.debug(f"starting with {env=}")
     paramSource = param_source(job.edges)
@@ -50,12 +52,13 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
         for task_id, taskParamSource in paramSource.items()
     }
     purging_tracker = dependants(job.edges)
-    state = State(purging_tracker, colocated_workers(env))
+    state = State(purging_tracker, outputs, colocated_workers(env))
     label("host", "controller")
     events: list[Event] = []
 
     try:
-        while schedule.computable or state.remaining:
+        # TODO replace the None in outputs with check on fetch queue (but change that from binary to ternary first)
+        while schedule.computable or state.remaining or (None in state.outputs.values()):
             mark({"action": ControllerPhases.plan, **summarise_events(events)})
             actions = timer(plan, Microtrace.ctrl_plan)(schedule, state, env, job, taskInputs)
 
@@ -65,7 +68,7 @@ def run(job: JobInstance, executor: Executor, schedule: Schedule) -> State:
             tWait = None
 
             mark({"action": ControllerPhases.wait})
-            if state.remaining:
+            if state.remaining or (None in state.outputs.values()):
                 logger.debug(f"about to await executor because of {state.remaining=}")
                 events = timer(executor.wait_some, Microtrace.ctrl_wait)()
                 timer(notify, Microtrace.ctrl_notify)(state, events, taskInputs)

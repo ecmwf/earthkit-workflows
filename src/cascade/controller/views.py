@@ -38,6 +38,12 @@ def get_host2datasets(state: State, environment: Environment) -> dict[str, set[D
         for colocation in environment.colocations
     }
 
+def get_some_worker_with(state: State, dataset: DatasetId) -> WorkerId|None:
+    for worker, status in state.ds2worker[dataset].items():
+        if status == DatasetStatus.available:
+            return worker
+    return None
+
 def transition_dataset(state: State, source: WorkerId, dataset: DatasetId, to: DatasetStatus) -> State:
     """Ensures valid update of State internal structures, including dataset broadcast in colocated workers"""
     # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.

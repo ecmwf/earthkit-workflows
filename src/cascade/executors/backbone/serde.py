@@ -22,7 +22,11 @@ class DataTransmitObject:
     dataset_id: DatasetId
     data: bytes
 
-Message = Action | TransmitPayload | Event | RegisterRequest | RegisterResponse | Shutdown | DataTransmitObject
+class DatasetFetch(BaseModel):
+    worker: WorkerId
+    dataset: DatasetId
+
+Message = Action | TransmitPayload | Event | RegisterRequest | RegisterResponse | Shutdown | DataTransmitObject | DatasetFetch
 
 b2m: dict[bytes, Type[Message]] = {
     b"\x01": ActionDatasetPurge,
@@ -34,6 +38,7 @@ b2m: dict[bytes, Type[Message]] = {
     b"\x07": RegisterResponse,
     b"\x08": Shutdown,
     b"\x09": DataTransmitObject,
+    b"\xa0": DatasetFetch,
 }
 m2b: dict[Type[Message], bytes] = {v: k for k, v in b2m.items()}
 

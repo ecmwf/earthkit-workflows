@@ -3,10 +3,11 @@ Adapter between a backbone and an instance of Executor that runs on the host
 """
 
 import logging
+import base64
 from cascade.controller.executor import Executor
 from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId, TransmitPayload, DatasetStatus
 from cascade.executors.backbone.interface import Backbone
-from cascade.executors.backbone.serde import RegisterRequest, RegisterResponse, Shutdown, DataTransmitObject
+from cascade.executors.backbone.serde import RegisterRequest, RegisterResponse, Shutdown, DataTransmitObject, DatasetFetch
 from cascade.low.func import assert_never
 from cascade.shm.client import AllocatedBuffer
 from cascade.controller.tracing import mark, TransmitLifecycle
@@ -81,5 +82,17 @@ class BackboneLocalExecutor():
                     self.shutdown = True
                 elif isinstance(m, DataTransmitObject):
                     self.executor.store_value(m.worker_id, m.dataset_id, m.data)
+                elif isinstance(m, DatasetFetch):
+                    data = self.executor.fetch_as_value(m.worker, m.dataset)
+                    if isinstance(data, AllocatedBuffer):
+                        data_raw = bytes(data.view()) # NOTE unfortunate -- zmq supports going with view, but that needs a serde extension
+                    else:
+                        data_raw = data
+                    dto = Event(at=m.worker, ds_fetch=[(m.dataset, base64.b64encode(data_raw))])
+                    logger.debug(f"sending fetch of {m.dataset=}")
+                    self.backbone.send_message('controller', dto)
+                    if isinstance(data, AllocatedBuffer):
+                        data.close()
                 else:
                     assert_never(m)
+

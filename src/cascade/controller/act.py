@@ -7,6 +7,7 @@ from cascade.controller.executor import Executor
 from cascade.controller.core import State, Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, DatasetStatus, TaskStatus
 from cascade.low.func import assert_never
 from cascade.controller.views import transition_dataset
+from cascade.controller.notify import consider_purge
 from typing import Iterable
 from cascade.controller.tracing import mark, TaskLifecycle, TransmitLifecycle
 
@@ -42,5 +43,15 @@ def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
             executor.submit(action)
         else:
             assert_never(action)
+
+    # TODO handle this in some thread pool etc... would need locks on state or result queueing etc
+    fetchable = list(state.fetching_queue.keys())
+    for dataset in fetchable:
+        worker = state.fetching_queue.pop(dataset)
+        if hasattr(executor, "backbone"):
+            executor.lazyfetch_value(worker, dataset) # type: ignore
+        else:
+            state.outputs[dataset] = executor.fetch_as_value(worker, dataset)
+            state = consider_purge(state, dataset)
 
     return state
