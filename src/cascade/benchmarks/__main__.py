@@ -8,7 +8,7 @@ python -m cascade.benchmarks --job j1.prob --executor fiab --dynamic True --work
 
 Make sure you correctly configure:
  - LD_LIBRARY_PATH (a few lines below, in this mod)
- - data_root in benchmarks.job1 (presumably run `download_*` from job1 first)
+ - JOB1_{...} as noted in benchmarks.job1 (presumably run `download_*` from job1 first)
  - your venv (cascade, fiab, pproc-cascade, compatible version of earthkit-data, ...)
 """
 
@@ -16,17 +16,14 @@ Make sure you correctly configure:
 
 import os
 from pathlib import Path
-ld_ext = [str(Path.home() / ".local" / "lib")]
-if (ld_orig := os.environ.get("LD_LIBRARY_PATH")):
-    ld_ext.append(ld_orig)
-os.environ["LD_LIBRARY_PATH"] = ":".join(ld_ext)
 import fire
 import cascade.benchmarks.api as api
 import cascade.benchmarks.job1 as job1
-from cascade.benchmarks.distributed import launch_zmq_worker, launch_zmq_controller, ZmqWorkerHostSpec, ZmqControllerSpec
+from cascade.benchmarks.distributed import launch_zmq_worker, launch_zmq_controller, ZmqWorkerHostSpec, ZmqControllerSpec, ZmqClusterSpec, launch_from_specs
 from cascade.low.func import msum
 from cascade.benchmarks.local import run_job_on as run_locally
 from cascade.graph import Graph
+from cascade.low.core import JobInstance
 import logging
 from cascade.graph import deduplicate_nodes
 import cascade.low.into
@@ -36,7 +33,17 @@ import logging
 
 logger = logging.getLogger("cascade.benchmarks")
 
-def main(job: str, executor: str, workers: int, hosts: int|None = None, dist: str = "local", controller_url: str|None = None, host_id: int|None = None) -> None:
+def get_job(id_: str) -> JobInstance:
+    graphs = {
+        "j1.prob": job1.get_prob(),
+        "j1.ensms": job1.get_ensms(),
+        "j1.efi": job1.get_efi(),
+    }
+    union = lambda prefix : deduplicate_nodes(msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph))
+    graphs["j1.all"] = union("j1.")
+    return cascade.low.into.graph2job(graphs[id_])
+
+def main_local(job: str, executor: str, workers: int, hosts: int|None = None) -> None:
     os.environ["CLOUDPICKLE"] = "yes" # for fiab desers
     logging.basicConfig(level="INFO", format="{asctime}:{levelname}:{name}:{process}:{message:1.10000}", style="{")
     logging.getLogger("cascade").setLevel(level="DEBUG")
@@ -63,43 +70,20 @@ def main(job: str, executor: str, workers: int, hosts: int|None = None, dist: st
         case _:
             raise NotImplementedError(executor)
 
-    jobs = {
-        "j1.prob": job1.get_prob(),
-        "j1.ensms": job1.get_ensms(),
-        "j1.efi": job1.get_efi(),
-    }
-    union = lambda prefix : deduplicate_nodes(msum((v for k, v in jobs.items() if k.startswith(prefix)), Graph))
-    jobs["j1.all"] = union("j1.")
-    graph = jobs[job]
-    jobInstance = cascade.low.into.graph2job(graph)
+    jobInstance = get_job(job)
+    run_locally(jobInstance, opts)
 
-    if dist == "local":
-        run_locally(jobInstance, opts)
-    elif dist == "worker":
-        if executor != "zmq":
-            raise NotImplementedError
-        if controller_url is None or host_id is None:
-            raise ValueError
-        wspec = ZmqWorkerHostSpec(workers=workers, zmq_port=6000, shm_port=6001, shm_vol_gb=4)
-        cspec = ZmqControllerSpec(job=jobInstance, url=controller_url)
-        launch_zmq_worker(wspec, host_id, cspec)
-    elif dist == "controller":
-        if executor != "zmq":
-            raise NotImplementedError
-        if controller_url is None or hosts is None:
-            raise ValueError
-        cspec = ZmqControllerSpec(job=jobInstance, url=controller_url)
-        launch_zmq_controller(hosts, cspec)
-    elif dist == "schedule":
-        exe_rec = placeholder_execution_record(jobInstance)
-        # bfs logs itself layer per layer
-        _ = naive_bfs_layers(jobInstance, exe_rec, set()).get_or_raise()
-        dfs_layers = naive_dfs_layers(jobInstance, exe_rec, set()).get_or_raise().layers
-        dfs_layers_str = ", ".join([e[0][:3] for e in dfs_layers])
-        logger.debug(f"dfs is {dfs_layers_str}")
-    else:
-        raise NotImplementedError(dist)
-
+def main_dist(job: str, idx: int, controller_url: str, hosts: int = 3, workers_per_host: int = 10, shm_vol_gb: int = 64) -> None:
+    jobInstance = get_job(job) 
+    port_base = 12345
+    cspec = ZmqControllerSpec(job=jobInstance, url=controller_url)
+    wspec = [
+        ZmqWorkerHostSpec(workers=workers_per_host, zmq_port=port_base, shm_port = port_base+1, shm_vol_gb = shm_vol_gb)
+        for i in range(hosts)
+    ]
+    specs = ZmqClusterSpec(controller=cspec, worker_hosts=wspec)
+    # we subtract -1 because we use slurm procid as idx (ie, there 0 -> controller, 1+ -> worker)
+    launch_from_specs(specs, idx - 1)
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    fire.Fire({"local": main_local, "dist": main_dist})
