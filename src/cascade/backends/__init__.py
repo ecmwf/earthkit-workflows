@@ -13,15 +13,6 @@ BACKENDS = {
     "default": ArrayAPIBackend,
 }
 
-try:
-    from earthkit.data import FieldList
-
-    from .earthkit import FieldListBackend
-
-    BACKENDS[FieldList] = FieldListBackend
-except ImportError:
-    warnings.warn("earthkit could not be imported, FieldList not supported.")
-
 
 def register(type, backend):
     if type in BACKENDS:
@@ -193,3 +184,13 @@ class Backend:
         Array
         """
         return array_module(array).take(array, indices, **kwargs)
+
+
+try:
+    from earthkit.data import FieldList
+
+    from .earthkit import FieldListBackend
+
+    BACKENDS[FieldList] = FieldListBackend
+except ImportError:
+    warnings.warn("earthkit could not be imported, FieldList not supported.")

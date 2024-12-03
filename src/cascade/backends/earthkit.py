@@ -1,5 +1,5 @@
 import array_api_compat
-from earthkit.data import Field, FieldList
+from earthkit.data.core.fieldlist import Field, FieldList
 from earthkit.data.core.metadata import Metadata
 from meters import ResourceMeter
 
