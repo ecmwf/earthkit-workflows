@@ -29,6 +29,7 @@ dependencies = [
     "filelock>=3.12.0",
     "pyrsistent",
     "pydantic",
+    "zmq",
 ]
 
 [project.optional-dependencies]

@@ -26,12 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def get_capacity() -> int:
-    r = subprocess.run(
-        ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"], check=True, capture_output=True
-    )
-    # be careful -- hpc clusters have typically more rich output of findmnt
-    avail = r.stdout.decode("ascii").split("\n")[1].strip()
-    return int(avail)
+    try:
+        r = subprocess.run(
+            ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"], check=True, capture_output=True
+        )
+        # be careful -- hpc clusters have typically more rich output of findmnt
+        avail = r.stdout.decode("ascii").split("\n")[1].strip()
+        return int(avail)
+    except FileNotFoundError:
+        return 128 * (1024**3) # gets likely trimmed later... this is for macos which doest have findmnt
 
 
 class DatasetStatus(int, Enum):
