@@ -1,0 +1,8 @@
+# commands for generating inputs:
+
+l4.all: laptop, fiab, 4 workers, 2membs = o320
+l2_2.all: laptop, zmq, 2 hosts, 2 workers each, 2membs + o320
+... etc
+
+h1: hpc, 2 hosts, 10 workers each, 2membs + o320
+h1: hpc, 4 hosts, 10 workers each, 10membs + o640

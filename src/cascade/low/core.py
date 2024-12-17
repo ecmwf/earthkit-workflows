@@ -84,6 +84,7 @@ class JobInstance(BaseModel):
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}
 
+# TODO dataclass with host,worker ids
 WorkerId = str
 
 # Execution
@@ -94,9 +95,11 @@ class Worker(BaseModel):
     memory_mb: int
 
 class Environment(BaseModel):
-    # NOTE missing: comm speed etc
     workers: dict[WorkerId, Worker]
-
+    colocations: list[list[WorkerId]] = Field(
+        default_factory=list,
+        description="the first appx of comm speed -- colocation assumes instant implicit broadcast",
+    )
 
 class TaskExecutionRecord(BaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds

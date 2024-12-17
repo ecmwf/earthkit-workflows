@@ -30,7 +30,7 @@ def test_simple():
         task_id: set(task_param_source.values())
         for task_id, task_param_source in param_source(job.edges).items()
     }
-    env = Environment(workers={"w1": Worker(cpu=2, gpu=0, memory_mb=2)})
+    env = Environment(workers={"h0:w1": Worker(cpu=2, gpu=0, memory_mb=2)}, colocations=[["h0:w1"]])
     record_ok = JobExecutionRecord(
         datasets_mb={DatasetId("task1", Node.DEFAULT_OUTPUT): 1},
         tasks={

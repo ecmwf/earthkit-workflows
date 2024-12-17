@@ -3,13 +3,15 @@ Core data structures: State, Event and Action
 """
 
 from enum import Enum
-from dataclasses import dataclass
+from pydantic import BaseModel, Field
 from collections import defaultdict
 from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId
 
 class DatasetStatus(int, Enum):
+    missing = -1 # virtual default status, never stored
     preparing = 0 # set by controller
     available = 1 # set by executor
+    purged = 2 # temporal command status used as local comms between controller.act and controller.state
 
 class TaskStatus(int, Enum):
     enqueued = 0 # set by controller
@@ -20,35 +22,48 @@ class TaskStatus(int, Enum):
 class State:
     """Captures what is where -- datasets, running tasks, ... Used for decision making and progress tracking"""
 
-    def __init__(self, purging_tracker: dict[DatasetId, set[TaskId]]):
+    def __init__(self, purging_tracker: dict[DatasetId, set[TaskId]], outputs: set[DatasetId], worker_colocations: dict[WorkerId, set[WorkerId]]):
         self.worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]] = defaultdict(dict)
         self.ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]] = defaultdict(dict)
         self.ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]] = defaultdict(dict)
         self.worker2ts: dict[WorkerId, dict[TaskId, TaskStatus]] = defaultdict(dict)
+        self.remaining: set[TaskId] = set()
         self.purging_tracker = purging_tracker
+        self.outputs: dict[DatasetId, Any] = {e: None for e in outputs}
         self.purging_queue: list[DatasetId] = []
+        self.fetching_queue: dict[DatasetId, WorkerId] = {}
+        self.worker_colocations = worker_colocations
 
-@dataclass
-class Event:
+class Event(BaseModel):
     at: WorkerId
-    ds_trans: list[tuple[DatasetId, DatasetStatus]]
-    ts_trans: list[tuple[TaskId, TaskStatus]]
+    ds_trans: list[tuple[DatasetId, DatasetStatus]] = Field(default_factory=list)
+    ts_trans: list[tuple[TaskId, TaskStatus]] = Field(default_factory=list)
+    # catch-all for when something irreparable goes wrong at the executor.
+    # TODO replace with fine-grained retriable causes
+    failures: list[str] = Field(default_factory=list)
+    # TODO str here is b64 of bytes... fix!
+    ds_fetch: list[tuple[DatasetId, str]] = Field(default_factory=list)
 
-@dataclass
-class ActionDatasetPurge:
-    ds: set[DatasetId]
-    at: set[WorkerId]
+class ActionDatasetPurge(BaseModel):
+    ds: list[DatasetId]
+    at: list[WorkerId]
 
-@dataclass
-class ActionDatasetTransmit:
-    ds: set[DatasetId]
-    fr: set[WorkerId]
-    to: set[WorkerId]
+class ActionDatasetTransmit(BaseModel):
+    ds: list[DatasetId]
+    fr: list[WorkerId]
+    to: list[WorkerId]
 
-@dataclass
-class ActionSubmit:
+class ActionSubmit(BaseModel):
     at: WorkerId
     tasks: list[TaskId]
-    outputs: set[DatasetId] # this is presumably subset of tasks -- some need not be published
+    outputs: list[DatasetId] # this is presumably subset of tasks -- some need not be published
 
 Action = ActionDatasetPurge|ActionDatasetTransmit|ActionSubmit
+
+class TransmitPayload(BaseModel):
+    # corresponds to ActionDatasetTransmit but used for remote transmits, to one of the sides
+    other_url: str
+    other_worker: str
+    this_worker: str
+    datasets: list[DatasetId]
+    tracing_ctx_host: str
