@@ -1,16 +1,16 @@
 """
-Implementation of schedulers.
+Scheduler module is responsible for determining task->worker assignment.
+This happens in the main Controller loop, where Events are received from
+workers, provided to the Scheduler which then determines the assignment.
+The Controller then converts those to Commands and sends over to the Workers.
+In the meantime, Scheduler updates and calibrates internal structures,
+so that upon next batch of Events it can produce good assignments.
 
-The scheduler is intended as follows:
- - for a (static) JobInstance object, we create a graph decomposition which we call "schedule".
-   This is independent of the environment -- we just determine a rough order in which tasks should
-   be completed, and which allows parallel execution
- - the Schedule object is given to the Controller, which inside the `plan` action then proceeds
-   through it, using the current state of the environment to issue commands to executor
+There are multiple auxiliary submodules:
+ - graph: decomposition algorithms and distance functions
+ - core: data structures for assignment and schedule representation
+ - assign: fitness functions for determining good assignments
 
-In other words, the schedulers here are rather graph decomposition for efficient dynamic scheduling at runtime
+These are all used from the `api` module here, which provides the interface
+for the Controller.
 """
-
-# TODO
-# - change the Schedule structure from layer-linear to layer-tree
-# - order within layers -- consider leaf weights, prioritize paths according to weight-freed
