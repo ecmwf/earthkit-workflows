@@ -5,7 +5,11 @@ Implements the invocation of Executor methods given a sequence of Actions
 import logging
 from cascade.controller.executor import Executor
 from cascade.controller.core import State, Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, DatasetStatus, TaskStatus
+from cascade.low.func import assert_never
+from cascade.controller.views import transition_dataset
+from cascade.controller.notify import consider_purge
 from typing import Iterable
+from cascade.controller.tracing import mark, TaskLifecycle, TransmitLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -17,24 +21,37 @@ def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
     for action in actions:
         logger.debug(f"sending {action = } to executor")
         if isinstance(action, ActionDatasetPurge):
-            executor.purge(action)
             for dataset in action.ds:
                 for worker in action.at:
-                    state.worker2ds[worker].pop(dataset)
-                    state.ds2worker[dataset].pop(worker)
+                    state = transition_dataset(state, worker, dataset, DatasetStatus.purged)
+            executor.purge(action)
         elif isinstance(action, ActionDatasetTransmit):
-            executor.transmit(action)
             for dataset in action.ds:
-                for worker in action.to:
-                    state.worker2ds[worker][dataset] = DatasetStatus.preparing
-                    state.ds2worker[dataset][worker] = DatasetStatus.preparing
+                for target in action.to:
+                    for source in action.fr:
+                        mark({"dataset": dataset.task, "action": TransmitLifecycle.planned, "source": source, "target": target, "host": "controller"})
+                        state = transition_dataset(state, target, dataset, DatasetStatus.preparing)
+            executor.transmit(action)
         elif isinstance(action, ActionSubmit):
-            executor.submit(action)
             for task in action.tasks:
+                mark({"task": task, "action": TaskLifecycle.planned, "worker": action.at, "host": "controller"})
                 state.worker2ts[action.at][task] = TaskStatus.enqueued
                 state.ts2worker[task][action.at] = TaskStatus.enqueued
+                state.remaining.add(task)
             for dataset in action.outputs:
-                state.worker2ds[action.at][dataset] = DatasetStatus.preparing
-                state.ds2worker[dataset][action.at] = DatasetStatus.preparing
+                state = transition_dataset(state, action.at, dataset, DatasetStatus.preparing)
+            executor.submit(action)
+        else:
+            assert_never(action)
+
+    # TODO handle this in some thread pool etc... would need locks on state or result queueing etc
+    fetchable = list(state.fetching_queue.keys())
+    for dataset in fetchable:
+        worker = state.fetching_queue.pop(dataset)
+        if hasattr(executor, "backbone"):
+            executor.lazyfetch_value(worker, dataset) # type: ignore
+        else:
+            state.outputs[dataset] = executor.fetch_as_value(worker, dataset)
+            state = consider_purge(state, dataset)
 
     return state

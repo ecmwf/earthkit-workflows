@@ -46,8 +46,11 @@ class AllocatedBuffer:
 T = TypeVar("T", bound=api.Comm)
 
 
-def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 1.0) -> T:
+def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0) -> T:
     timeout_i = 0.1
+    coeff = 1
+    # timeout_i and coeff determine rate of busy-waits: coeff=1 is additive, =2 is exponential
+    # eventually this busy-waits will go away as we switch to event driven behaviour
     while timeout_sec > 0:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_port = api.get_client_port()
@@ -65,7 +68,7 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 1.0)
                 logger.debug(f"gotten a wait, will sleep for {timeout_i}")
                 time.sleep(timeout_i)
                 timeout_sec -= timeout_i
-                timeout_i *= 2
+                timeout_i *= coeff
                 timeout_i = min(timeout_i, timeout_sec)
                 continue
             raise ValueError(response_com.error)
@@ -80,14 +83,14 @@ def close_callback(key: str, rdid: str) -> None:
     _send_command(comm, api.OkResponse)
 
 
-def allocate(key: str, l: int, timeout_sec: float = 3.0) -> AllocatedBuffer:
+def allocate(key: str, l: int, timeout_sec: float = 60.0) -> AllocatedBuffer:
     comm = api.AllocateRequest(key=key, l=l)
     resp = _send_command(comm, api.AllocateResponse, timeout_sec)
     callback = lambda: close_callback(key, "")
     return AllocatedBuffer(shmid=resp.shmid, l=l, create=True, close_callback=callback)
 
 
-def get(key: str, timeout_sec: float = 3.0) -> AllocatedBuffer:
+def get(key: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
     comm = api.GetRequest(key=key)
     resp = _send_command(comm, api.GetResponse, timeout_sec)
     callback = lambda: close_callback(key, resp.rdid)

@@ -117,11 +117,11 @@ class AllocateRequest:
     l: int
 
     def ser(self) -> bytes:
-        return self.l.to_bytes(4, "big") + ser_str(self.key)
+        return self.l.to_bytes(8, "big") + ser_str(self.key)
 
     @classmethod
     def deser(cls, data: bytes) -> Self:
-        l, data = int.from_bytes(data[:4], "big"), data[4:]
+        l, data = int.from_bytes(data[:8], "big"), data[8:]
         key, _ = deser_str(data)
         return cls(l=l, key=key)
 

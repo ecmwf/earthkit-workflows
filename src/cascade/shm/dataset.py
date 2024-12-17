@@ -26,11 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def get_capacity() -> int:
-    r = subprocess.run(
-        ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"], check=True, capture_output=True
-    )
-    avail = r.stdout.decode("ascii").split("\n", 1)[1].strip()
-    return int(avail)
+    try:
+        r = subprocess.run(
+            ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"], check=True, capture_output=True
+        )
+        # be careful -- hpc clusters have typically more rich output of findmnt
+        avail = r.stdout.decode("ascii").split("\n")[1].strip()
+        return int(avail)
+    except FileNotFoundError:
+        return 128 * (1024**3) # gets likely trimmed later... this is for macos which doest have findmnt
 
 
 class DatasetStatus(int, Enum):
@@ -93,11 +97,11 @@ class Manager:
     3/ All threads are called with try-catch, and no matter what the locks would attempt
     a release at the end, so barring deaths of thread pools we should not deadlock
     ourselves.
-    """
 
-    # TODO go through the controller-calling-purge scenario and make the threads more robust
+    4/ the at-exit based invocation of `purge` is more robust, assuming that some of
+    the datasets have been purged half-way, and doing its best to clean up."""
 
-    def __init__(self, capacity: int | None = None) -> None:
+    def __init__(self, prefix: str, capacity: int | None = None) -> None:
         # key is as understood by the external apps
         self.datasets: dict[str, Dataset] = {}
         default_capacity = get_capacity()
@@ -115,8 +119,12 @@ class Manager:
         self.pageout_one = threading.Lock()
         self.pageout_count = 0
         self.disk = disk.Disk()
+        self.prefix = prefix
 
     def add(self, key: str, size: int) -> tuple[str, str]:
+        if key in self.datasets:
+            return "", "conflict"
+
         # TODO round the size up to page multiple?
         if size > self.capacity:
             return "", "capacity exceeded"
@@ -128,7 +136,7 @@ class Manager:
 
         h = hashlib.new("md5", usedforsecurity=False)
         h.update((key).encode())
-        shmid = h.hexdigest()[:24]
+        shmid = self.prefix + h.hexdigest()[:(24 - len(self.prefix))]
 
         self.datasets[key] = Dataset(
             shmid=shmid,
@@ -147,6 +155,7 @@ class Manager:
                 raise ValueError(
                     f"invalid transition from {self.datasets[key].status} for {key} and {rdid}"
                 )
+            logger.debug(f"create callback finished -> {key} is in-memory")
             self.datasets[key].status = DatasetStatus.in_memory
         else:
             if self.datasets[key].status != DatasetStatus.in_memory:
@@ -169,14 +178,14 @@ class Manager:
         def callback(ok: bool) -> None:
             if ok:
                 ds.status = DatasetStatus.on_disk
-                logger.debug(f"pageout of {ds} finished")
+                logger.debug(f"pageout of {key} -> {ds} finished")
                 with self.pageout_one:
                     self.free_space += ds.size
                     self.pageout_count -= 1
                     if self.pageout_count == 0:
                         self.pageout_all.release()
             else:
-                logger.error(f"pageout of {ds} failed, marking bad")
+                logger.error(f"pageout of {key} -> {ds} failed, marking bad")
                 self.purge(key)
                 with self.pageout_one:
                     self.pageout_count -= 1
@@ -211,6 +220,7 @@ class Manager:
 
         def callback(ok: bool):
             if ok:
+                logger.debug(f"dataset {key} now considered in-memory")
                 ds.status = DatasetStatus.in_memory
             else:
                 logger.error(f"pagein of {ds} failed, marking bad")
@@ -225,12 +235,15 @@ class Manager:
             DatasetStatus.paged_in,
             DatasetStatus.paging_out,
         ):
+            logger.debug(f"returing wait on {key} because of {ds.status=}")
             return "", 0, "", "wait"
         if ds.status == DatasetStatus.on_disk:
             if ds.size > self.free_space:
                 self.page_out_at_least(ds.size - self.free_space)
+                logger.debug(f"returing wait on {key} because of page out issued first")
                 return "", 0, "", "wait"
             self.page_in(key)
+            logger.debug(f"returing wait on {key} because of page in issued")
             return "", 0, "", "wait"
         if ds.status != DatasetStatus.in_memory:
             assert_never(ds.status)
@@ -245,9 +258,17 @@ class Manager:
         ds.retrieved_last = retrieved
         return ds.shmid, ds.size, rdid, ""
 
-    def purge(self, key: str) -> None:
+    def purge(self, key: str, is_exit: bool = False) -> None:
+        # TODO the is_exit invocation is causing mess in logs, consider removal
         try:
-            ds = self.datasets.pop(key)
+            logger.debug(f"attempting purge-inquire of {key}")
+            try:
+                ds = self.datasets[key]
+            except Exception:
+                if not is_exit: # if this happens during exit, its acceptable race
+                    raise
+                else:
+                    return
             if ds.status in (
                 DatasetStatus.created,
                 DatasetStatus.paging_out,
@@ -260,17 +281,20 @@ class Manager:
             elif ds.status != DatasetStatus.in_memory:
                 assert_never(ds.status)
             shm = SharedMemory(ds.shmid, create=False)
+            logger.debug(f"attempting purge-unlink of {key} with {ds.shmid}")
             shm.unlink()
             shm.close()
-            with self.pageout_one:
-                self.free_space += ds.size
+            if not is_exit: # we dont want to lock at exit, we may hang out unhealthily
+                with self.pageout_one:
+                    self.free_space += ds.size
+            self.datasets.pop(key)
         except Exception:
             logger.exception(
-                "failed to purge {key}, free space may be incorrect, /dev/shm may have leaked"
+                f"failed to purge {key}, free space may be incorrect, /dev/shm may have leaked"
             )
 
     def atexit(self) -> None:
         keys = list(self.datasets.keys())
         for key in keys:
-            self.purge(key)
+            self.purge(key, is_exit = True)
         self.disk.atexit()

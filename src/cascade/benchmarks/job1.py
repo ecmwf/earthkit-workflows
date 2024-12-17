@@ -1,7 +1,13 @@
 """
 One particular job suite for benchmarking: prob, efi ensms
+
+When executed as a module, downloads the datasets as local files
+
+Controlled by env var params: JOB1_{DATA_ROOT, GRID, ...}, see below
 """
 
+import os
+from pathlib import Path
 from ppcascade.fluent import from_source
 from cascade.fluent import from_source as c_from_source
 from ppcascade.utils.window import Range
@@ -11,15 +17,20 @@ from cascade.cascade import Cascade
 from cascade.fluent import Payload
 import earthkit.data
 
-data_root = "~/warehouse/ecmwf/cascEx1"
-END_STEP=60     # Can increase to a number divisible by 6 up to 240
-NUM_ENSEMBLES=2 # Can increase up to 50
+# *** PARAMS ***
 
-params = {
-    "GRID": "O320",     # For higher memory usage increase to O640 or O1280
-    "DATE": "20241015",
-    "CLIM_DATE": "20241014",
-}
+# eg "/ec/res4/hpcperm/ecm6012/gribs/casc_g01/"
+data_root = os.environ["JOB1_DATA_ROOT"]
+# 60, 120, 180, 240
+END_STEP = int(os.environ["JOB1_END_STEP"])
+# 10 to 50
+NUM_ENSEMBLES = int(os.environ["JOB1_NUM_ENSEMBLES"])
+# O320, O640 or O1280
+GRID = os.environ["JOB1_GRID"]
+DATE = "20241111"
+CLIM_DATE = "20241110"
+
+# ** JOB DEFINITIONS ***
 
 files = [
     f"{data_root}/data_{number}_{step}.grib"
@@ -103,6 +114,8 @@ def get_efi():
         .graph()
     )
 
+# *** DATA DOWNLOADERS ***
+
 def download_inputs():
     for number in range(1, NUM_ENSEMBLES + 1):
         for step in range(0, END_STEP + 1, 3):
@@ -110,17 +123,17 @@ def download_inputs():
                 "class": "od",
                 "expver": "0001",
                 "stream": "enfo",
-                "date": params["DATE"],
+                "date": DATE,
                 "time": "00",
                 "param": 167,
                 "levtype": "sfc",
                 "type": "pf",
                 "number": number,
                 "step": step,
-                "grid": params["GRID"],
+                "grid": GRID,
             }
             data = earthkit.data.from_source("mars", **ekp)
-            with open(f"/home/vojta/warehouse/ecmwf/cascEx1/data_{number}_{step}.grib", 'wb') as f:
+            with open(f"{data_root}/data_{number}_{step}.grib", 'wb') as f:
                 data.write(f)
 
 def download_climatology():
@@ -129,14 +142,14 @@ def download_climatology():
             "class": "od",
             "expver": "0001",
             "stream": "efhs",
-            "date": params["CLIM_DATE"],
+            "date": CLIM_DATE,
             "time": "00",
             "param": 228004,
             "levtype": "sfc",
             "type": "cd",
             "quantile": [f"{x}:100" for x in range(101)],
             "step": f"{step}-{step+24}",
-            "grid": params["GRID"],
+            "grid": GRID,
         }
         data = earthkit.data.from_source("mars", **ekp)
         with open(f"{data_root}/data_clim_{step}.grib", 'wb') as f:
