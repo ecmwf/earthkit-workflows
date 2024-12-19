@@ -5,16 +5,6 @@ from typing import Generator
 
 logger = logging.getLogger(__name__)
 
-def colocated_workers(env: Environment) -> dict[WorkerId, set[WorkerId]]:
-    d = {
-        worker: {worker}
-        for worker in env.workers
-    }
-    for cluster in env.colocations:
-        for worker in cluster:
-            d[worker] = d[worker].union(cluster)
-    return d
-
 def project_colocation(workers: list[WorkerId], colocated: dict[WorkerId, set[WorkerId]]) -> set[WorkerId]:
     """Filter list of workers such that no two from the same colocation are chosen"""
     chosen: set[WorkerId] = set()

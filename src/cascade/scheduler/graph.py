@@ -9,7 +9,7 @@ from itertools import chain
 from cascade.low.core import TaskId, DatasetId, JobInstance
 from cascade.low.views import dependants, param_source
 from typing import Iterator
-from cascade.scheduler.core import Task2TaskDistance, TaskValue, Component, Preschedule
+from cascade.scheduler.core import Task2TaskDistance, TaskValue, ComponentCore, Preschedule
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: di
             [e for e in component if e in sources],
         )
 
-def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], edge_o: dict[TaskId, set[TaskId]]) -> Component:
+def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], edge_o: dict[TaskId, set[TaskId]]) -> ComponentCore:
     nodes, sources = plain_component
 
     sinks = [v for v in nodes if not edge_o[v]]
@@ -100,12 +100,13 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
             for c in nodes:
                 ncd[a][b] = min(ncd[a][b], max(paths[a][c], paths[b][c]))
                 
-    return Component(
+    return ComponentCore(
         nodes=nodes,
         sources=sources,
         weight=len(nodes), # TODO eventually replace with runtime sum or smth
         distance_matrix=ncd,
         value=value,
+        depth=L,
     )
 
 def precompute(job_instance: JobInstance) -> Preschedule:

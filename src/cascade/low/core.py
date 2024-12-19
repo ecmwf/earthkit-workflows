@@ -3,8 +3,9 @@ Core graph data structures -- prescribes most of the API
 """
 
 from base64 import b64decode, b64encode
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Optional, cast
 
 import cloudpickle
@@ -84,8 +85,12 @@ class JobInstance(BaseModel):
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}
 
-# TODO dataclass with host,worker ids
-WorkerId = str
+HostId = str
+
+@dataclass(frozen=True)
+class WorkerId:
+    host: HostId
+    worker: str
 
 # Execution
 class Worker(BaseModel):
@@ -96,10 +101,6 @@ class Worker(BaseModel):
 
 class Environment(BaseModel):
     workers: dict[WorkerId, Worker]
-    colocations: list[list[WorkerId]] = Field(
-        default_factory=list,
-        description="the first appx of comm speed -- colocation assumes instant implicit broadcast",
-    )
 
 class TaskExecutionRecord(BaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds

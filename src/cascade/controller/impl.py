@@ -2,13 +2,13 @@ import logging
 from typing import Any
 from cascade.low.core import JobInstance, DatasetId, Environment, WorkerId, TaskId
 from cascade.low.views import param_source, dependants
-from cascade.scheduler.core import Schedule
+from cascade.scheduler.core import Preschedule
+from cascade.scheduler.api import initialize
 from cascade.controller.executor import Executor
 from cascade.controller.core import State, Action, Event, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, TaskStatus
 from cascade.controller.notify import notify
 from cascade.controller.act import act
 from cascade.controller.plan import plan
-from cascade.controller.views import colocated_workers
 from time import perf_counter_ns
 from cascade.controller.tracing import mark, label, ControllerPhases, Microtrace, timer
 from cascade.low.func import assert_never
@@ -41,37 +41,32 @@ def summarise_events(events: list[Event]) -> dict:
                 d["eventsTransmited"] += 1
     return d
 
-def run(job: JobInstance, executor: Executor, schedule: Schedule, outputs: set[DatasetId]|None = None) -> State:
+def run(job: JobInstance, executor: Executor, preschedule: Prechedule, outputs: set[DatasetId]|None = None) -> State:
     if outputs is None:
         outputs = set()
     env = executor.get_environment()
     logger.debug(f"starting with {env=}")
-    paramSource = param_source(job.edges)
-    taskInputs = {
-        task_id: set(taskParamSource.values())
-        for task_id, taskParamSource in paramSource.items()
-    }
-    purging_tracker = dependants(job.edges)
-    state = State(purging_tracker, outputs, colocated_workers(env))
+    state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
     label("host", "controller")
     events: list[Event] = []
 
     try:
-        # TODO replace the None in outputs with check on fetch queue (but change that from binary to ternary first)
-        while schedule.computable or state.remaining or (None in state.outputs.values()):
-            mark({"action": ControllerPhases.plan, **summarise_events(events)})
-            actions = timer(plan, Microtrace.ctrl_plan)(schedule, state, env, job, taskInputs)
+        while has_computable(state) or has_awaitable(state):
+            mark({"action": ControllerPhases.assign, **summarise_events(events)})
+            if has_computable(state):
+                actions = []
+                for action in assign(state, events):
+                    timer(act, Microtrace.ctrl_act)(executor, action)
+                    actions.append(action)
 
-            mark({"action": ControllerPhases.act, **summarise_actions(actions)})
-            if actions:
-                state = timer(act, Microtrace.ctrl_act)(executor, state, actions)
-            tWait = None
+            mark({"action": ControllerPhases.ctrl_plan, **summarise_events(actions)})
+            state = plan(state, actions)
 
             mark({"action": ControllerPhases.wait})
-            if state.remaining or (None in state.outputs.values()):
-                logger.debug(f"about to await executor because of {state.remaining=}")
+            if has_awaitable(state):
+                logger.debug(f"about to await executor")
                 events = timer(executor.wait_some, Microtrace.ctrl_wait)()
-                timer(notify, Microtrace.ctrl_notify)(state, events, taskInputs)
+                timer(notify, Microtrace.ctrl_notify)(state, events)
                 logger.debug(f"received {len(events)} events")
     except Exception:
         logger.error("crash in controller, shuting down")
