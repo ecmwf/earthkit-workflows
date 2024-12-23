@@ -9,9 +9,11 @@ from cascade.low.func import assert_never
 from cascade.controller.views import transition_dataset
 from cascade.controller.notify import consider_purge
 from typing import Iterable
-from cascade.controller.tracing import mark, TaskLifecycle, TransmitLifecycle
+from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
 
 logger = logging.getLogger(__name__)
+
+! update # TODO just switch the action -> assignment, and don't do some of the transitions as they are done in `plan` instead. However, make sure the `mark` and transition check etc are done *somewhere*. Microtrace here? Prolly no sense due to async nature
 
 def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
     # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.

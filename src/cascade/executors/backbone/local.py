@@ -10,7 +10,7 @@ from cascade.executors.backbone.interface import Backbone
 from cascade.executors.backbone.serde import RegisterRequest, RegisterResponse, Shutdown, DataTransmitObject, DatasetFetch
 from cascade.low.func import assert_never
 from cascade.shm.client import AllocatedBuffer
-from cascade.controller.tracing import mark, TransmitLifecycle
+from cascade.low.tracing import mark, TransmitLifecycle
 
 logger = logging.getLogger(__name__)
 

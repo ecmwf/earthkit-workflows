@@ -49,6 +49,8 @@ class Microtrace(str, Enum):
     ctrl_act = "ctrl_act"
     ctrl_wait = "ctrl_wait"
     ctrl_notify = "ctrl_notify"
+    ctrl_assign = "ctrl_assign"
+    ctrl_migrate = "ctrl_migrate"
     wrk_ser = "wrk_ser"
     wrk_deser = "wrk_deser"
     wrk_load = "wrk_load"
@@ -89,6 +91,7 @@ def trace(kind: Microtrace, value: int):
     tracer.debug(f"{dataBegin}{kind.value}={value}")
 
 def timer(f, kind: Microtrace):
+    """Don't use for distributed tracing as this relies on unsync time"""
     @wraps(f)
     def wrapper(*args, **kwargs):
         start = perf_counter_ns()

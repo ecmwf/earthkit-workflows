@@ -23,7 +23,7 @@ from cascade.executors.backbone.local import BackboneLocalExecutor
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 import socket
-from cascade.controller.tracing import trace, Microtrace
+from cascade.low.tracing import trace, Microtrace
 from typing_extensions import Self
 from typing import Any
 import os

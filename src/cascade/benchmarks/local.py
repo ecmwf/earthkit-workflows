@@ -35,7 +35,7 @@ from cascade.executors.multihost.worker_server import build_app
 from cascade.executors.backbone.zmq import ZmqBackbone
 from cascade.executors.backbone.local import BackboneLocalExecutor
 from cascade.executors.backbone.executor import BackboneExecutor
-from cascade.controller.tracing import trace, Microtrace
+from cascade.low.tracing import trace, Microtrace
 from cascade.controller.executor import Executor
 from typing import Any
 

@@ -11,7 +11,7 @@ from cascade.controller.executor import Executor
 import httpx
 from concurrent.futures import ThreadPoolExecutor
 from cascade.controller.core import Event, TransmitPayload, DatasetStatus
-from cascade.controller.tracing import mark, TransmitLifecycle
+from cascade.low.tracing import mark, TransmitLifecycle
 import logging
 
 logger = logging.getLogger(__name__)

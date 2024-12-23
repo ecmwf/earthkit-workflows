@@ -30,6 +30,9 @@ ComponentId = int
 @dataclass
 class ComponentSchedule:
     core: ComponentCore
+    # w2t_dist generally holds values for all workers of hosts assigned to this component and for all
+    # tasks that are either computable or that are among outputs of currently prepared tasks (as those
+    # could become computable without any further planning)
     worker2task_distance: Worker2TaskDistance = field(default_factory=defaultdict(dict))
     computable: dict[TaskId, int] # task & optimum distance attained by some worker
 
@@ -60,9 +63,11 @@ class State:
     host2ds: dict[HostId, dict[DatasetId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
     ds2host: dict[DatasetId, dict[HostId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
 
-    # schedule -- updated by scheduler.api.{assign, plan}
+    # schedule -- updated by scheduler.api.{assign, plan}, except `computable` and `components.computable` which controller.notify updates
     components: list[ComponentSchedule]
+    ts2component: dict[TaskId, ComponentId]
     host2component: dict[HostId, ComponentId]
+    host2workers: dict[HostId, list[WorkerId]]
     computable: int
     worker2taskOverhead: Worker2TaskDistance = field(default_factory=defaultdict(dict))
 

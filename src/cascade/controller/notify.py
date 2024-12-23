@@ -10,10 +10,17 @@ from typing import Iterable
 from cascade.controller.core import State, Event, TaskStatus, DatasetStatus, WorkerId
 from cascade.controller.views import transition_dataset
 from cascade.low.core import TaskId, DatasetId
-from cascade.controller.tracing import mark, TaskLifecycle, TransmitLifecycle
+from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
 import base64
 
 logger = logging.getLogger(__name__)
+
+! update # TODO
+    # needs to change here:
+    # component.computable to have newly made available tasks
+    # component.computable to reflect new optimum
+    # computable to reflect total state
+    # worker2taskOverhead to reflect new costs
 
 def consider_purge(state: State, dataset: DatasetId) -> State:
     no_dependants = not state.purging_tracker[dataset]

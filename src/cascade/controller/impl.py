@@ -10,7 +10,7 @@ from cascade.controller.notify import notify
 from cascade.controller.act import act
 from cascade.controller.plan import plan
 from time import perf_counter_ns
-from cascade.controller.tracing import mark, label, ControllerPhases, Microtrace, timer
+from cascade.low.tracing import mark, label, ControllerPhases, Microtrace, timer
 from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def run(job: JobInstance, executor: Executor, preschedule: Prechedule, outputs: 
                     actions.append(action)
 
             mark({"action": ControllerPhases.ctrl_plan, **summarise_events(actions)})
-            state = plan(state, actions)
+            state = plan(state, job, actions)
 
             mark({"action": ControllerPhases.wait})
             if has_awaitable(state):
