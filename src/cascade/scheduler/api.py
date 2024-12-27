@@ -1,5 +1,5 @@
 from cascade.scheduler.core import State, Preschedule, ComponentSchedule, ComponentId
-from cascade.low.core import Environment, WorkerId, DatasetId, JobInstance
+from cascade.low.core import Environment, WorkerId, DatasetId
 from cascade.scheduler.assign import assign_within_component, migrate_to_component
 from cascade.low.tracing import timer, Microtrace
 
@@ -22,6 +22,10 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
             core=precomponent,
             computable={task: 0 for task in precomponent.sources},
             worker2task_distance={},
+            is_computable_tracker={
+                task: {inp for inp in preschedule.edge_i[task]}
+                for task in precomponent.nodes
+            },
         )
         components.append(component)
         computable += len(precomponent.sources)
@@ -29,6 +33,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
     return State(
         edge_o=preschedule.edge_o,
         edge_i=preschedule.edge_i,
+        task_o=preschedule.task_o,
         components=components,
         host2component=host2component,
         host2workers=host2workers,
@@ -81,11 +86,14 @@ def assign(state: State) -> Iterator[Assignment]:
         yield from assign_within_component(state, workers, component_id)
         component_i = (component_i + 1) % len(components)
 
-def is_prepared_at(dataset: DatasetId, worker: WorkerId, state: State, children: list[TaskId]) -> State:
+def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, children: list[TaskId]) -> State:
     state.host2ds[worker.host][dataset] = DatasetStatus.preparing
     state.ds2host[dataset][worker.host] = DatasetStatus.preparing
     state.worker2ds[worker][dataset] = DatasetStatus.preparing
     state.ds2worker[dataset][worker] = DatasetStatus.preparing
+    # TODO check that there is no invalid transition? Eg, if it already was preparing or available
+    # TODO do we want to do anything for the other workers on the same host? Probably not, rather consider
+    # host2ds during assignments
 
     for task in children:
         component = state.ts2component[task]
@@ -95,7 +103,7 @@ def is_prepared_at(dataset: DatasetId, worker: WorkerId, state: State, children:
             component.computable[task] = maybe_new_opt
     return state
 
-def plan(state: State, job: JobInstance, assignments: list[Assignment]) -> State:
+def plan(state: State, assignments: list[Assignment]) -> State:
     """Given actions that were just sent to a worker, update state to reflect it, including preparation
     and planning for future assignments.
     Unlike `assign`, this is less performance critical, so slightly longer calculations can happen here.
@@ -103,15 +111,17 @@ def plan(state: State, job: JobInstance, assignments: list[Assignment]) -> State
 
     # TODO when considering `children` below, filter for near-computable? Ie, either already in computable
     # or all inputs are already in preparing state? May not be worth it tho
+
     for assignment in assignments:
         for prep in assignment.prep:
-            children = job_instance.outputs_of(prep[0])
-            state = is_computed_at(prep[0], assignment.worker, state, children)
+            children = state.task_o[prep[0]]
+            state = _set_preparing_at(prep[0], assignment.worker, state, children)
         for task in assignment.tasks:
-            for ds in job_instance.outputs_of[task]:
-                children = job_instance.outputs_of[task]
-                state = is_computed_at(ds, assignment.worker, state, children)
+            for ds in assignment.outputs:
+                children = state.edge_o[ds]
+                state = _set_preparing_at(ds, assignment.worker, state, children)
             state.worker2ts[assignment.worker][task] = TaskStatus.enqueued
             state.ts2worker[task][assignment.worker] = TaskStatus.enqueued
+            state.ongoing.add(task)
 
     return state

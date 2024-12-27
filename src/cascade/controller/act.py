@@ -13,40 +13,43 @@ from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
 
 logger = logging.getLogger(__name__)
 
-! update # TODO just switch the action -> assignment, and don't do some of the transitions as they are done in `plan` instead. However, make sure the `mark` and transition check etc are done *somewhere*. Microtrace here? Prolly no sense due to async nature
+def act(executor: Executor, state: State, assignment: Assignment) -> Iterator[Action]:
+    """Converts an assignment to one or more actions which are sent to the executor, and returned
+    for tracing/updating purposes. Does *not* mutate State, but Executor *is* mutated."""
 
-def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
-    # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.
-    # Thus the caller always *must* use the return value and cease using the input.
-    # The executor is obviously also mutated.
+    for prep in assignment.preps:
+        ds = prep[0] 
+        source_host = prep[1]
+        if assignment.worker == source_host:
+            logger.debug(f"dataset {ds} should be locally available, doing no-op")
+            continue
+        action_transmit = ActionDatasetTransmit(
+            ds=[ds],
+            fr=[source_host],
+            to=[assignment.worker],
+        )
+        logger.debug(f"sending {action_transmit} to executor")
+        mark({"dataset": ds, "action": TransmitLifecycle.planned, "source": source_host, "target": assignment.worker, "host": "controller"})
+        executor.transmit(action_transmit)
+        yield action
 
-    for action in actions:
-        logger.debug(f"sending {action = } to executor")
-        if isinstance(action, ActionDatasetPurge):
-            for dataset in action.ds:
-                for worker in action.at:
-                    state = transition_dataset(state, worker, dataset, DatasetStatus.purged)
-            executor.purge(action)
-        elif isinstance(action, ActionDatasetTransmit):
-            for dataset in action.ds:
-                for target in action.to:
-                    for source in action.fr:
-                        mark({"dataset": dataset.task, "action": TransmitLifecycle.planned, "source": source, "target": target, "host": "controller"})
-                        state = transition_dataset(state, target, dataset, DatasetStatus.preparing)
-            executor.transmit(action)
-        elif isinstance(action, ActionSubmit):
-            for task in action.tasks:
-                mark({"task": task, "action": TaskLifecycle.planned, "worker": action.at, "host": "controller"})
-                state.worker2ts[action.at][task] = TaskStatus.enqueued
-                state.ts2worker[task][action.at] = TaskStatus.enqueued
-                state.remaining.add(task)
-            for dataset in action.outputs:
-                state = transition_dataset(state, action.at, dataset, DatasetStatus.preparing)
-            executor.submit(action)
-        else:
-            assert_never(action)
+    action_submit = ActionSubmit(
+        at=assignment.worker,
+        tasks=assignment.tasks,
+        outputs=list(assignment.outputs),
+    )
+    for task in assignment.tasks:
+        mark({"task": task, "action": TaskLifecycle.planned, "worker": assignment.at, "host": "controller"})
+    logger.debug(f"sending {action_submit} to executor")
+    executor.submit(action_submit)
+    yield action
 
-    # TODO handle this in some thread pool etc... would need locks on state or result queueing etc
+
+def flush_queues(executor: Executor, state: State) -> State:
+    """Flushes elements in purging and fetching queues in State (and mutating it thus, as well as Executor).
+    Returns the mutated State, as all tracing and updates are handled here."""
+
+    # TODO handle this in some eg thread pool... may need lock on state, result queueing, handle purge tracking, etc
     fetchable = list(state.fetching_queue.keys())
     for dataset in fetchable:
         worker = state.fetching_queue.pop(dataset)
@@ -55,5 +58,20 @@ def act(executor: Executor, state: State, actions: Iterable[Action]) -> State:
         else:
             state.outputs[dataset] = executor.fetch_as_value(worker, dataset)
             state = consider_purge(state, dataset)
+
+    for ds in state.purging_queue:
+        # TODO finegraining, restrictions, checks for validity, etc. Do in concern with extension of `purging_queue`
+        for host in state.ds2host[ds]:
+            action_purge = ActionDatasetPurge(
+                ds=[ds],
+                workers=state.host2workers[host],
+                at=host,
+            )
+            executor.purge(action_purge)
+            state.host2ds[host].pop(ds)
+            state.ds2host[ds].pop(host)
+            for worker in state.host2workers[host]
+                state.worker2ds[worker].pop(ds)
+                state.ds2worker[ds].pop(worker)
 
     return state

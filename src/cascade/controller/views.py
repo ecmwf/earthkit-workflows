@@ -36,6 +36,7 @@ def get_some_worker_with(state: State, dataset: DatasetId) -> WorkerId|None:
 
 def transition_dataset(state: State, source: WorkerId, dataset: DatasetId, to: DatasetStatus) -> State:
     """Ensures valid update of State internal structures, including dataset broadcast in colocated workers"""
+    ! deprecated, delete # TODO
     # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.
     # Thus the caller always *must* use the return value and cease using the input.
     # NOTE not really a `view`, but used in both act & notify, so putting here

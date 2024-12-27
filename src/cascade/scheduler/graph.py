@@ -122,6 +122,11 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     for vert, inps in edge_i.items():
         edge_i_proj[vert] = {dataset.task for dataset in inps}
 
+    task_o = {
+        task: job_instance.outputs_of(task)
+        for task in job_instance.tasks.keys()
+    }
+
     components = [
         enrich(plain_component, edge_i_proj, edge_o_proj)
         for plain_component in decompose(
@@ -132,4 +137,4 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     ]
     components.sort(key=lambda c: c.weight, reverse=True)
 
-    return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i)
+    return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o)

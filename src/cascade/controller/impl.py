@@ -55,12 +55,15 @@ def run(job: JobInstance, executor: Executor, preschedule: Prechedule, outputs: 
             mark({"action": ControllerPhases.assign, **summarise_events(events)})
             if has_computable(state):
                 actions = []
-                for action in assign(state, events):
-                    timer(act, Microtrace.ctrl_act)(executor, action)
-                    actions.append(action)
+                assignments = []
+                for assignment in assign(state, events):
+                    actions += timer(act, Microtrace.ctrl_act)(executor, state, assignment)
+                    assignments.append(assignment)
 
-            mark({"action": ControllerPhases.ctrl_plan, **summarise_events(actions)})
-            state = plan(state, job, actions)
+            mark({"action": ControllerPhases.ctrl_plan, **summarise_actions(actions)})
+            state = plan(state, assignments)
+            mark({"action": ControllerPhases.ctrl_flush)})
+            state = flush_queues(executor, state)
 
             mark({"action": ControllerPhases.wait})
             if has_awaitable(state):

@@ -28,6 +28,10 @@ def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment
         worker=worker,
         tasks=[task], # TODO eager fusing for outdeg=1? Or heuristic via ratio of outdeg vs workers@component?
         prep=prep,
+        outputs={ # TODO trim for only the necessary ones
+            ds
+            for ds in state.task_o[task]
+        },
     )
 
 def assign_within_component(state: State, workers: list[WorkerId], component_idx: int) -> Iterator[Assignment]:

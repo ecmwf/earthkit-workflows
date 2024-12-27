@@ -22,11 +22,12 @@ class Event(BaseModel):
 
 class ActionDatasetPurge(BaseModel):
     ds: list[DatasetId]
-    at: list[WorkerId]
+    workers: list[WorkerId]
+    at: HostId
 
 class ActionDatasetTransmit(BaseModel):
     ds: list[DatasetId]
-    fr: list[WorkerId]
+    fr: list[HostId]
     to: list[WorkerId]
 
 class ActionSubmit(BaseModel):

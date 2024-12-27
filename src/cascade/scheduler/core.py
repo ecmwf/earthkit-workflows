@@ -18,9 +18,10 @@ class ComponentCore:
 
 @dataclass
 class Preschedule:
-    components: list[Component] # sorted desc by weight
+    components: list[ComponentCore] # sorted desc by weight
     edge_o: dict[DatasetId, set[TaskId]]
     edge_i: dict[TaskId, set[DatasetId]]
+    task_o: dict[TaskId, set[DatasetId]]
 
 
 Worker2TaskDistance = dict[WorkerId, dict[TaskId, int]]
@@ -35,6 +36,9 @@ class ComponentSchedule:
     # could become computable without any further planning)
     worker2task_distance: Worker2TaskDistance = field(default_factory=defaultdict(dict))
     computable: dict[TaskId, int] # task & optimum distance attained by some worker
+    # set at build time to contain all inputs for every task, gradually removed in controller.notify as inputs are
+    # being computed, to facilitate fast filling of the `computable`. Can be seen as aggregation & map of ds2worker
+    is_computable_tracker: dict[TaskId, set[DatasetId]] 
 
 class DatasetStatus(int, Enum):
     missing = -1 # virtual default status, never stored
@@ -51,11 +55,13 @@ class TaskStatus(int, Enum):
 @dataclass
 class State:
     """Captures what is where -- datasets, running tasks, ... Used for decision making and progress tracking"""
-    # TODO separate into two structures: lookups and trackers? We have controller leaking in here
+    # NOTE there is some leak of controller's trackers in here... but the whole scheduler-controller-executorFacade
+    # separation is getting quite weird
 
     # lookups
     edge_o: dict[DatasetId, set[TaskId]]
     edge_i: dict[TaskId, set[DatasetId]]
+    task_o: dict[TaskId, DatasetId]
     worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
     ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
     ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]] = field(default_factory=lambda: defaultdict(dict))
@@ -73,9 +79,12 @@ class State:
 
     # trackers
     idle_workers: set[WorkerId] = field(default_factory=set) # add by controller.notify, remove by scheduler.api.assign
-    ongoing: set[TaskId] = field(default_factory=set) # add by controller.act, remove by controller.notify
-    purging_tracker: dict[DatasetId, set[TaskId]] # add by controller.notify, remove by controller.act
-    purging_queue: list[DatasetId] = field(default_factory=list) # TODO is even necessary?
+    ongoing: set[TaskId] = field(default_factory=set) # add by scheduler.api.plan, remove by controller.notify
+    # NOTE the purging_tracker is also used in `consider_computable` -- come up with a better name!
+    purging_tracker: dict[DatasetId, set[TaskId]] # add by scheduler.api.initialize, remove by controller.notify
+    # add by controller.act post-fetch and by controller.notify, removed by controller.act.
+    # TODO extend with `at`, for fine graining?
+    purging_queue: list[DatasetId] = field(default_factory=list) 
     outputs: dict[DatasetId, Any] # key add by scheduler.api.init, value add by controller.notify
     fetching_queue: dict[DatasetId, WorkerId] = field(default_factory=dict) # add by controller.notify, remove by controller.act
 
@@ -93,4 +102,5 @@ def has_awaitable(state: State) -> bool:
 class Assignment:
     worker: WorkerId
     tasks: list[TaskId]
-    prep: list[tuple[DatasetId, WorkerId]]
+    prep: list[tuple[DatasetId, HostId]]
+    outputs: set[DatasetId]
