@@ -81,11 +81,11 @@ class State:
     host2component: dict[HostId, ComponentId]
     host2workers: dict[HostId, list[WorkerId]]
     computable: int
-    worker2taskOverhead: Worker2TaskDistance
+    worker2task_overhead: Worker2TaskDistance
 
     # trackers
     idle_workers: set[WorkerId] # add by controller.notify, remove by scheduler.api.assign
-    ongoing: set[TaskId] # add by scheduler.api.plan, remove by controller.notify
+    ongoing: dict[WorkerId, set[TaskId]] # add by scheduler.api.plan, remove by controller.notify. A projection of worker2ts for running only
     # NOTE the purging_tracker is also used in `consider_computable` and `api.plan` -- come up with a better name! Or separate lookup from tracker?
     purging_tracker: dict[DatasetId, set[TaskId]] # add by scheduler.api.initialize, remove by controller.notify
     # add by controller.act post-fetch and by controller.notify, removed by controller.act.

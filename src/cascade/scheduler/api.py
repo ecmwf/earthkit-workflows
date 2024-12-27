@@ -51,9 +51,9 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
         host2component={},
         host2workers=host2workers,
         computable=computable,
-        worker2taskOverhead=defaultdict(dict),
-        idle_workers=set(),
-        ongoing=set(),
+        worker2task_overhead=defaultdict(dict),
+        idle_workers=set(environment.workers.keys()),
+        ongoing=defaultdict(set),
         purging_tracker=purging_tracker,
         purging_queue=[],
         outputs={e: None for e in outputs},
@@ -139,6 +139,6 @@ def plan(state: State, assignments: list[Assignment]) -> State:
                 state = _set_preparing_at(ds, assignment.worker, state, children)
             state.worker2ts[assignment.worker][task] = TaskStatus.enqueued
             state.ts2worker[task][assignment.worker] = TaskStatus.enqueued
-            state.ongoing.add(task)
+            state.ongoing[assignment.worker].add(task)
 
     return state

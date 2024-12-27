@@ -4,11 +4,12 @@ Core data structures: Event and Action
 
 # TODO consider merge with the other protocolar commands in serde / backbone
 
-from enum import Enum
-from pydantic import BaseModel, Field
 from collections import defaultdict
-from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId
+from enum import Enum
+
+from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId, HostId
 from cascade.scheduler.core import DatasetStatus, TaskStatus, State
+from pydantic import BaseModel, Field
 
 class Event(BaseModel):
     at: WorkerId

@@ -3,13 +3,14 @@ Implements the invocation of Executor methods given a sequence of Actions
 """
 
 import logging
-from cascade.controller.executor import Executor
+from typing import Iterator
+
 from cascade.controller.core import State, Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, DatasetStatus, TaskStatus
-from cascade.low.func import assert_never
-from cascade.controller.views import transition_dataset
+from cascade.controller.executor import Executor
 from cascade.controller.notify import consider_purge
-from typing import Iterable
+from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
+from cascade.scheduler.core import Assignment
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ def act(executor: Executor, state: State, assignment: Assignment) -> Iterator[Ac
     """Converts an assignment to one or more actions which are sent to the executor, and returned
     for tracing/updating purposes. Does *not* mutate State, but Executor *is* mutated."""
 
-    for prep in assignment.preps:
+    for prep in assignment.prep:
         ds = prep[0] 
         source_host = prep[1]
         if assignment.worker == source_host:
@@ -29,9 +30,9 @@ def act(executor: Executor, state: State, assignment: Assignment) -> Iterator[Ac
             to=[assignment.worker],
         )
         logger.debug(f"sending {action_transmit} to executor")
-        mark({"dataset": ds, "action": TransmitLifecycle.planned, "source": source_host, "target": assignment.worker, "host": "controller"})
+        mark({"dataset": ds.task, "action": TransmitLifecycle.planned, "source": source_host, "target": repr(assignment.worker), "host": "controller"})
         executor.transmit(action_transmit)
-        yield action
+        yield action_transmit
 
     action_submit = ActionSubmit(
         at=assignment.worker,
@@ -39,10 +40,10 @@ def act(executor: Executor, state: State, assignment: Assignment) -> Iterator[Ac
         outputs=list(assignment.outputs),
     )
     for task in assignment.tasks:
-        mark({"task": task, "action": TaskLifecycle.planned, "worker": assignment.at, "host": "controller"})
+        mark({"task": task, "action": TaskLifecycle.planned, "worker": repr(assignment.worker), "host": "controller"})
     logger.debug(f"sending {action_submit} to executor")
     executor.submit(action_submit)
-    yield action
+    yield action_submit
 
 
 def flush_queues(executor: Executor, state: State) -> State:
@@ -70,7 +71,7 @@ def flush_queues(executor: Executor, state: State) -> State:
             executor.purge(action_purge)
             state.host2ds[host].pop(ds)
             state.ds2host[ds].pop(host)
-            for worker in state.host2workers[host]
+            for worker in state.host2workers[host]:
                 state.worker2ds[worker].pop(ds)
                 state.ds2worker[ds].pop(worker)
 

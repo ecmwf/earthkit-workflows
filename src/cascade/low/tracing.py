@@ -39,12 +39,15 @@ class TransmitLifecycle(str, Enum):
     completed = "transmit_completed" # the controller marked this transmit as completed
 
 class ControllerPhases(str, Enum):
-    plan = "ctrl_plan" # planning starts, reports how many events were awaited prior
-    act = "ctrl_act" # planning finished, start sending actions to executors, reports what was planned
-    wait = "ctrl_wait" # acting finished, start waiting on executor results
+    # ordered exactly as controller cycles through
+    assign = "ctrl_assign" # assignment of tasks to workers and submitting to executor, reports how many events were awaited prior
+    plan = "ctrl_plan" # planning, ie, update of schedule; reports how many actions were sent in `assign`
+    flush = "ctrl_flush" # calculate dataset purges and fetches, submit to executor 
+    wait = "ctrl_wait" # await on executor results
     shutdown = "ctrl_shutdown" # final phase so that we can calculate the duration of last wait
 
 class Microtrace(str, Enum):
+    ctrl_init = "ctrl_init"
     ctrl_plan = "ctrl_plan"
     ctrl_act = "ctrl_act"
     ctrl_wait = "ctrl_wait"

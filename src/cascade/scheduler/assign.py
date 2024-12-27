@@ -62,7 +62,7 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
     remaining_t = set(component.computable.keys())
     remaining_w = set(workers)
     candidates = [
-        (state.worker2taskOverhead[w][t], component.core.value[t], w, t)
+        (state.worker2task_overhead[w][t], component.core.value[t], w, t)
         for w in workers
         for t in remaining_t
     ]
@@ -98,6 +98,28 @@ def update_worker2task_distance(worker2task: Worker2TaskDistance, task2task: Tas
 
     return state
 
+def set_worker2task_overhead(state: State, worker: WorkerId, task: TaskId) -> State:
+    # NOTE beware this is used in migrate host2component as well as twice in notify. We may
+    # want to later distinguish between `calc_new` (for migrate and new computable) vs
+    # `calc_update` (basicaly when host2host transmit finishes)
+    # TODO replace the numerical heuristic here with some numbers based on transfer speeds
+    # and dataset volumes
+    overhead = 0
+    for ds in state.edge_i[task]:
+        workerState = state.worker2ds[worker].get(ds, DatasetStatus.missing) 
+        if workerState == DatasetStatus.available:
+            continue
+        if workerState == DatasetStatus.preparing:
+            overhead += 1
+            continue
+        hostState = state.host2ds[worker.host].get(ds, DatasetStatus.missing) 
+        if hostState == DatasetStatus.available or hostState == DatasetStatus.preparing:
+            overhead += 10
+            continue
+        overhead += 100
+    state.worker2task_overhead[worker][task] = overhead
+    return state
+
 def migrate_to_component(host: HostId, component_id: ComponentId, state: State) -> State:
     """Assuming original component assigned to the host didn't have enough tasks anymore,
     we invoke this function and update state to reflect it"""
@@ -107,5 +129,6 @@ def migrate_to_component(host: HostId, component_id: ComponentId, state: State) 
         for worker in state.host2workers[host]:
             component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
             state = update_worker2task_distance(component.worker2task_distance, component.core.distance_matrix, task, worker, state)
+            state = set_worker2task_overhead(state, worker, task)
 
     return state

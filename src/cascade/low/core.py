@@ -92,6 +92,9 @@ class WorkerId:
     host: HostId
     worker: str
 
+    def __repr__(self) -> str:
+        return f"{self.host}.{self.worker}"
+
 # Execution
 class Worker(BaseModel):
     # NOTE we may want to extend cpu/gpu over time with more rich information

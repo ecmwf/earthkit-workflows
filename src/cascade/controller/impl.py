@@ -2,13 +2,12 @@ import logging
 from typing import Any
 from cascade.low.core import JobInstance, DatasetId, Environment, WorkerId, TaskId
 from cascade.low.views import param_source, dependants
-from cascade.scheduler.core import Preschedule
-from cascade.scheduler.api import initialize
+from cascade.scheduler.core import Preschedule, has_computable, has_awaitable
+from cascade.scheduler.api import initialize, assign, plan
 from cascade.controller.executor import Executor
 from cascade.controller.core import State, Action, Event, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, TaskStatus
 from cascade.controller.notify import notify
-from cascade.controller.act import act
-from cascade.controller.plan import plan
+from cascade.controller.act import act, flush_queues
 from time import perf_counter_ns
 from cascade.low.tracing import mark, label, ControllerPhases, Microtrace, timer
 from cascade.low.func import assert_never
@@ -41,7 +40,7 @@ def summarise_events(events: list[Event]) -> dict:
                 d["eventsTransmited"] += 1
     return d
 
-def run(job: JobInstance, executor: Executor, preschedule: Prechedule, outputs: set[DatasetId]|None = None) -> State:
+def run(job: JobInstance, executor: Executor, preschedule: Preschedule, outputs: set[DatasetId]|None = None) -> State:
     if outputs is None:
         outputs = set()
     env = executor.get_environment()
@@ -56,13 +55,13 @@ def run(job: JobInstance, executor: Executor, preschedule: Prechedule, outputs: 
             if has_computable(state):
                 actions = []
                 assignments = []
-                for assignment in assign(state, events):
+                for assignment in assign(state):
                     actions += timer(act, Microtrace.ctrl_act)(executor, state, assignment)
                     assignments.append(assignment)
 
-            mark({"action": ControllerPhases.ctrl_plan, **summarise_actions(actions)})
+            mark({"action": ControllerPhases.plan, **summarise_actions(actions)})
             state = plan(state, assignments)
-            mark({"action": ControllerPhases.ctrl_flush)})
+            mark({"action": ControllerPhases.flush})
             state = flush_queues(executor, state)
 
             mark({"action": ControllerPhases.wait})
