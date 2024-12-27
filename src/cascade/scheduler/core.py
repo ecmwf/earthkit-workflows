@@ -1,7 +1,9 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
-from cascade.low.core import TaskId, DatasetId
+from cascade.low.core import TaskId, DatasetId, WorkerId, HostId
 
 Task2TaskDistance = dict[TaskId, dict[TaskId, int]]
 
@@ -11,10 +13,13 @@ TaskValue = dict[TaskId, int]
 class ComponentCore:
     nodes: list[TaskId]
     sources: list[TaskId]
-    weight: int # of *remaining* tasks
     distance_matrix: Task2TaskDistance # nearest common descendant
     value: TaskValue # closer to a sink -> higher value
     depth: int # maximum value
+
+    def weight(self) -> int:
+        # TODO eventually replace with runtime sum or smth
+        return len(self.nodes)
 
 @dataclass
 class Preschedule:
@@ -31,14 +36,15 @@ ComponentId = int
 @dataclass
 class ComponentSchedule:
     core: ComponentCore
-    # w2t_dist generally holds values for all workers of hosts assigned to this component and for all
-    # tasks that are either computable or that are among outputs of currently prepared tasks (as those
-    # could become computable without any further planning)
-    worker2task_distance: Worker2TaskDistance = field(default_factory=defaultdict(dict))
+    weight: int # of *remaining* tasks -- decreases over time
     computable: dict[TaskId, int] # task & optimum distance attained by some worker
     # set at build time to contain all inputs for every task, gradually removed in controller.notify as inputs are
     # being computed, to facilitate fast filling of the `computable`. Can be seen as aggregation & map of ds2worker
     is_computable_tracker: dict[TaskId, set[DatasetId]] 
+    # w2t_dist generally holds values for all workers of hosts assigned to this component and for all
+    # tasks that are either computable or that are among outputs of currently prepared tasks (as those
+    # could become computable without any further planning)
+    worker2task_distance: Worker2TaskDistance = field(default_factory=lambda : defaultdict(dict))
 
 class DatasetStatus(int, Enum):
     missing = -1 # virtual default status, never stored
@@ -61,13 +67,13 @@ class State:
     # lookups
     edge_o: dict[DatasetId, set[TaskId]]
     edge_i: dict[TaskId, set[DatasetId]]
-    task_o: dict[TaskId, DatasetId]
-    worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
-    ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
-    ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]] = field(default_factory=lambda: defaultdict(dict))
-    worker2ts: dict[WorkerId, dict[TaskId, TaskStatus]] = field(default_factory=lambda: defaultdict(dict))
-    host2ds: dict[HostId, dict[DatasetId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
-    ds2host: dict[DatasetId, dict[HostId, DatasetStatus]] = field(default_factory=lambda: defaultdict(dict))
+    task_o: dict[TaskId, set[DatasetId]]
+    worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]]
+    ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]]
+    ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]]
+    worker2ts: dict[WorkerId, dict[TaskId, TaskStatus]]
+    host2ds: dict[HostId, dict[DatasetId, DatasetStatus]]
+    ds2host: dict[DatasetId, dict[HostId, DatasetStatus]]
 
     # schedule -- updated by scheduler.api.{assign, plan}, except `computable` and `components.computable` which controller.notify updates
     components: list[ComponentSchedule]
@@ -75,28 +81,25 @@ class State:
     host2component: dict[HostId, ComponentId]
     host2workers: dict[HostId, list[WorkerId]]
     computable: int
-    worker2taskOverhead: Worker2TaskDistance = field(default_factory=defaultdict(dict))
+    worker2taskOverhead: Worker2TaskDistance
 
     # trackers
-    idle_workers: set[WorkerId] = field(default_factory=set) # add by controller.notify, remove by scheduler.api.assign
-    ongoing: set[TaskId] = field(default_factory=set) # add by scheduler.api.plan, remove by controller.notify
-    # NOTE the purging_tracker is also used in `consider_computable` -- come up with a better name!
+    idle_workers: set[WorkerId] # add by controller.notify, remove by scheduler.api.assign
+    ongoing: set[TaskId] # add by scheduler.api.plan, remove by controller.notify
+    # NOTE the purging_tracker is also used in `consider_computable` and `api.plan` -- come up with a better name! Or separate lookup from tracker?
     purging_tracker: dict[DatasetId, set[TaskId]] # add by scheduler.api.initialize, remove by controller.notify
     # add by controller.act post-fetch and by controller.notify, removed by controller.act.
     # TODO extend with `at`, for fine graining?
-    purging_queue: list[DatasetId] = field(default_factory=list) 
+    purging_queue: list[DatasetId]
     outputs: dict[DatasetId, Any] # key add by scheduler.api.init, value add by controller.notify
-    fetching_queue: dict[DatasetId, WorkerId] = field(default_factory=dict) # add by controller.notify, remove by controller.act
-
-    # TODO redundant via host2ds, eliminate
-    worker_colocations: dict[WorkerId, set[WorkerId]] 
+    fetching_queue: dict[DatasetId, WorkerId] # add by controller.notify, remove by controller.act
 
 def has_computable(state: State) -> bool:
     return state.computable > 0
 
 def has_awaitable(state: State) -> bool:
     # TODO replace the None in outputs with check on fetch queue (but change that from binary to ternary first)
-    return state.running or (None in state.outputs.values()):
+    return bool(state.ongoing) or (None in state.outputs.values())
 
 @dataclass
 class Assignment:

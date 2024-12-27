@@ -56,6 +56,7 @@ def consider_computable(state: State, dataset: DatasetId) -> State:
     return state
  
 def notify(state: State, events: Iterable[Event]) -> State:
+    ! idle workers # TODO
     for event in events:
         if event.failures:
             logger.debug(f"received {event.failures = }")

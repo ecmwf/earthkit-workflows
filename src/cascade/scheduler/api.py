@@ -1,7 +1,10 @@
-from cascade.scheduler.core import State, Preschedule, ComponentSchedule, ComponentId
-from cascade.low.core import Environment, WorkerId, DatasetId
-from cascade.scheduler.assign import assign_within_component, migrate_to_component
+from collections import defaultdict
+from typing import Iterator
+
+from cascade.low.core import Environment, WorkerId, DatasetId, HostId, TaskId
 from cascade.low.tracing import timer, Microtrace
+from cascade.scheduler.assign import assign_within_component, migrate_to_component, update_worker2task_distance
+from cascade.scheduler.core import State, Preschedule, ComponentSchedule, ComponentId, Assignment, DatasetStatus, TaskStatus
 
 def initialize(environment: Environment, preschedule: Preschedule, outputs: set[DatasetId]) -> State:
     """Initializes State based on Preschedule and Environment. Assigns hosts to components"""
@@ -11,7 +14,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
     }
 
     components: list[ComponentSchedule] = []
-    host2component: dict[HostId, ComponentId] = {}
+    ts2component: dict[TaskId, ComponentId] = {}
     host2workers: dict[HostId, list[WorkerId]] = defaultdict(list) 
     for worker in environment.workers:
         host2workers[worker.host].append(worker)
@@ -20,6 +23,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
     for componentId, precomponent in enumerate(preschedule.components):
         component = ComponentSchedule(
             core=precomponent,
+            weight=precomponent.weight(),
             computable={task: 0 for task in precomponent.sources},
             worker2task_distance={},
             is_computable_tracker={
@@ -29,18 +33,31 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
         )
         components.append(component)
         computable += len(precomponent.sources)
+        for task in precomponent.nodes:
+            ts2component[task] = componentId
 
     return State(
         edge_o=preschedule.edge_o,
         edge_i=preschedule.edge_i,
         task_o=preschedule.task_o,
+        worker2ds=defaultdict(dict),
+        ds2worker=defaultdict(dict),
+        ts2worker=defaultdict(dict),
+        worker2ts=defaultdict(dict),
+        host2ds=defaultdict(dict),
+        ds2host=defaultdict(dict),
         components=components,
-        host2component=host2component,
+        ts2component=ts2component,
+        host2component={},
         host2workers=host2workers,
-        purging_tracker=purging_tracker,
-        outputs={e: None for e in outputs},
-        worker_colocations={worker: set(host2workers[worker]) for worker in environment.workers},
         computable=computable,
+        worker2taskOverhead=defaultdict(dict),
+        idle_workers=set(),
+        ongoing=set(),
+        purging_tracker=purging_tracker,
+        purging_queue=[],
+        outputs={e: None for e in outputs},
+        fetching_queue={},
     )
 
 def assign(state: State) -> Iterator[Assignment]:
@@ -53,12 +70,12 @@ def assign(state: State) -> Iterator[Assignment]:
     should be deferred to `plan`"""
 
     # step I: assign within existing components
-    components = defaultdict(list)
+    component2workers = defaultdict(list)
     for worker in state.idle_workers:
         if (component := state.host2component[worker.host]) is not None:
-            components[state.host2component[worker.host]].append(worker)
+            component2workers[state.host2component[worker.host]].append(worker)
 
-    for component_id, local_workers in components.items():
+    for component_id, local_workers in component2workers.items():
         if local_workers:
             yield from assign_within_component(state, local_workers, component_id)
     
@@ -67,12 +84,12 @@ def assign(state: State) -> Iterator[Assignment]:
 
     # step II: assign remaining workers to new components
     components = [
-        (component.weight, component_id) for component_id, component in state.components
+        (component.weight, component_id) for component_id, component in enumerate(state.components)
         if component.weight > 0
     ]
     components.sort(reverse = True) # TODO consider number of currently assigned workers too
     migrants = defaultdict(list)
-    for worker in remaining_w:
+    for worker in state.idle_workers:
         # TODO we dont currently allow partial assignments, this is subopt!
         if state.components[state.host2component[worker.host]].weight == 0:
             migrants[worker.host].append(worker)
@@ -86,7 +103,7 @@ def assign(state: State) -> Iterator[Assignment]:
         yield from assign_within_component(state, workers, component_id)
         component_i = (component_i + 1) % len(components)
 
-def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, children: list[TaskId]) -> State:
+def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, children: set[TaskId]) -> State:
     state.host2ds[worker.host][dataset] = DatasetStatus.preparing
     state.ds2host[dataset][worker.host] = DatasetStatus.preparing
     state.worker2ds[worker][dataset] = DatasetStatus.preparing
@@ -96,8 +113,8 @@ def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, childr
     # host2ds during assignments
 
     for task in children:
-        component = state.ts2component[task]
-        state = update_worker2task_distance(component.worker2task_distance, task, worker, state)
+        component = state.components[state.ts2component[task]]
+        state = update_worker2task_distance(component.worker2task_distance, component.core.distance_matrix, task, worker, state)
         maybe_new_opt = component.worker2task_distance[worker][task]
         if (value := component.computable.get(task, None)) is not None and value > maybe_new_opt:
             component.computable[task] = maybe_new_opt
@@ -114,7 +131,7 @@ def plan(state: State, assignments: list[Assignment]) -> State:
 
     for assignment in assignments:
         for prep in assignment.prep:
-            children = state.task_o[prep[0]]
+            children = state.purging_tracker[prep[0]]
             state = _set_preparing_at(prep[0], assignment.worker, state, children)
         for task in assignment.tasks:
             for ds in assignment.outputs:

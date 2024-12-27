@@ -103,7 +103,6 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
     return ComponentCore(
         nodes=nodes,
         sources=sources,
-        weight=len(nodes), # TODO eventually replace with runtime sum or smth
         distance_matrix=ncd,
         value=value,
         depth=L,
@@ -135,6 +134,6 @@ def precompute(job_instance: JobInstance) -> Preschedule:
             edge_o_proj,
         )
     ]
-    components.sort(key=lambda c: c.weight, reverse=True)
+    components.sort(key=lambda c: c.weight(), reverse=True)
 
     return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o)
