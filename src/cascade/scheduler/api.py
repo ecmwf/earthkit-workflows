@@ -1,10 +1,13 @@
 from collections import defaultdict
+import logging
 from typing import Iterator
 
 from cascade.low.core import Environment, WorkerId, DatasetId, HostId, TaskId
 from cascade.low.tracing import timer, Microtrace
 from cascade.scheduler.assign import assign_within_component, migrate_to_component, update_worker2task_distance
 from cascade.scheduler.core import State, Preschedule, ComponentSchedule, ComponentId, Assignment, DatasetStatus, TaskStatus
+
+logger = logging.getLogger(__name__)
 
 def initialize(environment: Environment, preschedule: Preschedule, outputs: set[DatasetId]) -> State:
     """Initializes State based on Preschedule and Environment. Assigns hosts to components"""
@@ -48,7 +51,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
         ds2host=defaultdict(dict),
         components=components,
         ts2component=ts2component,
-        host2component={},
+        host2component={host: None for host in host2workers.keys()},
         host2workers=host2workers,
         computable=computable,
         worker2task_overhead=defaultdict(dict),
@@ -91,7 +94,7 @@ def assign(state: State) -> Iterator[Assignment]:
     migrants = defaultdict(list)
     for worker in state.idle_workers:
         # TODO we dont currently allow partial assignments, this is subopt!
-        if state.components[state.host2component[worker.host]].weight == 0:
+        if state.host2component[worker.host] is None or state.components[state.host2component[worker.host]].weight == 0:
             migrants[worker.host].append(worker)
         # TODO we ultimately want to be able to have weight-and-capacity-aware m-n host2component
         # assignments, not just round robin of the whole host2component

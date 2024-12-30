@@ -30,6 +30,7 @@ def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: di
         if head in visited:
             continue
         queue: list[TaskId] = [head]
+        visited.add(head)
         component: list[TaskId] = list()
 
         while queue:
@@ -40,7 +41,6 @@ def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: di
                     continue
                 else:
                     visited.add(vert)
-                    component.append(vert)
                     queue.append(vert)
         yield (
             component,

@@ -1,6 +1,6 @@
 from collections import defaultdict
 from cascade.low.core import TaskId
-from cascade.scheduler.core import Task2TaskDistance, TaskValue, Component, Preschedule
+from cascade.scheduler.core import Task2TaskDistance, TaskValue, Preschedule
 from cascade.scheduler.graph import decompose, enrich
 
 def _oedge2iedge(edge_o: dict[TaskId, set[TaskId]]) -> dict[TaskId, set[TaskId]]:
@@ -51,7 +51,7 @@ def test_enrich():
 
     assert res.nodes == component[0]
     assert res.sources == component[1]
-    assert res.weight == len(component[0])
+    assert res.weight() == len(component[0])
     value = {
         "v0": 1,
         "v1": 2,
