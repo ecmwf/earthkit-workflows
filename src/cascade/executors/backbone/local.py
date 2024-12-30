@@ -26,9 +26,9 @@ class BackboneLocalExecutor():
         callback = self.backbone.send_event_callback()
         for dataset in payload.datasets:
             try:
-                mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "source": payload.this_worker, "target": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
-                data = self.executor.fetch_as_value(payload.this_worker, dataset)
-                mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "source": payload.this_worker, "target": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "source": payload.this_host, "target": repr(payload.other_worker), "mode": "remote"})
+                data = self.executor.fetch_as_value(dataset)
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "source": payload.this_host, "target": repr(payload.other_worker), "mode": "remote"})
                 if isinstance(data, AllocatedBuffer):
                     data_raw = bytes(data.view()) # NOTE unfortunate -- zmq supports going with view, but that needs a serde extension
                 else:
@@ -44,7 +44,7 @@ class BackboneLocalExecutor():
                 # event = Event(at=payload.other_worker, ts_trans=[], ds_trans=[(dataset, DatasetStatus.available)])
             except Exception as ex:
                 # NOTE in case of success, we rely on the other party to submit
-                event = Event(failures=[f"data transmit of {dataset} failed with {repr(ex)}"], at=payload.this_worker)
+                event = Event(failures=[f"data transmit of {dataset} failed with {repr(ex)}"], at=payload.this_host)
                 callback(event)
                 logger.debug(f"callback of {event} finished")
 
@@ -63,7 +63,7 @@ class BackboneLocalExecutor():
                     # TODO this is a very poor hack. We just need to ensure the right p.join happen
                     # TODO we are fail to react when no Event comes due to proc crash. It sounds like the executor
                     # should have a thread to check states of processes, and send Failure events in case
-                    if hasattr(self.executor, "procwatch"):
+                    if hasattr(self.executor, "procwatch") and hasattr(self.executor, "fid2action"):
                         tasks = {ts[0] for ts in m.ts_trans}
                         logger.debug(f"noted finish of {tasks=}")
                         futs = {k for k, v in self.executor.fid2action.items() if set(v.tasks).intersection(tasks)}
@@ -83,7 +83,7 @@ class BackboneLocalExecutor():
                 elif isinstance(m, DataTransmitObject):
                     self.executor.store_value(m.worker_id, m.dataset_id, m.data)
                 elif isinstance(m, DatasetFetch):
-                    data = self.executor.fetch_as_value(m.worker, m.dataset)
+                    data = self.executor.fetch_as_value(m.dataset)
                     if isinstance(data, AllocatedBuffer):
                         data_raw = bytes(data.view()) # NOTE unfortunate -- zmq supports going with view, but that needs a serde extension
                     else:

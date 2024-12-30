@@ -41,7 +41,6 @@ Action = ActionDatasetPurge|ActionDatasetTransmit|ActionSubmit
 class TransmitPayload(BaseModel):
     # corresponds to ActionDatasetTransmit but used for remote transmits, to one of the sides
     other_url: str
-    other_worker: str
-    this_worker: str
+    other_worker: WorkerId
+    this_host: HostId
     datasets: list[DatasetId]
-    tracing_ctx_host: str

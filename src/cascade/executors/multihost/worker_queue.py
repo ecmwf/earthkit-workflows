@@ -36,11 +36,11 @@ class WorkerQueue():
             client = self.client
             url_base = f"{payload.other_url}/store_value/{payload.other_worker}"
             for dataset in payload.datasets:
-                mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "worker": repr(payload.other_worker), "mode": "remote"})
                 logger.debug(f"fetching {dataset=} for transmit")
-                data = executor.fetch_as_value(payload.this_worker, dataset)
+                data = executor.fetch_as_value(dataset)
                 url = f"{url_base}/{dataset.task}/{dataset.output}"
-                mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "worker": payload.other_worker, "host": payload.tracing_ctx_host, "mode": "remote"})
+                mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "worker": repr(payload.other_worker), "mode": "remote"})
                 logger.debug(f"transmitting {dataset=}")
                 callResult = client.put(url, content=bytes(data.view()))
                 logger.debug(f"transmit of {dataset=} finished with {callResult}")
@@ -51,7 +51,7 @@ class WorkerQueue():
         except Exception as ex:
             logger.error(f"failed with {repr(ex)} during transmit of {payload}")
             # TODO mark tracing, rich failure report so that worker can retry
-            rv.append(Event(failures=[f"data transmit failed with {repr(ex)}"], at=payload.this_worker))
+            rv.append(Event(failures=[f"data transmit failed with {repr(ex)}"], at=payload.this_host))
         return rv
 
        

@@ -91,7 +91,7 @@ class InstantExecutor():
     def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         return ""
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         return b""
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:

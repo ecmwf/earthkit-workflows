@@ -16,15 +16,14 @@ class BackboneExecutor():
         return self.backbone.get_environment()
 
     def submit(self, action: ActionSubmit) -> None:
-        host_id = action.at.split(':', 1)[0]
-        self.backbone.send_message(host_id, action)
+        self.backbone.send_message(action.at.host, action)
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
         # TODO optimize to send less payloads
         for fr in action.fr:
             for to in action.to:
-                other_url = self.backbone.url_of(to.split(':', 1)[0])
-                payload = TransmitPayload(other_url=other_url, other_worker=to, this_worker=fr, datasets=action.ds, tracing_ctx_host=fr.split(':', 1)[0])
+                other_url = self.backbone.url_of(to.host)
+                payload = TransmitPayload(other_url=other_url, other_worker=to, this_host=fr, datasets=action.ds)
                 self.backbone.send_message(fr.split(':', 1)[0], payload)
 
     def purge(self, action: ActionDatasetPurge) -> None:
@@ -37,10 +36,9 @@ class BackboneExecutor():
         raise NotImplementedError
 
     def lazyfetch_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
-        host_id = worker.split(':', 1)[0]
-        self.backbone.send_message(host_id, DatasetFetch(worker=worker, dataset=dataset_id))
+        self.backbone.send_message(worker.host, DatasetFetch(worker=worker, dataset=dataset_id))
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         raise NotImplementedError
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
