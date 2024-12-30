@@ -67,7 +67,7 @@ def notify(state: State, events: Iterable[Event]) -> State:
         if event.failures:
             logger.debug(f"received {event.failures = }")
             raise ValueError(event.failures)
-        logger.debug(f"received {event.ds_trans=}")
+        logger.debug(f"received {event.ds_trans=} at {event.at=}")
         for dataset_id, dataset_status in event.ds_trans:
             state.worker2ds[event.at][dataset_id] = dataset_status
             state.ds2worker[dataset_id][event.at] = dataset_status
@@ -79,7 +79,7 @@ def notify(state: State, events: Iterable[Event]) -> State:
             # TODO we don't necessarily know this corresponds exactly to transmits, thus this is imprecise
             if dataset_status == DatasetStatus.available and not event.ts_trans:
                 mark({"dataset": dataset_id.task, "action": TransmitLifecycle.completed, "target": repr(event.at), "host": "controller"})
-        logger.debug(f"received {event.ts_trans=}")
+        logger.debug(f"received {event.ts_trans=} at {event.at=}")
         for task_id, task_status in event.ts_trans:
             state.worker2ts[event.at][task_id] = task_status
             state.ts2worker[task_id][event.at] = task_status

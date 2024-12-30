@@ -84,13 +84,17 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
     end = perf_counter_ns()
     trace(Microtrace.ctrl_assign, end-start)
 
-def update_worker2task_distance(worker2task: Worker2TaskDistance, task2task: Task2TaskDistance, task: TaskId, worker: WorkerId, state: State) -> State:
+def update_worker2task_distance(component_id: ComponentId, task: TaskId, worker: WorkerId, state: State) -> State:
     # TODO we don't currently consider other workers at the host, probably subopt! Ultimately,
     # we need the `assign_within_component` to take both overhead *and* distance into account
     # simultaneously
+    worker2task = state.components[component_id].worker2task_distance
+    task2task = state.components[component_id].core.distance_matrix
     eligible = {DatasetStatus.preparing, DatasetStatus.available}
     for ds_key, ds_status in state.worker2ds[worker].items():
         if ds_status not in eligible:
+            continue
+        if state.ts2component[ds_key.task] != component_id:
             continue
         # TODO we only consider min task distance, whereas weighing by volume/ratio would make more sense
         worker2task[worker][task] = min(
@@ -130,7 +134,7 @@ def migrate_to_component(host: HostId, component_id: ComponentId, state: State) 
     for task, current_opt in component.computable.items():
         for worker in state.host2workers[host]:
             component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
-            state = update_worker2task_distance(component.worker2task_distance, component.core.distance_matrix, task, worker, state)
+            state = update_worker2task_distance(component_id, task, worker, state)
             state = set_worker2task_overhead(state, worker, task)
 
     return state

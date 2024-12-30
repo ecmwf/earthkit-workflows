@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 class Event(BaseModel):
     at: WorkerId
+    # NOTE: currently we assume this ds transition happens *both* at worker and at the host. We may need finer grain
     ds_trans: list[tuple[DatasetId, DatasetStatus]] = Field(default_factory=list)
     ts_trans: list[tuple[TaskId, TaskStatus]] = Field(default_factory=list)
     # catch-all for when something irreparable goes wrong at the executor.

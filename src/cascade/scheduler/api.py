@@ -120,8 +120,9 @@ def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, childr
     # host2ds during assignments
 
     for task in children:
-        component = state.components[state.ts2component[task]]
-        state = update_worker2task_distance(component.worker2task_distance, component.core.distance_matrix, task, worker, state)
+        component_id = state.ts2component[task]
+        state = update_worker2task_distance(component_id, task, worker, state)
+        component = state.components[component_id]
         maybe_new_opt = component.worker2task_distance[worker][task]
         if (value := component.computable.get(task, None)) is not None and value > maybe_new_opt:
             component.computable[task] = maybe_new_opt

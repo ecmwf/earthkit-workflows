@@ -71,8 +71,9 @@ def flush_queues(executor: Executor, state: State) -> State:
             executor.purge(action_purge)
             state.host2ds[host].pop(ds)
             for worker in state.host2workers[host]:
-                state.worker2ds[worker].pop(ds)
-                state.ds2worker[ds].pop(worker)
+                if ds in state.worker2ds[worker]:
+                    state.worker2ds[worker].pop(ds)
+                    state.ds2worker[ds].pop(worker)
         state.ds2host.pop(ds)
     state.purging_queue = []
 
