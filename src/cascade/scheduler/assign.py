@@ -55,6 +55,7 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
                 workers.pop(idx)
                 component.computable.pop(task)
                 component.weight -= 1
+                state.computable -= 1
                 state.idle_workers.remove(worker)
                 break
 
@@ -77,6 +78,7 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
             remaining_t.remove(task)
             remaining_w.remove(worker)
             state.idle_workers.remove(worker)
+            state.computable -= 1
             component.weight -= 1
 
     end = perf_counter_ns()

@@ -52,9 +52,9 @@ def run(job: JobInstance, executor: Executor, preschedule: Preschedule, outputs:
     try:
         while has_computable(state) or has_awaitable(state):
             mark({"action": ControllerPhases.assign, **summarise_events(events)})
+            actions = []
+            assignments = []
             if has_computable(state):
-                actions = []
-                assignments = []
                 for assignment in assign(state):
                     actions += timer(act, Microtrace.ctrl_act)(executor, state, assignment)
                     assignments.append(assignment)

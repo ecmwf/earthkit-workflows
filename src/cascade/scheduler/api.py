@@ -57,6 +57,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
         worker2task_overhead=defaultdict(dict),
         idle_workers=set(environment.workers.keys()),
         ongoing=defaultdict(set),
+        ongoing_total=0,
         purging_tracker=purging_tracker,
         purging_queue=[],
         outputs={e: None for e in outputs},
@@ -90,6 +91,9 @@ def assign(state: State) -> Iterator[Assignment]:
         (component.weight, component_id) for component_id, component in enumerate(state.components)
         if component.weight > 0
     ]
+    if not components:
+        return
+
     components.sort(reverse = True) # TODO consider number of currently assigned workers too
     migrants = defaultdict(list)
     for worker in state.idle_workers:
@@ -142,6 +146,9 @@ def plan(state: State, assignments: list[Assignment]) -> State:
                 state = _set_preparing_at(ds, assignment.worker, state, children)
             state.worker2ts[assignment.worker][task] = TaskStatus.enqueued
             state.ts2worker[task][assignment.worker] = TaskStatus.enqueued
+            if task in state.ongoing[assignment.worker]:
+                raise ValueError(f"double add of {task} to {assignment.worker}")
             state.ongoing[assignment.worker].add(task)
+            state.ongoing_total += 1
 
     return state

@@ -61,7 +61,7 @@ def flush_queues(executor: Executor, state: State) -> State:
             state = consider_purge(state, dataset)
 
     for ds in state.purging_queue:
-        # TODO finegraining, restrictions, checks for validity, etc. Do in concern with extension of `purging_queue`
+        # TODO finegraining, restrictions, checks for validity, etc. Do in concert with extension of `purging_queue`
         for host in state.ds2host[ds]:
             action_purge = ActionDatasetPurge(
                 ds=[ds],
@@ -70,9 +70,10 @@ def flush_queues(executor: Executor, state: State) -> State:
             )
             executor.purge(action_purge)
             state.host2ds[host].pop(ds)
-            state.ds2host[ds].pop(host)
             for worker in state.host2workers[host]:
                 state.worker2ds[worker].pop(ds)
                 state.ds2worker[ds].pop(worker)
+        state.ds2host.pop(ds)
+    state.purging_queue = []
 
     return state

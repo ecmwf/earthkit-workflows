@@ -36,7 +36,7 @@ def consider_computable(state: State, dataset: DatasetId, workerId: WorkerId) ->
     # It may happen this is called after a transfer of an already computed dataset, in
     # which case this is a fast no-op
     component = state.components[state.ts2component[dataset.task]]
-    for child_task in state.purging_tracker[dataset]:
+    for child_task in state.purging_tracker.get(dataset, set()):
         if child_task in component.computable:
             for worker in state.host2workers[workerId.host]:
                 # NOTE since the child_task has already been computable, and the current
@@ -91,8 +91,10 @@ def notify(state: State, events: Iterable[Event]) -> State:
                 if task_id in state.ongoing[event.at]:
                     logger.debug(f"{task_id} succeeded, removing")
                     state.ongoing[event.at].remove(task_id)
+                    state.ongoing_total -= 1
                 else:
-                    logger.warning(f"{task_id} succeeded but removal from `ongoing` impossible")
+                    raise ValueError(f"{task_id} succeeded but removal from `ongoing` impossible")
+                    # logger.warning(f"{task_id} succeeded but removal from `ongoing` impossible")
                 if not state.ongoing[event.at]:
                     state.idle_workers.add(event.at)
             elif task_status == TaskStatus.failed:

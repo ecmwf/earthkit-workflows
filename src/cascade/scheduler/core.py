@@ -86,6 +86,7 @@ class State:
     # trackers
     idle_workers: set[WorkerId] # add by controller.notify, remove by scheduler.api.assign
     ongoing: dict[WorkerId, set[TaskId]] # add by scheduler.api.plan, remove by controller.notify. A projection of worker2ts for running only
+    ongoing_total: int # view of the above
     # NOTE the purging_tracker is also used in `consider_computable` and `api.plan` -- come up with a better name! Or separate lookup from tracker?
     purging_tracker: dict[DatasetId, set[TaskId]] # add by scheduler.api.initialize, remove by controller.notify
     # add by controller.act post-fetch and by controller.notify, removed by controller.act.
@@ -99,7 +100,7 @@ def has_computable(state: State) -> bool:
 
 def has_awaitable(state: State) -> bool:
     # TODO replace the None in outputs with check on fetch queue (but change that from binary to ternary first)
-    return bool(state.ongoing) or (None in state.outputs.values())
+    return state.ongoing_total > 0 or (None in state.outputs.values())
 
 @dataclass
 class Assignment:
