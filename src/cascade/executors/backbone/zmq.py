@@ -36,7 +36,7 @@ class ZmqBackbone:
         if controller_url is not None and environment is not None and host_id is not None:
             self.s_sockets = {'controller': self.context.socket(zmq.PUSH)}
             self.s_sockets['controller'].connect(controller_url)
-            self.send_message('controller', RegisterRequest(url=addr, environment=environment, host_id = host_id))
+            self.send_message('controller', RegisterRequest(url=addr, environment=list(environment.workers.items()), host_id = host_id))
             resp = self._recv_one(True)
             if not isinstance(resp, RegisterResponse):
                 raise ValueError(f"unexpected register response: {resp}")
@@ -58,7 +58,7 @@ class ZmqBackbone:
                 self.s_sockets[m.host_id].connect(m.url)
                 self.urls[m.host_id] = m.url
                 self.send_message(m.host_id, RegisterResponse())
-                envs.append(m.environment)
+                envs.append(Environment(workers=dict(m.environment)))
 
         self.environment = merge_environments(envs)
         logger.debug(f"finished backbone init for controller at {addr}")

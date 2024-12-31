@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from cascade.controller.core import Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, TransmitPayload, Event
-from cascade.low.core import Environment, WorkerId, DatasetId
+from cascade.low.core import Environment, WorkerId, DatasetId, Worker
 from typing import Type
 from pydantic import BaseModel
 import orjson
@@ -8,7 +8,7 @@ import orjson
 class RegisterRequest(BaseModel):
     url: str
     host_id: str
-    environment: Environment
+    environment: list[tuple[WorkerId, Worker]]
 
 class RegisterResponse(BaseModel):
     pass
