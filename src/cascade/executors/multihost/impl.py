@@ -54,8 +54,8 @@ class RouterExecutor():
     def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         return self.client.fetch_as_url(worker.host, worker, dataset_id)
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
-        return self.client.fetch_as_url(worker.host, worker, dataset_id)
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
+        raise NotImplementedError
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
         return self.client.store_value(worker, dataset_id, data)

@@ -6,9 +6,9 @@ from cascade.controller.impl import run
 from cascade.executors.simulator import SimulatingExecutor
 from cascade.graph import Node
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import Environment, Worker, JobExecutionRecord, TaskExecutionRecord, DatasetId
+from cascade.low.core import Environment, Worker, JobExecutionRecord, TaskExecutionRecord, DatasetId, WorkerId
 from cascade.low.views import param_source
-from cascade.scheduler.impl import naive_bfs_layers
+from cascade.scheduler.graph import precompute
 
 
 def test_simple():
@@ -30,7 +30,7 @@ def test_simple():
         task_id: set(task_param_source.values())
         for task_id, task_param_source in param_source(job.edges).items()
     }
-    env = Environment(workers={"h0:w1": Worker(cpu=2, gpu=0, memory_mb=2)}, colocations=[["h0:w1"]])
+    env = Environment(workers={WorkerId("h0", "w1"): Worker(cpu=2, gpu=0, memory_mb=2)}, colocations=[["h0:w1"]])
     record_ok = JobExecutionRecord(
         datasets_mb={DatasetId("task1", Node.DEFAULT_OUTPUT): 1},
         tasks={
@@ -57,8 +57,8 @@ def test_simple():
 
     def run_with_record(record: JobExecutionRecord) -> float:
         executor = SimulatingExecutor(env, task_inputs, record)
-        schedule = naive_bfs_layers(job, record, set()).get_or_raise()
-        run(job, executor, schedule)
+        preschedule = precompute(job)
+        run(job, executor, preschedule)
         return executor.total_time_secs
 
     ok_run = run_with_record(record_ok)
