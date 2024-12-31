@@ -7,7 +7,7 @@ Utility function for actual distributed runs on a cluster
 from pydantic import BaseModel, Field
 from forecastbox.utils import logging_config as fiab_logging
 import cascade.executors.simulator
-from cascade.scheduler.impl import naive_bfs_layers
+from cascade.scheduler.graph import precompute
 import time
 from cascade.controller.core import State
 from cascade.controller.impl import run
@@ -85,9 +85,9 @@ def launch_zmq_controller(hosts: int, spec: ZmqControllerSpec) -> State:
     backbone = ZmqBackbone(spec.url, expected_workers=hosts)
     executor = BackboneExecutor(backbone)
     exe_rec = cascade.executors.simulator.placeholder_execution_record(spec.job)
-    schedule = naive_bfs_layers(spec.job, exe_rec, set()).get_or_raise()
+    preschedule = precompute(spec.job)
     start_fine = time.perf_counter_ns()
-    end_state = run(spec.job, executor, schedule, spec.outputs)
+    end_state = run(spec.job, executor, preschedule, spec.outputs)
     end_fine = time.perf_counter_ns()
     trace(Microtrace.total_incluster, end_fine - start_fine)
     print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")

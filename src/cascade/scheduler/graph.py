@@ -7,6 +7,7 @@ from collections import defaultdict
 import logging
 from itertools import chain
 from cascade.low.core import TaskId, DatasetId, JobInstance
+from cascade.low.tracing import Microtrace, timer
 from cascade.low.views import dependants, param_source
 from typing import Iterator
 from cascade.scheduler.core import Task2TaskDistance, TaskValue, ComponentCore, Preschedule
@@ -49,6 +50,7 @@ def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: di
 
 def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], edge_o: dict[TaskId, set[TaskId]]) -> ComponentCore:
     nodes, sources = plain_component
+    logger.debug(f"enrich component start; {len(nodes)} nodes, of that {len(sources)} sources")
 
     sinks = [v for v in nodes if not edge_o[v]]
     remaining = {v: len(edge_o[v]) for v in nodes if edge_o[v]}
@@ -127,8 +129,8 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     }
 
     components = [
-        enrich(plain_component, edge_i_proj, edge_o_proj)
-        for plain_component in decompose(
+        timer(enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj)
+        for plain_component in timer(decompose, Microtrace.presched_decompose)(
             list(job_instance.tasks.keys()),
             edge_i_proj,
             edge_o_proj,

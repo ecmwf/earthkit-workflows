@@ -26,6 +26,7 @@ class BackboneLocalExecutor():
         callback = self.backbone.send_event_callback()
         for dataset in payload.datasets:
             try:
+                # if payload.this_host == payload.other_worker.host:
                 mark({"dataset": dataset.task, "action": TransmitLifecycle.started, "source": payload.this_host, "target": repr(payload.other_worker), "mode": "remote"})
                 data = self.executor.fetch_as_value(dataset)
                 mark({"dataset": dataset.task, "action": TransmitLifecycle.loaded, "source": payload.this_host, "target": repr(payload.other_worker), "mode": "remote"})

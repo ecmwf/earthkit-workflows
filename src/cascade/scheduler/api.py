@@ -112,7 +112,11 @@ def assign(state: State) -> Iterator[Assignment]:
 
 def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, children: set[TaskId]) -> State:
     state.host2ds[worker.host][dataset] = DatasetStatus.preparing
-    state.ds2host[dataset][worker.host] = DatasetStatus.preparing
+    if state.ds2host[dataset].get(worker.host, DatasetStatus.missing) != DatasetStatus.available:
+        # NOTE this may need to change once we switch to persistent workers. Currently, this `if` is necessary
+        # because we issue transmit command when host *has* DS but worker does *not*. This ends up a no-op,
+        # but we totally dont want the host state to reset -- because it wouldnt recover from it
+        state.ds2host[dataset][worker.host] = DatasetStatus.preparing
     state.worker2ds[worker][dataset] = DatasetStatus.preparing
     state.ds2worker[dataset][worker] = DatasetStatus.preparing
     # TODO check that there is no invalid transition? Eg, if it already was preparing or available

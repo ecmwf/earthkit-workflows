@@ -47,6 +47,8 @@ class ControllerPhases(str, Enum):
     shutdown = "ctrl_shutdown" # final phase so that we can calculate the duration of last wait
 
 class Microtrace(str, Enum):
+    presched_decompose = "presched_decompose"
+    presched_enrich = "presched_enrich"
     ctrl_init = "ctrl_init"
     ctrl_plan = "ctrl_plan"
     ctrl_act = "ctrl_act"

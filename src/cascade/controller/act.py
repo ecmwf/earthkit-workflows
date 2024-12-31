@@ -68,6 +68,7 @@ def flush_queues(executor: Executor, state: State) -> State:
                 workers=state.host2workers[host],
                 at=host,
             )
+            logger.debug(f"identified purge action {action_purge}")
             executor.purge(action_purge)
             state.host2ds[host].pop(ds)
             for worker in state.host2workers[host]:

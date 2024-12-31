@@ -4,12 +4,15 @@ for all other purposes this should be treated private
 """
 
 from collections import defaultdict
+import logging
 from time import perf_counter_ns
 from typing import Iterator
 
 from cascade.low.core import WorkerId, DatasetId, TaskId, HostId
 from cascade.low.tracing import trace, Microtrace
 from cascade.scheduler.core import State, Assignment, DatasetStatus, Worker2TaskDistance, ComponentId, Task2TaskDistance
+
+logger = logging.getLogger(__name__)
 
 def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment:
     eligible_worker = {DatasetStatus.preparing, DatasetStatus.available}
@@ -24,7 +27,7 @@ def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment
                 if any(candidate := host for host, status in state.ds2host[dataset].items() if status in eligible_host):
                     prep.append((dataset, candidate))
                 else:
-                    raise ValueError(f"{dataset =} not found in any host, whoa whoa!")
+                    raise ValueError(f"{dataset=} not found in any host, whoa whoa!")
                 
     return Assignment(
         worker=worker,
