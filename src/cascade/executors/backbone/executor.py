@@ -6,6 +6,7 @@ import logging
 from typing import Iterable, Any, Callable, cast
 
 from cascade.low.core import Environment
+from cascade.low.tracing import mark, TransmitLifecycle
 from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId, TransmitPayload
 from cascade.executors.backbone.serde import DatasetFetch
 from cascade.executors.backbone.interface import Backbone
@@ -29,6 +30,12 @@ class BackboneExecutor():
                 if fr == to.host:
                     # NOTE this will need to change once we have persistent workers, ie, no default local broadcast
                     logger.warning(f"skipping unnecessary local transfer")
+                    for dataset_id in action.ds:
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.started, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.loaded, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.received, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.unloaded, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.completed, "target": repr(to), "mode": "redundant"})
                     continue
                 other_url = self.backbone.url_of(to.host)
                 payload = TransmitPayload(other_url=other_url, other_worker=to, this_host=fr, datasets=action.ds)
