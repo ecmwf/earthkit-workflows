@@ -44,7 +44,9 @@ class ComponentSchedule:
     # w2t_dist generally holds values for all workers of hosts assigned to this component and for all
     # tasks that are either computable or that are among outputs of currently prepared tasks (as those
     # could become computable without any further planning)
-    worker2task_distance: Worker2TaskDistance = field(default_factory=lambda : defaultdict(dict))
+    worker2task_distance: Worker2TaskDistance
+    worker2task_values: set[TaskId] # eligible values -- a cached value. Used when migrating new workers to the component, inserted whenever a parent of this task gets `preparing`, removed when this task is made computable
+
 
 class DatasetStatus(int, Enum):
     missing = -1 # virtual default status, never stored

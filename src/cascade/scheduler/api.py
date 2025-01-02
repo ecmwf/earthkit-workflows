@@ -29,6 +29,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
             weight=precomponent.weight(),
             computable={task: 0 for task in precomponent.sources},
             worker2task_distance={},
+            worker2task_values=set(precomponent.sources),
             is_computable_tracker={
                 task: {inp for inp in preschedule.edge_i[task]}
                 for task in precomponent.nodes
@@ -126,10 +127,6 @@ def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, childr
     for task in children:
         component_id = state.ts2component[task]
         state = update_worker2task_distance(component_id, task, worker, state)
-        component = state.components[component_id]
-        maybe_new_opt = component.worker2task_distance[worker][task]
-        if (value := component.computable.get(task, None)) is not None and value > maybe_new_opt:
-            component.computable[task] = maybe_new_opt
     return state
 
 def plan(state: State, assignments: list[Assignment]) -> State:

@@ -57,7 +57,7 @@ def flush_queues(executor: Executor, state: State) -> State:
         if hasattr(executor, "backbone"):
             executor.lazyfetch_value(worker, dataset) # type: ignore
         else:
-            state.outputs[dataset] = executor.fetch_as_value(worker, dataset)
+            state.outputs[dataset] = executor.fetch_as_value(dataset)
             state = consider_purge(state, dataset)
 
     for ds in state.purging_queue:

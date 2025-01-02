@@ -54,6 +54,7 @@ def consider_computable(state: State, dataset: DatasetId, workerId: WorkerId) ->
                     if (new_opt := distances[child_task]) < value:
                         value = new_opt
                 component.computable[child_task] = value
+                logger.debug(f"{child_task} just became computable!")
                 state.computable += 1
                 for worker in component.worker2task_distance.keys():
                     # NOTE this is a task newly made computable, so we need to calc
