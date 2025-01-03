@@ -8,10 +8,10 @@ import httpx
 from cascade.executors.multihost.event_queue import Writer
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Condition
-from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId
+from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event
 from cascade.executors.multihost.worker_server import TransmitPayload
 from typing import Any
-from cascade.low.core import Environment
+from cascade.low.core import Environment, WorkerId, HostId
 from cascade.low.func import pyd_replace
 import logging
 
@@ -94,10 +94,10 @@ class Client():
         if rv.status_code != 200:
             raise ValueError(rv)
 
-    def transmit_remote(self, frHostId: str, frWorkerId: WorkerId, toHostId: str, toWorkerId: WorkerId, ds: list[DatasetId]) -> None:
-        other_url = str(self.clients[toHostId].base_url)
-        payload = TransmitPayload(other_url=other_url, other_worker=toWorkerId, this_worker=frWorkerId, datasets=ds, tracing_ctx_host=toHostId)
-        rv = self.clients[frHostId].post('/transmit_remote', json=payload.model_dump())
+    def transmit_remote(self, frHost: HostId, toWorker: WorkerId, ds: list[DatasetId]) -> None:
+        other_url = str(self.clients[toWorker.host].base_url)
+        payload = TransmitPayload(other_url=other_url, other_worker=toWorker, this_host=frHost, datasets=ds)
+        rv = self.clients[frHost].post('/transmit_remote', json=payload.model_dump())
         if rv.status_code != 200:
             raise ValueError(rv)
 
@@ -112,8 +112,8 @@ class Client():
     def fetch_as_value(self, host: str, worker: WorkerId, dataset_id: DatasetId) -> Any:
         return self.clients[host].get(f'/fetch_as_url/{worker}/{dataset_id.task}/{dataset_id.output}').content
 
-    def store_value(self, host: str, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
-        rv = self.clients[host].put(f'/store_value/{worker}/{dataset_id.task}/{dataset_id.output}', content=data)
+    def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
+        rv = self.clients[worker.host].put(f'/store_value/{worker}/{dataset_id.task}/{dataset_id.output}', content=data)
         if rv.status_code != 200:
             raise ValueError(rv)
 

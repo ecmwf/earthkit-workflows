@@ -7,7 +7,7 @@ import os
 import signal
 from functools import reduce
 from threading import Thread
-from cascade.low.core import Environment, Worker
+from cascade.low.core import Environment, Worker, WorkerId
 from cascade.executors.backbone.zmq import ZmqBackbone
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,8 @@ controller_url = f"tcp://localhost:{port_start}"
 def worker_entrypoint(idx: int, results: dict) -> None:
     self_url = f"tcp://localhost:{port_start+idx}"
     environment = Environment(workers={
-        f"h{idx}:w0": Worker(cpu=1, gpu=0, memory_mb=1024),
-        f"h{idx}:w1": Worker(cpu=1, gpu=0, memory_mb=1024),
+        WorkerId(f"h{idx}", "w0"): Worker(cpu=1, gpu=0, memory_mb=1024),
+        WorkerId(f"h{idx}", "w1"): Worker(cpu=1, gpu=0, memory_mb=1024),
     })
     backbone = ZmqBackbone(self_url, controller_url=controller_url, environment=environment, host_id=f"h{idx}")
     results[idx] = environment
@@ -45,8 +45,6 @@ def test_zmq_build():
 
         workers = reduce(lambda acc, e: acc.union(e.workers.keys()), [results[1], results[2]], set())
         assert set(results[0].workers.keys()) == workers
-        colocations = {frozenset(cluster) for cluster in results[0].colocations}
-        assert colocations == {frozenset(["h1:w0", "h1:w1"]), frozenset(["h2:w0", "h2:w1"])}
     except AssertionError:
         raise
     except Exception:

@@ -2,11 +2,16 @@
 Adapter between the controller and backbone
 """
 
+import logging
 from typing import Iterable, Any, Callable, cast
+
 from cascade.low.core import Environment
+from cascade.low.tracing import mark, TransmitLifecycle
 from cascade.controller.core import ActionSubmit, ActionDatasetTransmit, ActionDatasetPurge, DatasetId, Event, WorkerId, TransmitPayload
 from cascade.executors.backbone.serde import DatasetFetch
 from cascade.executors.backbone.interface import Backbone
+
+logger = logging.getLogger(__name__)
 
 class BackboneExecutor():
     def __init__(self, backbone: Backbone) -> None:
@@ -16,31 +21,36 @@ class BackboneExecutor():
         return self.backbone.get_environment()
 
     def submit(self, action: ActionSubmit) -> None:
-        host_id = action.at.split(':', 1)[0]
-        self.backbone.send_message(host_id, action)
+        self.backbone.send_message(action.at.host, action)
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
         # TODO optimize to send less payloads
         for fr in action.fr:
             for to in action.to:
-                other_url = self.backbone.url_of(to.split(':', 1)[0])
-                payload = TransmitPayload(other_url=other_url, other_worker=to, this_worker=fr, datasets=action.ds, tracing_ctx_host=fr.split(':', 1)[0])
+                if fr == to.host:
+                    # NOTE this will need to change once we have persistent workers, ie, no default local broadcast
+                    logger.warning(f"skipping unnecessary local transfer")
+                    for dataset_id in action.ds:
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.started, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.loaded, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.received, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.unloaded, "target": repr(to), "mode": "redundant"})
+                        mark({"dataset": dataset_id.task, "action": TransmitLifecycle.completed, "target": repr(to), "mode": "redundant"})
+                    continue
+                other_url = self.backbone.url_of(to.host)
+                payload = TransmitPayload(other_url=other_url, other_worker=to, this_host=fr, datasets=action.ds)
                 self.backbone.send_message(fr.split(':', 1)[0], payload)
 
     def purge(self, action: ActionDatasetPurge) -> None:
-        for at in action.at:
-            host_id = at.split(':', 1)[0]
-            # TODO groupby host instead
-            self.backbone.send_message(host_id, action.model_copy(update={'at': [at]}))
+        self.backbone.send_message(action.at, action)
 
     def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         raise NotImplementedError
 
     def lazyfetch_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
-        host_id = worker.split(':', 1)[0]
-        self.backbone.send_message(host_id, DatasetFetch(worker=worker, dataset=dataset_id))
+        self.backbone.send_message(worker.host, DatasetFetch(worker=worker, dataset=dataset_id))
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         raise NotImplementedError
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:

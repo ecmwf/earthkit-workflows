@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from cascade.controller.core import Action, ActionDatasetPurge, ActionDatasetTransmit, ActionSubmit, TransmitPayload, Event
-from cascade.low.core import Environment, WorkerId, DatasetId
+from cascade.low.core import Environment, WorkerId, DatasetId, Worker
 from typing import Type
 from pydantic import BaseModel
 import orjson
@@ -8,7 +8,7 @@ import orjson
 class RegisterRequest(BaseModel):
     url: str
     host_id: str
-    environment: Environment
+    environment: list[tuple[WorkerId, Worker]]
 
 class RegisterResponse(BaseModel):
     pass
@@ -61,7 +61,7 @@ def deserialize(b: bytes) -> Message:
     if clazz == DataTransmitObject:
         sep = b[1:].index(b';')
         header = orjson.loads(b[1:sep+1])
-        return DataTransmitObject(worker_id=header['w'], dataset_id=DatasetId(**header['d']), data=b[sep+2:])
+        return DataTransmitObject(worker_id=WorkerId(**header['w']), dataset_id=DatasetId(**header['d']), data=b[sep+2:])
     else:
         as_json = orjson.loads(b[1:])
         return clazz(**as_json)

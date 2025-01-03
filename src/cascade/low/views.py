@@ -6,13 +6,11 @@ from collections import defaultdict
 
 from cascade.low.core import Task2TaskEdge, DatasetId, TaskId, JobInstance
 
-# TODO make these a cached property of JobInstance?
-
 def param_source(
     edges: list[Task2TaskEdge],
-) -> dict[str, dict[int | str, DatasetId]]:
+) -> dict[TaskId, dict[int | str, DatasetId]]:
     """Returns map[sink_task][sink_input] = (source_task, source_output)"""
-    rv: dict[str, dict[int | str, DatasetId]] = defaultdict(lambda: defaultdict(lambda: {}))  # type: ignore
+    rv: dict[TaskId, dict[int | str, DatasetId]] = defaultdict(lambda: defaultdict(lambda: {}))  # type: ignore
     for e in edges:
         sink_input: int | str
         if e.sink_input_kw is not None:

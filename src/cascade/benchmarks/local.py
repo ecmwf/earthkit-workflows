@@ -15,7 +15,7 @@ from cascade.executors.dask_delayed import job2delayed
 from cascade.executors.dask_futures import DaskFuturisticExecutor
 from cascade.controller.impl import run
 import cascade.scheduler
-from cascade.scheduler.impl import naive_bfs_layers
+from cascade.scheduler.graph import precompute
 import cascade.low.core
 from cascade.low.core import DatasetId
 import cascade.executors.simulator
@@ -35,7 +35,7 @@ from cascade.executors.multihost.worker_server import build_app
 from cascade.executors.backbone.zmq import ZmqBackbone
 from cascade.executors.backbone.local import BackboneLocalExecutor
 from cascade.executors.backbone.executor import BackboneExecutor
-from cascade.controller.tracing import trace, Microtrace
+from cascade.low.tracing import trace, Microtrace
 from cascade.controller.executor import Executor
 from typing import Any
 
@@ -96,9 +96,9 @@ def launch_zmq_ctrl(hosts: int, port: int, job: cascade.low.core.JobInstance) ->
     backbone = ZmqBackbone(controller_url, expected_workers=hosts)
     executor = BackboneExecutor(backbone)
     exe_rec = cascade.executors.simulator.placeholder_execution_record(job)
-    schedule = naive_bfs_layers(job, exe_rec, set()).get_or_raise()
+    preschedule = precompute(job)
     start_fine = time.perf_counter_ns()
-    run(job, executor, schedule)
+    run(job, executor, preschedule)
     end_fine = time.perf_counter_ns()
     print(f"in-cluster time: {(end_fine - start_fine) / 1e9: .3f}")
 
@@ -106,13 +106,12 @@ def maybe_get(executor: Executor, outputId: DatasetId|None) -> Any|None:
     if outputId is None:
         return None
     else:
-        some_worker = list(executor.get_environment().workers.keys())[0]
-        return executor.fetch_as_value(some_worker, outputId)
+        return executor.fetch_as_value(outputId)
 
 def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options, outputId: DatasetId|None = None) -> Any|None:
     rv: Any|None = None
     exe_rec = cascade.executors.simulator.placeholder_execution_record(job)
-    schedule = naive_bfs_layers(job, exe_rec, set()).get_or_raise()
+    preschedule = precompute(job)
     shm: Process|None = None
     start_raw = time.perf_counter_ns()
     if isinstance(opts, api.DaskDelayed):
@@ -129,7 +128,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options, outputId: D
         shm_client.ensure()
         try:
             start_fine = time.perf_counter_ns()
-            run(job, fiab_executor, schedule)
+            run(job, fiab_executor, preschedule)
             end_fine = time.perf_counter_ns()
             logging.info("controller in fiab done")
             rv = maybe_get(fiab_executor, outputId)
@@ -151,7 +150,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options, outputId: D
         with LocalCluster(n_workers=opts.workers, processes=True, dashboard_address=":0") as clu:
             dask_executor = DaskFuturisticExecutor(clu, job, env)
             start_fine = time.perf_counter_ns()
-            run(job, dask_executor, schedule)
+            run(job, dask_executor, preschedule)
             end_fine = time.perf_counter_ns()
             rv = maybe_get(dask_executor, outputId)
     elif isinstance(opts, api.MultiHost):
@@ -166,7 +165,7 @@ def run_job_on(job: cascade.low.core.JobInstance, opts: api.Options, outputId: D
                 wait_for(client, u)
             router_executor = RouterExecutor(urls)
             start_fine = time.perf_counter_ns()
-            run(job, router_executor, schedule)
+            run(job, router_executor, preschedule)
             end_fine = time.perf_counter_ns()
             rv = maybe_get(router_executor, outputId)
         finally:

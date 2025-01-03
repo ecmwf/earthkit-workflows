@@ -70,8 +70,7 @@ class SimpleEventQueue():
 class InstantExecutor():
     def __init__(self, workers: int, job: JobInstance, host_id: str = "hInstant") -> None:
         self.env = Environment(
-            workers={f"{host_id}:w{i}": Worker(cpu=1, gpu=0, memory_mb=sys.maxsize) for i in range(workers)},
-            colocations=[[f"{host_id}:w{i}" for i in range(workers)]],
+            workers={WorkerId(host_id, f"w{i}"): Worker(cpu=1, gpu=0, memory_mb=sys.maxsize) for i in range(workers)},
         )
         self.job = job
         self.eq = SimpleEventQueue()
@@ -91,7 +90,7 @@ class InstantExecutor():
     def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         return ""
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         return b""
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
