@@ -80,7 +80,7 @@ class State:
     # schedule -- updated by scheduler.api.{assign, plan}, except `computable` and `components.computable` which controller.notify updates
     components: list[ComponentSchedule]
     ts2component: dict[TaskId, ComponentId]
-    host2component: dict[HostId, ComponentId]
+    host2component: dict[HostId, ComponentId|None]
     host2workers: dict[HostId, list[WorkerId]]
     computable: int
     worker2task_overhead: Worker2TaskDistance

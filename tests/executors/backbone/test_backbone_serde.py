@@ -47,7 +47,7 @@ def test_serde():
     there_and_back_again(RegisterResponse())
     there_and_back_again(Shutdown())
     there_and_back_again(DataTransmitObject(
-        worker_id="h0:w1",
+        worker_id=WorkerId("h0", "w1"),
         dataset_id=DatasetId("t1", "o1"),
         data=b";;123abc;;@@",
     ))

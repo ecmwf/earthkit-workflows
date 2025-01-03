@@ -75,10 +75,10 @@ def assign(state: State) -> Iterator[Assignment]:
     should be deferred to `plan`"""
 
     # step I: assign within existing components
-    component2workers = defaultdict(list)
+    component2workers: dict[ComponentId, list[WorkerId]] = defaultdict(list)
     for worker in state.idle_workers:
         if (component := state.host2component[worker.host]) is not None:
-            component2workers[state.host2component[worker.host]].append(worker)
+            component2workers[component].append(worker)
 
     for component_id, local_workers in component2workers.items():
         if local_workers:
@@ -99,7 +99,7 @@ def assign(state: State) -> Iterator[Assignment]:
     migrants = defaultdict(list)
     for worker in state.idle_workers:
         # TODO we dont currently allow partial assignments, this is subopt!
-        if state.host2component[worker.host] is None or state.components[state.host2component[worker.host]].weight == 0:
+        if (component := state.host2component[worker.host]) is None or (state.components[component].weight == 0):
             migrants[worker.host].append(worker)
         # TODO we ultimately want to be able to have weight-and-capacity-aware m-n host2component
         # assignments, not just round robin of the whole host2component

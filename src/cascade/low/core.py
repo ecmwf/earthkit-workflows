@@ -105,7 +105,7 @@ class WorkerId:
     def worker_num(self) -> int:
         """Used eg for gpu allocation"""
         # TODO this should actually be precalculated at *Environment* construction, to modulo by gpu count etc
-        return re.match("[^0-9]*([0-9]*)", self.worker)[1]
+        return int(cast(re.Match[str], re.match("[^0-9]*([0-9]*)", self.worker))[1])
 
 # Execution
 class Worker(BaseModel):
