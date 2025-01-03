@@ -27,7 +27,6 @@ from cascade.low.core import JobInstance
 import logging
 from cascade.graph import deduplicate_nodes
 import cascade.low.into
-from cascade.scheduler.impl import naive_bfs_layers, naive_dfs_layers
 from cascade.executors.simulator import placeholder_execution_record
 import logging
 

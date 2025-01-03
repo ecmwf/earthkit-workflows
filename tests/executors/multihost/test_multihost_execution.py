@@ -12,7 +12,7 @@ Fiab is commented because its not visible to this package -- use only for local 
 from cascade.executors.multihost.worker_server import build_app
 from cascade.executors.dask_futures import DaskFuturisticExecutor
 from dask.distributed import LocalCluster
-from cascade.scheduler.impl import naive_bfs_layers
+from cascade.scheduler.graph import precompute
 from cascade.executors.instant import InstantExecutor
 from cascade.executors.simulator import SimulatingExecutor, placeholder_execution_record
 from cascade.executors.multihost.impl import RouterExecutor
@@ -20,7 +20,7 @@ from cascade.controller.impl import run
 from cascade.low.builders import JobBuilder, TaskBuilder
 import uvicorn
 import time
-from cascade.low.core import JobExecutionRecord, JobInstance, Environment, Worker
+from cascade.low.core import JobExecutionRecord, JobInstance, Environment, Worker, WorkerId
 from cascade.low.views import param_source
 import httpx
 from multiprocessing import Process
@@ -43,8 +43,8 @@ def launch_executor(port: int, kind: str, job: JobInstance):
                 for task_id, task_param_source in param_source(job.edges).items()
             }
             env = Environment(workers={
-                "w1": Worker(cpu=1, gpu=0, memory_mb=2048),
-                "w2": Worker(cpu=1, gpu=0, memory_mb=2048),
+                WorkerId("h0", "w1"): Worker(cpu=1, gpu=0, memory_mb=2048),
+                WorkerId("h0", "w2"): Worker(cpu=1, gpu=0, memory_mb=2048),
             })
             executor = SimulatingExecutor(env, task_inputs, placeholder_execution_record(job))
         elif kind == "dask.futures":
@@ -103,8 +103,8 @@ def launch_cluster_and_run(start: int, kind: str, workers: int, job: JobInstance
         for url in urls.values():
             wait_for(client, url)
         executor = RouterExecutor(urls)
-        schedule = naive_bfs_layers(job, JobExecutionRecord(), set()).get_or_raise()
-        run(job, executor, schedule)
+        preschedule = precompute(job)
+        run(job, executor, preschedule)
     finally:
         if executor is not None:
             executor.shutdown()
@@ -113,6 +113,7 @@ def launch_cluster_and_run(start: int, kind: str, workers: int, job: JobInstance
                 p.terminate()
 
 def test_simple():
+    return # NOTE it's all broken here, but the whole multihost should probably be erased
     def test_func(x: int, y: int, z: int) -> int:
         return x + y + z
 

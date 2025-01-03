@@ -3,12 +3,15 @@ Core graph data structures -- prescribes most of the API
 """
 
 from base64 import b64decode, b64encode
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
+from enum import Enum
+import re
 from typing import Any, Callable, Optional, cast
 
 import cloudpickle
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from typing_extensions import Self
 
 # NOTE it would be tempting to dict[str|int, ...] at places where we deal with kwargs/args, instead of
 # double field dict[str] and dict[int]. However, that won't survive serde -- you end up with ints being
@@ -84,8 +87,25 @@ class JobInstance(BaseModel):
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}
 
-# TODO dataclass with host,worker ids
-WorkerId = str
+HostId = str
+
+@dataclass(frozen=True)
+class WorkerId:
+    host: HostId
+    worker: str
+
+    def __repr__(self) -> str:
+        return f"{self.host}.{self.worker}"
+
+    @classmethod
+    def from_repr(cls, value: str) -> Self:
+        host, worker = value.split(".", 1)
+        return cls(host=host, worker=worker)
+
+    def worker_num(self) -> int:
+        """Used eg for gpu allocation"""
+        # TODO this should actually be precalculated at *Environment* construction, to modulo by gpu count etc
+        return int(cast(re.Match[str], re.match("[^0-9]*([0-9]*)", self.worker))[1])
 
 # Execution
 class Worker(BaseModel):
@@ -96,10 +116,6 @@ class Worker(BaseModel):
 
 class Environment(BaseModel):
     workers: dict[WorkerId, Worker]
-    colocations: list[list[WorkerId]] = Field(
-        default_factory=list,
-        description="the first appx of comm speed -- colocation assumes instant implicit broadcast",
-    )
 
 class TaskExecutionRecord(BaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds

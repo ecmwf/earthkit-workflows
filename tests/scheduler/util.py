@@ -13,10 +13,11 @@ from dataclasses import dataclass, field
 
 from cascade.graph import Node
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobExecutionRecord, TaskExecutionRecord, JobInstance, DatasetId
+from cascade.low.core import JobExecutionRecord, TaskExecutionRecord, JobInstance, DatasetId, Environment, WorkerId, Worker
 
 # NOTE ideally we replace it with representative real world usecases
 
+## *** graph builders ***
 
 def mapMonad(b: bytes) -> bytes:
     return b
@@ -102,7 +103,16 @@ def add_sink(
         cpuseconds=runtime, memory_mb=runmem
     )
 
+def get_job0() -> tuple[JobInstance, JobExecutionRecord]:
+    """One source, one pproc, one sink"""
+    builder = BuilderGroup()
+    add_large_source(builder, 10, 6, 4)
+    add_postproc(builder, 0, 1, 1, 1, 1)
+    add_sink(builder, 1, 1, 10, 10, 1)
+    return builder.job.build().get_or_raise(), builder.record
+
 def get_job1() -> tuple[JobInstance, JobExecutionRecord]:
+    """One large source branching out into two sets of sinks"""
     builder = BuilderGroup()
     # data source: 10 minutes consuming 6G mem and producing 4G output
     add_large_source(builder, 10, 6, 4)
@@ -122,3 +132,13 @@ def get_job1() -> tuple[JobInstance, JobExecutionRecord]:
     # 16G output == prev layer has 8 nodes with 2G output each
     add_sink(builder, 4, 1, 1, 1, 16)
     return builder.job.build().get_or_raise(), builder.record
+
+## *** environment builders ***
+def get_env(hosts: int, workers_per_host: int) -> Environment:
+    return Environment(
+        workers={
+            WorkerId(f"h{h}", f"w{w}"): Worker(cpu=1, gpu=0, memory_mb=1000)
+            for h in range(hosts)
+            for w in range(workers_per_host)
+        }
+    )

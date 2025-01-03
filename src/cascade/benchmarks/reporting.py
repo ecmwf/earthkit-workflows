@@ -5,7 +5,7 @@ Utilities for log parsing and performance reporting
 import math
 from typing import Iterable
 from dataclasses import dataclass
-from cascade.controller.tracing import tracer_logid, marker_logid, Microtrace, dataBegin
+from cascade.low.tracing import tracer_logid, marker_logid, Microtrace, dataBegin
 import pandas as pd
 
 @dataclass

@@ -29,7 +29,7 @@ class Executor(Protocol):
         not need to be ready."""
         raise NotImplementedError
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         """A particular result as a value. If not ready, blocks. Fetching itself
         is also blocking."""
         raise NotImplementedError

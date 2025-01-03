@@ -117,7 +117,8 @@ class SimulatingExecutor:
         self._advance()
 
     def transmit(self, action: ActionDatasetTransmit) -> None:
-        available = {ds for worker in action.fr for ds in self.workers[worker].datasets}
+        workers = (worker for worker in self.workers if worker.host == action.fr)
+        available = {ds for worker in workers for ds in self.workers[worker].datasets}
         for dataset in action.ds:
             if dataset not in available:
                 raise ValueError(f"{action=} not possible as we only have {available=}")
@@ -126,13 +127,14 @@ class SimulatingExecutor:
         self.eq.transmit_done(action)
 
     def purge(self, action: ActionDatasetPurge) -> None:
-        for worker in action.at:
+        workers = (worker for worker in self.workers if worker.host == action.at)
+        for worker in workers:
             self.workers[worker].datasets -= set(action.ds)
 
     def fetch_as_url(self, worker: WorkerId, dataset_id: DatasetId) -> str:
         return ""
 
-    def fetch_as_value(self, worker: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         return b""
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:

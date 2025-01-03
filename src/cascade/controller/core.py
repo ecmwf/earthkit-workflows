@@ -1,41 +1,19 @@
 """
-Core data structures: State, Event and Action
+Core data structures: Event and Action
 """
 
-from enum import Enum
-from pydantic import BaseModel, Field
+# TODO consider merge with the other protocolar commands in serde / backbone
+
 from collections import defaultdict
-from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId
+from enum import Enum
 
-class DatasetStatus(int, Enum):
-    missing = -1 # virtual default status, never stored
-    preparing = 0 # set by controller
-    available = 1 # set by executor
-    purged = 2 # temporal command status used as local comms between controller.act and controller.state
-
-class TaskStatus(int, Enum):
-    enqueued = 0 # set by controller
-    running = 1 # set by executor
-    succeeded = 2 # set by executor
-    failed = 3 # set by executor
-
-class State:
-    """Captures what is where -- datasets, running tasks, ... Used for decision making and progress tracking"""
-
-    def __init__(self, purging_tracker: dict[DatasetId, set[TaskId]], outputs: set[DatasetId], worker_colocations: dict[WorkerId, set[WorkerId]]):
-        self.worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]] = defaultdict(dict)
-        self.ds2worker: dict[DatasetId, dict[WorkerId, DatasetStatus]] = defaultdict(dict)
-        self.ts2worker: dict[TaskId, dict[WorkerId, TaskStatus]] = defaultdict(dict)
-        self.worker2ts: dict[WorkerId, dict[TaskId, TaskStatus]] = defaultdict(dict)
-        self.remaining: set[TaskId] = set()
-        self.purging_tracker = purging_tracker
-        self.outputs: dict[DatasetId, Any] = {e: None for e in outputs}
-        self.purging_queue: list[DatasetId] = []
-        self.fetching_queue: dict[DatasetId, WorkerId] = {}
-        self.worker_colocations = worker_colocations
+from cascade.low.core import TaskInstance, Task2TaskEdge, TaskId, DatasetId, WorkerId, HostId
+from cascade.scheduler.core import DatasetStatus, TaskStatus, State
+from pydantic import BaseModel, Field
 
 class Event(BaseModel):
     at: WorkerId
+    # NOTE: currently we assume this ds transition happens *both* at worker and at the host. We may need finer grain
     ds_trans: list[tuple[DatasetId, DatasetStatus]] = Field(default_factory=list)
     ts_trans: list[tuple[TaskId, TaskStatus]] = Field(default_factory=list)
     # catch-all for when something irreparable goes wrong at the executor.
@@ -46,11 +24,12 @@ class Event(BaseModel):
 
 class ActionDatasetPurge(BaseModel):
     ds: list[DatasetId]
-    at: list[WorkerId]
+    workers: list[WorkerId]
+    at: HostId
 
 class ActionDatasetTransmit(BaseModel):
     ds: list[DatasetId]
-    fr: list[WorkerId]
+    fr: list[HostId]
     to: list[WorkerId]
 
 class ActionSubmit(BaseModel):
@@ -63,7 +42,6 @@ Action = ActionDatasetPurge|ActionDatasetTransmit|ActionSubmit
 class TransmitPayload(BaseModel):
     # corresponds to ActionDatasetTransmit but used for remote transmits, to one of the sides
     other_url: str
-    other_worker: str
-    this_worker: str
+    other_worker: WorkerId
+    this_host: HostId
     datasets: list[DatasetId]
-    tracing_ctx_host: str

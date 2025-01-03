@@ -177,7 +177,7 @@ class DaskFuturisticExecutor:
         return self.environment
 
     def submit(self, action: ActionSubmit) -> None:
-        fut = self.client.submit(execute_subgraph, build_subgraph(action, self.job, self.param_source), workers=_worker_id_to(action.at))
+        fut = self.client.submit(execute_subgraph, build_subgraph(action, self.job, self.param_source), workers=_worker_id_to(action.at.worker))
         logger.debug(f"assigned {self.cnt} to future for {action=}")
         # NOTE we could have gone with uuid but just monotonic counter is simpler. Don't use fut._uid -- it doesnt seem to change!
         self.fid2action[self.cnt] = action
@@ -199,7 +199,7 @@ class DaskFuturisticExecutor:
     def fetch_as_url(self, host: WorkerId, dataset_id: DatasetId) -> str:
         raise NotImplementedError
 
-    def fetch_as_value(self, host: WorkerId, dataset_id: DatasetId) -> Any:
+    def fetch_as_value(self, dataset_id: DatasetId) -> Any:
         return _get_output(dataset_id).get().result()
 
     def store_value(self, worker: WorkerId, dataset_id: DatasetId, data: bytes) -> None:
