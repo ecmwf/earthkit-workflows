@@ -16,8 +16,12 @@ from cascade.low.core import TaskId, DatasetId, WorkerId, TaskInstance, HostId
 
 VERSION = 1 # for serde compatibility
 
+# TODO use dataclass_transform to get mypy understand that @message/@element produces dataclasses, and that @message produces Messages
+# Then replace the `@dataclass`es below with @message/@element
+# NOTE how would we deal with existing dataclasses like WorkerId?
+
 @runtime_checkable
-class Message(Protocol):
+class _Message(Protocol):
     @property
     def __sdver__(self) -> int:
         raise NotImplementedError
@@ -33,20 +37,17 @@ def message(clazz):
     clazz.__sdver__ = VERSION
     return clazz
 
-# TODO use dataclass_transform to get mypy understand that @message/@element produces dataclasses, and that @message produces Messages
-# Then remove all the `# TODO dct` ignores
-
 ## Msgs
 
 BackboneAddress = str # eg zmq address
 
-@message
+@dataclass
 class TaskSequence:
     worker: WorkerId # worker for running those tasks
     tasks: list[TaskId] # to be executed in the given order
     publish: set[DatasetId] # set of outputs to be published
 
-@message
+@dataclass
 class ExecutionContext:
     """A projection of JobInstance relevant to particular TaskSequence"""
     # NOTE once we have long lived workers, this would be replaced by full JobInstance present at the worker
@@ -55,18 +56,44 @@ class ExecutionContext:
     param_source: dict[TaskId, dict[int|str, tuple[DatasetId, str]]]
     callback: BackboneAddress
 
-@message
+@dataclass
 class TaskFailure:
     worker: WorkerId
     task: TaskId|None
     detail: str
 
-@message
+@dataclass
 class TaskSuccess:
     worker: WorkerId
     ts: TaskId
 
-@message
+@dataclass
 class DatasetPublished:
     host: HostId
     ds: DatasetId
+
+@dataclass
+class DatasetPurge:
+    ds: DatasetId
+
+@dataclass
+class ExecutorFailure:
+    host: HostId
+    detail: str
+
+@dataclass
+class ExecutorExit:
+    host: HostId
+
+@dataclass
+class ExecutorRegistration:
+    host: HostId
+    address: BackboneAddress
+    workers: list[WorkerId]
+    # TODO resource capacity etc... reuse the Environment?
+
+@dataclass
+class ExecutorShutdown:
+    pass
+
+Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown

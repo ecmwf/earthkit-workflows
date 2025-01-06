@@ -5,6 +5,7 @@ This module is responsible for Serialization & Deserialization of messages and o
 from cascade.executor.msg import Message
 from typing import Any
 import cloudpickle
+import pickle
 
 
 # NOTE for start, we simply pickle the msg classes -- this makes it possible
@@ -19,10 +20,10 @@ import cloudpickle
 # custom serde.
 
 def ser_message(m: Message) -> bytes:
-    raise NotImplementedError
+    return pickle.dumps(m)
 
 def des_message(b: bytes) -> Message:
-    raise NotImplementedError
+    return pickle.loads(b)
 
 # NOTE we cloudpickle here as that should be a bit more robust. However, we want
 # to exploit custom serialization to a greater effect in selected cases
