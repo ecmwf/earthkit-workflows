@@ -8,11 +8,13 @@ the tasks themselves.
 # NOTE this is an intermediate step toward long lived runners -- they would need to
 # have their own zmq server as well as run the callables themselves
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, Executor as PythonExecutor
 from multiprocessing import get_context, Process
+from typing import cast
 
-from cascade.low.core import WorkerId
+from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId
 from cascade.low.func import assert_never
+from cascade.low.views import param_source
 from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence
 from cascade.executor.runner import entrypoint
 
@@ -20,7 +22,7 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
     """Assumed to run in a thread pool to not block the main recv loop. Spawns a process with callback
     and exits"""
 
-    param_source_ext: dict[TaskId, dict[int|str, tuple[DatasetId, str]] = {
+    param_source_ext: dict[TaskId, dict[int|str, tuple[DatasetId, str]]] = {
         task: {
             k: (
                 dataset_id, 
@@ -31,10 +33,10 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
         for task in taskSequence.tasks
     }
     executionContext = ExecutionContext(
-        task={task: job_instance.tasks[task] for task in taskSequence.tasks},
+        tasks={task: job.tasks[task] for task in taskSequence.tasks},
         param_source=param_source_ext,
         callback=callback,
-    )
+    ) # type: ignore
 
     ctx = get_context("fork")  # so far works, but switch to forkspawn if not
     p = ctx.Process(
@@ -42,25 +44,26 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
         kwargs={"taskSequence": taskSequence, "executionContext": executionContext},
     )
     p.start()
-    return p
+    return cast(Process, p)
 
 class Executor:
-    def __init__(self, job_instance: JobInstance, controller_address: BackboneAddress, workers: int, host: str)
+    def __init__(self, job_instance: JobInstance, controller_address: BackboneAddress, workers: int, host: str) -> None:
         self.job_instance = job_instance
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
         self.host = host
         self.workers = {f"{host}:w{i}" for i in range(workers)}
         self.datasets: set[DatasetId] = set()
-        self.callback = ! # TODO
+        raise NotImplementedError("fix callback below")
+        self.callback: BackboneAddress = "" # TODO
 
         self.task_queue: dict[WorkerId, None|TaskSequence|Future] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
-        self.proc_spawn_tp = ThreadPoolExecutor(max_workers=1)
+        self.proc_spawn_tp: PythonExecutor = ThreadPoolExecutor(max_workers=1)
 
     def maybe_spawn(self, worker: WorkerId) -> None:
         ts = self.task_queue[worker]
-        if not isinstance(ts, TaskQueue):
+        if not isinstance(ts, TaskSequence):
             return
         if not self.task_prereq[worker] <= self.datasets:
             # TODO this is a possible slowdown, we don't wait until everything is available -- but maybe
@@ -93,7 +96,7 @@ class Executor:
             assert_never(ts)
 
     def enqueue_task(self, ts: TaskSequence) -> None:
-        maybe_cleanup(ts.worker)
+        self.maybe_cleanup(ts.worker)
 
         self.task_queue[ts.worker] = ts
         prereqs = {
@@ -108,6 +111,7 @@ class Executor:
         self.maybe_spawn(ts.worker)
 
     def recv_loop(self) -> None:
+        raise NotImplementedError
         # what needs to be handled:
         # submit from controller -> call enqueue
         # purge from controller -> call shm directly?

@@ -9,6 +9,9 @@ import cascade.shm.api as api
 
 logger = logging.getLogger(__name__)
 
+# TODO eleminate in favour of track=False, once we are on python 3.13+
+is_unregister = True # NOTE exposed for pytest control
+
 
 class AllocatedBuffer:
     def __init__(
@@ -34,8 +37,8 @@ class AllocatedBuffer:
     def close(self) -> None:
         if self.shm is not None:
             self.shm.close()
-            # TODO eleminate in favour of track=False, once we are on python 3.13+
-            multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
+            if is_unregister:
+                multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
             self.shm = None
         if self.close_callback:
             self.close_callback()

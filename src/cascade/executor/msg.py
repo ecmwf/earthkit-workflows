@@ -10,14 +10,14 @@ as externally to eg Controller or Runner
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from cascade.low.core import TaskId, DatasetId
+from cascade.low.core import TaskId, DatasetId, WorkerId, TaskInstance, HostId
 
 ## Meta
 
 VERSION = 1 # for serde compatibility
 
 @runtime_checkable
-class Message(Protocol)
+class Message(Protocol):
     @property
     def __sdver__(self) -> int:
         raise NotImplementedError
@@ -33,9 +33,12 @@ def message(clazz):
     clazz.__sdver__ = VERSION
     return clazz
 
+# TODO use dataclass_transform to get mypy understand that @message/@element produces dataclasses, and that @message produces Messages
+# Then remove all the `# TODO dct` ignores
+
 ## Msgs
 
-BackboneAddress: str # eg zmq address
+BackboneAddress = str # eg zmq address
 
 @message
 class TaskSequence:
@@ -49,7 +52,7 @@ class ExecutionContext:
     # NOTE once we have long lived workers, this would be replaced by full JobInstance present at the worker
     tasks: dict[TaskId, TaskInstance]
     # int: pos argument, str: kw argument. Values are dsid + annotation
-    param_source: dict[TaskId, dict[int|str, tuple[DatasetId, str]]
+    param_source: dict[TaskId, dict[int|str, tuple[DatasetId, str]]]
     callback: BackboneAddress
 
 @message

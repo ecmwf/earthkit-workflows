@@ -1,6 +1,11 @@
 """
-This module is responsible for Serialization & Deserialization of messages
+This module is responsible for Serialization & Deserialization of messages and outputs
 """
+
+from cascade.executor.msg import Message
+from typing import Any
+import cloudpickle
+
 
 # NOTE for start, we simply pickle the msg classes -- this makes it possible
 # to serialize eg `set`s (unlike `msgpack` or json-based serializers) while
@@ -13,10 +18,17 @@ This module is responsible for Serialization & Deserialization of messages
 # costing us both time and memory overhead. This would be a core feature of the
 # custom serde.
 
-from cascade.executor.msg import Message
-
-def ser(m: Message) -> bytes:
+def ser_message(m: Message) -> bytes:
     raise NotImplementedError
 
-def des(b: bytes) -> Message:
+def des_message(b: bytes) -> Message:
     raise NotImplementedError
+
+# NOTE we cloudpickle here as that should be a bit more robust. However, we want
+# to exploit custom serialization to a greater effect in selected cases
+
+def ser_output(v: Any, annotation: str) -> bytes:
+    return cloudpickle.dumps(v)
+
+def des_output(v: bytes, annotation: str) -> Any:
+    return cloudpickle.loads(v)

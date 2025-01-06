@@ -15,23 +15,31 @@ It can execute a single task, or a fixed sequence of tasks to save some serde.
 # - we could be inputs-obtaining in parallel
 # Ideally, all deser would be doable outside Python -- then this whole module could be eg rust & threads 
 
-from typing import Callable
+from typing import Callable, Any, Literal
 import importlib
 import hashlib
 from contextlib import AbstractContextManager
 import os
+import logging
+from time import perf_counter_ns
+import tempfile
+import subprocess
+import sys
 
-from cascade.low.core import TaskDefinition, DatasetId, TaskId
-from cascade.low.func import ensure, assert_never
-from cascade.executor.msg import BackboneAddress, ExecutionContext
+from cascade.low.core import TaskDefinition, DatasetId, TaskId, WorkerId, NO_OUTPUT_PLACEHOLDER
+from cascade.low.func import ensure, assert_never, maybe_head
+from cascade.executor.msg import BackboneAddress, ExecutionContext, DatasetPublished, TaskFailure, TaskSuccess, TaskSequence
 from cascade.executor.comms import callback
 import cascade.shm.client as shm_client
 from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer, trace
+import cascade.executor.serde as serde
+
+logger = logging.getLogger(__name__)
 
 def ds2shmid(ds: DatasetId) -> str:
     # we cant use too long file names for shm, https://trac.macports.org/ticket/64806
     h = hashlib.new("md5", usedforsecurity=False)
-    h.update((self.taskName + self.outputName).encode())
+    h.update((ds.task + ds.output).encode())
     return h.hexdigest()[:24]
 
 class Memory(AbstractContextManager):
@@ -42,10 +50,10 @@ class Memory(AbstractContextManager):
         self.callback = callback
         self.worker = worker
 
-    def handle(self, outputId: DatasetId, outputSchema: str outputValue: Any) -> None:
+    def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any) -> None:
         if outputId == NO_OUTPUT_PLACEHOLDER:
             if outputValue is not None:
-                logger.warning(f"gotten output of type {type(result)} where none was expected, updating annotation")
+                logger.warning(f"gotten output of type {type(outputValue)} where none was expected, updating annotation")
                 outputSchema = "Any"
             else:
                 outputValue = "ok"
@@ -54,16 +62,16 @@ class Memory(AbstractContextManager):
         self.local[outputId] = outputValue
 
         if outputId in self.publish:
-            logger.debug(f"publishing {inputId}")
-            shmid = ds2shmid(inputId)
-            result_ser = timer(serde.to_bytes, Microtrace.wrk_ser)(outputValue, outputSchema)
+            logger.debug(f"publishing {outputId}")
+            shmid = ds2shmid(outputId)
+            result_ser = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
             l = len(result_ser)
             rbuf = shm_client.allocate(shmid, l)
             rbuf.view()[:l] = result_ser
             rbuf.close()
             callback(
                 self.callback,
-                DatasetPublished(host=self.worker.host, ds=outputId),
+                DatasetPublished(ds=outputId, host=self.worker.host), # type: ignore # TODO dct
             )
 
     def provide(self, inputId: DatasetId, annotation: str) -> Any:
@@ -74,7 +82,7 @@ class Memory(AbstractContextManager):
             logger.debug(f"asking for {inputId} via {shmid}")
             buf = shm_client.get(shmid)
             self.bufs[inputId] = buf
-            self.local[inputId] = timer(serde.from_bytes, Microtrace.wrk_deser)(buf.view(), annotation)
+            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation)
 
         return self.local[inputId]
 
@@ -97,7 +105,7 @@ class PackagesEnv(AbstractContextManager):
         if self.td is None:
             logger.debug("creating a new venv")
             self.td = tempfile.TemporaryDirectory()
-            venv_command = ["uv", "venv", td.name]
+            venv_command = ["uv", "venv", self.td.name]
             # NOTE we create a venv instead of just plain directory, because some of the packages create files
             # outside of site-packages. Thus we then install with --prefix, not with --target
             subprocess.run(venv_command, check=True)
@@ -114,8 +122,9 @@ class PackagesEnv(AbstractContextManager):
         sys.path.append(f"{self.td.name}/lib/python3.11/site-packages/")
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
-        if td is not None:
-            td.cleanup()
+        if self.td is not None:
+            self.td.cleanup()
+        return False
 
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
     start = perf_counter_ns()
@@ -141,7 +150,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     kwargs: dict[str, Any] = {}
     kwargs.update(task.static_input_kw)
 
-    for param_pos, (dataset_id, annotation) in param_source[task].items()
+    for param_pos, (dataset_id, annotation) in executionContext.param_source[taskId].items():
         value = memory.provide(dataset_id, annotation)
         if isinstance(param_pos, str):
             kwargs[param_pos] = value
@@ -154,9 +163,9 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     if len(task.definition.output_schema) > 1:
         raise NotImplementedError("multiple outputs not supported yet")
         # NOTE to implement, just put `result=func` & `memory.handle` below into a for-cycle for generator outputs
-    outputId, outputSchema = maybe_head(task.definition.output_schema.items())
+    outputId, outputSchema = maybe_head(task.definition.output_schema.items()) # type: ignore
     if not outputId:
-        raise ValueError(f"no output key for task {task.name}")
+        raise ValueError(f"no output key for task {taskId}")
     mark({"task": taskId, "action": TaskLifecycle.loaded})
     prep_end = perf_counter_ns()
 
@@ -182,23 +191,25 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
 
 def entrypoint(taskSequence: TaskSequence, executionContext: ExecutionContext): 
     taskId: TaskId|None = None
-    with Memory(executionContext.callback, taskSequence.worker, taskSequence.publish) as memory, PackagesEnv as pckg:
-        label("worker", taskSequence.worker)
+    try:
+        with Memory(executionContext.callback, taskSequence.worker, taskSequence.publish) as memory, PackagesEnv() as pckg:
+            label("worker", repr(taskSequence.worker))
 
-        if any(task.definition.needs_gpu for task in executionContext.tasks.values()):
-            gpu_id = str(taskSequence.worker.worker_num())
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_id)
-        # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
+            if any(task.definition.needs_gpu for task in executionContext.tasks.values()):
+                gpu_id = str(taskSequence.worker.worker_num())
+                os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_id)
+            # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
-        for taskId in taskSequence.tasks:
-            pckg.extend(executionContext.tasks[taskId].definition.environment)
-            run(taskId, executionContext, memory)
-            callback(
-                executionContext.callback,
-                TaskSuccess(worker=taskSequence.worker, ts=taskId),
-            )
+            for taskId in taskSequence.tasks:
+                pckg.extend(executionContext.tasks[taskId].definition.environment)
+                run(taskId, executionContext, memory)
+                callback(
+                    executionContext.callback,
+                    TaskSuccess(worker=taskSequence.worker, ts=taskId), # type: ignore # TODO dct
+                )
     except Exception as e:
+        logger.exception("runner failure, about to report")
         callback(
-            executionContext.address,
-            TaskError(worker=taskSequence.worker, taskId=taskId, detail=repr(e)),
+            executionContext.callback,
+            TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)), # type: ignore # TODO dct
         )
