@@ -95,7 +95,7 @@ class State:
     # TODO extend with `at`, for fine graining?
     purging_queue: list[DatasetId]
     outputs: dict[DatasetId, Any] # key add by scheduler.api.init, value add by controller.notify
-    fetching_queue: dict[DatasetId, WorkerId] # add by controller.notify, remove by controller.act
+    fetching_queue: dict[DatasetId, HostId] # add by controller.notify, remove by controller.act
 
 def has_computable(state: State) -> bool:
     return state.computable > 0
