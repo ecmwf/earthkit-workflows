@@ -41,13 +41,13 @@ def message(clazz):
 
 BackboneAddress = str # eg zmq address
 
-@dataclass
+@dataclass(frozen=True)
 class TaskSequence:
     worker: WorkerId # worker for running those tasks
     tasks: list[TaskId] # to be executed in the given order
     publish: set[DatasetId] # set of outputs to be published
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutionContext:
     """A projection of JobInstance relevant to particular TaskSequence"""
     # NOTE once we have long lived workers, this would be replaced by full JobInstance present at the worker
@@ -56,43 +56,43 @@ class ExecutionContext:
     param_source: dict[TaskId, dict[int|str, tuple[DatasetId, str]]]
     callback: BackboneAddress
 
-@dataclass
+@dataclass(frozen=True)
 class TaskFailure:
     worker: WorkerId
     task: TaskId|None
     detail: str
 
-@dataclass
+@dataclass(frozen=True)
 class TaskSuccess:
     worker: WorkerId
     ts: TaskId
 
-@dataclass
+@dataclass(frozen=True)
 class DatasetPublished:
     host: HostId
     ds: DatasetId
 
-@dataclass
+@dataclass(frozen=True)
 class DatasetPurge:
     ds: DatasetId
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutorFailure:
     host: HostId
     detail: str
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutorExit:
     host: HostId
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutorRegistration:
     host: HostId
     address: BackboneAddress
     workers: list[WorkerId]
     # TODO resource capacity etc... reuse the Environment?
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutorShutdown:
     pass
 

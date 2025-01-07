@@ -8,6 +8,7 @@ the tasks themselves.
 # NOTE this is an intermediate step toward long lived runners -- they would need to
 # have their own zmq server as well as run the callables themselves
 
+import atexit
 from concurrent.futures import Future, ThreadPoolExecutor, Executor as PythonExecutor
 from multiprocessing import get_context, Process
 from typing import cast
@@ -21,6 +22,9 @@ from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence
 from cascade.executor.runner import entrypoint, ds2shmid
 from cascade.executor.comms import Listener, callback
 import cascade.shm.client as shm_client
+import cascade.shm.api as shm_api
+from cascade.shm.server import entrypoint as shm_server
+from cascade.executor.config import logging_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +46,7 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
         tasks={task: job.tasks[task] for task in taskSequence.tasks},
         param_source=param_source_ext,
         callback=callback,
-    ) # type: ignore
+    )
 
     ctx = get_context("fork")  # so far works, but switch to forkspawn if not
     p = ctx.Process(
@@ -59,40 +63,69 @@ class Executor:
         self.controller_address = controller_address
         self.host = host
         self.workers = [WorkerId(host, f"w{i}") for i in range(workers)]
-        self.mlistener = Listener(f"tcp://{socket.gethostname()}:{portBase}")
-        self.dlistener = Listener(f"tcp://{socket.gethostname()}:{portBase+1}") # TODO move this to another process, have it listen receive etc
-        # TODO launch shm here?
 
-        self.terminating = False
         self.datasets: set[DatasetId] = set()
         self.task_queue: dict[WorkerId, None|TaskSequence|Future] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
+        self.terminating = False
+        atexit.register(self.terminate)
+        self.mlistener = Listener(f"tcp://{socket.gethostname()}:{portBase}")
+        self.dlistener = Listener(f"tcp://{socket.gethostname()}:{portBase+1}") # TODO move this to another process, have it listen receive etc
+
         self.proc_spawn_tp: PythonExecutor = ThreadPoolExecutor(max_workers=1)
+        # TODO make the shm server params configurable
+        shm_api.publish_client_port(portBase+2)
+        self.shm_process = Process(
+            target=shm_server,
+            args=(portBase+2, None, logging_config, f"sCasc{host}"),
+        )
+        self.shm_process.start()
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
+        # NOTE a bit care here:
+        # 1/ the call itself can cause another terminate invocation, so we prevent that with a guard var
+        # 2/ we can get here during the object construction (due to atexit), so we need to `hasattr`
+        # 3/ we try catch everyhting since we dont want to leave any process dangling etc
+        #    TODO it would be more reliable to use `prctl` + PR_SET_PDEATHSIG in shm, or check the ppid in there
+        logger.debug("terminating")
         if self.terminating:
             return
         self.terminating = True
-        for worker in self.workers:
-            logger.debug(f"cleanup worker {worker}")
+        if hasattr(self, 'proc_spawn_tp') and self.proc_spawn_tp is not None:
+            for worker in self.workers:
+                logger.debug(f"cleanup worker {worker}")
+                try:
+                    self.maybe_cleanup(worker)
+                except Exception as e:
+                    logger.warning(f"gotten {repr(e)} when shutting down {worker}")
             try:
-                self.maybe_cleanup(worker)
+                self.proc_spawn_tp.shutdown() # should be empty already due to maybe_cleanup
             except Exception as e:
-                logger.warning(f"gotten {repr(e)} when shutting down {worker}")
-        self.proc_spawn_tp.shutdown() # should be empty already due to maybe_cleanup
-        # TODO shutdown dprocess, shm
+                logger.warning(f"gotten {repr(e)} when shutting down thread pool")
+        if hasattr(self, 'shm_process') and self.shm_process is not None and self.shm_process.is_alive():
+            try:
+                shm_client.shutdown()
+                self.shm_process.join()
+            except Exception as e:
+                logger.warning(f"gotten {repr(e)} when shutting down shm server")
+        # TODO shutdown dprocess
 
     def to_controller(self, m: Message) -> None:
         callback(self.controller_address, m)
 
     def register(self) -> None:
-        registration = ExecutorRegistration(
-            host=self.host,
-            address=self.mlistener.address,
-            workers=self.workers,
-        )
-        self.to_controller(registration)
+        try:
+            shm_client.ensure()
+            registration = ExecutorRegistration(
+                host=self.host,
+                address=self.mlistener.address,
+                workers=self.workers,
+            )
+            self.to_controller(registration)
+        except Exception as e:
+            logger.exception("failed during register")
+            self.terminate()
 
     def maybe_spawn(self, worker: WorkerId) -> None:
         ts = self.task_queue[worker]

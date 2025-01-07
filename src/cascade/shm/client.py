@@ -119,10 +119,13 @@ def shutdown() -> None:
 
 
 def ensure() -> None:
+    """Loop StatusInquiry until shm server responds with Ok"""
+    logger.debug("entering shm ensure loop")
     comm = api.StatusInquiry()
     while True:
         try:
             _send_command(comm, api.OkResponse)
+            logger.debug("shm server responds ok, leaving ensure loop")
         except ConnectionRefusedError:
             time.sleep(0.1)
             continue

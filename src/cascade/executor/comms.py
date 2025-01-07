@@ -20,8 +20,9 @@ def get_context() -> zmq.Context:
 
 def callback(address: BackboneAddress, msg: Message):
     socket = get_context().socket(zmq.PUSH) 
-    # TODO check we dont need linger -- we assume this to be local comms only
-    # socket.set(zmq.LINGER, 1000)
+    # NOTE we set the linger in case the executor dies before consuming a message sent
+    # by the child -- otherwise the child process would hang indefinitely
+    socket.set(zmq.LINGER, 1000)
     socket.connect(address)
     byt = ser_message(msg)
     socket.send(byt)
@@ -48,4 +49,3 @@ class Listener:
             except zmq.Again:
                 break
         return messages
-
