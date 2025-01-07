@@ -18,9 +18,10 @@ import logging
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
 from cascade.low.views import param_source
-from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished
+from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure
 from cascade.executor.runner import entrypoint, ds2shmid
 from cascade.executor.comms import Listener, callback
+from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
 from cascade.shm.server import entrypoint as shm_server
@@ -48,13 +49,17 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
         callback=callback,
     )
 
-    ctx = get_context("fork")  # so far works, but switch to forkspawn if not
+    # NOTE we are in a threadpool, we cant fork here. Maybe other problems (atexit, zmq ctx/thdrlocal, ...)
+    ctx = get_context("forkserver")
     p = ctx.Process(
         target=entrypoint,
         kwargs={"taskSequence": taskSequence, "executionContext": executionContext},
     )
     p.start()
     return cast(Process, p)
+
+def address_of(port: int) -> BackboneAddress:
+    return f"tcp://{socket.gethostname()}:{port}"
 
 class Executor:
     def __init__(self, job_instance: JobInstance, controller_address: BackboneAddress, workers: int, host: HostId, portBase: int) -> None:
@@ -67,19 +72,28 @@ class Executor:
         self.datasets: set[DatasetId] = set()
         self.task_queue: dict[WorkerId, None|TaskSequence|Future] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
+
         self.terminating = False
         atexit.register(self.terminate)
-        self.mlistener = Listener(f"tcp://{socket.gethostname()}:{portBase}")
-        self.dlistener = Listener(f"tcp://{socket.gethostname()}:{portBase+1}") # TODO move this to another process, have it listen receive etc
-
-        self.proc_spawn_tp: PythonExecutor = ThreadPoolExecutor(max_workers=1)
+        # NOTE following inits are with potential side effects
+        self.mlistener = Listener(address_of(portBase))
         # TODO make the shm server params configurable
-        shm_api.publish_client_port(portBase+2)
-        self.shm_process = Process(
+        shm_port = portBase+2
+        shm_api.publish_client_port(shm_port)
+        ctx = get_context("fork")  # so far works, but switch to forkspawn if not
+        self.shm_process = ctx.Process(
             target=shm_server,
-            args=(portBase+2, None, logging_config, f"sCasc{host}"),
+            args=(shm_port, None, logging_config, f"sCasc{host}"),
         )
         self.shm_process.start()
+        self.daddress = address_of(portBase+1)
+        self.data_server = ctx.Process(
+            target=start_data_server,
+            args=(self.mlistener.address, self.daddress, self.host, shm_port, logging_config)
+        )
+        self.data_server.start()
+        # NOTE we introduce multithreading only after forks
+        self.proc_spawn_tp: PythonExecutor = ThreadPoolExecutor(max_workers=2)
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
@@ -109,7 +123,8 @@ class Executor:
                 self.shm_process.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down shm server")
-        # TODO shutdown dprocess
+        if hasattr(self, 'data_server') and self.data_server is not None and self.data_server.is_alive():
+            self.data_server.kill()
 
     def to_controller(self, m: Message) -> None:
         callback(self.controller_address, m)
@@ -117,9 +132,11 @@ class Executor:
     def register(self) -> None:
         try:
             shm_client.ensure()
+            # TODO some ensure on the data server?
             registration = ExecutorRegistration(
                 host=self.host,
-                address=self.mlistener.address,
+                maddress=self.mlistener.address,
+                daddress=self.daddress,
                 workers=self.workers,
             )
             self.to_controller(registration)
@@ -153,17 +170,19 @@ class Executor:
             # NOTE this timeout should never be breached! If it happens, increase proc_spawn_tp.max_workers
             proc_handle = ts.result(timeout=2 if not self.terminating else None)
             if not proc_handle.pid:
+                mes = f"process on {worker} failed to start"
                 if self.terminating:
-                    logger.warning(f"process on {worker} failed to start")
+                    logger.warning(mes)
                 else:
-                    raise ValueError(f"process on {worker} failed to start")
+                    raise ValueError(mes)
             # NOTE this timeout should never be breached! If it happens, increase it?
             proc_handle.join(timeout=2 if not self.terminating else None)
-            if proc_handle.pid != 0:
+            if proc_handle.exitcode != 0:
+                mes = f"process on {worker} failed to terminate correctly: {proc_handle.pid} -> {proc_handle.exitcode}"
                 if self.terminating:
-                    logger.warning(f"process on {worker} failed to terminate correctly: {proc_handle.pid}")
+                    logger.warning(mes)
                 else:
-                    raise ValueError(f"process on {worker} failed to terminate correctly: {proc_handle.pid}")
+                    raise ValueError(mes)
         elif ts is None:
             pass
         else:
@@ -187,10 +206,11 @@ class Executor:
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
         # TODO regular cleanup?
-        # TODO monitor dlistener?
+        # TODO monitor data_server? Add in term command, exit report, etc?
         while not self.terminating:
             try:
                 for m in self.mlistener.recv_messages():
+                    logger.debug(f"received {type(m)}")
                     # from controller
                     if isinstance(m, TaskSequence):
                         self.enqueue_task(m)
@@ -200,10 +220,6 @@ class Executor:
                         else:
                             self.datasets.remove(m.ds)
                         shm_client.purge(ds2shmid(m.ds))
-                    # -> listener:
-                    # TODO fetch
-                    # TODO transmit
-                    # TODO store
                     elif isinstance(m, ExecutorShutdown):
                         self.terminate()
                     # from entrypoint
@@ -218,7 +234,10 @@ class Executor:
                         for worker in self.workers:
                             self.maybe_spawn(worker)
                         self.to_controller(m)
+                    elif isinstance(m, DatasetTransmitFailure):
+                        self.to_controller(m)
                     else:
+                        # NOTE transmit and store are handled in DataServer (which has its own socket)
                         raise TypeError(m)
             except Exception as e:
                 logger.exception("executor exited, about to report to controller")

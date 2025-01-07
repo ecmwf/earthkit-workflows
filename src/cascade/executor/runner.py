@@ -21,6 +21,7 @@ import hashlib
 from contextlib import AbstractContextManager
 import os
 import logging
+import logging.config
 from time import perf_counter_ns
 import tempfile
 import subprocess
@@ -33,6 +34,7 @@ from cascade.executor.comms import callback
 import cascade.shm.client as shm_client
 from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer, trace
 import cascade.executor.serde as serde
+from cascade.executor.config import logging_config
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +73,7 @@ class Memory(AbstractContextManager):
             rbuf.close()
             callback(
                 self.callback,
-                DatasetPublished(ds=outputId, host=self.worker.host), # type: ignore # TODO dct
+                DatasetPublished(ds=outputId, host=self.worker.host),
             )
 
     def provide(self, inputId: DatasetId, annotation: str) -> Any:
@@ -192,6 +194,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
 def entrypoint(taskSequence: TaskSequence, executionContext: ExecutionContext): 
     taskId: TaskId|None = None
     try:
+        logging.config.dictConfig(logging_config)
         with Memory(executionContext.callback, taskSequence.worker, taskSequence.publish) as memory, PackagesEnv() as pckg:
             label("worker", repr(taskSequence.worker))
 
@@ -205,11 +208,11 @@ def entrypoint(taskSequence: TaskSequence, executionContext: ExecutionContext):
                 run(taskId, executionContext, memory)
                 callback(
                     executionContext.callback,
-                    TaskSuccess(worker=taskSequence.worker, ts=taskId), # type: ignore # TODO dct
+                    TaskSuccess(worker=taskSequence.worker, ts=taskId),
                 )
     except Exception as e:
         logger.exception("runner failure, about to report")
         callback(
             executionContext.callback,
-            TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)), # type: ignore # TODO dct
+            TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)),
         )

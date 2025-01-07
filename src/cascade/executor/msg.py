@@ -77,6 +77,23 @@ class DatasetPurge:
     ds: DatasetId
 
 @dataclass(frozen=True)
+class DatasetTransmitCommand:
+    # NOTE atm we don't need source/target, but they are useful for tracing purposes. And we may need it later
+    source: HostId
+    target: HostId
+    daddress: BackboneAddress
+    ds: DatasetId
+
+@dataclass(frozen=True)
+class DatasetTransmitPayload:
+    ds: DatasetId
+    value: bytes
+
+@dataclass(frozen=True)
+class DatasetTransmitFailure:
+    host: HostId
+
+@dataclass(frozen=True)
 class ExecutorFailure:
     host: HostId
     detail: str
@@ -88,7 +105,8 @@ class ExecutorExit:
 @dataclass(frozen=True)
 class ExecutorRegistration:
     host: HostId
-    address: BackboneAddress
+    maddress: BackboneAddress
+    daddress: BackboneAddress
     workers: list[WorkerId]
     # TODO resource capacity etc... reuse the Environment?
 
@@ -96,4 +114,5 @@ class ExecutorRegistration:
 class ExecutorShutdown:
     pass
 
-Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown
+# this explicit list is a disgrace -- see the _Message protocol above
+Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure

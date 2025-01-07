@@ -17,7 +17,7 @@ import pickle
 # NOTE that as those message are being shipped over zmq, we may want to delay
 # some object concatenation to zmq submits -- otherwise we do memcpy twice,
 # costing us both time and memory overhead. This would be a core feature of the
-# custom serde.
+# custom serde. The message where this matters is DatasetTransmitPayload
 
 def ser_message(m: Message) -> bytes:
     return pickle.dumps(m)

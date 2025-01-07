@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 # TODO eleminate in favour of track=False, once we are on python 3.13+
 is_unregister = True # NOTE exposed for pytest control
 
+class ConflictError(Exception):
+    pass
 
 class AllocatedBuffer:
     def __init__(
@@ -74,6 +76,8 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
                 timeout_i *= coeff
                 timeout_i = min(timeout_i, timeout_sec)
                 continue
+            elif response_comm.error == "conflict":
+                raise ConflictError
             raise ValueError(response_com.error)
         if not isinstance(response_com, resp_class):
             raise TypeError(type(response_com))
