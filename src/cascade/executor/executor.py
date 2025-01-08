@@ -26,6 +26,7 @@ import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
 from cascade.shm.server import entrypoint as shm_server
 from cascade.executor.config import logging_config
+from cascade.low.tracing import mark, label, TaskLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,8 @@ class Executor:
             assert_never(ts)
 
     def enqueue_task(self, ts: TaskSequence) -> None:
+        for task in ts.tasks:
+            mark({"task": task, "worker": ts.worker, "action": TaskLifecycle.enqueued})
         self.maybe_cleanup(ts.worker)
 
         self.task_queue[ts.worker] = ts
