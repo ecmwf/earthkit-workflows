@@ -86,7 +86,7 @@ class Executor:
         ctx = get_context("fork")
         self.shm_process = ctx.Process(
             target=shm_server,
-            args=(shm_port, shm_vol_gb, logging_config, f"sCasc{host}"),
+            args=(shm_port, shm_vol_gb * (1024**3) if shm_vol_gb else None, logging_config, f"sCasc{host}"),
         )
         self.shm_process.start()
         self.daddress = address_of(portBase+1)

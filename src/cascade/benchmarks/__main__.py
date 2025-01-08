@@ -89,6 +89,7 @@ def main_local(job: str, workers_per_host: int, hosts: int = 1) -> None:
 def main_dist(job: str, idx: int, controller_url: str, hosts: int = 3, workers_per_host: int = 10, shm_vol_gb: int = 64) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
     controller, 1+ for worker. Assumed to come from slurm procid."""
+    launch = perf_counter_ns()
 
     jobInstance = get_job(job) 
 
@@ -96,7 +97,10 @@ def main_dist(job: str, idx: int, controller_url: str, hosts: int = 3, workers_p
         logging.config.dictConfig(logging_config)
         b = Bridge(controller_url, hosts)
         preschedule = precompute(jobInstance)
+        start = perf_counter_ns()
         run(jobInstance, b, preschedule)
+        end = perf_counter_ns()
+        print(f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s")
     else:
         launch_executor(jobInstance, controller_url, workers_per_host, 12345, idx, shm_vol_gb)
 
