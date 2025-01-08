@@ -25,7 +25,7 @@ def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
             logger.debug(f"dataset {ds} should be locally available, doing no-op")
             continue
         logger.debug(f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge")
-        mark({"dataset": ds.task, "action": TransmitLifecycle.planned, "source": source_host, "target": repr(assignment.worker), "host": "controller"})
+        mark({"dataset": ds.task, "action": TransmitLifecycle.planned, "source": source_host, "target": assignment.worker.host, "host": "controller"})
         bridge.transmit(ds, source_host, assignment.worker.host)
 
     task_sequence = TaskSequence(

@@ -16,7 +16,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, Executor as PythonExe
 from cascade.executor.runner import ds2shmid
 from cascade.executor.comms import Listener, callback
 from cascade.executor.msg import BackboneAddress, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitFailure, DatasetPublished
-from cascade.low.tracing import mark, TransmitLifecycle
+from cascade.low.tracing import mark, TransmitLifecycle, label
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
 
@@ -27,6 +27,7 @@ class DataServer:
     def __init__(self, maddress: BackboneAddress, daddress: BackboneAddress, host: str, shm_port: int, logging_config: dict):
         logging.config.dictConfig(logging_config)
         self.host = host
+        label("host", self.host)
         self.maddress = maddress
         self.dlistener = Listener(daddress)
         self.terminating = False
@@ -74,7 +75,7 @@ class DataServer:
             if command.target == self.host or command.source != self.host:
                 raise ValueError(f"invalid {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
-            mark({"dataset": command.ds.task, "action": TransmitLifecycle.loaded, "target": command.target, "mode": "remote"})
+            mark({"dataset": command.ds.task, "action": TransmitLifecycle.loaded, "target": command.target, "source": self.host, "mode": "remote"})
             payload = DatasetTransmitPayload(ds=command.ds, value=bytes(buf.view()))
             callback(command.daddress, payload)
             buf.close()
