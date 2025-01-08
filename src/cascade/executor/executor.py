@@ -9,8 +9,8 @@ the tasks themselves.
 # have their own zmq server as well as run the callables themselves
 
 import atexit
-from concurrent.futures import Future, ThreadPoolExecutor, Executor as PythonExecutor
 from multiprocessing import get_context, Process
+from multiprocessing.context import ForkProcess
 from typing import cast
 import socket
 import logging
@@ -29,9 +29,11 @@ from cascade.executor.config import logging_config
 
 logger = logging.getLogger(__name__)
 
+Process=Process|ForkProcess
+
 def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback: BackboneAddress, job: JobInstance, param_source: dict[TaskId, dict[int | str, DatasetId]]) -> Process:
-    """Assumed to run in a thread pool to not block the main recv loop. Spawns a process with callback
-    and exits"""
+    """Spawns a process with callback and exits"""
+    # TODO replace with a dedicated Factory process keeping a pool of zmq-awkable processes (thats a step towards persistent workers anyway)
 
     param_source_ext: dict[TaskId, dict[int|str, tuple[DatasetId, str]]] = {
         task: {
@@ -49,15 +51,15 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
         callback=callback,
     )
 
-    # NOTE we are in a threadpool, we cant fork here. Maybe other problems (atexit, zmq ctx/thdrlocal, ...)
-    # TODO measure whether this is faster over no ThreadPool + fork, and over a dedicated Factory process keeping a pool of zmq-based processes (thats a step towards persistent workers anyway)
-    ctx = get_context("forkserver")
+    # NOTE a bit risky, but forkserver is too slow. Has unhealthy side effects, like preserving imports caused
+    # by JobInstance deser
+    ctx = get_context("fork") 
     p = ctx.Process(
         target=entrypoint,
         kwargs={"taskSequence": taskSequence, "executionContext": executionContext},
     )
     p.start()
-    return cast(Process, p)
+    return p
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{socket.gethostname()}:{port}"
@@ -71,7 +73,7 @@ class Executor:
         self.workers = [WorkerId(host, f"w{i}") for i in range(workers)]
 
         self.datasets: set[DatasetId] = set()
-        self.task_queue: dict[WorkerId, None|TaskSequence|Future] = {e: None for e in self.workers}
+        self.task_queue: dict[WorkerId, None|TaskSequence|Process] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
 
         self.terminating = False
@@ -81,7 +83,7 @@ class Executor:
         # TODO make the shm server params configurable
         shm_port = portBase+2
         shm_api.publish_client_port(shm_port)
-        ctx = get_context("fork")  # so far works, but switch to forkspawn if not
+        ctx = get_context("fork")
         self.shm_process = ctx.Process(
             target=shm_server,
             args=(shm_port, shm_vol_gb, logging_config, f"sCasc{host}"),
@@ -93,8 +95,6 @@ class Executor:
             args=(self.mlistener.address, self.daddress, self.host, shm_port, logging_config)
         )
         self.data_server.start()
-        # NOTE we introduce multithreading only after forks
-        self.proc_spawn_tp: PythonExecutor = ThreadPoolExecutor(max_workers=2)
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
@@ -107,17 +107,12 @@ class Executor:
         if self.terminating:
             return
         self.terminating = True
-        if hasattr(self, 'proc_spawn_tp') and self.proc_spawn_tp is not None:
-            for worker in self.workers:
-                logger.debug(f"cleanup worker {worker}")
-                try:
-                    self.maybe_cleanup(worker)
-                except Exception as e:
-                    logger.warning(f"gotten {repr(e)} when shutting down {worker}")
+        for worker in self.workers:
+            logger.debug(f"cleanup worker {worker}")
             try:
-                self.proc_spawn_tp.shutdown() # should be empty already due to maybe_cleanup
+                self.maybe_cleanup(worker)
             except Exception as e:
-                logger.warning(f"gotten {repr(e)} when shutting down thread pool")
+                logger.warning(f"gotten {repr(e)} when shutting down {worker}")
         if hasattr(self, 'shm_process') and self.shm_process is not None and self.shm_process.is_alive():
             try:
                 shm_client.shutdown()
@@ -154,9 +149,7 @@ class Executor:
             # the first task in the queue could already start
             return
 
-        func = spawn_task_sequence
-        args = (ts, WorkerId(self.host, f"w{worker}"), self.mlistener.address, self.job_instance, self.param_source)
-        self.task_queue[worker] = self.proc_spawn_tp.submit(func, *args)
+        self.task_queue[worker] = spawn_task_sequence(ts, WorkerId(self.host, f"w{worker}"), self.mlistener.address, self.job_instance, self.param_source)
 
     def maybe_cleanup(self, worker: WorkerId) -> None:
         """Housekeeping task that checks that previously spawned task has succesfully finished.
@@ -167,9 +160,8 @@ class Executor:
         if isinstance(ts, TaskSequence):
             if not self.terminating:
                 raise ValueError(f"premature cleanup on {worker}: {ts} not spawned yet")
-        elif isinstance(ts, Future):
-            # NOTE this timeout should never be breached! If it happens, increase proc_spawn_tp.max_workers
-            proc_handle = ts.result(timeout=2 if not self.terminating else None)
+        elif isinstance(ts, Process):
+            proc_handle = ts
             if not proc_handle.pid:
                 mes = f"process on {worker} failed to start"
                 if self.terminating:
