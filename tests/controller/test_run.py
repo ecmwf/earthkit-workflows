@@ -6,7 +6,6 @@ from multiprocessing import Process
 from logging.config import dictConfig
 
 from cascade.controller.impl import run
-from cascade.graph import Node
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import Environment, JobExecutionRecord, TaskExecutionRecord, JobInstance
 from cascade.scheduler.graph import precompute

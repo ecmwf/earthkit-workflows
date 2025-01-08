@@ -129,6 +129,12 @@ class PackagesEnv(AbstractContextManager):
         return False
 
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
+    try:
+        # TODO hack until the cascade backend problem is solved
+       import ppcascade 
+    except ModuleNotFoundError:
+        pass
+
     start = perf_counter_ns()
     task = executionContext.tasks[taskId]
     mark({"task": taskId, "action": TaskLifecycle.started})

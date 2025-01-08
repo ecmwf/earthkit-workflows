@@ -63,7 +63,7 @@ def address_of(port: int) -> BackboneAddress:
     return f"tcp://{socket.gethostname()}:{port}"
 
 class Executor:
-    def __init__(self, job_instance: JobInstance, controller_address: BackboneAddress, workers: int, host: HostId, portBase: int) -> None:
+    def __init__(self, job_instance: JobInstance, controller_address: BackboneAddress, workers: int, host: HostId, portBase: int, shm_vol_gb: int|None = None) -> None:
         self.job_instance = job_instance
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
@@ -84,7 +84,7 @@ class Executor:
         ctx = get_context("fork")  # so far works, but switch to forkspawn if not
         self.shm_process = ctx.Process(
             target=shm_server,
-            args=(shm_port, None, logging_config, f"sCasc{host}"),
+            args=(shm_port, shm_vol_gb, logging_config, f"sCasc{host}"),
         )
         self.shm_process.start()
         self.daddress = address_of(portBase+1)
