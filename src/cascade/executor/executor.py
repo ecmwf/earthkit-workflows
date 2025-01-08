@@ -50,6 +50,7 @@ def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback
     )
 
     # NOTE we are in a threadpool, we cant fork here. Maybe other problems (atexit, zmq ctx/thdrlocal, ...)
+    # TODO measure whether this is faster over no ThreadPool + fork, and over a dedicated Factory process keeping a pool of zmq-based processes (thats a step towards persistent workers anyway)
     ctx = get_context("forkserver")
     p = ctx.Process(
         target=entrypoint,
@@ -221,7 +222,9 @@ class Executor:
                             self.datasets.remove(m.ds)
                         shm_client.purge(ds2shmid(m.ds))
                     elif isinstance(m, ExecutorShutdown):
+                        self.to_controller(ExecutorExit(self.host))
                         self.terminate()
+                        break
                     # from entrypoint
                     elif isinstance(m, TaskFailure):
                         self.to_controller(m)
@@ -243,5 +246,3 @@ class Executor:
                 logger.exception("executor exited, about to report to controller")
                 self.to_controller(ExecutorFailure(self.host, repr(e)))
                 self.terminate()
-                raise
-        self.to_controller(ExecutorExit(self.host))

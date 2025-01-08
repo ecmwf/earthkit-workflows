@@ -72,7 +72,7 @@ def test_runner(monkeypatch):
 
     runner.entrypoint(oneTaskTs, oneTaskEc)
     assert msgs == [
-        DatasetPublished(host=worker.host, ds=t2ds),
+        DatasetPublished(host=worker.host, ds=t2ds, from_transmit=False),
         TaskSuccess(worker=worker, ts='t2')
     ]
     msgs = []
@@ -106,7 +106,7 @@ def test_runner(monkeypatch):
     runner.entrypoint(twoTaskTs, twoTaskEc)
     assert msgs == [
         TaskSuccess(worker=worker, ts='t3a'),
-        DatasetPublished(host=worker.host, ds=t3ds),
+        DatasetPublished(host=worker.host, ds=t3ds, from_transmit=False),
         TaskSuccess(worker=worker, ts='t3b'),
     ]
     so = get(runner.ds2shmid(t3ds))

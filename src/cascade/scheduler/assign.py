@@ -142,12 +142,12 @@ def set_worker2task_overhead(state: State, worker: WorkerId, task: TaskId) -> St
 def migrate_to_component(host: HostId, component_id: ComponentId, state: State) -> State:
     """Assuming original component assigned to the host didn't have enough tasks anymore,
     we invoke this function and update state to reflect it"""
-    logger.debug(f"migrate {host=} to {component_id=}")
     state.host2component[host] = component_id
     component = state.components[component_id]
-    for task in component.worker2task_values:
-        for worker in state.host2workers[host]:
-            component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
+    logger.debug(f"migrate {host=} to {component_id=} => {component.worker2task_values=}")
+    for worker in state.host2workers[host]:
+        component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
+        for task in component.worker2task_values:
             state = update_worker2task_distance(component_id, task, worker, state)
             state = set_worker2task_overhead(state, worker, task)
 

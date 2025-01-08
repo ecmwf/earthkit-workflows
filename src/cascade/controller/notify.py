@@ -9,12 +9,14 @@ import base64
 import logging
 from typing import Iterable
 
-from cascade.schedulre.core import State, TaskStatus, DatasetStatus
+from cascade.scheduler.core import State, TaskStatus, DatasetStatus
 from cascade.executor.bridge import Event
-from cascade.low.core import TaskId, DatasetId, WorkerId
+from cascade.executor.msg import DatasetPublished, TaskSuccess, DatasetTransmitPayload
+from cascade.low.core import TaskId, DatasetId, WorkerId, HostId
 from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
 from cascade.scheduler.assign import set_worker2task_overhead
+import cascade.executor.serde as serde
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ def consider_fetch(state: State, dataset: DatasetId, at: HostId) -> State:
         state.fetching_queue[dataset] = at
     return state
 
-def consider_computable(state: State, dataset: DatasetId, host: hostId) -> State:
+def consider_computable(state: State, dataset: DatasetId, host: HostId) -> State:
     # In case this is the first time this dataset was made available, we check
     # what tasks can now *in principle* be computed anywhere -- we ignore transfer
     # costs etc here, this is just about updating the `computable` part of `state`.
@@ -73,9 +75,9 @@ def notify(state: State, events: Iterable[Event]) -> State:
             state.ds2host[event.ds][event.host] = DatasetStatus.available
             state = consider_fetch(state, event.ds, event.host)
             state = consider_computable(state, event.ds, event.host)
-            ! # TODO -- how to distinguish transits from task successes?
-            mark({"dataset": event.ds, "action": TransmitLifecycle.completed, "target": event.host, "host": "controller"})
-        elif isinstance(event, TaskSucceeded):
+            if event.from_transmit:
+                mark({"dataset": event.ds.task, "action": TransmitLifecycle.completed, "target": event.host, "host": "controller"})
+        elif isinstance(event, TaskSuccess):
             logger.debug(f"received {event=}")
             state.worker2ts[event.worker][event.ts] = TaskStatus.succeeded
             state.ts2worker[event.ts][event.worker] = TaskStatus.succeeded
@@ -84,7 +86,7 @@ def notify(state: State, events: Iterable[Event]) -> State:
                 state.purging_tracker[sourceDataset].remove(event.ts) 
                 state = consider_purge(state, sourceDataset)
             if event.ts in state.ongoing[event.worker]:
-                logger.debug(f"{task_id} succeeded, removing")
+                logger.debug(f"{event.ts} succeeded, removing")
                 state.ongoing[event.worker].remove(event.ts)
                 state.ongoing_total -= 1
             else:
@@ -92,7 +94,8 @@ def notify(state: State, events: Iterable[Event]) -> State:
             if not state.ongoing[event.worker]:
                 state.idle_workers.add(event.worker)
         elif isinstance(event, DatasetTransmitPayload):
-            ! # TODO
+            # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
+            state.outputs[event.ds] = serde.des_output(event.value, 'Any')
         else:
             assert_never(event)
     return state

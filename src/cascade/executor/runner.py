@@ -73,7 +73,7 @@ class Memory(AbstractContextManager):
             rbuf.close()
             callback(
                 self.callback,
-                DatasetPublished(ds=outputId, host=self.worker.host),
+                DatasetPublished(ds=outputId, host=self.worker.host, from_transmit=False),
             )
 
     def provide(self, inputId: DatasetId, annotation: str) -> Any:

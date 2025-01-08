@@ -71,6 +71,7 @@ class TaskSuccess:
 class DatasetPublished:
     host: HostId
     ds: DatasetId
+    from_transmit: bool # just for tracking purposes
 
 @dataclass(frozen=True)
 class DatasetPurge:

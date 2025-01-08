@@ -5,13 +5,12 @@ Implements the invocation of Bridge/Executor methods given a sequence of Actions
 import logging
 from typing import Iterator
 
-from cascade.controller.core import State, DatasetStatus, TaskStatus
+from cascade.scheduler.core import State, DatasetStatus, TaskStatus, Assignment
 from cascade.executor.bridge import Bridge
 from cascade.executor.msg import TaskSequence
 from cascade.controller.notify import consider_purge
 from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
-from cascade.scheduler.core import Assignment
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +21,16 @@ def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
     for prep in assignment.prep:
         ds = prep[0] 
         source_host = prep[1]
-        if assignment.worker == source_host:
+        if assignment.worker.host == source_host:
             logger.debug(f"dataset {ds} should be locally available, doing no-op")
             continue
-        logger.debug(f"sending transmit ({ds}: {source_host}=>{assignemnt.worker.host}) to bridge")
+        logger.debug(f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge")
         mark({"dataset": ds.task, "action": TransmitLifecycle.planned, "source": source_host, "target": repr(assignment.worker), "host": "controller"})
         bridge.transmit(ds, source_host, assignment.worker.host)
 
     task_sequence = TaskSequence(
         worker=assignment.worker,
-        tasks=assignemnt.tasks,
+        tasks=assignment.tasks,
         publish=assignment.outputs,
     )
         
@@ -49,7 +48,7 @@ def flush_queues(bridge: Bridge, state: State) -> State:
     fetchable = list(state.fetching_queue.keys())
     for dataset in fetchable:
         host = state.fetching_queue.pop(dataset)
-        bridge.transmit_self(dataset, host)
+        bridge.fetch(dataset, host)
         state = consider_purge(state, dataset)
 
     for ds in state.purging_queue:
