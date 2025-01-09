@@ -60,6 +60,7 @@ class Dataset:
     ongoing_reads: dict[str, int]
     retrieved_first: int
     retrieved_last: int
+    delayed_purge: bool = False
 
     def is_pageoutable(self, ref_time: int) -> bool:
         created_stale = (
@@ -168,6 +169,8 @@ class Manager:
                 )
             else:
                 self.datasets[key].ongoing_reads.pop(rdid)
+        if self.datasets[key].delayed_purge and not self.datasets[key].ongoing_reads:
+            self.purge(key, False)
 
     def page_out(self, key: str) -> None:
         ds = self.datasets[key]
@@ -264,6 +267,10 @@ class Manager:
             logger.debug(f"attempting purge-inquire of {key}")
             try:
                 ds = self.datasets[key]
+                if ds.ongoing_reads and not is_exit:
+                    logger.warning(f"premature purge of {key} while there are still reads, delaying")
+                    ds.delayed_purge = True
+                    return
             except Exception:
                 if not is_exit: # if this happens during exit, its acceptable race
                     raise

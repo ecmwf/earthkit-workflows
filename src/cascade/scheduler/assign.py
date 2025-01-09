@@ -15,19 +15,26 @@ from cascade.scheduler.core import State, Assignment, DatasetStatus, Worker2Task
 logger = logging.getLogger(__name__)
 
 def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment:
-    eligible_worker = {DatasetStatus.preparing, DatasetStatus.available}
-    eligible_host = {DatasetStatus.available}
+    eligible_load = {DatasetStatus.preparing, DatasetStatus.available}
+    eligible_transmit = {DatasetStatus.available}
     prep: list[tuple[DatasetId, HostId]] = []
     for dataset in state.edge_i[task]:
         at_worker = state.worker2ds[worker]
-        if at_worker.get(dataset, DatasetStatus.missing) not in eligible_worker:
-            if state.host2ds[worker.host].get(dataset, DatasetStatus.missing) in eligible_host:
+        if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
+            if state.host2ds[worker.host].get(dataset, DatasetStatus.missing) in eligible_load:
+                # NOTE this currently leads to no-op, but with persistent workers would possibly allow an early fetch
                 prep.append((dataset, worker.host))
             else:
-                if any(candidate := host for host, status in state.ds2host[dataset].items() if status in eligible_host):
+                if any(candidate := host for host, status in state.ds2host[dataset].items() if status in eligible_transmit):
                     prep.append((dataset, candidate))
+                    # NOTE this is a slight hack, to prevent issuing further transmit commands of this ds to this host
+                    # in this phase. A proper state transition happens later in the `plan` phase. We may want to instead
+                    # create a new `transmit_queue` state field to capture this, and consume it later during plan
+                    state.host2ds[worker.host][dataset] = DatasetStatus.preparing
+                    state.ds2host[dataset][worker.host] = DatasetStatus.preparing
                 else:
                     raise ValueError(f"{dataset=} not found in any host, whoa whoa!")
+            
                 
     return Assignment(
         worker=worker,
@@ -142,12 +149,12 @@ def set_worker2task_overhead(state: State, worker: WorkerId, task: TaskId) -> St
 def migrate_to_component(host: HostId, component_id: ComponentId, state: State) -> State:
     """Assuming original component assigned to the host didn't have enough tasks anymore,
     we invoke this function and update state to reflect it"""
-    logger.debug(f"migrate {host=} to {component_id=}")
     state.host2component[host] = component_id
     component = state.components[component_id]
-    for task in component.worker2task_values:
-        for worker in state.host2workers[host]:
-            component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
+    logger.debug(f"migrate {host=} to {component_id=} => {component.worker2task_values=}")
+    for worker in state.host2workers[host]:
+        component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
+        for task in component.worker2task_values:
             state = update_worker2task_distance(component_id, task, worker, state)
             state = set_worker2task_overhead(state, worker, task)
 

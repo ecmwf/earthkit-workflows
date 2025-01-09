@@ -9,6 +9,11 @@ import cascade.shm.api as api
 
 logger = logging.getLogger(__name__)
 
+# TODO eleminate in favour of track=False, once we are on python 3.13+
+is_unregister = True # NOTE exposed for pytest control
+
+class ConflictError(Exception):
+    pass
 
 class AllocatedBuffer:
     def __init__(
@@ -34,8 +39,8 @@ class AllocatedBuffer:
     def close(self) -> None:
         if self.shm is not None:
             self.shm.close()
-            # TODO eleminate in favour of track=False, once we are on python 3.13+
-            multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
+            if is_unregister:
+                multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
             self.shm = None
         if self.close_callback:
             self.close_callback()
@@ -71,6 +76,8 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
                 timeout_i *= coeff
                 timeout_i = min(timeout_i, timeout_sec)
                 continue
+            elif response_com.error == "conflict":
+                raise ConflictError
             raise ValueError(response_com.error)
         if not isinstance(response_com, resp_class):
             raise TypeError(type(response_com))
@@ -116,10 +123,13 @@ def shutdown() -> None:
 
 
 def ensure() -> None:
+    """Loop StatusInquiry until shm server responds with Ok"""
+    logger.debug("entering shm ensure loop")
     comm = api.StatusInquiry()
     while True:
         try:
             _send_command(comm, api.OkResponse)
+            logger.debug("shm server responds ok, leaving ensure loop")
         except ConnectionRefusedError:
             time.sleep(0.1)
             continue
