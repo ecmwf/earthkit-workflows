@@ -13,7 +13,8 @@ import pickle
 # being reasonably performant for both small messages and large binary objects
 # However, we want to switch over to a more data-oriented serializer (like
 # `msgpack`) which is reasonable performant -- a custom format would be best,
-# since the set of messages is fixed and small.
+# since the set of messages is fixed and small. However, beating pickle is *hard*
+# with just python, even with `struct` or manual `int.to_bytes` etc
 # NOTE that as those message are being shipped over zmq, we may want to delay
 # some object concatenation to zmq submits -- otherwise we do memcpy twice,
 # costing us both time and memory overhead. This would be a core feature of the

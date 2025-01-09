@@ -9,8 +9,8 @@ the tasks themselves.
 # have their own zmq server as well as run the callables themselves
 
 import atexit
-from multiprocessing import get_context, Process
-from multiprocessing.context import ForkProcess
+from multiprocessing import get_context
+from multiprocessing.process import BaseProcess
 from typing import cast
 import socket
 import logging
@@ -30,9 +30,7 @@ from cascade.low.tracing import mark, label, TaskLifecycle
 
 logger = logging.getLogger(__name__)
 
-Process=Process|ForkProcess
-
-def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback: BackboneAddress, job: JobInstance, param_source: dict[TaskId, dict[int | str, DatasetId]]) -> Process:
+def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback: BackboneAddress, job: JobInstance, param_source: dict[TaskId, dict[int | str, DatasetId]]) -> BaseProcess:
     """Spawns a process with callback and exits"""
     # TODO replace with a dedicated Factory process keeping a pool of zmq-awkable processes (thats a step towards persistent workers anyway)
 
@@ -74,7 +72,7 @@ class Executor:
         self.workers = [WorkerId(host, f"w{i}") for i in range(workers)]
 
         self.datasets: set[DatasetId] = set()
-        self.task_queue: dict[WorkerId, None|TaskSequence|Process] = {e: None for e in self.workers}
+        self.task_queue: dict[WorkerId, None|TaskSequence|BaseProcess] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
 
         self.terminating = False
@@ -161,7 +159,7 @@ class Executor:
         if isinstance(ts, TaskSequence):
             if not self.terminating:
                 raise ValueError(f"premature cleanup on {worker}: {ts} not spawned yet")
-        elif isinstance(ts, Process):
+        elif isinstance(ts, BaseProcess):
             proc_handle = ts
             if not proc_handle.pid:
                 mes = f"process on {worker} failed to start"
@@ -184,7 +182,7 @@ class Executor:
 
     def enqueue_task(self, ts: TaskSequence) -> None:
         for task in ts.tasks:
-            mark({"task": task, "worker": ts.worker, "action": TaskLifecycle.enqueued})
+            mark({"task": task, "worker": repr(ts.worker), "action": TaskLifecycle.enqueued})
         self.maybe_cleanup(ts.worker)
 
         self.task_queue[ts.worker] = ts
