@@ -1,5 +1,5 @@
 """
-Implements the mutation of State after an Executor has reported some Events
+Implements the mutation of State after Executors have reported some Events
 """
 
 # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.
@@ -9,10 +9,14 @@ import base64
 import logging
 from typing import Iterable
 
-from cascade.controller.core import State, Event, TaskStatus, DatasetStatus, WorkerId
-from cascade.low.core import TaskId, DatasetId
+from cascade.scheduler.core import State, TaskStatus, DatasetStatus
+from cascade.executor.bridge import Event
+from cascade.executor.msg import DatasetPublished, TaskSuccess, DatasetTransmitPayload
+from cascade.low.core import TaskId, DatasetId, WorkerId, HostId
+from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
 from cascade.scheduler.assign import set_worker2task_overhead
+import cascade.executor.serde as serde
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +28,12 @@ def consider_purge(state: State, dataset: DatasetId) -> State:
         state.purging_queue.append(dataset)
     return state
 
-def consider_fetch(state: State, dataset: DatasetId, at: WorkerId) -> State:
+def consider_fetch(state: State, dataset: DatasetId, at: HostId) -> State:
     if dataset in state.outputs and state.outputs[dataset] is None and dataset not in state.fetching_queue:
         state.fetching_queue[dataset] = at
     return state
 
-def consider_computable(state: State, dataset: DatasetId, workerId: WorkerId) -> State:
+def consider_computable(state: State, dataset: DatasetId, host: HostId) -> State:
     # In case this is the first time this dataset was made available, we check
     # what tasks can now *in principle* be computed anywhere -- we ignore transfer
     # costs etc here, this is just about updating the `computable` part of `state`.
@@ -38,7 +42,7 @@ def consider_computable(state: State, dataset: DatasetId, workerId: WorkerId) ->
     component = state.components[state.ts2component[dataset.task]]
     for child_task in state.purging_tracker.get(dataset, set()):
         if child_task in component.computable:
-            for worker in state.host2workers[workerId.host]:
+            for worker in state.host2workers[host]:
                 # NOTE since the child_task has already been computable, and the current
                 # implementation of `overhead` assumes host2host being homogeneous, we can
                 # afford to recalc overhead for the event's host only
@@ -65,43 +69,33 @@ def consider_computable(state: State, dataset: DatasetId, workerId: WorkerId) ->
  
 def notify(state: State, events: Iterable[Event]) -> State:
     for event in events:
-        if event.failures:
-            logger.debug(f"received {event.failures = }")
-            raise ValueError(event.failures)
-        logger.debug(f"received {event.ds_trans=} at {event.at=}")
-        for dataset_id, dataset_status in event.ds_trans:
-            state.worker2ds[event.at][dataset_id] = dataset_status
-            state.ds2worker[dataset_id][event.at] = dataset_status
-            state.host2ds[event.at.host][dataset_id] = dataset_status
-            state.ds2host[dataset_id][event.at.host] = dataset_status
-            if dataset_status == DatasetStatus.available:
-                state = consider_fetch(state, dataset_id, event.at)
-                state = consider_computable(state, dataset_id, event.at)
-            # TODO we don't necessarily know this corresponds exactly to transmits, thus this is imprecise
-            if dataset_status == DatasetStatus.available and not event.ts_trans:
-                mark({"dataset": dataset_id.task, "action": TransmitLifecycle.completed, "target": repr(event.at), "host": "controller"})
-        logger.debug(f"received {event.ts_trans=} at {event.at=}")
-        for task_id, task_status in event.ts_trans:
-            state.worker2ts[event.at][task_id] = task_status
-            state.ts2worker[task_id][event.at] = task_status
-            if task_status == TaskStatus.succeeded:
-                mark({"task": task_id, "action": TaskLifecycle.completed, "worker": repr(event.at), "host": "controller"})
-                for sourceDataset in state.edge_i.get(task_id, set()):
-                    state.purging_tracker[sourceDataset].remove(task_id) 
-                    state = consider_purge(state, sourceDataset)
-                if task_id in state.ongoing[event.at]:
-                    logger.debug(f"{task_id} succeeded, removing")
-                    state.ongoing[event.at].remove(task_id)
-                    state.ongoing_total -= 1
-                else:
-                    raise ValueError(f"{task_id} succeeded but removal from `ongoing` impossible")
-                    # logger.warning(f"{task_id} succeeded but removal from `ongoing` impossible")
-                if not state.ongoing[event.at]:
-                    state.idle_workers.add(event.at)
-            elif task_status == TaskStatus.failed:
-                raise ValueError(f"failure of {task_id}")
-        for dataset, value in event.ds_fetch:
-            logger.debug(f"received fetch of {dataset=} of raw len {len(value)}")
-            state.outputs[dataset] = base64.b64decode(value)
-            state = consider_purge(state, dataset)
+        if isinstance(event, DatasetPublished):
+            logger.debug(f"received {event=}")
+            state.host2ds[event.host][event.ds] = DatasetStatus.available
+            state.ds2host[event.ds][event.host] = DatasetStatus.available
+            state = consider_fetch(state, event.ds, event.host)
+            state = consider_computable(state, event.ds, event.host)
+            if event.from_transmit:
+                mark({"dataset": event.ds.task, "action": TransmitLifecycle.completed, "target": event.host, "host": "controller"})
+        elif isinstance(event, TaskSuccess):
+            logger.debug(f"received {event=}")
+            state.worker2ts[event.worker][event.ts] = TaskStatus.succeeded
+            state.ts2worker[event.ts][event.worker] = TaskStatus.succeeded
+            mark({"task": event.ts, "action": TaskLifecycle.completed, "worker": repr(event.worker), "host": "controller"})
+            for sourceDataset in state.edge_i.get(event.ts, set()):
+                state.purging_tracker[sourceDataset].remove(event.ts) 
+                state = consider_purge(state, sourceDataset)
+            if event.ts in state.ongoing[event.worker]:
+                logger.debug(f"{event.ts} succeeded, removing")
+                state.ongoing[event.worker].remove(event.ts)
+                state.ongoing_total -= 1
+            else:
+                raise ValueError(f"{event.ts} succeeded but removal from `ongoing` impossible")
+            if not state.ongoing[event.worker]:
+                state.idle_workers.add(event.worker)
+        elif isinstance(event, DatasetTransmitPayload):
+            # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
+            state.outputs[event.ds] = serde.des_output(event.value, 'Any')
+        else:
+            assert_never(event)
     return state
