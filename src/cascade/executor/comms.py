@@ -7,8 +7,8 @@ import logging
 
 import zmq
 
-from cascade.executor.msg import BackboneAddress, Message
-from cascade.executor.serde import ser_message, des_message
+from cascade.executor.msg import BackboneAddress, Message, DatasetTransmitCommand, DatasetTransmitPayload
+from cascade.executor.serde import ser_message, des_message, ser_dmessage, des_dmessage
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +18,23 @@ def get_context() -> zmq.Context:
         local.context = zmq.Context()
     return local.context
 
-def callback(address: BackboneAddress, msg: Message):
+def get_socket(address: BackboneAddress) -> zmq.Socket:
     socket = get_context().socket(zmq.PUSH) 
     # NOTE we set the linger in case the executor dies before consuming a message sent
     # by the child -- otherwise the child process would hang indefinitely
     socket.set(zmq.LINGER, 1000)
     socket.connect(address)
+    return socket
+
+def callback(address: BackboneAddress, msg: Message):
+    socket = get_socket(address)
     byt = ser_message(msg)
     socket.send(byt)
+
+def send_data(address: BackboneAddress, data: DatasetTransmitPayload):
+    socket = get_socket(address)
+    byt = ser_dmessage(data)
+    socket.send_multipart(byt)
 
 class Listener:
     def __init__(self, address: BackboneAddress):
@@ -49,3 +58,7 @@ class Listener:
             except zmq.Again:
                 break
         return messages
+
+    def recv_dmessage(self) -> DatasetTransmitCommand|DatasetTransmitPayload:
+        m = self.socket.recv_multipart()
+        return des_dmessage(m)
