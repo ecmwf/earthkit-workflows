@@ -9,7 +9,7 @@ from logging.config import dictConfig
 
 from cascade.low.core import JobInstance, WorkerId, TaskDefinition, TaskInstance, Task2TaskEdge, DatasetId
 from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, TaskSuccess, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge
-from cascade.executor.comms import Listener, callback
+from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.executor import Executor
 from cascade.executor.config import logging_config
 import cascade.executor.serde as serde
@@ -91,7 +91,7 @@ def test_executor():
 
         # purge, store, run partial and fetch again
         callback(m1, DatasetPurge(ds=sink_o))
-        callback(d1, DatasetTransmitPayload(ds=source_o, value=serde.ser_output(10, 'int')))
+        send_data(d1, DatasetTransmitPayload(ds=source_o, value=serde.ser_output(10, 'int')))
         ms = l.recv_messages()
         assert ms == [DatasetPublished(host='test_executor', ds=source_o, from_transmit=True)]
         callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}))

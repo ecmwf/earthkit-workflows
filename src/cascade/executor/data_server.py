@@ -14,8 +14,9 @@ import logging.config
 from concurrent.futures import Future, ThreadPoolExecutor, Executor as PythonExecutor, wait, FIRST_COMPLETED
 
 from cascade.executor.runner import ds2shmid
-from cascade.executor.comms import Listener, callback
+from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.msg import BackboneAddress, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitFailure, DatasetPublished
+from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TransmitLifecycle, label
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
@@ -76,8 +77,15 @@ class DataServer:
                 raise ValueError(f"invalid {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
             mark({"dataset": command.ds.task, "action": TransmitLifecycle.loaded, "target": command.target, "source": self.host, "mode": "remote"})
-            payload = DatasetTransmitPayload(ds=command.ds, value=bytes(buf.view()))
-            callback(command.daddress, payload)
+            if command.target == "controller":
+                # NOTE this is due to controller using single socket for messages/data. We thus
+                # use non-optimized send, but it doesnt really matter
+                payload = DatasetTransmitPayload(ds=command.ds, value=bytes(buf.view()))
+                callback(command.daddress, payload)
+            else:
+                payload = DatasetTransmitPayload(ds=command.ds, value=buf.view())
+                send_data(command.daddress, payload)
+                del payload # to enforce deletion of exported pointer
             buf.close()
             logger.debug(f"payload for {command} sent")
         except Exception as e:
@@ -88,19 +96,19 @@ class DataServer:
         # NOTE atm we don't terminate explicitly, rather parent kills us. But we may want to exit cleanly instead
         while not self.terminating:
             try:
-                for m in self.dlistener.recv_messages():
-                    if isinstance(m, DatasetTransmitCommand):
-                        mark({"dataset": m.ds.task, "action": TransmitLifecycle.started, "target": m.target})
-                        self.maybe_clean()
-                        fut = self.ds_proc_tp.submit(self.send_payload, m)
-                        self.futs_queue.append(fut)
-                    elif isinstance(m, DatasetTransmitPayload):
-                        mark({"dataset": m.ds.task, "action": TransmitLifecycle.received, "target": self.host})
-                        self.maybe_clean()
-                        fut = self.ds_proc_tp.submit(self.store_payload, m)
-                        self.futs_queue.append(fut)
-                    else:
-                        raise TypeError(m)
+                m = self.dlistener.recv_dmessage()
+                if isinstance(m, DatasetTransmitCommand):
+                    mark({"dataset": m.ds.task, "action": TransmitLifecycle.started, "target": m.target})
+                    self.maybe_clean()
+                    fut = self.ds_proc_tp.submit(self.send_payload, m)
+                    self.futs_queue.append(fut)
+                elif isinstance(m, DatasetTransmitPayload):
+                    mark({"dataset": m.ds.task, "action": TransmitLifecycle.received, "target": self.host})
+                    self.maybe_clean()
+                    fut = self.ds_proc_tp.submit(self.store_payload, m)
+                    self.futs_queue.append(fut)
+                else:
+                    assert_never(m)
             except Exception as e:
                 # TODO report some issue and continue? Or just shutdown?
                 raise
