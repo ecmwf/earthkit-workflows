@@ -12,7 +12,7 @@ from cascade.executor.msg import BackboneAddress, Message, DatasetTransmitComman
 from cascade.executor.serde import ser_message, des_message, ser_dmessage, des_dmessage
 
 logger = logging.getLogger(__name__)
-default_timeout_sec = 2
+default_timeout_sec = 5
 
 class GraceWatcher:
     """For watching whether certain event occurred more than `grace_ms` ago"""
@@ -82,7 +82,7 @@ class Listener:
 
     def recv_messages(self, timeout_sec: int|None = default_timeout_sec) -> list[Message]:
         messages: list[Message] = []
-        logger.debug(f"receiving messages on {self.address} with {timeout_sec=}")
+        # logger.debug(f"receiving messages on {self.address} with {timeout_sec=}")
         message = self._recv_one(timeout_sec)
         if message is not None:
             messages.append(message)
@@ -95,7 +95,7 @@ class Listener:
         return messages
 
     def recv_dmessage(self, timeout_sec: int|None = default_timeout_sec) -> DatasetTransmitCommand|DatasetTransmitPayload|None:
-        logger.debug(f"receiving data on {self.address} with {timeout_sec=}")
+        # logger.debug(f"receiving data on {self.address} with {timeout_sec=}")
         ready = self.poller.poll(timeout_sec * 1_000 if timeout_sec is not None else None)
         if len(ready) > 1:
             raise ValueError(f"unexpected number of socket events: {len(ready)}")

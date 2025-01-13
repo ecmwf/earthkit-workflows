@@ -30,9 +30,14 @@ class Bridge:
         registered = 0
         ctx = zmq.Context()
         self.environment = Environment(workers={})
+        logger.debug("about to start receiving registrations")
         while registered < expected_executors:
             messages = self.mlistener.recv_messages(timeout_sec=2*60)
+            logger.debug(f"received {messages=}")
             for message in messages:
+                if isinstance(message, ExecutorHeartbeat):
+                    # self.heartbeat_checker[message.host].step() # NOTE it seems message may come out of order
+                    continue
                 if not isinstance(message, ExecutorRegistration):
                     raise TypeError(type(message))
                 if message.host in self.hosts or message.host in self.daddresses:

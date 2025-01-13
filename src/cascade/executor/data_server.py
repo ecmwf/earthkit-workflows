@@ -4,9 +4,6 @@ The reason for the split is to not block the message zmq socket with potentially
 large data object.
 """
 
-# NOTE see the discussion in serde about the optimization here -- send the zmq data
-# transmit payload as two frames
-
 # NOTE test coverage handled in `test_executor.py` as well
 
 import logging

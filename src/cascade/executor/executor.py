@@ -131,6 +131,9 @@ class Executor:
         try:
             shm_client.ensure()
             # TODO some ensure on the data server?
+            import time
+            time.sleep(1) # TODO delete this after ClusterStarted & retries in place
+            logger.debug(f"about to send register message from {self.host}")
             registration = ExecutorRegistration(
                 host=self.host,
                 maddress=self.mlistener.address,
@@ -141,7 +144,7 @@ class Executor:
         except Exception as e:
             logger.exception("failed during register")
             self.terminate()
-        # TODO await ClusterStarted message here, otherwise crash?
+        # TODO await ClusterStarted message here, otherwise retry -- cf the sleep above
 
     def maybe_spawn(self, worker: WorkerId) -> None:
         ts = self.task_queue[worker]
