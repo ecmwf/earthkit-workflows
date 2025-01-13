@@ -96,7 +96,7 @@ class DataServer:
         # NOTE atm we don't terminate explicitly, rather parent kills us. But we may want to exit cleanly instead
         while not self.terminating:
             try:
-                m = self.dlistener.recv_dmessage()
+                m = self.dlistener.recv_dmessage(timeout_sec=None)
                 if isinstance(m, DatasetTransmitCommand):
                     mark({"dataset": m.ds.task, "action": TransmitLifecycle.started, "target": m.target})
                     self.maybe_clean()
@@ -107,10 +107,12 @@ class DataServer:
                     self.maybe_clean()
                     fut = self.ds_proc_tp.submit(self.store_payload, m)
                     self.futs_queue.append(fut)
+                elif m is None:
+                    raise ValueError(f"no data despite infinite timeout")
                 else:
                     assert_never(m)
             except Exception as e:
-                # TODO report some issue and continue? Or just shutdown?
+                # TODO report some issue and continue? Or just shutdown, since executor is monitoring this proc?
                 raise
 
 def start_data_server(maddress: BackboneAddress, daddress: BackboneAddress, host: str, shm_port: int, logging_config: dict):

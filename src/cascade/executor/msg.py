@@ -95,6 +95,10 @@ class DatasetTransmitFailure:
     host: HostId
 
 @dataclass(frozen=True)
+class ExecutorHeartbeat:
+    host: HostId
+
+@dataclass(frozen=True)
 class ExecutorFailure:
     host: HostId
     detail: str
@@ -116,4 +120,4 @@ class ExecutorShutdown:
     pass
 
 # this explicit list is a disgrace -- see the _Message protocol above
-Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure
+Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|ExecutorHeartbeat

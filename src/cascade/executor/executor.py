@@ -18,9 +18,9 @@ import logging
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
 from cascade.low.views import param_source
-from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure
+from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure, ExecutorHeartbeat
 from cascade.executor.runner import entrypoint, ds2shmid
-from cascade.executor.comms import Listener, callback
+from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
 from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
@@ -29,6 +29,7 @@ from cascade.executor.config import logging_config
 from cascade.low.tracing import mark, label, TaskLifecycle
 
 logger = logging.getLogger(__name__)
+heartbeat_grace_ms = 2*comms_default_timeout_sec*1_000
 
 def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback: BackboneAddress, job: JobInstance, param_source: dict[TaskId, dict[int | str, DatasetId]]) -> BaseProcess:
     """Spawns a process with callback and exits"""
@@ -74,6 +75,7 @@ class Executor:
         self.datasets: set[DatasetId] = set()
         self.task_queue: dict[WorkerId, None|TaskSequence|BaseProcess] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
+        self.heartbeat_watcher = GraceWatcher(grace_ms = heartbeat_grace_ms)
 
         self.terminating = False
         atexit.register(self.terminate)
@@ -122,6 +124,7 @@ class Executor:
             self.data_server.kill()
 
     def to_controller(self, m: Message) -> None:
+        self.heartbeat_watcher.step()
         callback(self.controller_address, m)
 
     def register(self) -> None:
@@ -138,6 +141,7 @@ class Executor:
         except Exception as e:
             logger.exception("failed during register")
             self.terminate()
+        # TODO await ClusterStarted message here, otherwise crash?
 
     def maybe_spawn(self, worker: WorkerId) -> None:
         ts = self.task_queue[worker]
@@ -154,7 +158,6 @@ class Executor:
         """Housekeeping task that checks that previously spawned task has succesfully finished.
         If `self.terminating` is true, awaits both future spawn and process join. Otherwise, expects that both have
         already happened."""
-        # TODO call this regularly to report failures earlier -- should neither block nor crash tho
         ts = self.task_queue[worker]
         if isinstance(ts, TaskSequence):
             if not self.terminating:
@@ -180,6 +183,21 @@ class Executor:
         else:
             assert_never(ts)
 
+    def healthcheck(self) -> None:
+        """Checks that no process died, and sends a heartbeat message in case the last message to controller
+        was too long ago"""
+        procFail = lambda ex: ex is not None and ex != 0
+        for k, e in self.task_queue.items():
+            if isinstance(e, BaseProcess) and procFail(e.exitcode):
+                ValueError(f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}")
+        if procFail(self.shm_process.exitcode):
+            ValueError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
+        if procFail(self.data_server.exitcode):
+            ValueError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
+        if self.heartbeat_watcher.is_breach():
+            logger.debug(f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}")
+            self.to_controller(ExecutorHeartbeat(host=self.host))
+
     def enqueue_task(self, ts: TaskSequence) -> None:
         for task in ts.tasks:
             mark({"task": task, "worker": repr(ts.worker), "action": TaskLifecycle.enqueued})
@@ -199,8 +217,6 @@ class Executor:
 
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
-        # TODO regular cleanup?
-        # TODO monitor data_server? Add in term command, exit report, etc?
         while not self.terminating:
             try:
                 for m in self.mlistener.recv_messages():
@@ -235,6 +251,7 @@ class Executor:
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)
                         raise TypeError(m)
+                self.healthcheck()
             except Exception as e:
                 logger.exception("executor exited, about to report to controller")
                 self.to_controller(ExecutorFailure(self.host, repr(e)))
