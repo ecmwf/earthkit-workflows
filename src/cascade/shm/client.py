@@ -41,9 +41,9 @@ class AllocatedBuffer:
             self.shm.close()
             if is_unregister:
                 multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
+            if self.close_callback:
+                self.close_callback()
             self.shm = None
-        if self.close_callback:
-            self.close_callback()
 
     # TODO context manager
 

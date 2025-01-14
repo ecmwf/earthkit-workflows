@@ -18,7 +18,7 @@ import logging
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
 from cascade.low.views import param_source
-from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure, ExecutorHeartbeat
+from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure
 from cascade.executor.runner import entrypoint, ds2shmid
 from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
 from cascade.executor.data_server import start_data_server
@@ -96,6 +96,12 @@ class Executor:
             args=(self.mlistener.address, self.daddress, self.host, shm_port, logging_config)
         )
         self.data_server.start()
+        self.registration = ExecutorRegistration(
+            host=self.host,
+            maddress=self.mlistener.address,
+            daddress=self.daddress,
+            workers=self.workers,
+        )
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
@@ -128,23 +134,21 @@ class Executor:
         callback(self.controller_address, m)
 
     def register(self) -> None:
+        # NOTE we do register explicitly post-construction so that the former one is network-latency-free.
+        # However, it is especially important that `bind` (via Listener) happens *before* `register`, as
+        # otherwise we may lose messages from the Controller
         try:
             shm_client.ensure()
             # TODO some ensure on the data server?
-            import time
-            time.sleep(1) # TODO delete this after ClusterStarted & retries in place
             logger.debug(f"about to send register message from {self.host}")
-            registration = ExecutorRegistration(
-                host=self.host,
-                maddress=self.mlistener.address,
-                daddress=self.daddress,
-                workers=self.workers,
-            )
-            self.to_controller(registration)
+            self.to_controller(self.registration)
         except Exception as e:
             logger.exception("failed during register")
             self.terminate()
-        # TODO await ClusterStarted message here, otherwise retry -- cf the sleep above
+        # NOTE we don't mind this registration message being lost -- if that happens, we send it
+        # during next heartbeat. But we may want to introduce a check that if no message,
+        # including for-this-purpose introduced & guaranteed controller2worker heartbeat, arrived
+        # for a long time, we shut down
 
     def maybe_spawn(self, worker: WorkerId) -> None:
         ts = self.task_queue[worker]
@@ -152,7 +156,7 @@ class Executor:
             return
         if not self.task_prereq[worker] <= self.datasets:
             # TODO this is a possible slowdown, we don't wait until everything is available -- but maybe
-            # the first task in the queue could already start
+            # the first task in the queue could already start... better fit for persistent workers
             return
 
         self.task_queue[worker] = spawn_task_sequence(ts, WorkerId(self.host, f"w{worker}"), self.mlistener.address, self.job_instance, self.param_source)
@@ -199,7 +203,9 @@ class Executor:
             ValueError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
         if self.heartbeat_watcher.is_breach():
             logger.debug(f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}")
-            self.to_controller(ExecutorHeartbeat(host=self.host))
+            # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
+            # and the registration's size overhead is negligible
+            self.to_controller(self.registration)
 
     def enqueue_task(self, ts: TaskSequence) -> None:
         for task in ts.tasks:
