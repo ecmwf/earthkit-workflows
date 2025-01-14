@@ -2,6 +2,13 @@
 This module handles basic communication structures and functions
 """
 
+# TODO introduce something to make *everything* reliable/retriable. `executor.data_server` contains
+# a skeleton thereof with DatasetConfirmation, but we either want to go the explicit way and
+# develop a similar track-retry in `controller.act`, *or* rework it on a general level here in `comms`.
+# The difference between the two is for example when a TaskSequence is sent to worker -- it may happen
+# that a confirmation would be lost, but we don't really care as long as it gets computed. On the other
+# hand, if the initial command gets lost, it would take longer to recover from it
+
 import threading
 import logging
 import time

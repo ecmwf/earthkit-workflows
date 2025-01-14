@@ -26,7 +26,7 @@ import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
 from cascade.shm.server import entrypoint as shm_server
 from cascade.executor.config import logging_config
-from cascade.low.tracing import mark, label, TaskLifecycle
+from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer
 
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2*comms_default_timeout_sec*1_000
@@ -178,7 +178,7 @@ class Executor:
                 else:
                     raise ValueError(mes)
             # NOTE this timeout should never be breached! If it happens, increase it?
-            proc_handle.join(timeout=2 if not self.terminating else None)
+            timer(proc_handle.join, Microtrace.exc_procjoin)(timeout=5 if not self.terminating else None)
             if proc_handle.exitcode != 0:
                 mes = f"process on {worker} failed to terminate correctly: {proc_handle.pid} -> {proc_handle.exitcode}"
                 if self.terminating:

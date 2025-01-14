@@ -62,6 +62,7 @@ class Microtrace(str, Enum):
     wrk_compute = "wrk_compute"
     wrk_publish = "wrk_publish"
     wrk_task = "wrk_task"
+    exc_procjoin = "exc_procjoin"
     total_incluster = "total_incluster"
     total_e2e = "total_e2e"
 

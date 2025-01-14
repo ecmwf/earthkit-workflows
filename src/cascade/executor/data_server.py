@@ -106,7 +106,8 @@ class DataServer:
             try:
                 self.maybe_clean()
                 m = self.dlistener.recv_dmessage()
-                logger.debug(f"received message {type(m)}")
+                if m is not None:
+                    logger.debug(f"received message {type(m)}")
                 if isinstance(m, DatasetTransmitCommand):
                     if m.idx in self.awaiting_confirmation:
                         raise ValueError(f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}")
