@@ -22,7 +22,7 @@ def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
         ds = prep[0] 
         source_host = prep[1]
         if assignment.worker.host == source_host:
-            logger.debug(f"dataset {ds} should be locally available, doing no-op")
+            logger.debug(f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op")
             continue
         logger.debug(f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge")
         mark({"dataset": ds.task, "action": TransmitLifecycle.planned, "source": source_host, "target": assignment.worker.host, "host": "controller"})

@@ -11,7 +11,8 @@ from typing import Iterable
 
 from cascade.scheduler.core import State, TaskStatus, DatasetStatus
 from cascade.executor.bridge import Event
-from cascade.executor.msg import DatasetPublished, TaskSuccess, DatasetTransmitPayload
+from cascade.executor.comms import callback
+from cascade.executor.msg import DatasetPublished, TaskSuccess, DatasetTransmitPayload, DatasetTransmitConfirm
 from cascade.low.core import TaskId, DatasetId, WorkerId, HostId
 from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
@@ -75,7 +76,7 @@ def notify(state: State, events: Iterable[Event]) -> State:
             state.ds2host[event.ds][event.host] = DatasetStatus.available
             state = consider_fetch(state, event.ds, event.host)
             state = consider_computable(state, event.ds, event.host)
-            if event.from_transmit:
+            if event.transmit_idx is not None:
                 mark({"dataset": event.ds.task, "action": TransmitLifecycle.completed, "target": event.host, "host": "controller"})
         elif isinstance(event, TaskSuccess):
             logger.debug(f"received {event=}")
@@ -96,6 +97,7 @@ def notify(state: State, events: Iterable[Event]) -> State:
         elif isinstance(event, DatasetTransmitPayload):
             # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
             state.outputs[event.ds] = serde.des_output(event.value, 'Any')
+            callback(event.confirm_address, DatasetTransmitConfirm(idx=event.confirm_idx))
         else:
             assert_never(event)
     return state

@@ -71,7 +71,7 @@ class TaskSuccess:
 class DatasetPublished:
     host: HostId
     ds: DatasetId
-    from_transmit: bool # just for tracking purposes
+    transmit_idx: int|None
 
 @dataclass(frozen=True)
 class DatasetPurge:
@@ -79,20 +79,27 @@ class DatasetPurge:
 
 @dataclass(frozen=True)
 class DatasetTransmitCommand:
-    # NOTE atm we don't need source/target, but they are useful for tracing purposes. And we may need it later
     source: HostId
     target: HostId
     daddress: BackboneAddress
     ds: DatasetId
+    idx: int # TODO consider using in tracing all over. Would need scheduler to assign it
 
 @dataclass(frozen=True)
 class DatasetTransmitPayload:
+    confirm_address: BackboneAddress
+    confirm_idx: int
     ds: DatasetId
     value: bytes
 
 @dataclass(frozen=True)
+class DatasetTransmitConfirm:
+    idx: int
+
+@dataclass(frozen=True)
 class DatasetTransmitFailure:
     host: HostId
+    detail: str
 
 @dataclass(frozen=True)
 class ExecutorFailure:
@@ -116,4 +123,4 @@ class ExecutorShutdown:
     pass
 
 # this explicit list is a disgrace -- see the _Message protocol above
-Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure
+Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm

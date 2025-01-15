@@ -8,7 +8,7 @@ import socket
 from logging.config import dictConfig
 
 from cascade.low.core import JobInstance, WorkerId, TaskDefinition, TaskInstance, Task2TaskEdge, DatasetId
-from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, TaskSuccess, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge
+from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, TaskSuccess, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitConfirm
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.executor import Executor
 from cascade.executor.config import logging_config
@@ -75,7 +75,7 @@ def test_executor():
         callback(m1, TaskSequence(worker=w0, tasks=["source", "sink"], publish={sink_o}))
         expected = {
             TaskSuccess(worker=w0, ts='source'),
-            DatasetPublished(host='test_executor', ds=sink_o, from_transmit=False),
+            DatasetPublished(host='test_executor', ds=sink_o, transmit_idx=None),
             TaskSuccess(worker=w0, ts='sink'),
         }
         while expected:
@@ -84,19 +84,25 @@ def test_executor():
                 expected.remove(m)
 
         # retrieve result
-        callback(d1, DatasetTransmitCommand(ds=sink_o, source="test_executor", target="controller", daddress=c1))
+        callback(d1, DatasetTransmitCommand(ds=sink_o, idx=0, source="test_executor", target="controller", daddress=c1))
         ms = l.recv_messages()
         assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].ds == DatasetId(task='sink', output='o')
         assert serde.des_output(ms[0].value, 'int') == 3
 
         # purge, store, run partial and fetch again
         callback(m1, DatasetPurge(ds=sink_o))
-        send_data(d1, DatasetTransmitPayload(ds=source_o, value=serde.ser_output(10, 'int')))
-        ms = l.recv_messages()
-        assert ms == [DatasetPublished(host='test_executor', ds=source_o, from_transmit=True)]
+        send_data(d1, DatasetTransmitPayload(ds=source_o, confirm_idx=1, confirm_address=c1, value=serde.ser_output(10, 'int')))
+        expected = {
+            DatasetTransmitConfirm(idx=1),
+            DatasetPublished(host='test_executor', ds=source_o, transmit_idx=1),
+        }
+        while expected:
+            ms = l.recv_messages()
+            for m in ms:
+                expected.remove(m)
         callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}))
         expected = [
-            DatasetPublished(host='test_executor', ds=sink_o, from_transmit=False),
+            DatasetPublished(host='test_executor', ds=sink_o, transmit_idx=None),
             TaskSuccess(worker=w0, ts='sink'),
         ]
         while expected:
@@ -104,10 +110,11 @@ def test_executor():
             for m in ms:
                 assert m == expected[0]
                 expected.pop(0)
-        callback(d1, DatasetTransmitCommand(ds=sink_o, source="test_executor", target="controller", daddress=c1))
+        callback(d1, DatasetTransmitCommand(ds=sink_o, idx=2, source="test_executor", target="controller", daddress=c1))
         ms = l.recv_messages()
         assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].ds == DatasetId(task='sink', output='o')
         assert serde.des_output(ms[0].value, 'int') == 11
+        callback(ms[0].confirm_address, DatasetTransmitConfirm(idx=ms[0].confirm_idx))
 
         # shutdown
         callback(m1, ExecutorShutdown())

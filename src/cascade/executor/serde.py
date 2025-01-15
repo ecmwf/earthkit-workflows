@@ -4,7 +4,7 @@ This module is responsible for Serialization & Deserialization of messages and o
 
 from cascade.low.func import assert_never
 from cascade.low.core import DatasetId
-from cascade.executor.msg import Message, DatasetTransmitCommand, DatasetTransmitPayload
+from cascade.executor.msg import Message, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitConfirm
 from typing import Any
 import cloudpickle
 import pickle
@@ -37,24 +37,27 @@ def ser_output(v: Any, annotation: str) -> bytes:
 def des_output(v: bytes, annotation: str) -> Any:
     return cloudpickle.loads(v)
 
-def ser_dmessage(m: DatasetTransmitCommand|DatasetTransmitPayload) -> tuple[bytes]|tuple[bytes,bytes]:
+def ser_dmessage(m: DatasetTransmitCommand|DatasetTransmitPayload|DatasetTransmitConfirm) -> tuple[bytes]|tuple[bytes,bytes]:
     """Optimized variant for payloads and multipart send/recv"""
-    if isinstance(m, DatasetTransmitCommand):
+    if isinstance(m, DatasetTransmitCommand|DatasetTransmitConfirm):
         return ser_message(m),
     elif isinstance(m, DatasetTransmitPayload):
-        return (pickle.dumps(m.ds), m.value)
+        # TODO this is messy, introduce a proper header-body hierarchy
+        return (pickle.dumps([m.ds, m.confirm_address, m.confirm_idx]), m.value)
     else:
         assert_never(m)
 
-def des_dmessage(bs: list[bytes]) -> DatasetTransmitCommand|DatasetTransmitPayload:
+def des_dmessage(bs: list[bytes]) -> DatasetTransmitCommand|DatasetTransmitPayload|DatasetTransmitConfirm:
     h = pickle.loads(bs[0])
-    if isinstance(h, DatasetTransmitCommand):
+    if isinstance(h, DatasetTransmitCommand|DatasetTransmitConfirm):
         if len(bs) != 1:
             raise ValueError(f"expected list of len 1, gotten {len(bs)}")
         return h
-    elif isinstance(h, DatasetId):
+    elif isinstance(h, list):
         if len(bs) != 2:
             raise ValueError(f"expected list of len 2, gotten {len(bs)}")
-        return DatasetTransmitPayload(ds=h, value=bs[1])
+        if len(h) != 3:
+            raise ValueError(f"expected list of len 3, gotten {len(bs)}")
+        return DatasetTransmitPayload(ds=h[0], confirm_address=h[1], confirm_idx=h[2], value=bs[1])
     else:
         raise ValueError(f"unexpected type: {type(h)}")
