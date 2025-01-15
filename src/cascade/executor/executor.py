@@ -20,15 +20,16 @@ from cascade.low.func import assert_never
 from cascade.low.views import param_source
 from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure
 from cascade.executor.runner import entrypoint, ds2shmid
-from cascade.executor.comms import Listener, callback
+from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
 from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
 from cascade.shm.server import entrypoint as shm_server
 from cascade.executor.config import logging_config
-from cascade.low.tracing import mark, label, TaskLifecycle
+from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer
 
 logger = logging.getLogger(__name__)
+heartbeat_grace_ms = 2*comms_default_timeout_sec*1_000
 
 def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback: BackboneAddress, job: JobInstance, param_source: dict[TaskId, dict[int | str, DatasetId]]) -> BaseProcess:
     """Spawns a process with callback and exits"""
@@ -74,6 +75,7 @@ class Executor:
         self.datasets: set[DatasetId] = set()
         self.task_queue: dict[WorkerId, None|TaskSequence|BaseProcess] = {e: None for e in self.workers}
         self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
+        self.heartbeat_watcher = GraceWatcher(grace_ms = heartbeat_grace_ms)
 
         self.terminating = False
         atexit.register(self.terminate)
@@ -94,6 +96,12 @@ class Executor:
             args=(self.mlistener.address, self.daddress, self.host, shm_port, logging_config)
         )
         self.data_server.start()
+        self.registration = ExecutorRegistration(
+            host=self.host,
+            maddress=self.mlistener.address,
+            daddress=self.daddress,
+            workers=self.workers,
+        )
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
@@ -122,22 +130,25 @@ class Executor:
             self.data_server.kill()
 
     def to_controller(self, m: Message) -> None:
+        self.heartbeat_watcher.step()
         callback(self.controller_address, m)
 
     def register(self) -> None:
+        # NOTE we do register explicitly post-construction so that the former one is network-latency-free.
+        # However, it is especially important that `bind` (via Listener) happens *before* `register`, as
+        # otherwise we may lose messages from the Controller
         try:
             shm_client.ensure()
             # TODO some ensure on the data server?
-            registration = ExecutorRegistration(
-                host=self.host,
-                maddress=self.mlistener.address,
-                daddress=self.daddress,
-                workers=self.workers,
-            )
-            self.to_controller(registration)
+            logger.debug(f"about to send register message from {self.host}")
+            self.to_controller(self.registration)
         except Exception as e:
             logger.exception("failed during register")
             self.terminate()
+        # NOTE we don't mind this registration message being lost -- if that happens, we send it
+        # during next heartbeat. But we may want to introduce a check that if no message,
+        # including for-this-purpose introduced & guaranteed controller2worker heartbeat, arrived
+        # for a long time, we shut down
 
     def maybe_spawn(self, worker: WorkerId) -> None:
         ts = self.task_queue[worker]
@@ -145,7 +156,7 @@ class Executor:
             return
         if not self.task_prereq[worker] <= self.datasets:
             # TODO this is a possible slowdown, we don't wait until everything is available -- but maybe
-            # the first task in the queue could already start
+            # the first task in the queue could already start... better fit for persistent workers
             return
 
         self.task_queue[worker] = spawn_task_sequence(ts, WorkerId(self.host, f"w{worker}"), self.mlistener.address, self.job_instance, self.param_source)
@@ -154,7 +165,6 @@ class Executor:
         """Housekeeping task that checks that previously spawned task has succesfully finished.
         If `self.terminating` is true, awaits both future spawn and process join. Otherwise, expects that both have
         already happened."""
-        # TODO call this regularly to report failures earlier -- should neither block nor crash tho
         ts = self.task_queue[worker]
         if isinstance(ts, TaskSequence):
             if not self.terminating:
@@ -168,7 +178,7 @@ class Executor:
                 else:
                     raise ValueError(mes)
             # NOTE this timeout should never be breached! If it happens, increase it?
-            proc_handle.join(timeout=2 if not self.terminating else None)
+            timer(proc_handle.join, Microtrace.exc_procjoin)(timeout=5 if not self.terminating else None)
             if proc_handle.exitcode != 0:
                 mes = f"process on {worker} failed to terminate correctly: {proc_handle.pid} -> {proc_handle.exitcode}"
                 if self.terminating:
@@ -179,6 +189,23 @@ class Executor:
             pass
         else:
             assert_never(ts)
+
+    def healthcheck(self) -> None:
+        """Checks that no process died, and sends a heartbeat message in case the last message to controller
+        was too long ago"""
+        procFail = lambda ex: ex is not None and ex != 0
+        for k, e in self.task_queue.items():
+            if isinstance(e, BaseProcess) and procFail(e.exitcode):
+                ValueError(f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}")
+        if procFail(self.shm_process.exitcode):
+            ValueError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
+        if procFail(self.data_server.exitcode):
+            ValueError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
+        if self.heartbeat_watcher.is_breach():
+            logger.debug(f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}")
+            # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
+            # and the registration's size overhead is negligible
+            self.to_controller(self.registration)
 
     def enqueue_task(self, ts: TaskSequence) -> None:
         for task in ts.tasks:
@@ -199,8 +226,6 @@ class Executor:
 
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
-        # TODO regular cleanup?
-        # TODO monitor data_server? Add in term command, exit report, etc?
         while not self.terminating:
             try:
                 for m in self.mlistener.recv_messages():
@@ -235,6 +260,7 @@ class Executor:
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)
                         raise TypeError(m)
+                self.healthcheck()
             except Exception as e:
                 logger.exception("executor exited, about to report to controller")
                 self.to_controller(ExecutorFailure(self.host, repr(e)))

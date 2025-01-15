@@ -2,39 +2,46 @@
 Handles communication between controller and remote executors
 """
 
-# TODO handle unresponsive executors
-
 import logging
+import time
 
 from cascade.low.core import TaskId, DatasetId, WorkerId, Environment, HostId, Worker
 from cascade.low.func import assert_never
 from cascade.scheduler.core import DatasetStatus, TaskStatus
 from pydantic import BaseModel, Field
-from cascade.executor.msg import Message, TaskSequence, TaskFailure, TaskSuccess, DatasetPublished, DatasetPurge, DatasetTransmitCommand, DatasetTransmitPayload, ExecutorFailure, ExecutorExit, ExecutorRegistration, ExecutorShutdown, DatasetTransmitFailure, BackboneAddress
+from cascade.executor.msg import Message, TaskSequence, TaskFailure, TaskSuccess, DatasetPublished, DatasetPurge, DatasetTransmitCommand, DatasetTransmitPayload, ExecutorFailure, ExecutorExit, ExecutorRegistration, ExecutorShutdown, DatasetTransmitFailure, BackboneAddress, DatasetTransmitConfirm
 import cascade.executor.serde as serde
-from cascade.executor.comms import Listener
+from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
+from cascade.executor.comms import Listener, GraceWatcher
 import zmq
 
 logger = logging.getLogger(__name__)
 
 Event = DatasetPublished|TaskSuccess|DatasetTransmitPayload
 ToShutdown = TaskFailure|ExecutorFailure|DatasetTransmitFailure|ExecutorExit
-Unsupported = TaskSequence|DatasetPurge|DatasetTransmitCommand|ExecutorRegistration|ExecutorShutdown
+Unsupported = TaskSequence|DatasetPurge|DatasetTransmitCommand|ExecutorShutdown|DatasetTransmitConfirm
 
 class Bridge:
     def __init__(self, controller_url: str, expected_executors: int) -> None:
         self.mlistener = Listener(controller_url)
         self.hosts: dict[HostId, zmq.Socket] = {}
+        self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
         self.daddresses: dict[HostId, tuple[BackboneAddress, zmq.Socket]] = {}
+        self.transmit_idx_counter = 0
         registered = 0
         ctx = zmq.Context()
         self.environment = Environment(workers={})
+        logger.debug("about to start receiving registrations")
+        registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
         while registered < expected_executors:
-            for message in self.mlistener.recv_messages():
+            messages = self.mlistener.recv_messages(timeout_sec=10)
+            logger.debug(f"received {messages=}")
+            for message in messages:
                 if not isinstance(message, ExecutorRegistration):
                     raise TypeError(type(message))
                 if message.host in self.hosts or message.host in self.daddresses:
-                    raise ValueError(f"double registration of {message.host}")
+                    logger.warning(f"double registration of {message.host}, indicating network congestion")
+                    continue
                 msocket = ctx.socket(zmq.PUSH)
                 msocket.set(zmq.LINGER, 3000)
                 msocket.connect(message.maddress)
@@ -47,6 +54,11 @@ class Bridge:
                     # TODO proper parameters
                     self.environment.workers[worker] = Worker(cpu=1, gpu=0, memory_mb=1024)
                 registered += 1
+                self.heartbeat_checker[message.host] = GraceWatcher(2*executor_heartbeat_grace_ms)
+                self.heartbeat_checker[message.host].step()
+            if time.time_ns() > registration_grace:
+                self.shutdown()
+                raise ValueError(f"failed to recevied registration in due time")
 
     def _send(self, hostId: HostId, message: Message) -> None:
         raw = serde.ser_message(message)
@@ -57,21 +69,31 @@ class Bridge:
 
     def recv_events(self) -> list[Event]:
         try:
-            events = []
+            events: list[Event] = []
             shutdown_reason: None|Exception|Message = None
-            for message in self.mlistener.recv_messages():
-                if isinstance(message, Event):
-                    events.append(message)
-                elif isinstance(message, ToShutdown):
-                    logger.critical(f"received failure {message=}, proceeding with a shutdown")
-                    if isinstance(message, ExecutorExit|ExecutorFailure) and message.host in self.hosts:
-                        self.hosts.pop(message.host)
-                    shutdown_reason = message
-                elif isinstance(message, Unsupported):
-                    logger.critical(f"received unexpected {message=}, proceeding with a shutdown")
-                    shutdown_reason = message
-                else:
-                    assert_never(message)
+            while (not events) and (not shutdown_reason):
+                for message in self.mlistener.recv_messages():
+                    if hasattr(message, 'host') and isinstance((host := message.host), HostId):
+                        self.heartbeat_checker[host].step()
+                    if hasattr(message, 'worker') and isinstance((worker := message.worker), WorkerId):
+                        self.heartbeat_checker[worker.host].step()
+                    if isinstance(message, Event):
+                        events.append(message)
+                    elif isinstance(message, ExecutorRegistration):
+                        pass
+                    elif isinstance(message, ToShutdown):
+                        logger.critical(f"received failure {message=}, proceeding with a shutdown")
+                        if isinstance(message, ExecutorExit|ExecutorFailure) and message.host in self.hosts:
+                            self.hosts.pop(message.host)
+                        shutdown_reason = message
+                    elif isinstance(message, Unsupported):
+                        logger.critical(f"received unexpected {message=}, proceeding with a shutdown")
+                        shutdown_reason = message
+                    else:
+                        assert_never(message)
+                failed_heartbeats = (e for e in self.heartbeat_checker.items() if e[1].is_breach())
+                for host, checker in failed_heartbeats:
+                    logger.warning(f"{host=} failed to heartbeat for {checker.elapsed_ms()/1e3:.3f}s")
             if shutdown_reason is None:
                 return events
         except Exception as e:
@@ -93,7 +115,9 @@ class Bridge:
             target=target,
             daddress=self.daddresses[target][0],
             ds=ds,
+            idx=self.transmit_idx_counter,
         )
+        self.transmit_idx_counter += 1
         self.daddresses[source][1].send(serde.ser_message(m))
 
     def fetch(self, ds: DatasetId, source: HostId) -> None:
@@ -102,14 +126,17 @@ class Bridge:
             target="controller",
             daddress=self.mlistener.address,
             ds=ds,
+            idx=self.transmit_idx_counter,
         )
+        self.transmit_idx_counter += 1
         self.daddresses[source][1].send(serde.ser_message(m))
 
     def shutdown(self) -> None:
         m = ExecutorShutdown()
         for host in self.hosts.keys():
             self._send(host, m)
-        while self.hosts:
+        shutdown_grace = time.time_ns() + 3 * 60 * 1_000_000_000
+        while self.hosts and time.time_ns() < shutdown_grace:
             # we want to consume all those exit messages 
             for message in self.mlistener.recv_messages():
                 if isinstance(message, ExecutorExit|ExecutorFailure):
@@ -117,3 +144,5 @@ class Bridge:
                         self.hosts.pop(message.host)
                 else:
                     logger.warning(f"ignoring {type(message)}")
+        if self.hosts:
+            logger.warning(f"not all hosts exited during grace period: {self.hosts.keys()}, quitting anyway")
