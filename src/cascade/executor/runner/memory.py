@@ -24,14 +24,13 @@ def ds2shmid(ds: DatasetId) -> str:
     return h.hexdigest()[:24]
 
 class Memory(AbstractContextManager):
-    def __init__(self, callback: BackboneAddress, worker: WorkerId, publish: set[DatasetId]) -> None:
+    def __init__(self, callback: BackboneAddress, worker: WorkerId) -> None:
         self.local: dict[DatasetId, Any] = {}
         self.bufs: dict[DatasetId, shm_client.AllocatedBuffer] = {}
-        self.publish = publish
         self.callback = callback
         self.worker = worker
 
-    def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any) -> None:
+    def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool) -> None:
         if outputId == NO_OUTPUT_PLACEHOLDER:
             if outputValue is not None:
                 logger.warning(f"gotten output of type {type(outputValue)} where none was expected, updating annotation")
@@ -42,7 +41,7 @@ class Memory(AbstractContextManager):
         # TODO how do we purge from here over time?
         self.local[outputId] = outputValue
 
-        if outputId in self.publish:
+        if isPublish:
             logger.debug(f"publishing {outputId}")
             shmid = ds2shmid(outputId)
             result_ser = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
@@ -66,6 +65,16 @@ class Memory(AbstractContextManager):
             self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation)
 
         return self.local[inputId]
+
+    def flush(self) -> None:
+        # NOTE poor man's memory management -- just drop those locals that weren't published. Called
+        # after every taskSequence. In principle, we could purge some locals earlier, and ideally scheduler
+        # would invoke some targeted purges to also remove some published ones earlier (eg, they are still
+        # needed somewhere but not here)
+        purgeable = [inputId for inputId in self.local if inputId not in self.bufs]
+        logger.debug(f"will flush {len(purgeable)} datasets")
+        for inputId in purgeable:
+            self.local.pop(inputId)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         # TODO allow for purging via ext events -- drop from local, close in bufs

@@ -11,15 +11,14 @@ the tasks themselves.
 import atexit
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
-from typing import cast
+from typing import cast, Iterable
 import socket
 import logging
 
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
-from cascade.low.views import param_source
-from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure
-from cascade.executor.runner.entrypoint import entrypoint
+from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown
+from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
 from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
 from cascade.executor.data_server import start_data_server
@@ -28,39 +27,10 @@ import cascade.shm.api as shm_api
 from cascade.shm.server import entrypoint as shm_server
 from cascade.executor.config import logging_config
 from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer
+from cascade.low.views import param_source
 
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2*comms_default_timeout_sec*1_000
-
-def spawn_task_sequence(taskSequence: TaskSequence, workerId: WorkerId, callback: BackboneAddress, job: JobInstance, param_source: dict[TaskId, dict[int | str, DatasetId]]) -> BaseProcess:
-    """Spawns a process with callback and exits"""
-    # TODO replace with a dedicated Factory process keeping a pool of zmq-awkable processes (thats a step towards persistent workers anyway)
-
-    param_source_ext: dict[TaskId, dict[int|str, tuple[DatasetId, str]]] = {
-        task: {
-            k: (
-                dataset_id, 
-                job.tasks[dataset_id.task].definition.output_schema[dataset_id.output],
-            )
-            for k, dataset_id in param_source[task].items()
-        }
-        for task in taskSequence.tasks
-    }
-    executionContext = ExecutionContext(
-        tasks={task: job.tasks[task] for task in taskSequence.tasks},
-        param_source=param_source_ext,
-        callback=callback,
-    )
-
-    # NOTE a bit risky, but forkserver is too slow. Has unhealthy side effects, like preserving imports caused
-    # by JobInstance deser
-    ctx = get_context("fork") 
-    p = ctx.Process(
-        target=entrypoint,
-        kwargs={"taskSequence": taskSequence, "executionContext": executionContext},
-    )
-    p.start()
-    return p
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{socket.gethostname()}:{port}"
@@ -71,11 +41,11 @@ class Executor:
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
         self.host = host
-        self.workers = [WorkerId(host, f"w{i}") for i in range(workers)]
+        self.workers: dict[WorkerId, BaseProcess|None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
 
         self.datasets: set[DatasetId] = set()
-        self.task_queue: dict[WorkerId, None|TaskSequence|BaseProcess] = {e: None for e in self.workers}
-        self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers}
+        self.task_queue: dict[WorkerId, None|TaskSequence] = {e: None for e in self.workers.keys()}
+        self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers.keys()}
         self.heartbeat_watcher = GraceWatcher(grace_ms = heartbeat_grace_ms)
 
         self.terminating = False
@@ -101,7 +71,7 @@ class Executor:
             host=self.host,
             maddress=self.mlistener.address,
             daddress=self.daddress,
-            workers=self.workers,
+            workers=list(self.workers.keys()),
         )
         logger.debug("constructed executor")
 
@@ -115,10 +85,12 @@ class Executor:
         if self.terminating:
             return
         self.terminating = True
-        for worker in self.workers:
+        for worker in self.workers.keys():
             logger.debug(f"cleanup worker {worker}")
             try:
-                self.maybe_cleanup(worker)
+                if (proc := self.workers[worker]) is not None:
+                    callback(worker_address(worker), WorkerShutdown())
+                    proc.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {worker}")
         if hasattr(self, 'shm_process') and self.shm_process is not None and self.shm_process.is_alive():
@@ -134,13 +106,36 @@ class Executor:
         self.heartbeat_watcher.step()
         callback(self.controller_address, m)
 
+    def start_workers(self, workers: Iterable[WorkerId]) -> None:
+        # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
+        # NOTE a bit risky, but forkserver is too slow. Has unhealthy side effects, like preserving imports caused
+        # by JobInstance deser
+        ctx = get_context("fork") 
+        for worker in workers:
+            runnerContext = RunnerContext(workerId=worker, job=self.job_instance, param_source=self.param_source, callback=self.mlistener.address)
+            p = ctx.Process(target=entrypoint, kwargs={"runnerContext": runnerContext})
+            p.start()
+            self.workers[worker] = p
+            logger.debug(f"started process {p.pid} for worker {worker}")
+
+        remaining = set(workers)
+        while remaining:
+            for m in self.mlistener.recv_messages():
+                if not isinstance(m, WorkerReady):
+                    raise ValueError(f"expected WorkerReady, gotten {type(m)}")
+                logger.debug(f"worker {m.worker} ready")
+                remaining.remove(m.worker)
+
     def register(self) -> None:
         # NOTE we do register explicitly post-construction so that the former one is network-latency-free.
         # However, it is especially important that `bind` (via Listener) happens *before* `register`, as
         # otherwise we may lose messages from the Controller
         try:
+            # TODO actually send register first, but then need to handle `start_workers` not interfering with
+            # arriving TaskSequence
             shm_client.ensure()
             # TODO some ensure on the data server?
+            self.start_workers(self.workers.keys())
             logger.debug(f"about to send register message from {self.host}")
             self.to_controller(self.registration)
         except Exception as e:
@@ -160,43 +155,19 @@ class Executor:
             # the first task in the queue could already start... better fit for persistent workers
             return
 
-        self.task_queue[worker] = spawn_task_sequence(ts, WorkerId(self.host, f"w{worker}"), self.mlistener.address, self.job_instance, self.param_source)
-
-    def maybe_cleanup(self, worker: WorkerId) -> None:
-        """Housekeeping task that checks that previously spawned task has succesfully finished.
-        If `self.terminating` is true, awaits both future spawn and process join. Otherwise, expects that both have
-        already happened."""
-        ts = self.task_queue[worker]
-        if isinstance(ts, TaskSequence):
-            if not self.terminating:
-                raise ValueError(f"premature cleanup on {worker}: {ts} not spawned yet")
-        elif isinstance(ts, BaseProcess):
-            proc_handle = ts
-            if not proc_handle.pid:
-                mes = f"process on {worker} failed to start"
-                if self.terminating:
-                    logger.warning(mes)
-                else:
-                    raise ValueError(mes)
-            # NOTE this timeout should never be breached! If it happens, increase it?
-            timer(proc_handle.join, Microtrace.exc_procjoin)(timeout=5 if not self.terminating else None)
-            if proc_handle.exitcode != 0:
-                mes = f"process on {worker} failed to terminate correctly: {proc_handle.pid} -> {proc_handle.exitcode}"
-                if self.terminating:
-                    logger.warning(mes)
-                else:
-                    raise ValueError(mes)
-        elif ts is None:
-            pass
-        else:
-            assert_never(ts)
+        if (proc := self.workers[worker]) is None or proc.exitcode is not None:
+            raise ValueError(f"worker process {worker} is not alive")
+        self.task_queue[worker] = None
+        callback(worker_address(worker), ts)
 
     def healthcheck(self) -> None:
         """Checks that no process died, and sends a heartbeat message in case the last message to controller
         was too long ago"""
         procFail = lambda ex: ex is not None and ex != 0
-        for k, e in self.task_queue.items():
-            if isinstance(e, BaseProcess) and procFail(e.exitcode):
+        for k, e in self.workers.items():
+            if e is None:
+                ValueError(f"process on {k} is not alive")
+            elif procFail(e.exitcode):
                 ValueError(f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}")
         if procFail(self.shm_process.exitcode):
             ValueError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
@@ -211,8 +182,8 @@ class Executor:
     def enqueue_task(self, ts: TaskSequence) -> None:
         for task in ts.tasks:
             mark({"task": task, "worker": repr(ts.worker), "action": TaskLifecycle.enqueued})
-        self.maybe_cleanup(ts.worker)
-
+        if self.task_queue[ts.worker] is not None:
+            raise ValueError(f"attempting to enqueue two tasks!")
         self.task_queue[ts.worker] = ts
         prereqs = {
             dataset_id

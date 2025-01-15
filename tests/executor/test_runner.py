@@ -2,12 +2,14 @@
 Tests running a Callable in the same process
 """
 
-from cascade.executor.msg import TaskSequence, ExecutionContext, TaskSuccess, DatasetPublished
-from cascade.low.core import WorkerId, TaskDefinition, TaskInstance, DatasetId
+from cascade.executor.msg import TaskSequence, TaskSuccess, DatasetPublished
+from cascade.low.core import WorkerId, TaskDefinition, TaskInstance, DatasetId, JobInstance, Task2TaskEdge
+from cascade.low.views import param_source
 import cascade.executor.serde as serde
 import cascade.shm.client as shm_cli
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
+from cascade.executor.runner.packages import PackagesEnv
 import pytest
 
 def test_runner(monkeypatch):
@@ -36,13 +38,15 @@ def test_runner(monkeypatch):
         tasks=[],
         publish=set(),
     )
-    emptyEc = ExecutionContext(
-        tasks={},
-        param_source={},
+    emptyRc = entrypoint.RunnerContext(
+        workerId=worker,
         callback=test_address,
+        job=JobInstance(tasks={}, edges=[]),
+        param_source={},
     )
 
-    entrypoint.entrypoint(emptyTs, emptyEc)
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+        entrypoint.execute_sequence(emptyTs, memoryInstance, pckg, emptyRc)
     assert msgs == []
 
     def test_func(x):
@@ -66,13 +70,19 @@ def test_runner(monkeypatch):
         tasks=["t2"],
         publish={t2ds},
     )
-    oneTaskEc = ExecutionContext(
+    oneTaskJob = JobInstance(
         tasks = {"t2": t2},
-        param_source = {"t2": {}},
+        edges = []
+    )
+    oneTaskRc = entrypoint.RunnerContext(
+        workerId=worker,
         callback=test_address,
+        job=oneTaskJob,
+        param_source=param_source(oneTaskJob.edges),
     )
 
-    entrypoint.entrypoint(oneTaskTs, oneTaskEc)
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+        entrypoint.execute_sequence(oneTaskTs, memoryInstance, pckg, oneTaskRc)
     assert msgs == [
         DatasetPublished(host=worker.host, ds=t2ds, transmit_idx=None),
         TaskSuccess(worker=worker, ts='t2')
@@ -82,10 +92,10 @@ def test_runner(monkeypatch):
     assert serde.des_output(so.view(), 'int') == 2
     so.close()
 
-    # test 3: two task pipeline, utilizing previous pipeline's output
+    # test 3: two task pipeline
     t3a = TaskInstance(
         definition=task_definition,
-        static_input_kw={},
+        static_input_kw={"x": 2},
         static_input_ps={},
     )
     t3b = TaskInstance(
@@ -93,24 +103,31 @@ def test_runner(monkeypatch):
         static_input_kw={},
         static_input_ps={},
     )
-    t3ds = DatasetId("t3b", "o")
+    t3i = DatasetId("t3a", "o")
+    t3o = DatasetId("t3b", "o")
     twoTaskTs = TaskSequence(
         worker=worker,
         tasks=["t3a", "t3b"],
-        publish={t3ds},
+        publish={t3o},
     )
-    twoTaskEc = ExecutionContext(
+    twoTaskJob = JobInstance(
         tasks = {"t3a": t3a, "t3b": t3b},
-        param_source = {"t3a": {"x": (t2ds, "int")}, "t3b": {"x": (DatasetId("t3a", "o"), 'int')}},
+        edges = [Task2TaskEdge(source=t3i, sink_task="t3b", sink_input_kw="x", sink_input_ps=None)],
+    )
+    twoTaskRc = entrypoint.RunnerContext(
+        workerId=worker,
         callback=test_address,
+        job=twoTaskJob,
+        param_source=param_source(twoTaskJob.edges),
     )
 
-    entrypoint.entrypoint(twoTaskTs, twoTaskEc)
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+        entrypoint.execute_sequence(twoTaskTs, memoryInstance, pckg, twoTaskRc)
     assert msgs == [
         TaskSuccess(worker=worker, ts='t3a'),
-        DatasetPublished(host=worker.host, ds=t3ds, transmit_idx=None),
+        DatasetPublished(host=worker.host, ds=t3o, transmit_idx=None),
         TaskSuccess(worker=worker, ts='t3b'),
     ]
-    so = get(memory.ds2shmid(t3ds))
+    so = get(memory.ds2shmid(t3o))
     assert serde.des_output(so.view(), 'int') == 4
     so.close()

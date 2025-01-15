@@ -2,115 +2,92 @@
 The entrypoint itself
 """
 
-# NOTE there are a few performance optimisations at hand:
-# - we could start obtaining inputs while we are venv-installing (but beware deser needing venv!)
-# - we could start venv-installing & inputs-obtaining while previous task is running
-# - we could be inputs-obtaining in parallel
-# Ideally, all deser would be doable outside Python -- then this whole module could be eg rust & threads 
-
-from typing import Callable, Any
-import importlib
 import os
 import logging
 import logging.config
-from time import perf_counter_ns
+from dataclasses import dataclass
+import zmq
 
-from cascade.low.core import TaskDefinition, DatasetId, TaskId
-from cascade.low.func import ensure, assert_never, maybe_head
-from cascade.executor.msg import ExecutionContext, TaskFailure, TaskSuccess, TaskSequence
+from cascade.low.core import WorkerId, JobInstance, TaskId, DatasetId
+from cascade.executor.msg import TaskFailure, TaskSequence, BackboneAddress, TaskSuccess, WorkerReady, WorkerShutdown
 from cascade.executor.comms import callback
-from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, trace
+from cascade.low.tracing import label
 from cascade.executor.config import logging_config
 from cascade.executor.runner.memory import Memory
 from cascade.executor.runner.packages import PackagesEnv
+from cascade.executor.runner.runner import ExecutionContext, run
+import cascade.executor.serde as serde
 
 logger = logging.getLogger(__name__)
 
-def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
-    start = perf_counter_ns()
-    task = executionContext.tasks[taskId]
-    mark({"task": taskId, "action": TaskLifecycle.started})
-    logger.debug(f"starting {taskId}")
+@dataclass(frozen=True)
+class RunnerContext:
+    """The static runner configuration"""
+    workerId: WorkerId
+    job: JobInstance
+    callback: BackboneAddress
+    param_source: dict[TaskId, dict[int | str, DatasetId]]
 
-    # prepare func & inputs
-    func: Callable
-    if task.definition.func is not None:
-        func = TaskDefinition.func_dec(task.definition.func)
-    elif task.definition.entrypoint is not None:
-        module_name, function_name = task.definition.entrypoint.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        func = module.__dict__[function_name]
-    else:
-        raise TypeError("neither entrypoint nor func given")
-
-    args: list[Any] = []
-    for idx, arg in task.static_input_ps.items():
-        ensure(args, idx)
-        args[idx] = arg
-    kwargs: dict[str, Any] = {}
-    kwargs.update(task.static_input_kw)
-
-    for param_pos, (dataset_id, annotation) in executionContext.param_source[taskId].items():
-        value = memory.provide(dataset_id, annotation)
-        if isinstance(param_pos, str):
-            kwargs[param_pos] = value
-        elif isinstance(param_pos, int):
-            ensure(args, param_pos)
-            args[param_pos] = value
-        else:
-            assert_never(param_pos)
-
-    if len(task.definition.output_schema) > 1:
-        raise NotImplementedError("multiple outputs not supported yet")
-        # NOTE to implement, just put `result=func` & `memory.handle` below into a for-cycle for generator outputs
-    outputId, outputSchema = maybe_head(task.definition.output_schema.items()) # type: ignore
-    if not outputId:
-        raise ValueError(f"no output key for task {taskId}")
-    mark({"task": taskId, "action": TaskLifecycle.loaded})
-    prep_end = perf_counter_ns()
-
-    # invoke
-    result = func(*args, **kwargs)
-    mark({"task": taskId, "action": TaskLifecycle.computed})
-    run_end = perf_counter_ns()
-
-    # store outputs
-    memory.handle(DatasetId(taskId, outputId), outputSchema, result)
-    mark({"task": taskId, "action": TaskLifecycle.published})
-    end = perf_counter_ns()
-
-    trace(Microtrace.wrk_task, end - start)
-    logger.debug(f"outer elapsed {(end-start)/1e9: .5f} s in {taskId}")
-    trace(Microtrace.wrk_load, prep_end - start)
-    logger.debug(f"prep elapsed {(prep_end-start)/1e9: .5f} s in {taskId}")
-    trace(Microtrace.wrk_compute, run_end - prep_end)
-    logger.debug(f"inner elapsed {(run_end-prep_end)/1e9: .5f} s in {taskId}")
-    trace(Microtrace.wrk_publish, end - run_end)
-    logger.debug(f"post elapsed {(end-run_end)/1e9: .5f} s in {taskId}")
+    def project(self, taskSequence: TaskSequence) -> ExecutionContext:
+        param_source_ext: dict[TaskId, dict[int|str, tuple[DatasetId, str]]] = {
+            task: {
+                k: (
+                    dataset_id, 
+                    self.job.tasks[dataset_id.task].definition.output_schema[dataset_id.output],
+                )
+                for k, dataset_id in self.param_source[task].items()
+            }
+            for task in taskSequence.tasks
+        }
+        return ExecutionContext(
+            tasks={task: self.job.tasks[task] for task in taskSequence.tasks},
+            param_source=param_source_ext,
+            callback=self.callback,
+            publish=taskSequence.publish,
+        )
 
 
-def entrypoint(taskSequence: TaskSequence, executionContext: ExecutionContext): 
+def worker_address(workerId: WorkerId) -> BackboneAddress:
+    return f"ipc:///tmp/{repr(workerId)}.socket"
+
+def execute_sequence(taskSequence: TaskSequence, memory: Memory, pckg: PackagesEnv, runnerContext: RunnerContext) -> None:
     taskId: TaskId|None = None
     try:
-        logging.config.dictConfig(logging_config)
-        with Memory(executionContext.callback, taskSequence.worker, taskSequence.publish) as memory, PackagesEnv() as pckg:
-            label("worker", repr(taskSequence.worker))
-
-            if any(task.definition.needs_gpu for task in executionContext.tasks.values()):
-                gpu_id = str(taskSequence.worker.worker_num())
-                os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_id)
-            # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
-
-            for taskId in taskSequence.tasks:
-                pckg.extend(executionContext.tasks[taskId].definition.environment)
-                run(taskId, executionContext, memory)
-                callback(
-                    executionContext.callback,
-                    TaskSuccess(worker=taskSequence.worker, ts=taskId),
-                )
+        executionContext = runnerContext.project(taskSequence)
+        for taskId in taskSequence.tasks:
+            pckg.extend(executionContext.tasks[taskId].definition.environment)
+            run(taskId, executionContext, memory)
+            callback(
+                executionContext.callback,
+                TaskSuccess(worker=taskSequence.worker, ts=taskId),
+            )
+        memory.flush()
     except Exception as e:
         logger.exception("runner failure, about to report")
         callback(
-            executionContext.callback,
+            runnerContext.callback,
             TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)),
         )
+
+def entrypoint(runnerContext: RunnerContext): 
+    logging.config.dictConfig(logging_config)
+    ctx = zmq.Context()
+    socket = ctx.socket(zmq.PULL)
+    socket.bind(worker_address(runnerContext.workerId))
+    callback(runnerContext.callback, WorkerReady(runnerContext.workerId))
+    with Memory(runnerContext.callback, runnerContext.workerId) as memory, PackagesEnv() as pckg:
+        label("worker", repr(runnerContext.workerId))
+        gpu_id = str(runnerContext.workerId.worker_num())
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_id)
+        # NOTE check any(task.definition.needs_gpu) anywhere?
+        # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
+
+        while True:
+            mRaw = socket.recv()
+            mDes = serde.des_message(mRaw)
+            if isinstance(mDes, WorkerShutdown):
+                logger.debug(f"worker {runnerContext.workerId} shutting down")
+                break
+            if not isinstance(mDes, TaskSequence):
+                raise ValueError(f"unexpected message received: {type(mDes)}")
+            execute_sequence(mDes, memory, pckg, runnerContext)
