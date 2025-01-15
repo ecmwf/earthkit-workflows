@@ -6,7 +6,8 @@ from cascade.executor.msg import TaskSequence, ExecutionContext, TaskSuccess, Da
 from cascade.low.core import WorkerId, TaskDefinition, TaskInstance, DatasetId
 import cascade.executor.serde as serde
 import cascade.shm.client as shm_cli
-import cascade.executor.runner as runner
+import cascade.executor.runner.entrypoint as entrypoint
+import cascade.executor.runner.memory as memory
 import pytest
 
 def test_runner(monkeypatch):
@@ -19,7 +20,8 @@ def test_runner(monkeypatch):
     def verify_msg(address, msg):
         assert address == test_address
         msgs.append(msg)
-    monkeypatch.setattr(runner, "callback", verify_msg)
+    monkeypatch.setattr(memory, "callback", verify_msg)
+    monkeypatch.setattr(entrypoint, "callback", verify_msg)
 
     def allocate(key: str, l: int, timeout_sec: float = 60.0) -> shm_cli.AllocatedBuffer:
         return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=l, create=True, close_callback=lambda : None)
@@ -40,7 +42,7 @@ def test_runner(monkeypatch):
         callback=test_address,
     )
 
-    runner.entrypoint(emptyTs, emptyEc)
+    entrypoint.entrypoint(emptyTs, emptyEc)
     assert msgs == []
 
     def test_func(x):
@@ -70,13 +72,13 @@ def test_runner(monkeypatch):
         callback=test_address,
     )
 
-    runner.entrypoint(oneTaskTs, oneTaskEc)
+    entrypoint.entrypoint(oneTaskTs, oneTaskEc)
     assert msgs == [
         DatasetPublished(host=worker.host, ds=t2ds, transmit_idx=None),
         TaskSuccess(worker=worker, ts='t2')
     ]
     msgs = []
-    so = get(runner.ds2shmid(t2ds))
+    so = get(memory.ds2shmid(t2ds))
     assert serde.des_output(so.view(), 'int') == 2
     so.close()
 
@@ -103,12 +105,12 @@ def test_runner(monkeypatch):
         callback=test_address,
     )
 
-    runner.entrypoint(twoTaskTs, twoTaskEc)
+    entrypoint.entrypoint(twoTaskTs, twoTaskEc)
     assert msgs == [
         TaskSuccess(worker=worker, ts='t3a'),
         DatasetPublished(host=worker.host, ds=t3ds, transmit_idx=None),
         TaskSuccess(worker=worker, ts='t3b'),
     ]
-    so = get(runner.ds2shmid(t3ds))
+    so = get(memory.ds2shmid(t3ds))
     assert serde.des_output(so.view(), 'int') == 4
     so.close()

@@ -19,7 +19,8 @@ from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId
 from cascade.low.func import assert_never
 from cascade.low.views import param_source
 from cascade.executor.msg import BackboneAddress, ExecutionContext, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure
-from cascade.executor.runner import entrypoint, ds2shmid
+from cascade.executor.runner.entrypoint import entrypoint
+from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
 from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
