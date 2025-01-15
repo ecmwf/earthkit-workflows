@@ -11,7 +11,7 @@ import logging.config
 from concurrent.futures import Future, ThreadPoolExecutor, Executor as PythonExecutor, wait, FIRST_COMPLETED
 from time import time_ns
 
-from cascade.executor.runner import ds2shmid
+from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.msg import BackboneAddress, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitFailure, DatasetPublished, DatasetTransmitConfirm
 from cascade.low.func import assert_never
@@ -114,9 +114,11 @@ class DataServer:
                     mark({"dataset": m.ds.task, "action": TransmitLifecycle.started, "target": m.target})
                     fut = self.ds_proc_tp.submit(self.send_payload, m)
                     self.awaiting_confirmation[m.idx] = (m, time_ns())
+                    self.futs_in_progress[m] = fut
                 elif isinstance(m, DatasetTransmitPayload):
                     mark({"dataset": m.ds.task, "action": TransmitLifecycle.received, "target": self.host})
                     fut = self.ds_proc_tp.submit(self.store_payload, m)
+                    self.futs_in_progress[m] = fut
                 elif isinstance(m, DatasetTransmitConfirm):
                     if m.idx not in self.awaiting_confirmation:
                         logger.warning(f"unexpected confirmation: {m.idx}")
@@ -126,8 +128,6 @@ class DataServer:
                     pass
                 else:
                     assert_never(m)
-                if m is not None:
-                    self.futs_in_progress[m] = fut
 
                 watermark = time_ns() - resend_grace
                 queue = []

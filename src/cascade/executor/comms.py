@@ -15,7 +15,7 @@ import time
 
 import zmq
 
-from cascade.executor.msg import BackboneAddress, Message, DatasetTransmitCommand, DatasetTransmitPayload
+from cascade.executor.msg import BackboneAddress, Message, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitConfirm
 from cascade.executor.serde import ser_message, des_message, ser_dmessage, des_dmessage
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class Listener:
                     messages.append(message)
         return messages
 
-    def recv_dmessage(self, timeout_sec: int|None = default_timeout_sec) -> DatasetTransmitCommand|DatasetTransmitPayload|None:
+    def recv_dmessage(self, timeout_sec: int|None = default_timeout_sec) -> DatasetTransmitCommand|DatasetTransmitPayload|DatasetTransmitConfirm|None:
         # logger.debug(f"receiving data on {self.address} with {timeout_sec=}")
         ready = self.poller.poll(timeout_sec * 1_000 if timeout_sec is not None else None)
         if len(ready) > 1:

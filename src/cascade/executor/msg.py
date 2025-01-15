@@ -3,6 +3,8 @@ This module defines all messages used to communicate in between executor instanc
 as externally to eg Controller or Runner
 """
 
+# TODO split into message categories: worker-only, data-only, regular -- or smth like that
+
 # NOTE about representation -- we could have gone with pydantic, but since we wouldnt use
 # its native serde to json (due to having binary data, sets, etc), validation or swagger
 # generation, there is no point in the overhead. We are sticking to plain dataclasses
@@ -46,15 +48,6 @@ class TaskSequence:
     worker: WorkerId # worker for running those tasks
     tasks: list[TaskId] # to be executed in the given order
     publish: set[DatasetId] # set of outputs to be published
-
-@dataclass(frozen=True)
-class ExecutionContext:
-    """A projection of JobInstance relevant to particular TaskSequence"""
-    # NOTE once we have long lived workers, this would be replaced by full JobInstance present at the worker
-    tasks: dict[TaskId, TaskInstance]
-    # int: pos argument, str: kw argument. Values are dsid + annotation
-    param_source: dict[TaskId, dict[int|str, tuple[DatasetId, str]]]
-    callback: BackboneAddress
 
 @dataclass(frozen=True)
 class TaskFailure:
@@ -122,5 +115,14 @@ class ExecutorRegistration:
 class ExecutorShutdown:
     pass
 
+@dataclass(frozen=True)
+class WorkerReady:
+    worker: WorkerId
+
+@dataclass(frozen=True)
+class WorkerShutdown:
+    pass
+
+
 # this explicit list is a disgrace -- see the _Message protocol above
-Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm
+Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm|WorkerReady|WorkerShutdown
