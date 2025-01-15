@@ -66,6 +66,14 @@ class Memory(AbstractContextManager):
 
         return self.local[inputId]
 
+    def pop(self, ds: DatasetId) -> None:
+        if ds in self.local:
+            val = self.local.pop(ds)
+            del val
+        if ds in self.bufs:
+            buf = self.bufs.pop(ds)
+            buf.close()
+
     def flush(self) -> None:
         # NOTE poor man's memory management -- just drop those locals that weren't published. Called
         # after every taskSequence. In principle, we could purge some locals earlier, and ideally scheduler
@@ -77,8 +85,6 @@ class Memory(AbstractContextManager):
             self.local.pop(inputId)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
-        # TODO allow for purging via ext events -- drop from local, close in bufs
-
         # this is required so that the Shm can be properly freed, otherwise you get 'pointers cannot be closed'
         del self.local
         for buf in self.bufs.values():

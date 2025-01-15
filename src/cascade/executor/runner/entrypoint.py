@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import zmq
 
 from cascade.low.core import WorkerId, JobInstance, TaskId, DatasetId
-from cascade.executor.msg import TaskFailure, TaskSequence, BackboneAddress, TaskSuccess, WorkerReady, WorkerShutdown
+from cascade.executor.msg import TaskFailure, TaskSequence, BackboneAddress, TaskSuccess, WorkerReady, WorkerShutdown, DatasetPurge, DatasetPublished
 from cascade.executor.comms import callback
 from cascade.low.tracing import label
 from cascade.executor.config import logging_config
@@ -82,12 +82,45 @@ def entrypoint(runnerContext: RunnerContext):
         # NOTE check any(task.definition.needs_gpu) anywhere?
         # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
+        availab_ds: set[DatasetId] = set()
+        waiting_ts: TaskSequence|None = None
+        missing_ds: set[DatasetId] = set()
+
         while True:
             mRaw = socket.recv()
             mDes = serde.des_message(mRaw)
             if isinstance(mDes, WorkerShutdown):
                 logger.debug(f"worker {runnerContext.workerId} shutting down")
                 break
-            if not isinstance(mDes, TaskSequence):
+            elif isinstance(mDes, DatasetPublished):
+                availab_ds.add(mDes.ds)
+                if mDes.ds in missing_ds:
+                    missing_ds.remove(mDes.ds)
+                    memory.provide(mDes.ds, "Any")
+                    if waiting_ts is not None and (not missing_ds):
+                        execute_sequence(waiting_ts, memory, pckg, runnerContext)
+                        waiting_ts = None
+            elif isinstance(mDes, DatasetPurge):
+                memory.pop(mDes.ds)
+                availab_ds.discard(mDes.ds)
+            elif isinstance(mDes, TaskSequence):
+                if waiting_ts is not None:
+                    raise ValueError(f"double task sequence enqueued: 1/ {waiting_ts}, 2/ {mDes}")
+                required = {
+                    dataset_id
+                    for task in mDes.tasks
+                    for dataset_id in runnerContext.param_source[task].values()
+                } - {
+                    DatasetId(task, key)
+                    for task in mDes.tasks
+                    for key in runnerContext.job.tasks[task].definition.output_schema.keys()
+                }
+                missing_ds = required - availab_ds
+                if missing_ds:
+                    waiting_ts = mDes
+                    for ds in availab_ds.intersection(required):
+                        memory.provide(ds, "Any")
+                else:
+                    execute_sequence(mDes, memory, pckg, runnerContext)
+            else:
                 raise ValueError(f"unexpected message received: {type(mDes)}")
-            execute_sequence(mDes, memory, pckg, runnerContext)

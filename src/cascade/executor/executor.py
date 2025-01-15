@@ -44,8 +44,6 @@ class Executor:
         self.workers: dict[WorkerId, BaseProcess|None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
 
         self.datasets: set[DatasetId] = set()
-        self.task_queue: dict[WorkerId, None|TaskSequence] = {e: None for e in self.workers.keys()}
-        self.task_prereq: dict[WorkerId, set[DatasetId]] = {e: set() for e in self.workers.keys()}
         self.heartbeat_watcher = GraceWatcher(grace_ms = heartbeat_grace_ms)
 
         self.terminating = False
@@ -146,20 +144,6 @@ class Executor:
         # including for-this-purpose introduced & guaranteed controller2worker heartbeat, arrived
         # for a long time, we shut down
 
-    def maybe_spawn(self, worker: WorkerId) -> None:
-        ts = self.task_queue[worker]
-        if not isinstance(ts, TaskSequence):
-            return
-        if not self.task_prereq[worker] <= self.datasets:
-            # TODO this is a possible slowdown, we don't wait until everything is available -- but maybe
-            # the first task in the queue could already start... better fit for persistent workers
-            return
-
-        if (proc := self.workers[worker]) is None or proc.exitcode is not None:
-            raise ValueError(f"worker process {worker} is not alive")
-        self.task_queue[worker] = None
-        callback(worker_address(worker), ts)
-
     def healthcheck(self) -> None:
         """Checks that no process died, and sends a heartbeat message in case the last message to controller
         was too long ago"""
@@ -179,23 +163,6 @@ class Executor:
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
 
-    def enqueue_task(self, ts: TaskSequence) -> None:
-        for task in ts.tasks:
-            mark({"task": task, "worker": repr(ts.worker), "action": TaskLifecycle.enqueued})
-        if self.task_queue[ts.worker] is not None:
-            raise ValueError(f"attempting to enqueue two tasks!")
-        self.task_queue[ts.worker] = ts
-        prereqs = {
-            dataset_id
-            for task in ts.tasks
-            for dataset_id in self.param_source[task].values()
-        }
-        for task in ts.tasks:
-            prereqs -= {DatasetId(task, key) for key in self.job_instance.tasks[task].definition.output_schema.keys()}
-        self.task_prereq[ts.worker] = prereqs
-
-        self.maybe_spawn(ts.worker)
-
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
         while not self.terminating:
@@ -204,13 +171,19 @@ class Executor:
                     logger.debug(f"received {type(m)}")
                     # from controller
                     if isinstance(m, TaskSequence):
-                        self.enqueue_task(m)
+                        for task in m.tasks:
+                            mark({"task": task, "worker": repr(m.worker), "action": TaskLifecycle.enqueued})
+                        if (proc := self.workers[m.worker]) is None or proc.exitcode is not None:
+                            raise ValueError(f"worker process {m.worker} is not alive")
+                        callback(worker_address(m.worker), m)
                     elif isinstance(m, DatasetPurge):
                         if not m.ds in self.datasets:
                             logger.warning(f"unexpected purge of {m.ds}")
                         else:
+                            for worker in self.workers:
+                                callback(worker_address(worker), m)
                             self.datasets.remove(m.ds)
-                        shm_client.purge(ds2shmid(m.ds))
+                            shm_client.purge(ds2shmid(m.ds))
                     elif isinstance(m, ExecutorShutdown):
                         self.to_controller(ExecutorExit(self.host))
                         self.terminate()
@@ -223,9 +196,10 @@ class Executor:
                         # and we don't need to free the slot yet anyway
                         self.to_controller(m)
                     elif isinstance(m, DatasetPublished):
-                        self.datasets.add(m.ds)
                         for worker in self.workers:
-                            self.maybe_spawn(worker)
+                            # NOTE if we knew the origin worker, we would exclude it here... but doesn't really matter
+                            callback(worker_address(worker), m)
+                        self.datasets.add(m.ds)
                         self.to_controller(m)
                     elif isinstance(m, DatasetTransmitFailure):
                         self.to_controller(m)
