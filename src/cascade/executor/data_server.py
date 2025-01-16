@@ -62,13 +62,13 @@ class DataServer:
             except shm_client.ConflictError as e:
                 # NOTE this branch is for situations where the controller issued redundantly two transmits
                 logger.warning(f"store of {payload.ds} failed, presumably already computed; continuing")
-                mark({"dataset": payload.ds.task, "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "redundant"})
+                mark({"dataset": repr(payload.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "redundant"})
                 return
             buf.view()[:l] = payload.value
             buf.close()
             callback(payload.confirm_address, DatasetTransmitConfirm(idx=payload.confirm_idx))
             callback(self.maddress, DatasetPublished(ds=payload.ds, host=self.host, transmit_idx=payload.confirm_idx))
-            mark({"dataset": payload.ds.task, "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "remote"})
+            mark({"dataset": repr(payload.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "remote"})
         except Exception as e:
             logger.exception("failed to store payload of {payload.ds}, reporting up")
             callback(self.maddress, DatasetTransmitFailure(host=self.host, detail=f"{payload.confirm_idx}, {payload.ds} -> {repr(e)}"))
@@ -80,7 +80,7 @@ class DataServer:
             if command.target == self.host or command.source != self.host:
                 raise ValueError(f"invalid {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
-            mark({"dataset": command.ds.task, "action": TransmitLifecycle.loaded, "target": command.target, "source": self.host, "mode": "remote"})
+            mark({"dataset": repr(command.ds), "action": TransmitLifecycle.loaded, "target": command.target, "source": self.host, "mode": "remote"})
             if command.target == "controller":
                 # NOTE this is due to controller using single socket for messages/data. We thus
                 # use non-optimized send, but it doesnt really matter
@@ -111,12 +111,12 @@ class DataServer:
                 if isinstance(m, DatasetTransmitCommand):
                     if m.idx in self.awaiting_confirmation:
                         raise ValueError(f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}")
-                    mark({"dataset": m.ds.task, "action": TransmitLifecycle.started, "target": m.target})
+                    mark({"dataset": repr(m.ds), "action": TransmitLifecycle.started, "target": m.target})
                     fut = self.ds_proc_tp.submit(self.send_payload, m)
                     self.awaiting_confirmation[m.idx] = (m, time_ns())
                     self.futs_in_progress[m] = fut
                 elif isinstance(m, DatasetTransmitPayload):
-                    mark({"dataset": m.ds.task, "action": TransmitLifecycle.received, "target": self.host})
+                    mark({"dataset": repr(m.ds), "action": TransmitLifecycle.received, "target": self.host})
                     fut = self.ds_proc_tp.submit(self.store_payload, m)
                     self.futs_in_progress[m] = fut
                 elif isinstance(m, DatasetTransmitConfirm):

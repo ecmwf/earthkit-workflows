@@ -51,15 +51,14 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             )
             static_input_ps[rev_lookup[param]] = None
 
-        if node["outputs"] != [Node.DEFAULT_OUTPUT] and node["outputs"]:
-            raise NotImplementedError("multiple outputs are not supported yet")
+        outputs = node["outputs"] if node["outputs"] else [Node.DEFAULT_OUTPUT]
 
         definition = TaskDefinition(
             func=TaskDefinition.func_enc(func),
             environment=[],
             entrypoint="",
             input_schema=input_schema,
-            output_schema={e: "Any" for e in node["outputs"]} if node["outputs"] else {NO_OUTPUT_PLACEHOLDER: "str"},
+            output_schema={e: "Any" for e in outputs},
         )
         task = TaskInstance(
             definition=definition,

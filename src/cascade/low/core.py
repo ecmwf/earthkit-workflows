@@ -40,9 +40,9 @@ class TaskDefinition(BaseModel):
         description="kv of input kw params and their types (fqn of class). Non-kw params not validated"
     )
     output_schema: dict[str, str] = Field(
-        description="kv of outputs and their types (fqn of class)"
+        description="kv of outputs and their types (fqn of class). Assumes key-sorted corresponds to func output order"
     )
-    needs_gpu: bool = Field(False) # NOTE unstable contract, will likely change. Also, we support at most one GPU
+    needs_gpu: bool = Field(False) # NOTE unstable contract, will likely change. Also, we support at most one GPU # TODO use in scheduler?
 
     @staticmethod
     def func_dec(f: str) -> Callable:
@@ -58,6 +58,9 @@ TaskId = str
 class DatasetId:
     task: TaskId
     output: str
+
+    def __repr__(self) -> str:
+        return f"{self.task}.{self.output}"
 
 class Task2TaskEdge(BaseModel):
     source: DatasetId

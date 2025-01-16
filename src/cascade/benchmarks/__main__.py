@@ -22,7 +22,6 @@ from time import perf_counter_ns
 
 import fire
 
-import cascade.benchmarks.job1 as job1
 from cascade.low.func import msum
 import cascade.low.into
 from cascade.graph import Graph
@@ -40,14 +39,20 @@ from cascade.executor.comms import callback
 logger = logging.getLogger("cascade.benchmarks")
 
 def get_job(id_: str) -> JobInstance:
-    graphs = {
-        "j1.prob": job1.get_prob(),
-        "j1.ensms": job1.get_ensms(),
-        "j1.efi": job1.get_efi(),
-    }
-    union = lambda prefix : deduplicate_nodes(msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph))
-    graphs["j1.all"] = union("j1.")
-    return cascade.low.into.graph2job(graphs[id_])
+    # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
+    if id_.startswith("j1"):
+        import cascade.benchmarks.job1 as job1
+        graphs = {
+            "j1.prob": job1.get_prob(),
+            "j1.ensms": job1.get_ensms(),
+            "j1.efi": job1.get_efi(),
+        }
+        union = lambda prefix : deduplicate_nodes(msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph))
+        graphs["j1.all"] = union("j1.")
+        return cascade.low.into.graph2job(graphs[id_])
+    elif id_.startswith("generators"):
+        import cascade.benchmarks.generators as generators
+        return generators.get_job()
 
 def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, workers_per_host: int, portBase: int, i: int, shm_vol_gb: int|None):
     logging.config.dictConfig(logging_config)
