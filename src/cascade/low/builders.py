@@ -80,9 +80,9 @@ class JobBuilder:
     def with_node(self, name: str, task: TaskInstance) -> Self:
         return replace(self, nodes=self.nodes.set(name, task))
 
-    def with_edge(self, source: str, sink: str, into: str | int) -> Self:
+    def with_edge(self, source: str, sink: str, into: str | int, frum: str = Node.DEFAULT_OUTPUT) -> Self:
         new_edge = Task2TaskEdge(
-            source=DatasetId(source, Node.DEFAULT_OUTPUT),
+            source=DatasetId(source, frum),
             sink_task=sink,
             sink_input_kw=into if isinstance(into, str) else None,
             sink_input_ps=into if isinstance(into, int) else None,

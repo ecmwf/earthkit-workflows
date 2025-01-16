@@ -77,7 +77,7 @@ def notify(state: State, events: Iterable[Event]) -> State:
             state = consider_fetch(state, event.ds, event.host)
             state = consider_computable(state, event.ds, event.host)
             if event.transmit_idx is not None:
-                mark({"dataset": event.ds.task, "action": TransmitLifecycle.completed, "target": event.host, "host": "controller"})
+                mark({"dataset": repr(event.ds), "action": TransmitLifecycle.completed, "target": event.host, "host": "controller"})
         elif isinstance(event, TaskSuccess):
             logger.debug(f"received {event=}")
             state.worker2ts[event.worker][event.ts] = TaskStatus.succeeded

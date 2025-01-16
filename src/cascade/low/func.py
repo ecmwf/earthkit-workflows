@@ -2,6 +2,7 @@ from abc import abstractmethod
 from pydantic import BaseModel
 from time import perf_counter_ns
 from typing import (
+    Iterator,
     Type,
     Any,
     Callable,
@@ -112,3 +113,11 @@ B = TypeVar("B", bound=BaseModel)
 def pyd_replace(model: B, **kwargs) -> B:
     """Like dataclasses.replace but for pydantic"""
     return model.model_copy(update=kwargs)
+
+def assert_iter_empty(i: Iterator) -> bool:
+    try:
+        v = next(i)
+    except StopIteration:
+        return True
+    else:
+        return False
