@@ -58,7 +58,7 @@ class Node:
         will be connected to its default output.
     """
 
-    DEFAULT_OUTPUT = "__default__"
+    DEFAULT_OUTPUT = "0"
 
     name: str
     inputs: dict[str, Output]
