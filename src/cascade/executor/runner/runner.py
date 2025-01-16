@@ -11,7 +11,7 @@ from time import perf_counter_ns
 from dataclasses import dataclass
 
 from cascade.low.core import TaskDefinition, DatasetId, TaskId, TaskInstance
-from cascade.low.func import ensure, assert_never, maybe_head
+from cascade.low.func import ensure, assert_never, assert_iter_empty
 from cascade.executor.msg import TaskSuccess, TaskSequence, BackboneAddress
 from cascade.executor.comms import callback
 from cascade.low.tracing import mark, TaskLifecycle, Microtrace, trace
@@ -63,24 +63,39 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         else:
             assert_never(param_pos)
 
-    if len(task.definition.output_schema) > 1:
-        raise NotImplementedError("multiple outputs not supported yet")
-        # NOTE to implement, just put `result=func` & `memory.handle` below into a for-cycle for generator outputs
-    outputId, outputSchema = maybe_head(task.definition.output_schema.items()) # type: ignore
-    if not outputId:
+    outputs = list(task.definition.output_schema.items())
+    outputs.sort()
+    outputsN = len(outputs)
+    if outputsN == 0:
         raise ValueError(f"no output key for task {taskId}")
     mark({"task": taskId, "action": TaskLifecycle.loaded})
     prep_end = perf_counter_ns()
 
     # invoke
     result = func(*args, **kwargs)
-    mark({"task": taskId, "action": TaskLifecycle.computed})
-    run_end = perf_counter_ns()
+    if outputsN == 1:
+        mark({"task": taskId, "action": TaskLifecycle.computed})
+        run_end = perf_counter_ns()
 
     # store outputs
-    outputId = DatasetId(taskId, outputId)
-    memory.handle(outputId, outputSchema, result, outputId in executionContext.publish)
-    mark({"task": taskId, "action": TaskLifecycle.published})
+    if outputsN == 1:
+        outputKey, outputSchema = outputs[0]
+        outputId = DatasetId(taskId, outputKey)
+        memory.handle(outputId, outputSchema, result, outputId in executionContext.publish)
+        mark({"task": taskId, "action": TaskLifecycle.published})
+    else:
+        outputsI = iter(outputs)
+        for (outputKey, outputSchema), outputValue in zip(outputsI, result):
+            outputId = DatasetId(taskId, outputKey)
+            memory.handle(outputId, outputSchema, outputValue, outputId in executionContext.publish)
+        if not assert_iter_empty(outputsI):
+            raise ValueError(f"schema declared more outputs than there were results")
+        if not assert_iter_empty(result):
+            raise ValueError(f"function produced more results than there were schema outputs")
+        # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
+        mark({"task": taskId, "action": TaskLifecycle.computed})
+        run_end = perf_counter_ns()
+        mark({"task": taskId, "action": TaskLifecycle.published})
     end = perf_counter_ns()
 
     trace(Microtrace.wrk_task, end - start)

@@ -128,6 +128,65 @@ def test_runner(monkeypatch):
         DatasetPublished(host=worker.host, ds=t3o, transmit_idx=None),
         TaskSuccess(worker=worker, ts='t3b'),
     ]
+    msgs = []
     so = get(memory.ds2shmid(t3o))
     assert serde.des_output(so.view(), 'int') == 4
     so.close()
+
+    # test 4: generator
+    N = 4
+    def gen_func():
+        for i in range(N):
+            yield i
+    gen_definition = TaskDefinition(
+        func=TaskDefinition.func_enc(gen_func),
+        environment=[],
+        input_schema={},
+        output_schema={f"{i}": "int" for i in range(N)},
+    )
+    t4g = TaskInstance(
+        definition=gen_definition,
+        static_input_kw={},
+        static_input_ps={},
+    )
+    t4gOutputs = [DatasetId("t4g", k) for k in gen_definition.output_schema.keys()]
+    t4c = TaskInstance(
+        definition=task_definition,
+        static_input_kw={},
+        static_input_ps={},
+    )
+    t4pOutputs = [DatasetId(f"t4c{i}", "o") for i in range(N)]
+    t4TaskTs = TaskSequence(
+        worker=worker,
+        tasks=["t4g"] + [f"t4c{i}" for i in range(N)],
+        publish=set(t4pOutputs),
+    )
+    t4Job = JobInstance(
+        tasks = {**{"t4g": t4g}, **{f"t4c{i}": t4c for i in range(N)}},
+        edges = [Task2TaskEdge(source=t4gOutputs[i], sink_task=f"t4c{i}", sink_input_kw="x", sink_input_ps=None) for i in range(N)],
+    )
+    t4Rc = entrypoint.RunnerContext(
+        workerId=worker,
+        callback=test_address,
+        job=t4Job,
+        param_source=param_source(t4Job.edges),
+    )
+
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+        entrypoint.execute_sequence(t4TaskTs, memoryInstance, pckg, t4Rc)
+    assert msgs == [
+        TaskSuccess(worker=worker, ts='t4g'),
+        DatasetPublished(host=worker.host, ds=t4pOutputs[0], transmit_idx=None),
+        TaskSuccess(worker=worker, ts='t4c0'),
+        DatasetPublished(host=worker.host, ds=t4pOutputs[1], transmit_idx=None),
+        TaskSuccess(worker=worker, ts='t4c1'),
+        DatasetPublished(host=worker.host, ds=t4pOutputs[2], transmit_idx=None),
+        TaskSuccess(worker=worker, ts='t4c2'),
+        DatasetPublished(host=worker.host, ds=t4pOutputs[3], transmit_idx=None),
+        TaskSuccess(worker=worker, ts='t4c3'),
+    ]
+    for i, o in enumerate(t4pOutputs):
+        so = get(memory.ds2shmid(o))
+        assert serde.des_output(so.view(), 'int') == i+1
+        so.close()
+
