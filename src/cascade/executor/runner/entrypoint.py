@@ -82,6 +82,9 @@ def entrypoint(runnerContext: RunnerContext):
         # NOTE check any(task.definition.needs_gpu) anywhere?
         # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
+        for (serdeType, (serdeSer, serdeDes)) in runnerContext.job.serdes.items():
+            serde.SerdeRegistry.register(serdeType, serdeSer, serdeDes)
+
         availab_ds: set[DatasetId] = set()
         waiting_ts: TaskSequence|None = None
         missing_ds: set[DatasetId] = set()

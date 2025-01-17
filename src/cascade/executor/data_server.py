@@ -13,7 +13,7 @@ from time import time_ns
 
 from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.comms import Listener, callback, send_data
-from cascade.executor.msg import BackboneAddress, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitFailure, DatasetPublished, DatasetTransmitConfirm
+from cascade.executor.msg import BackboneAddress, DatasetTransmitCommand, DatasetTransmitPayloadHeader, DatasetTransmitPayload, DatasetTransmitFailure, DatasetPublished, DatasetTransmitConfirm
 from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TransmitLifecycle, label
 import cascade.shm.client as shm_client
@@ -58,20 +58,20 @@ class DataServer:
         try:
             l = len(payload.value)
             try:
-                buf = shm_client.allocate(key=ds2shmid(payload.ds), l=l)
+                buf = shm_client.allocate(key=ds2shmid(payload.header.ds), l=l, deser_fun=payload.header.deser_fun)
             except shm_client.ConflictError as e:
                 # NOTE this branch is for situations where the controller issued redundantly two transmits
-                logger.warning(f"store of {payload.ds} failed, presumably already computed; continuing")
-                mark({"dataset": repr(payload.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "redundant"})
+                logger.warning(f"store of {payload.header.ds} failed, presumably already computed; continuing")
+                mark({"dataset": repr(payload.header.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "redundant"})
                 return
             buf.view()[:l] = payload.value
             buf.close()
-            callback(payload.confirm_address, DatasetTransmitConfirm(idx=payload.confirm_idx))
-            callback(self.maddress, DatasetPublished(ds=payload.ds, host=self.host, transmit_idx=payload.confirm_idx))
-            mark({"dataset": repr(payload.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "remote"})
+            callback(payload.header.confirm_address, DatasetTransmitConfirm(idx=payload.header.confirm_idx))
+            callback(self.maddress, DatasetPublished(ds=payload.header.ds, host=self.host, transmit_idx=payload.header.confirm_idx))
+            mark({"dataset": repr(payload.header.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "remote"})
         except Exception as e:
-            logger.exception("failed to store payload of {payload.ds}, reporting up")
-            callback(self.maddress, DatasetTransmitFailure(host=self.host, detail=f"{payload.confirm_idx}, {payload.ds} -> {repr(e)}"))
+            logger.exception("failed to store payload of {payload.header.ds}, reporting up")
+            callback(self.maddress, DatasetTransmitFailure(host=self.host, detail=f"{payload.header.confirm_idx}, {payload.header.ds} -> {repr(e)}"))
 
     def send_payload(self, command: DatasetTransmitCommand):
         buf: None|shm_client.AllocatedBuffer = None
@@ -81,13 +81,14 @@ class DataServer:
                 raise ValueError(f"invalid {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
             mark({"dataset": repr(command.ds), "action": TransmitLifecycle.loaded, "target": command.target, "source": self.host, "mode": "remote"})
+            header = DatasetTransmitPayloadHeader(confirm_address=self.daddress, confirm_idx=command.idx, ds=command.ds, deser_fun=buf.deser_fun)
             if command.target == "controller":
                 # NOTE this is due to controller using single socket for messages/data. We thus
-                # use non-optimized send, but it doesnt really matter
-                payload = DatasetTransmitPayload(confirm_address=self.daddress, confirm_idx=command.idx, ds=command.ds, value=bytes(buf.view()))
+                # use non-optimized send, but it doesnt really matter since not really used atm
+                payload = DatasetTransmitPayload(header, value=bytes(buf.view()))
                 callback(command.daddress, payload)
             else:
-                payload = DatasetTransmitPayload(confirm_address=self.daddress, confirm_idx=command.idx, ds=command.ds, value=buf.view())
+                payload = DatasetTransmitPayload(header, value=buf.view())
                 send_data(command.daddress, payload)
                 # TODO await a reply, retry if not come
             logger.debug(f"payload for {command} sent")
@@ -116,7 +117,7 @@ class DataServer:
                     self.awaiting_confirmation[m.idx] = (m, time_ns())
                     self.futs_in_progress[m] = fut
                 elif isinstance(m, DatasetTransmitPayload):
-                    mark({"dataset": repr(m.ds), "action": TransmitLifecycle.received, "target": self.host})
+                    mark({"dataset": repr(m.header.ds), "action": TransmitLifecycle.received, "target": self.host})
                     fut = self.ds_proc_tp.submit(self.store_payload, m)
                     self.futs_in_progress[m] = fut
                 elif isinstance(m, DatasetTransmitConfirm):

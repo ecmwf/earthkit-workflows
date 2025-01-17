@@ -7,8 +7,10 @@ from multiprocessing import Process
 import socket
 from logging.config import dictConfig
 
+import numpy as np
+
 from cascade.low.core import JobInstance, WorkerId, TaskDefinition, TaskInstance, Task2TaskEdge, DatasetId
-from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, TaskSuccess, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitConfirm
+from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, TaskSuccess, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitConfirm, DatasetTransmitPayloadHeader
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.executor import Executor
 from cascade.executor.config import logging_config
@@ -19,20 +21,21 @@ def launch_executor(job_instance: JobInstance, controller_address: BackboneAddre
     executor = Executor(job_instance, controller_address, 4, "test_executor", portBase)
     executor.register()
     executor.recv_loop()
-    
+
 def test_executor():
     # job
-    def test_func(x):
+    serde.SerdeRegistry.register(np.ndarray, lambda e: e.tobytes(), "numpy.frombuffer")
+    def test_func(x: np.ndarray) -> np.ndarray:
         return x+1
     task_definition = TaskDefinition(
         func=TaskDefinition.func_enc(test_func),
         environment=[],
-        input_schema={"x": "int"},
-        output_schema={"o": "int"},
+        input_schema={"x": "ndarray"},
+        output_schema={"o": "ndarray"},
     )
     source = TaskInstance(
         definition=task_definition,
-        static_input_kw={"x": 1},
+        static_input_kw={"x": np.array([1.])},
         static_input_ps={},
     )
     source_o = DatasetId("source", "o")
@@ -86,12 +89,13 @@ def test_executor():
         # retrieve result
         callback(d1, DatasetTransmitCommand(ds=sink_o, idx=0, source="test_executor", target="controller", daddress=c1))
         ms = l.recv_messages()
-        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].ds == DatasetId(task='sink', output='o')
-        assert serde.des_output(ms[0].value, 'int') == 3
+        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task='sink', output='o')
+        assert serde.des_output(ms[0].value, 'int', ms[0].header.deser_fun)[0] == 3.
 
         # purge, store, run partial and fetch again
         callback(m1, DatasetPurge(ds=sink_o))
-        send_data(d1, DatasetTransmitPayload(ds=source_o, confirm_idx=1, confirm_address=c1, value=serde.ser_output(10, 'int')))
+        value, deser_fun = serde.ser_output(np.array([10.]), 'ndarray')
+        send_data(d1, DatasetTransmitPayload(header=DatasetTransmitPayloadHeader(ds=source_o, confirm_idx=1, confirm_address=c1, deser_fun=deser_fun), value=value))
         expected = {
             DatasetTransmitConfirm(idx=1),
             DatasetPublished(host='test_executor', ds=source_o, transmit_idx=1),
@@ -112,9 +116,9 @@ def test_executor():
                 expected.pop(0)
         callback(d1, DatasetTransmitCommand(ds=sink_o, idx=2, source="test_executor", target="controller", daddress=c1))
         ms = l.recv_messages()
-        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].ds == DatasetId(task='sink', output='o')
-        assert serde.des_output(ms[0].value, 'int') == 11
-        callback(ms[0].confirm_address, DatasetTransmitConfirm(idx=ms[0].confirm_idx))
+        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task='sink', output='o')
+        assert serde.des_output(ms[0].value, 'ndarray', ms[0].header.deser_fun)[0] == 11.
+        callback(ms[0].header.confirm_address, DatasetTransmitConfirm(idx=ms[0].header.confirm_idx))
 
         # shutdown
         callback(m1, ExecutorShutdown())

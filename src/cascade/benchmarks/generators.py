@@ -22,7 +22,11 @@ def generator() -> Iterator[np.ndarray]:
         yield np.random.uniform(size=size)
 
 def consumer(i: np.ndarray) -> np.ndarray:
-    return i**L
+    return np.reshape(i, size)**L
+
+def ser_numpy(a: np.ndarray) -> bytes:
+    """Exists just because numpy.ndarray cant be imported"""
+    return a.tobytes()
 
 def get_job() -> JobInstance:
     generator_d = TaskDefinition(
@@ -39,4 +43,8 @@ def get_job() -> JobInstance:
     for i in range(N):
         builder = builder.with_node(f"consumer{i}", TaskBuilder.from_callable(consumer))
         builder = builder.with_edge("generator", f"consumer{i}", "i", f"{i}")
-    return builder.build().get_or_raise()
+    job = builder.build().get_or_raise()
+    job.serdes = {
+        np.ndarray: ("cascade.benchmarks.generators.ser_numpy", "numpy.frombuffer")
+    }
+    return job

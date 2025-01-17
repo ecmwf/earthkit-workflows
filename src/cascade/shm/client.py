@@ -22,11 +22,13 @@ class AllocatedBuffer:
         l: int,
         create: bool,
         close_callback: Callable[[], None] | None,
+        deser_fun: str,
     ):
         self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
         self.l = l
         self.readonly = not create
         self.close_callback = close_callback
+        self.deser_fun = deser_fun
 
     def view(self) -> memoryview:
         if not self.shm:
@@ -90,11 +92,11 @@ def close_callback(key: str, rdid: str) -> None:
     _send_command(comm, api.OkResponse)
 
 
-def allocate(key: str, l: int, timeout_sec: float = 60.0) -> AllocatedBuffer:
-    comm = api.AllocateRequest(key=key, l=l)
+def allocate(key: str, l: int, deser_fun: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
+    comm = api.AllocateRequest(key=key, l=l, deser_fun=deser_fun)
     resp = _send_command(comm, api.AllocateResponse, timeout_sec)
     callback = lambda: close_callback(key, "")
-    return AllocatedBuffer(shmid=resp.shmid, l=l, create=True, close_callback=callback)
+    return AllocatedBuffer(shmid=resp.shmid, l=l, create=True, close_callback=callback, deser_fun=deser_fun)
 
 
 def get(key: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
@@ -102,7 +104,7 @@ def get(key: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
     resp = _send_command(comm, api.GetResponse, timeout_sec)
     callback = lambda: close_callback(key, resp.rdid)
     return AllocatedBuffer(
-        shmid=resp.shmid, l=resp.l, create=False, close_callback=callback
+        shmid=resp.shmid, l=resp.l, deser_fun=resp.deser_fun, create=False, close_callback=callback
     )
 
 

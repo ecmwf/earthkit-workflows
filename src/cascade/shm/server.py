@@ -37,7 +37,7 @@ class LocalServer:
             payload, client = self.receive()
             try:
                 if isinstance(payload, api.AllocateRequest):
-                    shmid, error = self.manager.add(payload.key, payload.l)
+                    shmid, error = self.manager.add(payload.key, payload.l, payload.deser_fun)
                     if error:
                         response = api.AllocateResponse(shmid="", error=error)
                     else:
@@ -46,14 +46,14 @@ class LocalServer:
                     self.manager.close_callback(payload.key, payload.rdid)
                     response = api.OkResponse()
                 elif isinstance(payload, api.GetRequest):
-                    shmid, l, rdid, error = self.manager.get(payload.key)
+                    shmid, l, rdid, deser_fun, error = self.manager.get(payload.key)
                     if error:
                         response = api.GetResponse(
-                            shmid="", l=0, rdid=rdid, error=error
+                            shmid="", l=0, rdid=rdid, deser_fun=deser_fun, error=error
                         )
                     else:
                         response = api.GetResponse(
-                            shmid=shmid, l=l, rdid=rdid, error=""
+                            shmid=shmid, l=l, rdid=rdid, deser_fun=deser_fun, error=""
                         )
                 elif isinstance(payload, api.ShutdownCommand):
                     response = api.OkResponse()

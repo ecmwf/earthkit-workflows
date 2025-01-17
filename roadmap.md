@@ -17,8 +17,6 @@
   * re-frame the whole problem as sink partitioning and source-sink path tracing. Would lead to better fusing and better migrations. Migration should decompose the whole component in two part, if possible -- or not do it at all! It's not that much about prereqs (just broadcast all, or even recompute), but more about sinks. Or decompose the graph into source-sink paths (those with heaviest cost), and fuse this so that a single worker can handle this, and the other workers just compute opportunistically. Requires predictable hard path
 * ipc
   * have worker2executor callback use an ipc socket instead of tcp
-* serde
-  * support for pickle-free serde
 * profile/resource
   * make scheduler aware of task profiles in general, as well as transmit costs
 ## Stability
@@ -30,7 +28,6 @@
 ## Portability
 * support k8s submit (in parallel to slurm submits)
 ## Functionality
-* generator output
 * metadata on outputs, for proper publishing, retrieval -- eg., `step_id` on ML model output
 * single graph node running on multiple hosts // quite questionable, may be needed for some huge models
 ## Remodularization
