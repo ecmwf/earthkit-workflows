@@ -24,9 +24,10 @@ def generator() -> Iterator[np.ndarray]:
 def consumer(i: np.ndarray) -> np.ndarray:
     return np.reshape(i, size)**L
 
-def ser_numpy(a: np.ndarray) -> bytes:
+def ser_numpy(a: np.ndarray) -> memoryview: # bytes:
     """Exists just because numpy.ndarray cant be imported"""
-    return a.tobytes()
+    # return a.tobytes() # beware, this includes a big copy
+    return a.data.cast('B')
 
 def get_job() -> JobInstance:
     generator_d = TaskDefinition(
