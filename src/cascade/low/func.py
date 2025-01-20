@@ -1,5 +1,9 @@
+"""
+Things.
+"""
+
 from abc import abstractmethod
-from pydantic import BaseModel
+import importlib
 from time import perf_counter_ns
 from typing import (
     Iterator,
@@ -16,6 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
+from pydantic import BaseModel
 from typing_extensions import Self
 
 T = TypeVar("T")
@@ -121,3 +126,12 @@ def assert_iter_empty(i: Iterator) -> bool:
         return True
     else:
         return False
+
+def resolve_callable(s: str) -> Callable:
+    """For s = `a.b.func`, imports `a.b` and retrieves `func` Callable object"""
+    if "." not in s: # this branch is for builtins
+        return eval(s)
+    else:
+        module_name, function_name = s.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        return module.__dict__[function_name]

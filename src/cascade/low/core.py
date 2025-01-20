@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Optional, cast, Type
 
 import cloudpickle
 from pydantic import BaseModel, Field, model_validator
@@ -87,6 +87,10 @@ class TaskInstance(BaseModel):
 class JobInstance(BaseModel):
     tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
+    serdes: dict[Type, tuple[str, str]] = Field(
+        {},
+        description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
+    )
 
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}

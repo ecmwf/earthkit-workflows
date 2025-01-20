@@ -44,9 +44,9 @@ class Memory(AbstractContextManager):
         if isPublish:
             logger.debug(f"publishing {outputId}")
             shmid = ds2shmid(outputId)
-            result_ser = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
+            result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
             l = len(result_ser)
-            rbuf = shm_client.allocate(shmid, l)
+            rbuf = shm_client.allocate(shmid, l, deser_fun)
             rbuf.view()[:l] = result_ser
             rbuf.close()
             callback(
@@ -62,7 +62,7 @@ class Memory(AbstractContextManager):
             logger.debug(f"asking for {inputId} via {shmid}")
             buf = shm_client.get(shmid)
             self.bufs[inputId] = buf
-            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation)
+            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation, buf.deser_fun)
 
         return self.local[inputId]
 

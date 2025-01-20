@@ -14,9 +14,9 @@ def ser_str(s: str) -> bytes:
     return len(s).to_bytes(4, "big") + s.encode("ascii")
 
 
-def deser_str(b: bytes) -> tuple[str, bytes]:
+def deser_str(b: memoryview) -> tuple[str, memoryview]:
     l = int.from_bytes(b[:4], "big")
-    return b[4 : 4 + l].decode("ascii"), b[4 + l :]
+    return str(b[4 : 4 + l], "ascii"), b[4 + l :]
 
 
 @runtime_checkable
@@ -25,11 +25,11 @@ class Comm(Protocol):
         raise NotImplementedError
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         raise NotImplementedError
 
 
-@dataclass
+@dataclass(frozen=True)
 class GetRequest:
     key: str
 
@@ -37,12 +37,12 @@ class GetRequest:
         return ser_str(self.key)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         key, _ = deser_str(data)
         return cls(key=key)
 
 
-@dataclass
+@dataclass(frozen=True)
 class PurgeRequest:
     key: str
 
@@ -50,12 +50,12 @@ class PurgeRequest:
         return ser_str(self.key)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         key, _ = deser_str(data)
         return cls(key=key)
 
 
-@dataclass
+@dataclass(frozen=True)
 class DatasetStatusRequest:
     key: str
 
@@ -63,7 +63,7 @@ class DatasetStatusRequest:
         return ser_str(self.key)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         key, _ = deser_str(data)
         return cls(key=key)
 
@@ -74,7 +74,7 @@ class DatasetStatus(int, Enum):
     not_present = auto()
 
 
-@dataclass
+@dataclass(frozen=True)
 class DatasetStatusResponse:
     status: DatasetStatus
 
@@ -82,51 +82,56 @@ class DatasetStatusResponse:
         return self.status.value.to_bytes(4, "big")
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         status, _ = DatasetStatus(int.from_bytes(data[:4], "big")), data[4:]
         return cls(status=status)
 
 
-@dataclass
+@dataclass(frozen=True)
 class GetResponse:
     shmid: str
     l: int
     rdid: str
     error: str
+    deser_fun: str
 
     def ser(self) -> bytes:
         return (
             self.l.to_bytes(4, "big")
+            + ser_str(self.deser_fun)
             + ser_str(self.shmid)
             + ser_str(self.rdid)
             + ser_str(self.error)
         )
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         l, data = int.from_bytes(data[:4], "big"), data[4:]
+        deser_fun, data = deser_str(data)
         shmid, data = deser_str(data)
         rdid, data = deser_str(data)
         error, _ = deser_str(data)
-        return cls(l=l, shmid=shmid, rdid=rdid, error=error)
+        return cls(l=l, shmid=shmid, rdid=rdid, error=error, deser_fun=deser_fun)
 
 
-@dataclass
+@dataclass(frozen=True)
 class AllocateRequest:
     key: str
     l: int
+    deser_fun: str
 
     def ser(self) -> bytes:
-        return self.l.to_bytes(8, "big") + ser_str(self.key)
+        return self.l.to_bytes(8, "big") + ser_str(self.deser_fun) + ser_str(self.key)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         l, data = int.from_bytes(data[:8], "big"), data[8:]
+        deser_fun, data = deser_str(data)
         key, _ = deser_str(data)
-        return cls(l=l, key=key)
+        return cls(l=l, key=key, deser_fun=deser_fun)
 
 
-@dataclass
+@dataclass(frozen=True)
 class AllocateResponse:
     shmid: str
     error: str
@@ -135,13 +140,13 @@ class AllocateResponse:
         return ser_str(self.shmid) + ser_str(self.error)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         shmid, data = deser_str(data)
         error, _ = deser_str(data)
         return cls(shmid=shmid, error=error)
 
 
-@dataclass
+@dataclass(frozen=True)
 class CloseCallback:
     key: str
     rdid: str
@@ -150,7 +155,7 @@ class CloseCallback:
         return ser_str(self.key) + ser_str(self.rdid)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         key, data = deser_str(data)
         rdid, _ = deser_str(data)
         return cls(key=key, rdid=rdid)
@@ -162,7 +167,7 @@ class EmptyCommand:
         return b""
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         return cls()
 
 
@@ -178,7 +183,7 @@ class FreeSpaceRequest(EmptyCommand):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class OkResponse:
     error: str = ""
 
@@ -186,12 +191,12 @@ class OkResponse:
         return ser_str(self.error)
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         error, _ = deser_str(data)
         return cls(error=error)
 
 
-@dataclass
+@dataclass(frozen=True)
 class FreeSpaceResponse:
     free_space: int
 
@@ -199,7 +204,7 @@ class FreeSpaceResponse:
         return self.free_space.to_bytes(4, "big")
 
     @classmethod
-    def deser(cls, data: bytes) -> Self:
+    def deser(cls, data: memoryview) -> Self:
         free_space = int.from_bytes(data[:4], "big")
         return cls(free_space=free_space)
 
@@ -227,6 +232,7 @@ def ser(comm: Comm) -> bytes:
 
 
 def deser(data: bytes) -> Comm:
+    data = memoryview(data)
     return b2c[data[:1]].deser(data[1:])
 
 

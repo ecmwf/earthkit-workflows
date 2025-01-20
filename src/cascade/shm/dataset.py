@@ -60,6 +60,7 @@ class Dataset:
     ongoing_reads: dict[str, int]
     retrieved_first: int
     retrieved_last: int
+    deser_fun: str
     delayed_purge: bool = False
 
     def is_pageoutable(self, ref_time: int) -> bool:
@@ -122,7 +123,7 @@ class Manager:
         self.disk = disk.Disk()
         self.prefix = prefix
 
-    def add(self, key: str, size: int) -> tuple[str, str]:
+    def add(self, key: str, size: int, deser_fun: str) -> tuple[str, str]:
         if key in self.datasets:
             return "", "conflict"
 
@@ -147,6 +148,7 @@ class Manager:
             retrieved_first=0,
             retrieved_last=0,
             ongoing_reads={},
+            deser_fun=deser_fun,
         )
         return shmid, ""
 
@@ -231,7 +233,7 @@ class Manager:
 
         self.disk.page_in(ds.shmid, ds.size, callback)
 
-    def get(self, key: str) -> tuple[str, int, str, str]:
+    def get(self, key: str) -> tuple[str, int, str, str, str]:
         ds = self.datasets[key]
         if ds.status in (
             DatasetStatus.created,
@@ -239,15 +241,15 @@ class Manager:
             DatasetStatus.paging_out,
         ):
             logger.debug(f"returing wait on {key} because of {ds.status=}")
-            return "", 0, "", "wait"
+            return "", 0, "", "", "wait"
         if ds.status == DatasetStatus.on_disk:
             if ds.size > self.free_space:
                 self.page_out_at_least(ds.size - self.free_space)
                 logger.debug(f"returing wait on {key} because of page out issued first")
-                return "", 0, "", "wait"
+                return "", 0, "", "", "wait"
             self.page_in(key)
             logger.debug(f"returing wait on {key} because of page in issued")
-            return "", 0, "", "wait"
+            return "", 0, "", "", "wait"
         if ds.status != DatasetStatus.in_memory:
             assert_never(ds.status)
         while True:
@@ -259,7 +261,7 @@ class Manager:
         if ds.retrieved_first == 0:
             ds.retrieved_first = retrieved
         ds.retrieved_last = retrieved
-        return ds.shmid, ds.size, rdid, ""
+        return ds.shmid, ds.size, rdid, ds.deser_fun, ""
 
     def purge(self, key: str, is_exit: bool = False) -> None:
         # TODO the is_exit invocation is causing mess in logs, consider removal

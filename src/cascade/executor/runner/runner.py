@@ -11,7 +11,7 @@ from time import perf_counter_ns
 from dataclasses import dataclass
 
 from cascade.low.core import TaskDefinition, DatasetId, TaskId, TaskInstance
-from cascade.low.func import ensure, assert_never, assert_iter_empty
+from cascade.low.func import ensure, assert_never, assert_iter_empty, resolve_callable
 from cascade.executor.msg import TaskSuccess, TaskSequence, BackboneAddress
 from cascade.executor.comms import callback
 from cascade.low.tracing import mark, TaskLifecycle, Microtrace, trace
@@ -40,9 +40,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     if task.definition.func is not None:
         func = TaskDefinition.func_dec(task.definition.func)
     elif task.definition.entrypoint is not None:
-        module_name, function_name = task.definition.entrypoint.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        func = module.__dict__[function_name]
+        func = resolve_callable(task.definition.entrypoint)
     else:
         raise TypeError("neither entrypoint nor func given")
 

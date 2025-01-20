@@ -11,6 +11,7 @@ from cascade.controller.act import act, flush_queues
 from time import perf_counter_ns
 from cascade.low.tracing import mark, label, ControllerPhases, Microtrace, timer
 from cascade.low.func import assert_never
+import cascade.executor.serde as serde
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,8 @@ def run(job: JobInstance, bridge: Bridge, preschedule: Preschedule, outputs: set
     state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
     label("host", "controller")
     events: list[Event] = []
+    for (serdeType, (serdeSer, serdeDes)) in job.serdes.items():
+        serde.SerdeRegistry.register(serdeType, serdeSer, serdeDes)
 
     try:
         while has_computable(state) or has_awaitable(state):
