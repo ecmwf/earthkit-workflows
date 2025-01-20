@@ -96,8 +96,8 @@ def notify(state: State, events: Iterable[Event]) -> State:
                 state.idle_workers.add(event.worker)
         elif isinstance(event, DatasetTransmitPayload):
             # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
-            state.outputs[event.ds] = serde.des_output(event.value, 'Any')
-            callback(event.confirm_address, DatasetTransmitConfirm(idx=event.confirm_idx))
+            state.outputs[event.header.ds] = serde.des_output(event.value, 'Any', event.header.deser_fun)
+            callback(event.header.confirm_address, DatasetTransmitConfirm(idx=event.header.confirm_idx))
         else:
             assert_never(event)
     return state

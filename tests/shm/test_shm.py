@@ -16,7 +16,7 @@ def test_shm_simple():
     try:
         client.ensure()
 
-        buf = client.allocate("my_data", 7)
+        buf = client.allocate("my_data", 7, "some_deser_fun")
         buf.view()[:] = b"a" * 7
         buf.close()
 
@@ -28,6 +28,7 @@ def test_shm_simple():
 
         buf = client.get("my_data")
         assert buf.view() == b"a" * 7
+        assert buf.deser_fun == "some_deser_fun"
         with pytest.raises(TypeError, match="cannot modify read-only memory"):
             buf.view()[:] = b"b" * 7
         buf.close()
@@ -46,18 +47,18 @@ def test_shm_disk():
     try:
         client.ensure()
 
-        buf = client.allocate("m1", 3)
+        buf = client.allocate("m1", 3, "some_deser_fun")
         buf.view()[:] = b"a" * 3
         buf.close()
 
         assert client.get_free_space() == 1
 
         with pytest.raises(ValueError, match="capacity exceeded"):
-            client.allocate("m2", 5)
+            client.allocate("m2", 5, "some_deser_fun")
 
         # free space = 1 => allocate 2 first causes persist of m1
         # thus free space will be first 4, then after allocate 2
-        buf = client.allocate("m2", 2)
+        buf = client.allocate("m2", 2, "some_deser_fun")
         buf.view()[:] = b"a" * 2
         buf.close()
 

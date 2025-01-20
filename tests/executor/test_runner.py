@@ -26,10 +26,10 @@ def test_runner(monkeypatch):
     monkeypatch.setattr(entrypoint, "callback", verify_msg)
 
     def allocate(key: str, l: int, timeout_sec: float = 60.0) -> shm_cli.AllocatedBuffer:
-        return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=l, create=True, close_callback=lambda : None)
+        return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=l, create=True, close_callback=lambda : None, deser_fun="cloudpickle.loads")
     monkeypatch.setattr(shm_cli, "allocate", allocate)
     def get(key: str, timeout_sec: float = 60.0) -> shm_cli.AllocatedBuffer:
-        return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=1024, create=False, close_callback=lambda : None)
+        return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=1024, create=False, close_callback=lambda : None, deser_fun="cloudpickle.loads")
     monkeypatch.setattr(shm_cli, "get", get)
 
     # test 1: no tasks
@@ -89,7 +89,7 @@ def test_runner(monkeypatch):
     ]
     msgs = []
     so = get(memory.ds2shmid(t2ds))
-    assert serde.des_output(so.view(), 'int') == 2
+    assert serde.des_output(so.view(), 'int', so.deser_fun) == 2
     so.close()
 
     # test 3: two task pipeline
@@ -130,7 +130,7 @@ def test_runner(monkeypatch):
     ]
     msgs = []
     so = get(memory.ds2shmid(t3o))
-    assert serde.des_output(so.view(), 'int') == 4
+    assert serde.des_output(so.view(), 'int', so.deser_fun) == 4
     so.close()
 
     # test 4: generator
@@ -187,6 +187,6 @@ def test_runner(monkeypatch):
     ]
     for i, o in enumerate(t4pOutputs):
         so = get(memory.ds2shmid(o))
-        assert serde.des_output(so.view(), 'int') == i+1
+        assert serde.des_output(so.view(), 'int', so.deser_fun) == i+1
         so.close()
 

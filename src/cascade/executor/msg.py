@@ -79,10 +79,16 @@ class DatasetTransmitCommand:
     idx: int # TODO consider using in tracing all over. Would need scheduler to assign it
 
 @dataclass(frozen=True)
-class DatasetTransmitPayload:
+class DatasetTransmitPayloadHeader:
     confirm_address: BackboneAddress
     confirm_idx: int
     ds: DatasetId
+    deser_fun: str
+
+@dataclass(frozen=True)
+class DatasetTransmitPayload:
+    # NOTE separated into two submessages so that sending over wire can be done as two frames
+    header: DatasetTransmitPayloadHeader
     value: bytes
 
 @dataclass(frozen=True)

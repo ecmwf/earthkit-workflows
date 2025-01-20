@@ -2,10 +2,10 @@
 This module is responsible for Serialization & Deserialization of messages and outputs
 """
 
-from cascade.low.func import assert_never
+from cascade.low.func import assert_never, resolve_callable
 from cascade.low.core import DatasetId
-from cascade.executor.msg import Message, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitConfirm
-from typing import Any
+from cascade.executor.msg import Message, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitConfirm, DatasetTransmitPayloadHeader
+from typing import Any, Type, Callable
 import cloudpickle
 import pickle
 
@@ -28,22 +28,42 @@ def ser_message(m: Message) -> bytes:
 def des_message(b: bytes) -> Message:
     return pickle.loads(b)
 
-# NOTE we cloudpickle here as that should be a bit more robust. However, we want
-# to exploit custom serialization to a greater effect in selected cases
+class SerdeRegistry():
+    # NOTE the contract is a bit odd -- Callable for ser, str for deser
+    # We could switch to both being Callable, by having shm/DatasetTransmitPayload
+    # operate with Type instead of deser_fun. But I'm a bit worried about Type being
+    # reliable -- we may instead be forced to extracting the serde pair from Instance
+    # rather than from Class
+    serde: dict[Type, tuple[Callable, str]] = {}
 
-def ser_output(v: Any, annotation: str) -> bytes:
-    return cloudpickle.dumps(v)
+    @classmethod
+    def register(cls, t: Type, ser: str, des: str) -> None:
+        cls.serde[t] = (
+            resolve_callable(ser),
+            des,
+        )
+    
+def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
+    """Utilizes `custom_ser` attr if present, otherwise defaults to cloudpickle as the most
+    robust general purpose serde"""
+    if (serde := SerdeRegistry.serde.get(type(v), None)) is not None:
+        value, deser_fun = serde[0](v), serde[1]
+    else:
+        value, deser_fun = cloudpickle.dumps(v), "cloudpickle.loads"
+    return value, deser_fun
 
-def des_output(v: bytes, annotation: str) -> Any:
-    return cloudpickle.loads(v)
+def des_output(v: bytes, annotation: str, deser_fun: str) -> Any:
+    if deser_fun == "cloudpickle.loads":
+        return cloudpickle.loads(v)
+    else:
+        return resolve_callable(deser_fun)(v)
 
 def ser_dmessage(m: DatasetTransmitCommand|DatasetTransmitPayload|DatasetTransmitConfirm) -> tuple[bytes]|tuple[bytes,bytes]:
     """Optimized variant for payloads and multipart send/recv"""
     if isinstance(m, DatasetTransmitCommand|DatasetTransmitConfirm):
         return ser_message(m),
     elif isinstance(m, DatasetTransmitPayload):
-        # TODO this is messy, introduce a proper header-body hierarchy
-        return (pickle.dumps([m.ds, m.confirm_address, m.confirm_idx]), m.value)
+        return (pickle.dumps(m.header), m.value)
     else:
         assert_never(m)
 
@@ -53,11 +73,7 @@ def des_dmessage(bs: list[bytes]) -> DatasetTransmitCommand|DatasetTransmitPaylo
         if len(bs) != 1:
             raise ValueError(f"expected list of len 1, gotten {len(bs)}")
         return h
-    elif isinstance(h, list):
-        if len(bs) != 2:
-            raise ValueError(f"expected list of len 2, gotten {len(bs)}")
-        if len(h) != 3:
-            raise ValueError(f"expected list of len 3, gotten {len(bs)}")
-        return DatasetTransmitPayload(ds=h[0], confirm_address=h[1], confirm_idx=h[2], value=bs[1])
+    elif isinstance(h, DatasetTransmitPayloadHeader):
+        return DatasetTransmitPayload(header=pickle.loads(bs[0]), value=bs[1])
     else:
         raise ValueError(f"unexpected type: {type(h)}")
