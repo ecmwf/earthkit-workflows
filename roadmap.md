@@ -4,7 +4,7 @@
 ## Speed
 * pre-schedule
   * persist the result, allow re-usal
-  * improve algorithm, improve implementation
+  * improve algorithm
   * run in parallel to cluster spin-up
 * assignments / schedule
   * fusing in case of single remaining output and good ratio of available data
