@@ -19,6 +19,7 @@ import logging.config
 from multiprocessing import Process
 import os
 from time import perf_counter_ns
+from concurrent.futures import ThreadPoolExecutor
 
 import fire
 
@@ -53,6 +54,8 @@ def get_job(id_: str) -> JobInstance:
     elif id_.startswith("generators"):
         import cascade.benchmarks.generators as generators
         return generators.get_job()
+    else:
+        raise NotImplementedError(id_)
 
 def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, workers_per_host: int, portBase: int, i: int, shm_vol_gb: int|None):
     logging.config.dictConfig(logging_config)
@@ -99,9 +102,12 @@ def main_dist(job: str, idx: int, controller_url: str, hosts: int = 3, workers_p
     jobInstance = get_job(job) 
 
     if idx == 0:
+        tp = ThreadPoolExecutor(max_workers=1)
+        preschedule_fut = tp.submit(precompute, jobInstance)
         logging.config.dictConfig(logging_config)
         b = Bridge(controller_url, hosts)
-        preschedule = precompute(jobInstance)
+        preschedule = preschedule_fut.result()
+        tp.shutdown()
         start = perf_counter_ns()
         run(jobInstance, b, preschedule)
         end = perf_counter_ns()

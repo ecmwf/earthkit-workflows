@@ -11,10 +11,51 @@ from cascade.low.tracing import Microtrace, timer
 from cascade.low.views import dependants, param_source
 from typing import Iterator
 from cascade.scheduler.core import Task2TaskDistance, TaskValue, ComponentCore, Preschedule
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
 PlainComponent = tuple[list[TaskId], list[TaskId]] # nodes, sources
+
+def nearest_common_descendant(paths: Task2TaskDistance, nodes: list[TaskId], L: int) -> Task2TaskDistance:
+    ncd: Task2TaskDistance = {}
+    try:
+        import coptrs
+        logger.warning(f"using coptrs library, watch out for the blazing speed")
+        m = {}
+        d1 = {}
+        d2 = {}
+        i = 0
+        # TODO we convert from double dict to dict of tuples -- extend coptrs to support the other as well to get rid fo this
+        for a in paths.keys():
+            for b in paths[a].keys():
+                if a not in d1:
+                    d1[a] = i
+                    d2[i] = a
+                    i += 1
+                if b not in d1:
+                    d1[b] = i
+                    d2[i] = b
+                    i += 1
+                m[(d1[a], d1[b])] = paths[a][b]
+        ncdT: dict[tuple[int, int], int] = coptrs.nearest_common_descendant(m, L)
+        for (ai, bi), e in ncdT.items():
+            if not d2[ai] in ncd:
+                ncd[d2[ai]] = {}
+            ncd[d2[ai]][d2[bi]] = e
+    except ImportError:
+        logger.warning(f"coptrs not found, falling back to python")
+        for a in nodes:
+            ncd[a] = {}
+            for b in nodes:
+                if b == a:
+                    ncd[a][b] = 0
+                    continue
+                ncd[a][b] = L
+                for c in nodes:
+                    ncd[a][b] = min(ncd[a][b], max(paths[a][c], paths[b][c]))
+    return ncd
+
 
 def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: dict[TaskId, set[TaskId]]) -> Iterator[PlainComponent]:
     sources: set[TaskId] = {
@@ -57,7 +98,6 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
     layers: list[list[TaskId]] = [sinks]
     value: dict[TaskId, int] = {}
     paths: Task2TaskDistance = {}
-    ncd: Task2TaskDistance = {}
 
     # decompose into topological layers
     while remaining:
@@ -77,7 +117,6 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
         value[v] = L
         paths[v] = defaultdict(lambda : L)
         paths[v][v] = 0
-        ncd[v] = defaultdict(lambda : L)
 
     for layer in layers[1:]:
         for v in layer:
@@ -90,17 +129,7 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
                     paths[v][desc] = min(paths[v][desc], dist+1)
                 value[v] = max(value[v], value[c] - 1)
 
-    # calculate nearest common descendant
-    # NOTE sorta floyd warshall, ie, n3. Rewrite into n2?
-    for a in nodes:
-        ncd[a] = {}
-        for b in nodes:
-            if b == a:
-                ncd[a][b] = 0
-                continue
-            ncd[a][b] = L
-            for c in nodes:
-                ncd[a][b] = min(ncd[a][b], max(paths[a][c], paths[b][c]))
+    ncd = nearest_common_descendant(paths, nodes, L)
                 
     return ComponentCore(
         nodes=nodes,
@@ -128,14 +157,18 @@ def precompute(job_instance: JobInstance) -> Preschedule:
         for task in job_instance.tasks.keys()
     }
 
-    components = [
-        timer(enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj)
-        for plain_component in timer(decompose, Microtrace.presched_decompose)(
-            list(job_instance.tasks.keys()),
-            edge_i_proj,
-            edge_o_proj,
+    with ThreadPoolExecutor(max_workers=4) as tp:
+        # TODO if coptrs is not used, then this doesnt make sense
+        f = lambda plain_component: timer(enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj)
+        plain_components = (plain_component
+            for plain_component in timer(decompose, Microtrace.presched_decompose)(
+                list(job_instance.tasks.keys()),
+                edge_i_proj,
+                edge_o_proj,
+            )
         )
-    ]
+        components = list(tp.map(f, plain_components))
+        
     components.sort(key=lambda c: c.weight(), reverse=True)
 
     return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o)
