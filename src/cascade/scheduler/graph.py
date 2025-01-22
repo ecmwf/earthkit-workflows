@@ -11,6 +11,7 @@ from cascade.low.tracing import Microtrace, timer
 from cascade.low.views import dependants, param_source
 from typing import Iterator
 from cascade.scheduler.core import Task2TaskDistance, TaskValue, ComponentCore, Preschedule
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +157,18 @@ def precompute(job_instance: JobInstance) -> Preschedule:
         for task in job_instance.tasks.keys()
     }
 
-    components = [
-        timer(enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj)
-        for plain_component in timer(decompose, Microtrace.presched_decompose)(
-            list(job_instance.tasks.keys()),
-            edge_i_proj,
-            edge_o_proj,
+    with ThreadPoolExecutor(max_workers=4) as tp:
+        # TODO if coptrs is not used, then this doesnt make sense
+        f = lambda plain_component: timer(enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj)
+        plain_components = (plain_component
+            for plain_component in timer(decompose, Microtrace.presched_decompose)(
+                list(job_instance.tasks.keys()),
+                edge_i_proj,
+                edge_o_proj,
+            )
         )
-    ]
+        components = list(tp.map(f, plain_components))
+        
     components.sort(key=lambda c: c.weight(), reverse=True)
 
     return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o)
