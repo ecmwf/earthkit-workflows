@@ -20,7 +20,7 @@ def test_job0():
     state = initialize(h1w1, preschedule, set())
     assignment = list(assign(state))
     assert assignment == [
-        Assignment(worker=h1w1_w, tasks=['source'], prep=[], outputs={DatasetId(task='source', output='__default__')})
+        Assignment(worker=h1w1_w, tasks=['source'], prep=[], outputs={DatasetId(task='source', output='0')})
     ]
 
     state = plan(state, assignment)
@@ -35,7 +35,7 @@ def test_job1():
     state = initialize(h1w1, preschedule, set())
     assignment = list(assign(state))
     assert assignment == [
-        Assignment(worker=h1w1_w, tasks=['source'], prep=[], outputs={DatasetId(task='source', output='__default__')})
+        Assignment(worker=h1w1_w, tasks=['source'], prep=[], outputs={DatasetId(task='source', output='0')})
     ]
 
     state = plan(state, assignment)
