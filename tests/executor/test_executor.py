@@ -10,7 +10,7 @@ from logging.config import dictConfig
 import numpy as np
 
 from cascade.low.core import JobInstance, WorkerId, TaskDefinition, TaskInstance, Task2TaskEdge, DatasetId
-from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, TaskSuccess, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitConfirm, DatasetTransmitPayloadHeader
+from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitConfirm, DatasetTransmitPayloadHeader
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.executor import Executor
 from cascade.executor.config import logging_config
@@ -24,7 +24,6 @@ def launch_executor(job_instance: JobInstance, controller_address: BackboneAddre
 
 def test_executor():
     # job
-    serde.SerdeRegistry.register(np.ndarray, lambda e: e.tobytes(), "numpy.frombuffer")
     def test_func(x: np.ndarray) -> np.ndarray:
         return x+1
     task_definition = TaskDefinition(
@@ -77,9 +76,7 @@ def test_executor():
         w0 = WorkerId("test_executor", "w0")
         callback(m1, TaskSequence(worker=w0, tasks=["source", "sink"], publish={sink_o}))
         expected = {
-            TaskSuccess(worker=w0, ts='source'),
-            DatasetPublished(host='test_executor', ds=sink_o, transmit_idx=None),
-            TaskSuccess(worker=w0, ts='sink'),
+            DatasetPublished(origin=w0, ds=sink_o, transmit_idx=None),
         }
         while expected:
             ms = l.recv_messages()
@@ -98,7 +95,7 @@ def test_executor():
         send_data(d1, DatasetTransmitPayload(header=DatasetTransmitPayloadHeader(ds=source_o, confirm_idx=1, confirm_address=c1, deser_fun=deser_fun), value=value))
         expected = {
             DatasetTransmitConfirm(idx=1),
-            DatasetPublished(host='test_executor', ds=source_o, transmit_idx=1),
+            DatasetPublished(origin='test_executor', ds=source_o, transmit_idx=1),
         }
         while expected:
             ms = l.recv_messages()
@@ -106,8 +103,7 @@ def test_executor():
                 expected.remove(m)
         callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}))
         expected = [
-            DatasetPublished(host='test_executor', ds=sink_o, transmit_idx=None),
-            TaskSuccess(worker=w0, ts='sink'),
+            DatasetPublished(w0, ds=sink_o, transmit_idx=None),
         ]
         while expected:
             ms = l.recv_messages()
