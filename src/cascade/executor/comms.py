@@ -131,19 +131,19 @@ class _InFlightRecord:
     at: int
 
 class ReliableSender():
-    def __init__(self, maddress: BackboneAddress) -> None:
+    def __init__(self, address: BackboneAddress) -> None:
         self.hosts: dict[HostId, zmq.Socket] = {}
         self.inflight: dict[int, _InFlightRecord] = {}
         self.idx = 0
         self.resend_grace = 2 * 1_000_000_000 # two seconds
-        self.maddress = maddress
+        self.address = address
 
-    def add_host(self, host: HostId, socket: zmq.Socket) -> None:
-        self.hosts[host] = socket
+    def add_host(self, host: HostId, address: BackboneAddress) -> None:
+        self.hosts[host] = get_socket(address)
 
     def send(self, host: HostId, m: Message) -> None:
         raw = ser_message(m)
-        syn = ser_message(Syn(idx=self.idx, addr=self.maddress))
+        syn = ser_message(Syn(idx=self.idx, addr=self.address))
         self.inflight[self.idx] = _InFlightRecord(host=host, message=(syn, raw), at=time.time_ns())
         self.hosts[host].send_multipart((syn, raw))
         self.idx += 1
@@ -163,4 +163,3 @@ class ReliableSender():
                     self.inflight[idx].at = time.time_ns()
                 else:
                     logger.warning(f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown")
-            

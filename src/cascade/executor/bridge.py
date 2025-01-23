@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from cascade.executor.msg import Message, TaskSequence, TaskFailure, DatasetPublished, DatasetPurge, DatasetTransmitCommand, DatasetTransmitPayload, ExecutorFailure, ExecutorExit, ExecutorRegistration, ExecutorShutdown, DatasetTransmitFailure, BackboneAddress, DatasetTransmitConfirm, Ack
 import cascade.executor.serde as serde
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
-from cascade.executor.comms import Listener, GraceWatcher, ReliableSender
+from cascade.executor.comms import Listener, GraceWatcher, ReliableSender, get_context
 import zmq
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class Bridge:
         self.transmit_idx_counter = 0
         self.sender = ReliableSender(self.mlistener.address)
         registered = 0
-        ctx = zmq.Context()
+        ctx = get_context()
         self.environment = Environment(workers={})
         logger.debug("about to start receiving registrations")
         registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
@@ -42,10 +42,7 @@ class Bridge:
                 if message.host in self.sender.hosts or message.host in self.daddresses:
                     logger.warning(f"double registration of {message.host}, indicating network congestion")
                     continue
-                msocket = ctx.socket(zmq.PUSH)
-                msocket.set(zmq.LINGER, 3000)
-                msocket.connect(message.maddress)
-                self.sender.add_host(message.host, msocket)
+                self.sender.add_host(message.host, message.maddress)
                 dsocket = ctx.socket(zmq.PUSH)
                 dsocket.set(zmq.LINGER, 3000)
                 dsocket.connect(message.daddress)

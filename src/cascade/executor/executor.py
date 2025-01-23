@@ -17,10 +17,10 @@ import logging
 
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
-from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown
+from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown, Ack
 from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
 from cascade.executor.runner.memory import ds2shmid
-from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
+from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher, ReliableSender
 from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
@@ -50,6 +50,8 @@ class Executor:
         atexit.register(self.terminate)
         # NOTE following inits are with potential side effects
         self.mlistener = Listener(address_of(portBase))
+        self.sender = ReliableSender(self.mlistener.address)
+        self.sender.add_host("controller", controller_address)
         # TODO make the shm server params configurable
         shm_port = portBase+2
         shm_api.publish_client_port(shm_port)
@@ -102,7 +104,7 @@ class Executor:
 
     def to_controller(self, m: Message) -> None:
         self.heartbeat_watcher.step()
-        callback(self.controller_address, m)
+        self.sender.send("controller", m)
 
     def start_workers(self, workers: Iterable[WorkerId]) -> None:
         # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
@@ -176,6 +178,8 @@ class Executor:
                         if (proc := self.workers[m.worker]) is None or proc.exitcode is not None:
                             raise ValueError(f"worker process {m.worker} is not alive")
                         callback(worker_address(m.worker), m)
+                    elif isinstance(m, Ack):
+                        self.sender.ack(m.idx)
                     elif isinstance(m, DatasetPurge):
                         if not m.ds in self.datasets:
                             logger.warning(f"unexpected purge of {m.ds}")
