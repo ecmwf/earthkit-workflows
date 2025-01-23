@@ -17,7 +17,7 @@ import logging
 
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
-from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, TaskSuccess, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown
+from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown
 from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
 from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
@@ -190,10 +190,6 @@ class Executor:
                         break
                     # from entrypoint
                     elif isinstance(m, TaskFailure):
-                        self.to_controller(m)
-                    elif isinstance(m, TaskSuccess):
-                        # NOTE we don't call maybe_cleanup here -- the process may not have joined yet so we'd just block,
-                        # and we don't need to free the slot yet anyway
                         self.to_controller(m)
                     elif isinstance(m, DatasetPublished):
                         for worker in self.workers:

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from cascade.low.core import TaskDefinition, DatasetId, TaskId, TaskInstance
 from cascade.low.func import ensure, assert_never, assert_iter_empty, resolve_callable
-from cascade.executor.msg import TaskSuccess, TaskSequence, BackboneAddress
+from cascade.executor.msg import TaskSequence, BackboneAddress
 from cascade.executor.comms import callback
 from cascade.low.tracing import mark, TaskLifecycle, Microtrace, trace
 from cascade.executor.runner.memory import Memory

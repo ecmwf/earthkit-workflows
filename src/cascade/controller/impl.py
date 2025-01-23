@@ -44,7 +44,7 @@ def run(job: JobInstance, bridge: Bridge, preschedule: Preschedule, outputs: set
             if has_awaitable(state):
                 logger.debug(f"about to await bridge")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
-                timer(notify, Microtrace.ctrl_notify)(state, events)
+                timer(notify, Microtrace.ctrl_notify)(state, job, events)
                 logger.debug(f"received {len(events)} events")
     except Exception:
         logger.error("crash in controller, shuting down")

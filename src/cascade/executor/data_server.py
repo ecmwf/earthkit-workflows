@@ -67,7 +67,7 @@ class DataServer:
             buf.view()[:l] = payload.value
             buf.close()
             callback(payload.header.confirm_address, DatasetTransmitConfirm(idx=payload.header.confirm_idx))
-            callback(self.maddress, DatasetPublished(ds=payload.header.ds, host=self.host, transmit_idx=payload.header.confirm_idx))
+            callback(self.maddress, DatasetPublished(ds=payload.header.ds, origin=self.host, transmit_idx=payload.header.confirm_idx))
             mark({"dataset": repr(payload.header.ds), "action": TransmitLifecycle.unloaded, "target": self.host, "mode": "remote"})
         except Exception as e:
             logger.exception("failed to store payload of {payload.header.ds}, reporting up")
@@ -134,7 +134,7 @@ class DataServer:
                 queue = []
                 for idx, (_, at) in self.awaiting_confirmation.items():
                     if at < watermark:
-                        queue.append(at)
+                        queue.append(idx)
                 for e in queue:
                     self.maybe_clean()
                     command = self.awaiting_confirmation[e][0]
