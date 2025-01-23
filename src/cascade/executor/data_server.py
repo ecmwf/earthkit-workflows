@@ -134,7 +134,7 @@ class DataServer:
                 queue = []
                 for idx, (_, at) in self.awaiting_confirmation.items():
                     if at < watermark:
-                        queue.append(at)
+                        queue.append(idx)
                 for e in queue:
                     self.maybe_clean()
                     command = self.awaiting_confirmation[e][0]
