@@ -39,9 +39,18 @@ def message(clazz):
     clazz.__sdver__ = VERSION
     return clazz
 
+BackboneAddress = str # eg zmq address
+
 ## Msgs
 
-BackboneAddress = str # eg zmq address
+@dataclass(frozen=True)
+class Syn:
+    idx: int
+    addr: BackboneAddress
+
+@dataclass(frozen=True)
+class Ack:
+    idx: int
 
 @dataclass(frozen=True)
 class TaskSequence:
@@ -126,4 +135,4 @@ class WorkerShutdown:
 
 
 # this explicit list is a disgrace -- see the _Message protocol above
-Message = TaskSequence|TaskFailure|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm|WorkerReady|WorkerShutdown
+Message = Syn|Ack|TaskSequence|TaskFailure|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm|WorkerReady|WorkerShutdown
