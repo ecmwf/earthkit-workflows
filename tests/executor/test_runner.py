@@ -2,7 +2,7 @@
 Tests running a Callable in the same process
 """
 
-from cascade.executor.msg import TaskSequence, TaskSuccess, DatasetPublished
+from cascade.executor.msg import TaskSequence, DatasetPublished
 from cascade.low.core import WorkerId, TaskDefinition, TaskInstance, DatasetId, JobInstance, Task2TaskEdge
 from cascade.low.views import param_source
 import cascade.executor.serde as serde
@@ -84,8 +84,7 @@ def test_runner(monkeypatch):
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
         entrypoint.execute_sequence(oneTaskTs, memoryInstance, pckg, oneTaskRc)
     assert msgs == [
-        DatasetPublished(host=worker.host, ds=t2ds, transmit_idx=None),
-        TaskSuccess(worker=worker, ts='t2')
+        DatasetPublished(origin=worker, ds=t2ds, transmit_idx=None)
     ]
     msgs = []
     so = get(memory.ds2shmid(t2ds))
@@ -124,9 +123,7 @@ def test_runner(monkeypatch):
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
         entrypoint.execute_sequence(twoTaskTs, memoryInstance, pckg, twoTaskRc)
     assert msgs == [
-        TaskSuccess(worker=worker, ts='t3a'),
-        DatasetPublished(host=worker.host, ds=t3o, transmit_idx=None),
-        TaskSuccess(worker=worker, ts='t3b'),
+        DatasetPublished(origin=worker, ds=t3o, transmit_idx=None),
     ]
     msgs = []
     so = get(memory.ds2shmid(t3o))
@@ -175,15 +172,10 @@ def test_runner(monkeypatch):
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
         entrypoint.execute_sequence(t4TaskTs, memoryInstance, pckg, t4Rc)
     assert msgs == [
-        TaskSuccess(worker=worker, ts='t4g'),
-        DatasetPublished(host=worker.host, ds=t4pOutputs[0], transmit_idx=None),
-        TaskSuccess(worker=worker, ts='t4c0'),
-        DatasetPublished(host=worker.host, ds=t4pOutputs[1], transmit_idx=None),
-        TaskSuccess(worker=worker, ts='t4c1'),
-        DatasetPublished(host=worker.host, ds=t4pOutputs[2], transmit_idx=None),
-        TaskSuccess(worker=worker, ts='t4c2'),
-        DatasetPublished(host=worker.host, ds=t4pOutputs[3], transmit_idx=None),
-        TaskSuccess(worker=worker, ts='t4c3'),
+        DatasetPublished(origin=worker, ds=t4pOutputs[0], transmit_idx=None),
+        DatasetPublished(origin=worker, ds=t4pOutputs[1], transmit_idx=None),
+        DatasetPublished(origin=worker, ds=t4pOutputs[2], transmit_idx=None),
+        DatasetPublished(origin=worker, ds=t4pOutputs[3], transmit_idx=None),
     ]
     for i, o in enumerate(t4pOutputs):
         so = get(memory.ds2shmid(o))

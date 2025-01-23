@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import zmq
 
 from cascade.low.core import WorkerId, JobInstance, TaskId, DatasetId
-from cascade.executor.msg import TaskFailure, TaskSequence, BackboneAddress, TaskSuccess, WorkerReady, WorkerShutdown, DatasetPurge, DatasetPublished
+from cascade.executor.msg import TaskFailure, TaskSequence, BackboneAddress, WorkerReady, WorkerShutdown, DatasetPurge, DatasetPublished
 from cascade.executor.comms import callback
 from cascade.low.tracing import label
 from cascade.executor.config import logging_config
@@ -57,10 +57,6 @@ def execute_sequence(taskSequence: TaskSequence, memory: Memory, pckg: PackagesE
         for taskId in taskSequence.tasks:
             pckg.extend(executionContext.tasks[taskId].definition.environment)
             run(taskId, executionContext, memory)
-            callback(
-                executionContext.callback,
-                TaskSuccess(worker=taskSequence.worker, ts=taskId),
-            )
         memory.flush()
     except Exception as e:
         logger.exception("runner failure, about to report")

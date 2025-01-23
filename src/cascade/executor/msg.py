@@ -56,13 +56,8 @@ class TaskFailure:
     detail: str
 
 @dataclass(frozen=True)
-class TaskSuccess:
-    worker: WorkerId
-    ts: TaskId
-
-@dataclass(frozen=True)
 class DatasetPublished:
-    host: HostId
+    origin: WorkerId|HostId
     ds: DatasetId
     transmit_idx: int|None
 
@@ -131,4 +126,4 @@ class WorkerShutdown:
 
 
 # this explicit list is a disgrace -- see the _Message protocol above
-Message = TaskSequence|TaskFailure|TaskSuccess|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm|WorkerReady|WorkerShutdown
+Message = TaskSequence|TaskFailure|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm|WorkerReady|WorkerShutdown
