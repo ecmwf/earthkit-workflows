@@ -96,10 +96,6 @@ class DatasetTransmitPayload:
     value: bytes
 
 @dataclass(frozen=True)
-class DatasetTransmitConfirm:
-    idx: int
-
-@dataclass(frozen=True)
 class DatasetTransmitFailure:
     host: HostId
     detail: str
@@ -135,4 +131,4 @@ class WorkerShutdown:
 
 
 # this explicit list is a disgrace -- see the _Message protocol above
-Message = Syn|Ack|TaskSequence|TaskFailure|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|DatasetTransmitConfirm|WorkerReady|WorkerShutdown
+Message = Syn|Ack|TaskSequence|TaskFailure|DatasetPublished|DatasetPurge|DatasetTransmitCommand|DatasetTransmitPayload|ExecutorFailure|ExecutorExit|ExecutorRegistration|ExecutorShutdown|DatasetTransmitFailure|WorkerReady|WorkerShutdown

@@ -270,7 +270,8 @@ class Manager:
             try:
                 ds = self.datasets[key]
                 if ds.ongoing_reads and not is_exit:
-                    logger.warning(f"premature purge of {key} while there are still reads, delaying")
+                    # logging as debug because this is a common and legit scenario due to scheduler speed
+                    logger.debug(f"premature purge of {key} while there are still reads, delaying")
                     ds.delayed_purge = True
                     return
             except Exception:

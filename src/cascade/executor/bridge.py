@@ -9,7 +9,7 @@ from cascade.low.core import TaskId, DatasetId, WorkerId, Environment, HostId, W
 from cascade.low.func import assert_never
 from cascade.scheduler.core import DatasetStatus, TaskStatus
 from pydantic import BaseModel, Field
-from cascade.executor.msg import Message, TaskSequence, TaskFailure, DatasetPublished, DatasetPurge, DatasetTransmitCommand, DatasetTransmitPayload, ExecutorFailure, ExecutorExit, ExecutorRegistration, ExecutorShutdown, DatasetTransmitFailure, BackboneAddress, DatasetTransmitConfirm, Ack
+from cascade.executor.msg import Message, TaskSequence, TaskFailure, DatasetPublished, DatasetPurge, DatasetTransmitCommand, DatasetTransmitPayload, ExecutorFailure, ExecutorExit, ExecutorRegistration, ExecutorShutdown, DatasetTransmitFailure, BackboneAddress, Ack
 import cascade.executor.serde as serde
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
 from cascade.executor.comms import Listener, GraceWatcher, ReliableSender, get_context
@@ -19,34 +19,31 @@ logger = logging.getLogger(__name__)
 
 Event = DatasetPublished|DatasetTransmitPayload
 ToShutdown = TaskFailure|ExecutorFailure|DatasetTransmitFailure|ExecutorExit
-Unsupported = TaskSequence|DatasetPurge|DatasetTransmitCommand|ExecutorShutdown|DatasetTransmitConfirm
+Unsupported = TaskSequence|DatasetPurge|DatasetTransmitCommand|ExecutorShutdown
+resend_grace_ms = 200
 
 class Bridge:
     def __init__(self, controller_url: str, expected_executors: int) -> None:
         self.mlistener = Listener(controller_url)
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
-        self.daddresses: dict[HostId, tuple[BackboneAddress, zmq.Socket]] = {}
         self.transmit_idx_counter = 0
-        self.sender = ReliableSender(self.mlistener.address)
+        self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         registered = 0
         ctx = get_context()
         self.environment = Environment(workers={})
         logger.debug("about to start receiving registrations")
         registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
         while registered < expected_executors:
-            messages = self.mlistener.recv_messages(timeout_sec=10)
+            messages = self.mlistener.recv_messages(timeout_ms=10_000)
             logger.debug(f"received {messages=}")
             for message in messages:
                 if not isinstance(message, ExecutorRegistration):
                     raise TypeError(type(message))
-                if message.host in self.sender.hosts or message.host in self.daddresses:
-                    logger.warning(f"double registration of {message.host}, indicating network congestion")
+                if message.host in self.sender.hosts or "data." + message.host in self.sender.hosts:
+                    logger.warning(f"double registration of {message.host}, suggesting network congestion")
                     continue
                 self.sender.add_host(message.host, message.maddress)
-                dsocket = ctx.socket(zmq.PUSH)
-                dsocket.set(zmq.LINGER, 3000)
-                dsocket.connect(message.daddress)
-                self.daddresses[message.host] = (message.daddress, dsocket)
+                self.sender.add_host("data." + message.host, message.daddress)
                 for worker in message.workers:
                     # TODO proper parameters
                     self.environment.workers[worker] = Worker(cpu=1, gpu=0, memory_mb=1024)
@@ -68,7 +65,8 @@ class Bridge:
             events: list[Event] = []
             shutdown_reason: None|Exception|Message = None
             while (not events) and (not shutdown_reason):
-                for message in self.mlistener.recv_messages(timeout_sec=1):
+                # timeout ms matches 
+                for message in self.mlistener.recv_messages(timeout_ms=resend_grace_ms):
                     if hasattr(message, 'host') and isinstance((host := message.host), HostId):
                         self.heartbeat_checker[host].step()
                     if hasattr(message, 'worker') and isinstance((worker := message.worker), WorkerId):
@@ -83,13 +81,14 @@ class Bridge:
                         logger.critical(f"received failure {message=}, proceeding with a shutdown")
                         if isinstance(message, ExecutorExit|ExecutorFailure) and message.host in self.sender.hosts:
                             self.sender.hosts.pop(message.host)
+                            self.sender.hosts.pop("data." + message.host)
                         shutdown_reason = message
                     elif isinstance(message, Unsupported):
                         logger.critical(f"received unexpected {message=}, proceeding with a shutdown")
                         shutdown_reason = message
                     else:
                         assert_never(message)
-                failed_heartbeats = (e for e in self.heartbeat_checker.items() if e[1].is_breach())
+                failed_heartbeats = (e for e in self.heartbeat_checker.items() if e[1].is_breach() == 2)
                 for host, checker in failed_heartbeats:
                     logger.warning(f"{host=} failed to heartbeat for {checker.elapsed_ms()/1e3:.3f}s")
                 self.sender.maybe_retry()
@@ -112,12 +111,12 @@ class Bridge:
         m = DatasetTransmitCommand(
             source=source,
             target=target,
-            daddress=self.daddresses[target][0],
+            daddress=self.sender.hosts["data." + target][1],
             ds=ds,
             idx=self.transmit_idx_counter,
         )
         self.transmit_idx_counter += 1
-        self.daddresses[source][1].send(serde.ser_message(m))
+        self.sender.send("data." + source, m)
 
     def fetch(self, ds: DatasetId, source: HostId) -> None:
         m = DatasetTransmitCommand(
@@ -128,12 +127,13 @@ class Bridge:
             idx=self.transmit_idx_counter,
         )
         self.transmit_idx_counter += 1
-        self.daddresses[source][1].send(serde.ser_message(m))
+        self.sender.send("data." + source, m)
 
     def shutdown(self) -> None:
         m = ExecutorShutdown()
         for host in self.sender.hosts.keys():
-            self._send(host, m)
+            if not host.startswith("data."):
+                self._send(host, m)
         shutdown_grace = time.time_ns() + 3 * 60 * 1_000_000_000
         while self.sender.hosts and time.time_ns() < shutdown_grace:
             # we want to consume all those exit messages 
@@ -141,6 +141,7 @@ class Bridge:
                 if isinstance(message, ExecutorExit|ExecutorFailure):
                     if message.host in self.sender.hosts:
                         self.sender.hosts.pop(message.host)
+                        self.sender.hosts.pop("data." + message.host)
                 else:
                     logger.warning(f"ignoring {type(message)}")
         if self.sender.hosts:
