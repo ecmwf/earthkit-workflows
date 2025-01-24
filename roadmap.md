@@ -21,7 +21,6 @@
 ## Stability
 * long lived worker memory capacity / pressure, dropping of datasets
 * eager partial Purge sent from controller
-* re-tries for more messages than just register and data transmit
 * recover from worker oom crash etc
 * watermarks/checkpoints for job crashes and restarts
 ## Portability

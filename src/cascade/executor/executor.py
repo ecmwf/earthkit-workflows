@@ -17,10 +17,10 @@ import logging
 
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
-from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown
+from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown, Ack
 from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
 from cascade.executor.runner.memory import ds2shmid
-from cascade.executor.comms import Listener, callback, default_timeout_sec as comms_default_timeout_sec, GraceWatcher
+from cascade.executor.comms import Listener, callback, default_timeout_ms as comms_default_timeout_ms, GraceWatcher, ReliableSender, default_message_resend_ms as resend_grace_ms
 from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
@@ -30,7 +30,7 @@ from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer
 from cascade.low.views import param_source
 
 logger = logging.getLogger(__name__)
-heartbeat_grace_ms = 2*comms_default_timeout_sec*1_000
+heartbeat_grace_ms = 2*comms_default_timeout_ms
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{socket.gethostname()}:{port}"
@@ -50,6 +50,8 @@ class Executor:
         atexit.register(self.terminate)
         # NOTE following inits are with potential side effects
         self.mlistener = Listener(address_of(portBase))
+        self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
+        self.sender.add_host("controller", controller_address)
         # TODO make the shm server params configurable
         shm_port = portBase+2
         shm_api.publish_client_port(shm_port)
@@ -102,7 +104,7 @@ class Executor:
 
     def to_controller(self, m: Message) -> None:
         self.heartbeat_watcher.step()
-        callback(self.controller_address, m)
+        self.sender.send("controller", m)
 
     def start_workers(self, workers: Iterable[WorkerId]) -> None:
         # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
@@ -157,7 +159,7 @@ class Executor:
             ValueError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
         if procFail(self.data_server.exitcode):
             ValueError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
-        if self.heartbeat_watcher.is_breach():
+        if self.heartbeat_watcher.is_breach() > 0:
             logger.debug(f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}")
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
@@ -167,7 +169,7 @@ class Executor:
         logger.debug("entering recv loop")
         while not self.terminating:
             try:
-                for m in self.mlistener.recv_messages():
+                for m in self.mlistener.recv_messages(resend_grace_ms):
                     logger.debug(f"received {type(m)}")
                     # from controller
                     if isinstance(m, TaskSequence):
@@ -176,6 +178,8 @@ class Executor:
                         if (proc := self.workers[m.worker]) is None or proc.exitcode is not None:
                             raise ValueError(f"worker process {m.worker} is not alive")
                         callback(worker_address(m.worker), m)
+                    elif isinstance(m, Ack):
+                        self.sender.ack(m.idx)
                     elif isinstance(m, DatasetPurge):
                         if not m.ds in self.datasets:
                             logger.warning(f"unexpected purge of {m.ds}")
@@ -183,7 +187,7 @@ class Executor:
                             for worker in self.workers:
                                 callback(worker_address(worker), m)
                             self.datasets.remove(m.ds)
-                            shm_client.purge(ds2shmid(m.ds))
+                            callback(self.daddress, m)
                     elif isinstance(m, ExecutorShutdown):
                         self.to_controller(ExecutorExit(self.host))
                         self.terminate()
