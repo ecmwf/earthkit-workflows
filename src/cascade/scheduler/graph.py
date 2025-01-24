@@ -21,7 +21,7 @@ def nearest_common_descendant(paths: Task2TaskDistance, nodes: list[TaskId], L: 
     ncd: Task2TaskDistance = {}
     try:
         import coptrs
-        logger.warning(f"using coptrs library, watch out for the blazing speed")
+        logger.debug(f"using coptrs library, watch out for the blazing speed")
         m = {}
         d1 = {}
         d2 = {}

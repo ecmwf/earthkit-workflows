@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from cascade.executor.msg import Message, TaskSequence, TaskFailure, DatasetPublished, DatasetPurge, DatasetTransmitCommand, DatasetTransmitPayload, ExecutorFailure, ExecutorExit, ExecutorRegistration, ExecutorShutdown, DatasetTransmitFailure, BackboneAddress, Ack
 import cascade.executor.serde as serde
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
-from cascade.executor.comms import Listener, GraceWatcher, ReliableSender, get_context
+from cascade.executor.comms import Listener, GraceWatcher, ReliableSender, get_context, default_message_resend_ms as resend_grace_ms
 import zmq
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 Event = DatasetPublished|DatasetTransmitPayload
 ToShutdown = TaskFailure|ExecutorFailure|DatasetTransmitFailure|ExecutorExit
 Unsupported = TaskSequence|DatasetPurge|DatasetTransmitCommand|ExecutorShutdown
-resend_grace_ms = 200
 
 class Bridge:
     def __init__(self, controller_url: str, expected_executors: int) -> None:

@@ -16,6 +16,7 @@ import pickle
 
 logger = logging.getLogger(__name__)
 default_timeout_ms = 1_000
+default_message_resend_ms = 800
 
 class GraceWatcher:
     """For watching whether certain event occurred more than `grace_ms` ago"""

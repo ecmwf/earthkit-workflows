@@ -104,7 +104,7 @@ class DataServer:
 
     def recv_loop(self) -> None:
         # NOTE atm we don't terminate explicitly, rather parent kills us. But we may want to exit cleanly instead
-        resend_grace_ms = 8_000 # a bit longer than in the regular message case, data messages take longer
+        resend_grace_ms = 4_000 # a bit longer than in the regular message case, data messages take longer to receive
         # TODO consider breaking down large transmits into multiple smaller messages
         while not self.terminating:
             try:
@@ -160,7 +160,7 @@ class DataServer:
                 # but we need to be careful because of a/ thread pool b/ opened shm
                 # buffers. The current impl has the downside of reading from shm for
                 # every retry, instead of keeping it in mem until sent
-                watermark = time_ns() - resend_grace_ms
+                watermark = time_ns() - resend_grace_ms * 1_000_000
                 queue = []
                 for idx, (_, at) in self.awaiting_confirmation.items():
                     if at > 0 and at < watermark:

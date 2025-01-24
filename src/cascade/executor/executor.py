@@ -20,7 +20,7 @@ from cascade.low.func import assert_never
 from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown, Ack
 from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
 from cascade.executor.runner.memory import ds2shmid
-from cascade.executor.comms import Listener, callback, default_timeout_ms as comms_default_timeout_ms, GraceWatcher, ReliableSender
+from cascade.executor.comms import Listener, callback, default_timeout_ms as comms_default_timeout_ms, GraceWatcher, ReliableSender, default_message_resend_ms as resend_grace_ms
 from cascade.executor.data_server import start_data_server
 import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
@@ -31,7 +31,6 @@ from cascade.low.views import param_source
 
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2*comms_default_timeout_ms
-resend_grace_ms = 200
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{socket.gethostname()}:{port}"
