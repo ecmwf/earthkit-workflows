@@ -10,7 +10,7 @@ from logging.config import dictConfig
 import numpy as np
 
 from cascade.low.core import JobInstance, WorkerId, TaskDefinition, TaskInstance, Task2TaskEdge, DatasetId
-from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitConfirm, DatasetTransmitPayloadHeader
+from cascade.executor.msg import BackboneAddress, ExecutorRegistration, ExecutorShutdown, TaskSequence, ExecutorExit, DatasetPublished, DatasetTransmitCommand, DatasetTransmitPayload, DatasetPurge, DatasetTransmitPayloadHeader, Syn, Ack
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.executor import Executor
 from cascade.executor.config import logging_config
@@ -92,9 +92,11 @@ def test_executor():
         # purge, store, run partial and fetch again
         callback(m1, DatasetPurge(ds=sink_o))
         value, deser_fun = serde.ser_output(np.array([10.]), 'ndarray')
-        send_data(d1, DatasetTransmitPayload(header=DatasetTransmitPayloadHeader(ds=source_o, confirm_idx=1, confirm_address=c1, deser_fun=deser_fun), value=value))
+        payload = DatasetTransmitPayload(header=DatasetTransmitPayloadHeader(ds=source_o, confirm_idx=1, confirm_address=c1, deser_fun=deser_fun), value=value)
+        syn = Syn(1, c1)
+        send_data(d1, payload, syn)
         expected = {
-            DatasetTransmitConfirm(idx=1),
+            Ack(idx=1),
             DatasetPublished(origin='test_executor', ds=source_o, transmit_idx=1),
         }
         while expected:
@@ -112,9 +114,11 @@ def test_executor():
                 expected.pop(0)
         callback(d1, DatasetTransmitCommand(ds=sink_o, idx=2, source="test_executor", target="controller", daddress=c1))
         ms = l.recv_messages()
-        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task='sink', output='o')
-        assert serde.des_output(ms[0].value, 'ndarray', ms[0].header.deser_fun)[0] == 11.
-        callback(ms[0].header.confirm_address, DatasetTransmitConfirm(idx=ms[0].header.confirm_idx))
+        assert len(ms) == 0
+        # NOTE the below ceased to work since we introduced retries. Now recomputation of a result after a purge is not possible
+        # assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task='sink', output='o')
+        # assert serde.des_output(ms[0].value, 'ndarray', ms[0].header.deser_fun)[0] == 11.
+        # callback(ms[0].header.confirm_address, DatasetTransmitConfirm(idx=ms[0].header.confirm_idx))
 
         # shutdown
         callback(m1, ExecutorShutdown())

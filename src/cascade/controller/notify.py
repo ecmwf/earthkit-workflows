@@ -12,7 +12,7 @@ from typing import Iterable
 from cascade.scheduler.core import State, TaskStatus, DatasetStatus
 from cascade.executor.bridge import Event
 from cascade.executor.comms import callback
-from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload, DatasetTransmitConfirm
+from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
 from cascade.low.core import TaskId, DatasetId, WorkerId, HostId, JobInstance
 from cascade.low.func import assert_never
 from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
@@ -105,7 +105,6 @@ def notify(state: State, job: JobInstance, events: Iterable[Event]) -> State:
         elif isinstance(event, DatasetTransmitPayload):
             # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
             state.outputs[event.header.ds] = serde.des_output(event.value, 'Any', event.header.deser_fun)
-            callback(event.header.confirm_address, DatasetTransmitConfirm(idx=event.header.confirm_idx))
         else:
             assert_never(event)
     return state
