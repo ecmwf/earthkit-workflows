@@ -19,8 +19,8 @@ dependencies = [
     "dask[distributed]",
     "bokeh",
     "array-api-compat",
-    "bs4", 
-    "sortedcontainers", 
+    "bs4",
+    "sortedcontainers",
     "pyvis",
     "dill",
     "multiprocess",
@@ -38,6 +38,8 @@ lint = ["black", "isort", "flake8"]
 gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
 examples = ["cftime"]
 profiling = ["memray"]
+earthkit = ["earthkit-data"]
+all = ["cascade[tests,kubernetes,lint,gpu,examples,profiling,earthkit]"]
 
 [tool.setuptools]
 include-package-data = true
@@ -48,4 +50,3 @@ where = ["src"]
 
 [tool.isort]
 profile = "black"
-

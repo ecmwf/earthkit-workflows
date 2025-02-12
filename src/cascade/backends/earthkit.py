@@ -1,6 +1,8 @@
+from typing import TypeAlias
+
 import array_api_compat
-from earthkit.data.core.fieldlist import Field, FieldList
-from earthkit.data.core.metadata import Metadata
+from earthkit.data import FieldList
+from earthkit.data.readers.grib.metadata import StandAloneGribMetadata
 from meters import ResourceMeter
 
 from cascade.backends import num_args
@@ -24,6 +26,9 @@ def comp_str2func(array_module, comparison: str):
     return array_module.greater
 
 
+Metadata: TypeAlias = "dict | callable | None"
+
+
 def resolve_metadata(metadata: Metadata, *args) -> dict:
     if metadata is None:
         return {}
@@ -32,33 +37,27 @@ def resolve_metadata(metadata: Metadata, *args) -> dict:
     return metadata(*args)
 
 
-def new_field(data, metadata: Metadata, overrides: dict):
+def new_fieldlist(data, metadata: list[StandAloneGribMetadata], overrides: dict):
     if len(overrides) > 0:
         try:
-            new_metadata = metadata.override(overrides)
-            return Field(standardise_output(data), new_metadata)
+            new_metadata = [
+                metadata[x].override(overrides) for x in range(len(metadata))
+            ]
+            return FieldList.from_array(
+                standardise_output(data),
+                new_metadata,
+            )
         except Exception as e:
             print(
                 "Error setting metadata",
                 overrides,
                 "edition",
-                metadata["edition"],
+                metadata[0]["edition"],
                 "param",
-                metadata["paramId"],
+                metadata[0]["paramId"],
             )
             print(e)
-    return Field(standardise_output(data), metadata)
-
-
-def new_fieldlist(data, metadata: list[Metadata], overrides: dict) -> FieldList:
-    if not isinstance(data, list):
-        data = [data]
-    if not isinstance(metadata, list):
-        metadata = [metadata]
-
-    return FieldList.from_fields(
-        list(new_field(data[i], metadata[i], overrides) for i in range(len(data)))
-    )
+    return FieldList.from_array(standardise_output(data), metadata)
 
 
 class FieldListBackend:
@@ -159,7 +158,7 @@ class FieldListBackend:
     def pow(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("pow", *arrays, metadata=metadata)
 
-    def concat(*arrays: list[FieldList]) -> Field:
+    def concat(*arrays: list[FieldList]) -> FieldList:
         """Concatenates the list of fields inside each FieldList into a single
         FieldList object
 
@@ -183,7 +182,7 @@ class FieldListBackend:
         dim: int | str,
         method: str = "slice",
         **kwargs,
-    ) -> Field:
+    ) -> FieldList:
         if method == "slice":
             if dim != 0:
                 raise ValueError("Can not slice from FieldList along dim != 0")
@@ -202,7 +201,7 @@ class FieldListBackend:
             else:
                 raise ValueError(f"Invalid method {method}")
 
-        return ret
+        return FieldList.from_array(ret.values, ret.metadata())
 
     def norm(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
         merged_array = FieldListBackend._merge(*arrays)
