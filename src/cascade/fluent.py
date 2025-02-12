@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import copy
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Sequence
+from typing import Any, Callable, Hashable, Iterable, Sequence, TypeVar
 
+import cloudpickle
 import numpy as np
 import xarray as xr
 
 from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
+
+ActionType = TypeVar("ActionType", bound="Action")
 
 
 class Payload:
@@ -32,7 +34,7 @@ class Payload:
             if kwargs is None:
                 self.kwargs = {}
             else:
-                self.kwargs = copy.deepcopy(kwargs)
+                self.kwargs = cloudpickle.loads(cloudpickle.dumps(kwargs))
 
     def has_args(self) -> bool:
         """Return
@@ -198,6 +200,10 @@ class Action:
     def flush_registry(cls):
         """Flush the registry of all registered actions"""
         cls.REGISTRY = {}
+
+    def as_action(self, other: ActionType) -> ActionType:
+        """Parse action into another action class"""
+        return other(self.nodes)
 
     def __getattr__(self, attr):
         if attr in Action.REGISTRY:
@@ -550,8 +556,7 @@ class Action:
     def iselect(
         self, criteria: dict | None = None, drop: bool = False, **kwargs
     ) -> "Action":
-        """
-        Create action contaning nodes match index selection criteria
+        """Create action contaning nodes match index selection criteria
 
         Parameters
         ----------
