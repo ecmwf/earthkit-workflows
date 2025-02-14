@@ -44,7 +44,7 @@ def test_batch_execution(tmpdir, func):
         )
         for _ in range(5)
     ]
-    sources = from_source(funcs, ["x", "y"])
+    sources = from_source(funcs, dims=["x", "y"])
 
     non_batched = getattr(sources, func)("x")
     assert len(list(non_batched.graph().nodes())) == 24

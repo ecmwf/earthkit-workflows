@@ -32,7 +32,7 @@ def task_graph(request):
                 )
                 for _ in range(7)
             ],
-            ["x", "y"],
+            dims=["x", "y"],
         )
         .mean("x")
         .min("y")
