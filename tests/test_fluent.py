@@ -276,6 +276,9 @@ def test_generators():
         functools.partial(test_func, length=5), ("map", list(range(5)))
     ).reduce(functools.partial(test_func, length=2), ("reduce", ["a", "b"]))
     assert cas.nodes.dims == ("map", "reduce")
+    expected_coords = {"map": list(range(5)), "reduce": ["a", "b"]}
+    for dim, vals in expected_coords.items():
+        assert np.all(cas.nodes.coords[dim] == vals)
     assert cas.nodes.shape == (5, 2)
     graph = cas.graph()
     assert len(graph.sinks) == 5
