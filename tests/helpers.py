@@ -17,4 +17,4 @@ def mock_action(shape: tuple) -> Action:
     nodes_xr = xr.DataArray(
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
-    return Action(nodes_xr)
+    return Action(nodes_xr.to_dataset(name="default"))

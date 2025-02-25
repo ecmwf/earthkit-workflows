@@ -43,7 +43,7 @@ def test_payload():
 )
 def test_source(payloads, dims, coords, shape):
     action = from_source(payloads, dims=dims, coords=coords)
-    assert action.nodes.shape == shape
+    assert action.nodes["default"].shape == shape
 
 
 @pytest.mark.parametrize(
@@ -100,14 +100,12 @@ def test_broadcast():
         input_action.broadcast(mock_action((3, 3)))
 
     output_action = input_action.broadcast(mock_action((2, 3, 3)))
-    assert output_action.nodes.shape == (2, 3, 3)
-    assert len(output_action.nodes.data.item(0).inputs) == 1
-    it = np.nditer(output_action.nodes, flags=["multi_index", "refs_ok"])
+    assert output_action.nodes["default"].shape == (2, 3, 3)
+    it = np.nditer(output_action.nodes["default"], flags=["multi_index", "refs_ok"])
     for _ in it:
-        print(it.multi_index)
-        assert output_action.nodes[it.multi_index].item(0).inputs[
-            "input0"
-        ].parent == input_action.nodes[it.multi_index[:2]].item(0)
+        assert output_action.nodes["default"][it.multi_index].item(
+            0
+        ) == input_action.nodes["default"][it.multi_index[:2]].item(0)
 
 
 def test_flatten_expand():
@@ -117,22 +115,22 @@ def test_flatten_expand():
         input_action.flatten(dim="dim_2")
 
     action1 = input_action.flatten(dim="dim_1")
-    assert action1.nodes.shape == (2,)
-    assert len(action1.nodes.data.item(0).inputs) == 3
+    assert action1.nodes["default"].shape == (2,)
+    assert len(action1.nodes["default"].data.item(0).inputs) == 3
 
     action2 = action1.flatten(dim="dim_0")
-    assert len(action2.nodes.data.item(0).inputs) == 2
+    assert len(action2.nodes["default"].data.item(0).inputs) == 2
 
     with pytest.raises(Exception):
         action2.flatten()
 
     action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
-    assert action3.nodes.shape == (2,)
-    assert len(action3.nodes.data.item(0).inputs) == 1
+    assert action3.nodes["default"].shape == (2,)
+    assert len(action3.nodes["default"].data.item(0).inputs) == 1
 
     action4 = action3.expand("dim_1", internal_dim=0, dim_size=3, axis=1)
-    assert action4.nodes.shape == (2, 3)
-    assert len(action4.nodes.data.item(0).inputs) == 1
+    assert action4.nodes["default"].shape == (2, 3)
+    assert len(action4.nodes["default"].data.item(0).inputs) == 1
 
 
 @pytest.mark.parametrize(
@@ -193,8 +191,8 @@ def test_multi_action(
     input_action = mock_action(input_nodes_shape)
 
     output_action = getattr(input_action, func)(*inputs)
-    assert output_action.nodes.shape == output_nodes_shape
-    assert len(output_action.nodes.data.item(0).inputs) == node_inputs
+    assert output_action.nodes["default"].shape == output_nodes_shape
+    assert len(output_action.nodes["default"].data.item(0).inputs) == node_inputs
 
 
 def test_join_fail():
@@ -212,12 +210,6 @@ def test_attributes():
     # Set attributes global to all nodes
     action.add_attributes({"expver": "0001"})
     assert action.nodes.attrs["expver"] == "0001"
-
-
-def test_select_nodes():
-    action = mock_action((3, 4))
-    assert isinstance(action.node({"dim_0": 0}), np.ndarray)
-    assert isinstance(action.node({"dim_0": 0, "dim_1": 1}), Node)
 
 
 @pytest.mark.skip("Serialisation not supported due to sinks with outputs")
@@ -270,15 +262,24 @@ def test_generators():
     action = from_source(
         functools.partial(test_func, 10), ("val", list(range(0, 100, 10)))
     )
-    assert action.nodes.shape == (10,)
-    assert action.nodes.dims == ("val",)
+    assert action.nodes["default"].shape == (10,)
+    assert tuple(action.nodes.sizes.keys()) == ("val",)
     cas = action.map(
         functools.partial(test_func, length=5), ("map", list(range(5)))
     ).reduce(functools.partial(test_func, length=2), ("reduce", ["a", "b"]))
-    assert cas.nodes.dims == ("map", "reduce")
+    assert tuple(cas.nodes.sizes.keys()) == ("map", "reduce")
     expected_coords = {"map": list(range(5)), "reduce": ["a", "b"]}
     for dim, vals in expected_coords.items():
         assert np.all(cas.nodes.coords[dim] == vals)
-    assert cas.nodes.shape == (5, 2)
+    assert cas.nodes["default"].shape == (5, 2)
     graph = cas.graph()
     assert len(graph.sinks) == 5
+
+
+def test_create_nodeset():
+    action = mock_action((5, 4, 2))
+
+    with_sets = action.create_nodesets("dim_0")
+    assert len(with_sets.nodes.data_vars) == 5
+    first_var = with_sets.select_nodeset(0)
+    assert tuple(first_var.nodes.sizes.keys()) == ("dim_1", "dim_2")

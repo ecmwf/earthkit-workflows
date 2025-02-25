@@ -13,6 +13,10 @@ def test_dask_transform(task_graph):
     # If graph contains nodes with same name then check conversion
     # to dask causes raise
     node = Node(Payload(np.random.rand, [2, 3]))
-    graph = Action(xr.DataArray([node, node], dims=["x"])).mean("x").graph
+    graph = (
+        Action(xr.Dataset({"default": xr.DataArray([node, node], dims=["x"])}))
+        .mean("x")
+        .graph
+    )
     with pytest.raises(Exception):
         to_dask_graph(graph)
