@@ -143,7 +143,7 @@ class Action:
                     sinks.add(node.parent)
                 else:
                     sinks.add(node)
-        return Graph(sinks)
+        return Graph(list(sinks))
 
     @classmethod
     def register(cls, name: str, obj: type[Action]):
@@ -354,7 +354,7 @@ class Action:
         # Applies operation to every node, keeping node array structure
         data_vars = {}
         for name, nodes in self.nodes.data_vars.items():
-            if not isinstance(payload, Callable | Payload):
+            if not isinstance(payload, Callable | Payload):  # type: ignore
                 payload = np.asarray(payload)
                 assert payload.shape == nodes.shape, (
                     f"For unique payloads for each node, payload shape {payload.shape}"
@@ -376,11 +376,11 @@ class Action:
                     num_outputs=len(yields[1]) if yields else 1,
                 )
             data_vars[name] = new_nodes
-        new_nodes = xr.Dataset(
+        ds = xr.Dataset(
             data_vars=data_vars,
             attrs=self.nodes.attrs,
         )
-        return type(self)(new_nodes, yields)
+        return type(self)(ds, yields)
 
     def reduce(
         self,
@@ -463,17 +463,16 @@ class Action:
             )
             if keep_dim:
                 data_vars[name].expand_dims(
-                    dim,
-                    [f"{nodes.coords[dim][0]}-{nodes.coords[dim][-1]}"],
+                    {dim: [f"{nodes.coords[dim][0]}-{nodes.coords[dim][-1]}"]},
                     nodes.dims.index(dim),
                 )
 
-        nodes = xr.Dataset(
+        ds = xr.Dataset(
             data_vars=data_vars,
             coords={k: v for k, v in batched.nodes.coords.items() if k != dim},
             attrs=batched.nodes.attrs,
         )
-        result = type(batched)(nodes, yields)
+        result = type(batched)(ds, yields)
         return result
 
     def flatten(
