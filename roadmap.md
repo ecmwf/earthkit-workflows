@@ -29,8 +29,9 @@
 * metadata on outputs, for proper publishing, retrieval -- eg., `step_id` on ML model output
 * single graph node running on multiple hosts // quite questionable, may be needed for some huge models
 ## Remodularization
-* factor out the graph algorithms in scheduler, rewrite to eg rust
 * consider [zict](https://zict.readthedocs.io/en/latest/) in place of shm / worker mem manager
   * rewrite shm to eg rust, make a standalone lib
+  * consider executor.runner itself to be rewritten to rust -- we would have a thread with gil for running tasks, and a thread for shm/zmq interactions. However, requires gil-free serde
+* consider nats in place of zmq. Presumably less performant, but may be out of the box better operationally (observability, stability, portability...)
 * ray core / ray compiled graphs as a wholesome alternative
 * [torch distributed](https://pytorch.org/docs/stable/distributed.html#tcp-initialization) for the data dissemination

@@ -30,6 +30,7 @@ dependencies = [
     "pyrsistent",
     "pydantic",
     "zmq",
+    "fire",
 ]
 
 [project.optional-dependencies]
