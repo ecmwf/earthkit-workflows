@@ -3,7 +3,7 @@ import functools
 import dill
 import numpy as np
 import pytest
-from helpers import mock_action
+from .helpers import mock_action
 
 from cascade.fluent import Action, Node, Payload, custom_hash, from_source
 from cascade.graph import deserialise, serialise
