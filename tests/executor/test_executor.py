@@ -81,7 +81,8 @@ def test_executor():
         while expected:
             ms = l.recv_messages()
             for m in ms:
-                expected.remove(m)
+                if not isinstance(m, ExecutorRegistration): # there may be extra due to retries
+                    expected.remove(m)
 
         # retrieve result
         callback(d1, DatasetTransmitCommand(ds=sink_o, idx=0, source="test_executor", target="controller", daddress=c1))
