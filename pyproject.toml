@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-tests = ["pytest"]
+tests = ["pytest", "earthkit-data"]
 kubernetes = ["dask_kubernetes"]
 lint = ["black", "isort", "flake8"]
 gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
