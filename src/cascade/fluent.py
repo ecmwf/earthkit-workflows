@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Sequence
+from typing import Any, Callable, Hashable, Iterable, Optional, Sequence
 
 import numpy as np
 import xarray as xr
@@ -114,7 +114,7 @@ class Action:
 
     REGISTRY: dict[str, Action] = {}
 
-    def __init__(self, nodes: xr.Dataset, yields: Coord | None = None):
+    def __init__(self, nodes: xr.DataArray, yields: Optional[Coord] = None):
         if yields:
             ydim, ycoords = yields
             nodes = xr.apply_ufunc(
@@ -124,9 +124,7 @@ class Action:
                 vectorize=True,
             )
             nodes.coords[ydim] = ycoords
-        assert not np.any(
-            [n.isnull() for n in nodes.data_vars.values()]
-        ), "Array of nodes can not contain NaNs"
+        assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
 
     def graph(self) -> Graph:
@@ -137,13 +135,13 @@ class Action:
         Graph instance constructed from list of nodes
 
         """
+        nodes = list(self.nodes.data.flatten())
         sinks = set()
-        for da in self.nodes.data_vars.values():
-            for node in da.data.flatten():
-                if isinstance(node, Output):
-                    sinks.add(node.parent)
-                else:
-                    sinks.add(node)
+        for node in nodes:
+            if isinstance(node, Output):
+                sinks.add(node.parent)
+            else:
+                sinks.add(node)
         return Graph(list(sinks))
 
     @classmethod
@@ -280,8 +278,21 @@ class Action:
         broadcasted_nodes = self.nodes.broadcast_like(
             other_action.nodes, exclude=exclude
         )
-        broadcasted_nodes.attrs = self.nodes.attrs
-        return type(self)(broadcasted_nodes)
+        new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
+        it = np.nditer(
+            self.nodes.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
+            flags=["multi_index", "refs_ok"],
+        )
+        for node in it:
+            new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])  # type: ignore
+
+        new_nodes_xa = xr.DataArray(
+            new_nodes,
+            coords=broadcasted_nodes.coords,
+            dims=broadcasted_nodes.dims,
+            attrs=self.nodes.attrs,
+        )
+        return type(self)(new_nodes_xa)
 
     def expand(
         self,
@@ -341,7 +352,7 @@ class Action:
 
         Return
         ------
-        Action where nodes are a result of applying the same
+        MultiAction where nodes are a result of applying the same
         payload to all nodes, or in the case where payload is an array,
         applying a different payload to each node
 
@@ -351,37 +362,32 @@ class Action:
         array of nodes
         """
         # NOTE this method is really not mypy friendly, just ignore everything
+        if not isinstance(payload, Callable | Payload):  # type: ignore
+            payload = np.asarray(payload)
+            assert payload.shape == self.nodes.shape, (
+                f"For unique payloads for each node, payload shape {payload.shape}"
+                f"must match node array shape {self.nodes.shape}"
+            )
 
         # Applies operation to every node, keeping node array structure
-        data_vars = {}
-        for name, nodes in self.nodes.data_vars.items():
-            if not isinstance(payload, Callable | Payload):  # type: ignore
-                payload = np.asarray(payload)
-                assert payload.shape == nodes.shape, (
-                    f"For unique payloads for each node, payload shape {payload.shape}"
-                    f"must match node array shape {nodes.shape}"
-                )
-            new_nodes = xr.DataArray(
-                np.empty(nodes.shape, dtype=object),
-                dims=nodes.dims,
-                coords=nodes.coords,
-            )
-            it = np.nditer(nodes, flags=["multi_index", "refs_ok"])
-            node_payload = payload
-            for node in it:
-                if not isinstance(payload, Callable | Payload):  # type: ignore
-                    node_payload = payload[it.multi_index]  # type: ignore
-                new_nodes[it.multi_index] = Node(
-                    node_payload,  # type: ignore
-                    node[()],  # type: ignore
-                    num_outputs=len(yields[1]) if yields else 1,
-                )
-            data_vars[name] = new_nodes
-        ds = xr.Dataset(
-            data_vars=data_vars,
+        new_nodes = xr.DataArray(
+            np.empty(self.nodes.shape, dtype=object),
+            coords=self.nodes.coords,
+            dims=self.nodes.dims,
             attrs=self.nodes.attrs,
         )
-        return type(self)(ds, yields)
+        it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
+        node_payload = payload
+        for node in it:
+            if not isinstance(payload, Callable | Payload):  # type: ignore
+                node_payload = payload[it.multi_index]  # type: ignore
+            new_nodes[it.multi_index] = Node(
+                node_payload,  # type: ignore
+                node[()],  # type: ignore
+                num_outputs=len(yields[1]) if yields else 1,
+            )
+
+        return type(self)(new_nodes, yields)
 
     def reduce(
         self,
@@ -416,10 +422,7 @@ class Action:
         """
 
         if len(dim) == 0:
-            assert (
-                len(self.nodes.data_vars) == 1
-            ), "Dimension must be specified with multiple data variables"
-            dim = str(list(self.nodes.sizes.keys())[0])
+            dim = str(self.nodes.dims[0])
 
         batched = self
         level = 0
@@ -446,34 +449,39 @@ class Action:
                 dim = f"batch.{level}.{dim}"
                 level += 1
 
-        data_vars = {}
-        for name, nodes in batched.nodes.data_vars.items():
-            new_dims = [x for x in nodes.dims if x != dim]
-            transposed_nodes = nodes.transpose(dim, *new_dims)
-            new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
-            it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
-            for _ in it:
-                inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
-                new_nodes[it.multi_index] = Node(
-                    payload, inputs, num_outputs=len(yields[1]) if yields else 1
-                )
-            data_vars[name] = xr.DataArray(
-                new_nodes,
-                dims=new_dims,
-                coords={k: v for k, v in nodes.coords.items() if k != dim},
+        new_dims = [x for x in batched.nodes.dims if x != dim]
+        transposed_nodes = batched.nodes.transpose(dim, *new_dims)
+        new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
+        it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
+        for _ in it:
+            inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
+            new_nodes[it.multi_index] = Node(
+                payload, inputs, num_outputs=len(yields[1]) if yields else 1
             )
-            if keep_dim:
-                data_vars[name].expand_dims(
-                    {dim: [f"{nodes.coords[dim][0]}-{nodes.coords[dim][-1]}"]},
-                    nodes.dims.index(dim),
-                )
 
-        ds = xr.Dataset(
-            data_vars=data_vars,
-            coords={k: v for k, v in batched.nodes.coords.items() if k != dim},
+        new_coords = {key: batched.nodes.coords[key] for key in new_dims}
+        # Propagate scalar coords
+        new_coords.update(
+            {
+                k: v
+                for k, v in batched.nodes.coords.items()
+                if k not in batched.nodes.dims
+            }
+        )
+        nodes = xr.DataArray(
+            new_nodes,
+            coords=new_coords,
+            dims=new_dims,
             attrs=batched.nodes.attrs,
         )
-        result = type(batched)(ds, yields)
+        result = type(batched)(nodes, yields)
+        if keep_dim:
+            axis = self.nodes.dims.index(dim)
+            result._add_dimension(
+                dim,
+                f"{self.nodes.coords[dim][0]}-{self.nodes.coords[dim][-1]}",
+                axis,
+            )
         return result
 
     def flatten(
@@ -507,49 +515,6 @@ class Action:
                         + f"and coords {self.nodes.coords}"
                     )
         return criteria
-
-    def select_nodeset(self, *names) -> "Action":
-        """Create an action containing only the single selected nodeset
-
-        Parameters
-        ----------
-        names: list of str, names of nodeset to select
-
-        Return
-        ------
-        Action
-
-        """
-        return type(self)(
-            xr.Dataset(
-                {name: self.nodes.data_vars[name] for name in names},
-                attrs=self.nodes.attrs,
-            )
-        )
-
-    def create_nodesets(self, dim: str, origin: str | None = None) -> "Action":
-        """Create action containing new nodesets by splitting an existing nodeset
-        along the specified dimension
-
-        Parameters
-        ----------
-        dim: str, name of dimension to split along to create new nodesets
-        origin: str or None, name of existing nodeset to split. If not provided, the action
-        must contain only a single nodeset, which is split
-
-        Return
-        ------
-        Action
-        """
-        if origin is None:
-            assert (
-                len(self.nodes.data_vars) == 1
-            ), "Name of nodeset to select from must be provided when multiple exist"
-            origin = list(self.nodes.data_vars.keys())[0]
-
-        ds = self.nodes[origin].to_dataset(dim=dim)
-        ds.attrs = self.nodes.attrs
-        return type(self)(ds)
 
     def select(
         self, criteria: dict | None = None, drop: bool = False, **kwargs
@@ -845,7 +810,6 @@ def from_source(
     yields: Coord | None = None,
     dims: list | None = None,
     coords: dict | None = None,
-    nodeset: str = "default",
     action=Action,
 ) -> Action:
     payloads = xr.DataArray(payloads_list, dims=dims, coords=coords)
@@ -869,7 +833,16 @@ def from_source(
             payload, name=name, num_outputs=len(yields[1]) if yields else 1
         )
 
-    return action(nodes.to_dataset(name=nodeset), yields)
+    if yields:
+        ydim, ycoords = yields
+        nodes = xr.apply_ufunc(
+            lambda x: np.asarray([x.get_output(out) for out in x.outputs]),
+            nodes,
+            output_core_dims=[[ydim]],
+            vectorize=True,
+        )
+        nodes[ydim] = ycoords
+    return action(nodes)
 
 
 Action.register("default", Action)
