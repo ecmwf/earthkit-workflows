@@ -833,16 +833,7 @@ def from_source(
             payload, name=name, num_outputs=len(yields[1]) if yields else 1
         )
 
-    if yields:
-        ydim, ycoords = yields
-        nodes = xr.apply_ufunc(
-            lambda x: np.asarray([x.get_output(out) for out in x.outputs]),
-            nodes,
-            output_core_dims=[[ydim]],
-            vectorize=True,
-        )
-        nodes[ydim] = ycoords
-    return action(nodes)
+    return action(nodes, yields)
 
 
 Action.register("default", Action)
