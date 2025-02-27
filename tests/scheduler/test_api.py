@@ -18,7 +18,7 @@ def test_job0():
     h1w1 = get_env(1, 1)
     h1w1_w = WorkerId("h0", "w0")
     state = initialize(h1w1, preschedule, set())
-    assignment = list(assign(state))
+    assignment = list(assign(state, job0, h1w1))
     assert assignment == [
         Assignment(worker=h1w1_w, tasks=['source'], prep=[], outputs={DatasetId(task='source', output='0')})
     ]
@@ -33,7 +33,7 @@ def test_job1():
     h1w1 = get_env(1, 1)
     h1w1_w = WorkerId("h0", "w0")
     state = initialize(h1w1, preschedule, set())
-    assignment = list(assign(state))
+    assignment = list(assign(state, job1, h1w1))
     assert assignment == [
         Assignment(worker=h1w1_w, tasks=['source'], prep=[], outputs={DatasetId(task='source', output='0')})
     ]
