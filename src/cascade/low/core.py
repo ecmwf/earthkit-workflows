@@ -118,6 +118,7 @@ class WorkerId:
 # Execution
 class Worker(BaseModel):
     # NOTE we may want to extend cpu/gpu over time with more rich information
+    # NOTE keep in sync with executor.msg.Worker
     cpu: int
     gpu: int
     memory_mb: int

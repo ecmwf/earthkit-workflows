@@ -44,8 +44,7 @@ class Bridge:
                 self.sender.add_host(message.host, message.maddress)
                 self.sender.add_host("data." + message.host, message.daddress)
                 for worker in message.workers:
-                    # TODO proper parameters
-                    self.environment.workers[worker] = Worker(cpu=1, gpu=0, memory_mb=1024)
+                    self.environment.workers[worker.worker_id] = Worker(cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb)
                 registered += 1
                 self.heartbeat_checker[message.host] = GraceWatcher(2*executor_heartbeat_grace_ms)
                 self.heartbeat_checker[message.host].step()
