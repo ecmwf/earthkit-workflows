@@ -28,7 +28,6 @@ jobs:
     with:
       cascade: ecmwf/cascade@${{ github.event.pull_request.head.sha || github.sha }}
       python_qa: true
-      codecov_upload: true
     secrets: inherit
 
   # Build downstream packages on HPC
