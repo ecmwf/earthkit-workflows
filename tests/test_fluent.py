@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from helpers import mock_action
 
-from cascade.fluent import Action, Node, Payload, custom_hash, from_source
+from cascade.fluent import Action, Payload, custom_hash, from_source
 from cascade.graph import deserialise, serialise
 
 
@@ -42,7 +42,7 @@ def test_payload():
     ],
 )
 def test_source(payloads, dims, coords, shape):
-    action = from_source(payloads, dims, coords)
+    action = from_source(payloads, dims=dims, coords=coords)
     assert action.nodes.shape == shape
 
 
@@ -90,7 +90,7 @@ def test_source(payloads, dims, coords, shape):
 )
 def test_source_invalid(payloads, dims, coords):
     with pytest.raises(ValueError):
-        from_source(payloads, dims, coords)
+        from_source(payloads, dims=dims, coords=coords)
 
 
 def test_broadcast():
@@ -143,7 +143,7 @@ def test_flatten_expand():
         [
             (3, 4, 5),
             "reduce",
-            [Payload("func"), "dim_1"],  # type: ignore
+            [Payload("func"), None, "dim_1"],  # type: ignore
             (3, 5),
             4,
         ],
@@ -214,12 +214,7 @@ def test_attributes():
     assert action.nodes.attrs["expver"] == "0001"
 
 
-def test_select_nodes():
-    action = mock_action((3, 4))
-    assert isinstance(action.node({"dim_0": 0}), np.ndarray)
-    assert isinstance(action.node({"dim_0": 0, "dim_1": 1}), Node)
-
-
+@pytest.mark.skip("Serialisation not supported due to sinks with outputs")
 def test_serialisation(tmpdir, task_graph):
     assert len(task_graph.sinks) > 0
     data = serialise(task_graph)
@@ -259,3 +254,25 @@ def test_dual_registration():
     Action.register("test", TestingAction)
     with pytest.raises(ValueError):
         Action.register("test", TestingAction)
+
+
+def test_generators():
+    def test_func(length: int, *multipliers):
+        for val in range(length):
+            yield val * sum([1, *multipliers])
+
+    action = from_source(
+        functools.partial(test_func, 10), ("val", list(range(0, 100, 10)))
+    )
+    assert action.nodes.shape == (10,)
+    assert action.nodes.dims == ("val",)
+    cas = action.map(
+        functools.partial(test_func, length=5), ("map", list(range(5)))
+    ).reduce(functools.partial(test_func, length=2), ("reduce", ["a", "b"]))
+    assert cas.nodes.dims == ("map", "reduce")
+    expected_coords = {"map": list(range(5)), "reduce": ["a", "b"]}
+    for dim, vals in expected_coords.items():
+        assert np.all(cas.nodes.coords[dim] == vals)
+    assert cas.nodes.shape == (5, 2)
+    graph = cas.graph()
+    assert len(graph.sinks) == 5

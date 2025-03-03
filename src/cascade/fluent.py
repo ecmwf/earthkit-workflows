@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import copy
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Sequence
+from typing import Any, Callable, Hashable, Iterable, Optional, Sequence
 
 import numpy as np
 import xarray as xr
@@ -11,6 +10,7 @@ import xarray as xr
 from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
+from .graph import Output
 
 
 class Payload:
@@ -19,48 +19,23 @@ class Payload:
     def __init__(
         self, func: Callable, args: Iterable | None = None, kwargs: dict | None = None
     ):
-        self.args: Iterable | None
+        self.args: list
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
                 raise ValueError("Partial function should not have args or kwargs")
             self.func = func.func
-            self.args = func.args
+            self.args = list(func.args)
             self.kwargs = func.keywords
         else:
             self.func = func
-            self.args = args
-            if kwargs is None:
-                self.kwargs = {}
-            else:
-                self.kwargs = copy.deepcopy(kwargs)
-
-    def has_args(self) -> bool:
-        """Return
-        ------
-        bool, specifying if arguments have been set
-        """
-        return self.args is not None
-
-    def set_args(self, args: list):
-        """Parameters
-        ----------
-        args: list, arguments to pass to the function
-
-        Raises
-        ------
-        AssertionError if arguments already exist
-        """
-        if self.has_args():
-            raise ValueError("Arguments already set")
-        self.args = args
+            self.args = [] if args is None else list(args)
+            self.kwargs = kwargs or {}
 
     def to_tuple(self) -> tuple:
         """Return
         ------
         tuple, containing function, arguments and kwargs
         """
-        if not self.has_args():
-            raise ValueError("Arguments not set")
         return (self.func, self.args, self.kwargs)
 
     def name(self) -> str:
@@ -87,35 +62,28 @@ def custom_hash(string: str) -> str:
 
 
 Coord = tuple[str, list[Any]]
+Input = BaseNode | Output
 
 
 class Node(BaseNode):
     def __init__(
         self,
         payload: Callable | Payload,
-        inputs: BaseNode | Sequence[BaseNode] = tuple(),
+        inputs: Input | Sequence[Input] = [],
+        num_outputs: int = 1,
         name: str | None = None,
     ):
-        self._for_copy = (payload, inputs, name)
+        self._for_copy = (payload, inputs, num_outputs, name)
         if not isinstance(payload, Payload):
             payload = Payload(payload)
         else:
             payload = payload.copy()
-        if isinstance(inputs, BaseNode):
+        if isinstance(inputs, Input):
             inputs = [inputs]
-        # If payload doesn't have inputs, assume inputs to the function are the inputs
-        # to the node, in the order provided
-        if not payload.has_args():
-            payload.set_args([self.input_name(x) for x in range(len(inputs))])
-        else:
-            # All inputs into Node should also feature in payload - no dangling inputs
-            assert payload.args is not None  # mypy confused here
-            assert np.all(
-                [
-                    x in payload.args
-                    for x in [self.input_name(x) for x in range(len(inputs))]
-                ]
-            ), f"Payload {payload} does not use all node inputs {len(inputs)}"
+        # Insert inputs not already present in args
+        for x in range(len(inputs)):
+            if self.input_name(x) not in payload.args:
+                payload.args.append(self.input_name(x))
 
         if name is None:
             name = payload.name()
@@ -123,7 +91,9 @@ class Node(BaseNode):
 
         super().__init__(
             name,
-            outputs=None,
+            outputs=(
+                None if num_outputs == 1 else [str(x) for x in range(num_outputs)]
+            ),
             payload=payload.to_tuple(),
             **{self.input_name(x): node for x, node in enumerate(inputs)},
         )
@@ -144,7 +114,16 @@ class Action:
 
     REGISTRY: dict[str, Action] = {}
 
-    def __init__(self, nodes: xr.DataArray):
+    def __init__(self, nodes: xr.DataArray, yields: Optional[Coord] = None):
+        if yields:
+            ydim, ycoords = yields
+            nodes = xr.apply_ufunc(
+                lambda x: np.asarray([x.get_output(out) for out in x.outputs]),
+                nodes,
+                output_core_dims=[[ydim]],
+                vectorize=True,
+            )
+            nodes.coords[ydim] = ycoords
         assert not np.any(nodes.isnull()), "Array of nodes can not contain NaNs"
         self.nodes = nodes
 
@@ -156,11 +135,14 @@ class Action:
         Graph instance constructed from list of nodes
 
         """
-        sinks = list(self.nodes.data.flatten())
-        for index in range(len(sinks)):
-            sinks[index] = sinks[index].copy()
-            sinks[index].outputs = []  # Ensures they are recognised as sinks
-        return Graph(sinks)
+        nodes = list(self.nodes.data.flatten())
+        sinks = set()
+        for node in nodes:
+            if isinstance(node, Output):
+                sinks.add(node.parent)
+            else:
+                sinks.add(node)
+        return Graph(list(sinks))
 
     @classmethod
     def register(cls, name: str, obj: type[Action]):
@@ -354,7 +336,11 @@ class Action:
             )
         return self.transform(_expand_transform, params, dim, axis=axis)
 
-    def map(self, payload: Callable | Payload | np.ndarray[Any, Any]) -> "Action":
+    def map(
+        self,
+        payload: Callable | Payload | np.ndarray[Any, Any],
+        yields: Coord | None = None,
+    ) -> "Action":
         """Apply specified payload on all nodes. If argument is an array of payloads,
         this must be the same size as the array of nodes and each node gets a
         unique payload from the array
@@ -362,6 +348,7 @@ class Action:
         Parameters
         ----------
         payload: function or array of functions
+        yields: Coord | None, name and coords of dimension yielded by payload, if generator
 
         Return
         ------
@@ -383,25 +370,29 @@ class Action:
             )
 
         # Applies operation to every node, keeping node array structure
-        new_nodes = np.empty(self.nodes.shape, dtype=object)
+        new_nodes = xr.DataArray(
+            np.empty(self.nodes.shape, dtype=object),
+            coords=self.nodes.coords,
+            dims=self.nodes.dims,
+            attrs=self.nodes.attrs,
+        )
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
         node_payload = payload
         for node in it:
             if not isinstance(payload, Callable | Payload):  # type: ignore
                 node_payload = payload[it.multi_index]  # type: ignore
-            new_nodes[it.multi_index] = Node(node_payload, node[()])  # type: ignore
-        return type(self)(
-            xr.DataArray(
-                new_nodes,
-                coords=self.nodes.coords,
-                dims=self.nodes.dims,
-                attrs=self.nodes.attrs,
-            ),
-        )
+            new_nodes[it.multi_index] = Node(
+                node_payload,  # type: ignore
+                node[()],  # type: ignore
+                num_outputs=len(yields[1]) if yields else 1,
+            )
+
+        return type(self)(new_nodes, yields)
 
     def reduce(
         self,
         payload: Callable | Payload,
+        yields: Coord | None = None,
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
@@ -414,6 +405,7 @@ class Action:
         Parameters
         ----------
         payload: function for performing the reduction
+        yields: Coord | None, name and coords of dimension yielded by payload, if generator
         dim: str, name of dimension along which to reduce
         batch_size: int, size of batches to split reduction into. If 0,
         computation is not batched
@@ -436,6 +428,8 @@ class Action:
         level = 0
         if not isinstance(payload, Payload):
             payload = Payload(payload)
+        if yields and batch_size != 0:
+            raise ValueError("Can not batch the execution of a generator")
         if batch_size > 1 and batch_size < batched.nodes.sizes[dim]:
             if not getattr(payload.func, "batchable", False):
                 raise ValueError(
@@ -461,7 +455,9 @@ class Action:
         it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
         for _ in it:
             inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
-            new_nodes[it.multi_index] = Node(payload, inputs)
+            new_nodes[it.multi_index] = Node(
+                payload, inputs, num_outputs=len(yields[1]) if yields else 1
+            )
 
         new_coords = {key: batched.nodes.coords[key] for key in new_dims}
         # Propagate scalar coords
@@ -472,19 +468,18 @@ class Action:
                 if k not in batched.nodes.dims
             }
         )
-        result = type(batched)(
-            xr.DataArray(
-                new_nodes,
-                coords=new_coords,
-                dims=new_dims,
-                attrs=batched.nodes.attrs,
-            ),
+        nodes = xr.DataArray(
+            new_nodes,
+            coords=new_coords,
+            dims=new_dims,
+            attrs=batched.nodes.attrs,
         )
+        result = type(batched)(nodes, yields)
         if keep_dim:
             axis = self.nodes.dims.index(dim)
             result._add_dimension(
                 dim,
-                f"{self.nodes.coords[dim][0]}-{self.nodes.coords[dim][-1]}",  # type: ignore
+                f"{self.nodes.coords[dim][0]}-{self.nodes.coords[dim][-1]}",
                 axis,
             )
         return result
@@ -505,7 +500,7 @@ class Action:
         Action
         """
         return self.reduce(
-            Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}), dim
+            Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}), dim=dim
         )
 
     def _validate_criteria(self, criteria: dict):
@@ -535,14 +530,14 @@ class Action:
         ------
         Action
         """
-        criteria = criteria or {}
-        criteria.update(kwargs)
+        crit: dict = criteria or {}
+        crit.update(kwargs)
 
-        criteria = self._validate_criteria(criteria)
+        crit = self._validate_criteria(crit)
 
-        if len(criteria) == 0:
+        if len(crit) == 0:
             return self
-        selected_nodes = self.nodes.sel(**criteria, drop=drop)
+        selected_nodes = self.nodes.sel(**crit, drop=drop)
         return type(self)(selected_nodes)
 
     sel = select
@@ -562,14 +557,14 @@ class Action:
         ------
         Action
         """
-        criteria = criteria or {}
-        criteria.update(kwargs)
+        crit: dict = criteria or {}
+        crit.update(kwargs)
 
-        criteria = self._validate_criteria(criteria)
+        crit = self._validate_criteria(crit)
 
-        if len(criteria) == 0:
+        if len(crit) == 0:
             return self
-        selected_nodes = self.nodes.isel(**criteria, drop=drop)
+        selected_nodes = self.nodes.isel(**crit, drop=drop)
         return type(self)(selected_nodes)
 
     isel = iselect
@@ -608,7 +603,10 @@ class Action:
         backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
-            Payload(backends.sum, kwargs=backend_kwargs), dim, batch_size, keep_dim
+            Payload(backends.sum, kwargs=backend_kwargs),
+            dim=dim,
+            batch_size=batch_size,
+            keep_dim=keep_dim,
         )
 
     def mean(
@@ -623,12 +621,14 @@ class Action:
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
             return self.reduce(
-                Payload(backends.mean, kwargs=backend_kwargs), dim, keep_dim
+                Payload(backends.mean, kwargs=backend_kwargs),
+                dim=dim,
+                keep_dim=keep_dim,
             )
 
-        return self.sum(dim, batch_size, keep_dim, **backend_kwargs).divide(
-            self.nodes.sizes[dim]
-        )
+        return self.sum(
+            dim=dim, batch_size=batch_size, keep_dim=keep_dim, **backend_kwargs
+        ).divide(self.nodes.sizes[dim])
 
     def std(
         self,
@@ -641,12 +641,14 @@ class Action:
             dim = str(self.nodes.dims[0])
 
         if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(Payload(backends.std, kwargs=backend_kwargs), dim)
+            return self.reduce(Payload(backends.std, kwargs=backend_kwargs), dim=dim)
 
-        mean_sq = self.mean(dim, batch_size, keep_dim, **backend_kwargs).power(2)
+        mean_sq = self.mean(
+            dim=dim, batch_size=batch_size, keep_dim=keep_dim, **backend_kwargs
+        ).power(2)
         norm = (
             self.power(2)
-            .sum(dim, batch_size, keep_dim, **backend_kwargs)
+            .sum(dim=dim, batch_size=batch_size, keep_dim=keep_dim, **backend_kwargs)
             .divide(self.nodes.sizes[dim])
         )
         return norm.subtract(mean_sq).power(0.5)
@@ -659,7 +661,10 @@ class Action:
         backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
-            Payload(backends.max, kwargs=backend_kwargs), dim, batch_size, keep_dim
+            Payload(backends.max, kwargs=backend_kwargs),
+            dim=dim,
+            batch_size=batch_size,
+            keep_dim=keep_dim,
         )
 
     def min(
@@ -670,7 +675,10 @@ class Action:
         backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
-            Payload(backends.min, kwargs=backend_kwargs), dim, batch_size, keep_dim
+            Payload(backends.min, kwargs=backend_kwargs),
+            dim=dim,
+            batch_size=batch_size,
+            keep_dim=keep_dim,
         )
 
     def prod(
@@ -681,7 +689,10 @@ class Action:
         backend_kwargs: dict = {},
     ) -> "Action":
         return self.reduce(
-            Payload(backends.prod, kwargs=backend_kwargs), dim, batch_size, keep_dim
+            Payload(backends.prod, kwargs=backend_kwargs),
+            dim=dim,
+            batch_size=batch_size,
+            keep_dim=keep_dim,
         )
 
     def __two_arg_method(
@@ -713,25 +724,12 @@ class Action:
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
-    def _add_dimension(self, name: str, value: float, axis: int = 0):
+    def _add_dimension(self, name: str, value: Any, axis: int = 0):
         self.nodes = self.nodes.expand_dims({name: [value]}, axis)
 
     def _squeeze_dimension(self, dim_name: str, drop: bool = False):
         if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
             self.nodes = self.nodes.squeeze(dim_name, drop=drop)
-
-    def node(self, criteria: dict) -> Node | np.ndarray[Any, Any]:
-        """Get nodes matching selection criteria from action
-
-        Parameters
-        ----------
-        criteria: dict, key-value pairs specifying selection criteria
-
-        Return
-        ------
-        Node or np.ndarray[Node]
-        """
-        return self.nodes.sel(**criteria, drop=True).data[()]
 
 
 class RegisteredAction:
@@ -801,40 +799,41 @@ def _combine_nodes(
         return action
     return action.reduce(
         Payload(getattr(backends, backend_method), kwargs=backend_kwargs),
-        dim,
-        batch_size,
-        keep_dim,
+        dim=dim,
+        batch_size=batch_size,
+        keep_dim=keep_dim,
     )
 
 
 def from_source(
     payloads_list: np.ndarray[Any, Any],  # values are Callables
+    yields: Coord | None = None,
     dims: list | None = None,
     coords: dict | None = None,
     action=Action,
 ) -> Action:
     payloads = xr.DataArray(payloads_list, dims=dims, coords=coords)
-    nodes = np.empty(payloads.shape, dtype=object)
+    nodes = xr.DataArray(
+        np.empty(payloads.shape, dtype=object), dims=dims, coords=coords
+    )
     it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
     # Ensure all source nodes have a unique name
     node_names = set()
     for item in it:
-        if not isinstance(item[()], Payload):  # type: ignore
-            payload = Payload(item[()])  # type: ignore
+        pit = item[()]  # type: ignore
+        if not isinstance(pit, Payload):
+            payload = Payload(pit)
         else:
-            payload = item[()]  # type: ignore
+            payload = pit
         name = payload.name()
         if name in node_names:
             name += str(it.multi_index)
         node_names.add(name)
-        nodes[it.multi_index] = Node(payload, name=name)
-    return action(
-        xr.DataArray(
-            nodes,
-            dims=payloads.dims,
-            coords=payloads.coords,
-        ),
-    )
+        nodes[it.multi_index] = Node(
+            payload, name=name, num_outputs=len(yields[1]) if yields else 1
+        )
+
+    return action(nodes, yields)
 
 
 Action.register("default", Action)
