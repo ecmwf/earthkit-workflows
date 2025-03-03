@@ -184,3 +184,14 @@ class Backend:
         Array
         """
         return array_module(array).take(array, indices, **kwargs)
+
+
+try:
+    from earthkit.data import FieldList, SimpleFieldList
+
+    from .earthkit import FieldListBackend
+
+    BACKENDS[SimpleFieldList] = FieldListBackend
+    BACKENDS[FieldList] = FieldListBackend
+except ImportError:
+    warnings.warn("earthkit could not be imported, FieldList not supported.")
