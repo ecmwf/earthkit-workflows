@@ -174,7 +174,7 @@ class Action:
                 f"Action class {obj} already has an attribute {name}, will not override"
             )
 
-        cls.REGISTRY[name] = obj
+        cls.REGISTRY[name] = obj # type: ignore
 
     @classmethod
     def flush_registry(cls):
