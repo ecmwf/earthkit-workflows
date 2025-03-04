@@ -20,6 +20,7 @@ from multiprocessing import Process
 import os
 from time import perf_counter_ns
 from concurrent.futures import ThreadPoolExecutor
+import subprocess
 
 import fire
 
@@ -72,6 +73,19 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
     ps = []
     spawn = perf_counter_ns()
     for i, executor in enumerate(range(hosts)):
+        if i == 0:
+            try:
+                gpus = sum(
+                    1
+                    for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True).stdout.decode('ascii').split('\n')
+                    if 'GPU' in l
+                )
+            except:
+                # TODO support macos
+                logger.exception("unable to determine available gpus")
+                gpus = 0
+            logger.info(f"will set {gpus} gpus on host {i}")
+            os.environ["CASCADE_GPU_COUNT"] = str(gpus)
         p = Process(target=launch_executor, args=(job, c, workers, portBase+1+i*10, i, None))
         p.start()
         ps.append(p)

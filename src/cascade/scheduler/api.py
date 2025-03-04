@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 from typing import Iterator
 
-from cascade.low.core import Environment, WorkerId, DatasetId, HostId, TaskId
+from cascade.low.core import Environment, WorkerId, DatasetId, HostId, TaskId, JobInstance
 from cascade.low.tracing import timer, Microtrace
 from cascade.scheduler.assign import assign_within_component, migrate_to_component, update_worker2task_distance
 from cascade.scheduler.core import State, Preschedule, ComponentSchedule, ComponentId, Assignment, DatasetStatus, TaskStatus
@@ -65,7 +65,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
         fetching_queue={},
     )
 
-def assign(state: State) -> Iterator[Assignment]:
+def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignment]:
     """Given idle workers in `state`, assign actions to workers. Mutates the state:
      - pops from computable & idle workers,
      - decreases weight,
@@ -82,7 +82,7 @@ def assign(state: State) -> Iterator[Assignment]:
 
     for component_id, local_workers in component2workers.items():
         if local_workers:
-            yield from assign_within_component(state, local_workers, component_id)
+            yield from assign_within_component(state, local_workers, component_id, job, env)
     
     if not state.idle_workers:
         return
@@ -108,7 +108,7 @@ def assign(state: State) -> Iterator[Assignment]:
     for host, workers in migrants.items():
         component_id = components[component_i][1]
         state = timer(migrate_to_component, Microtrace.ctrl_migrate)(host, component_id, state)
-        yield from assign_within_component(state, workers, component_id)
+        yield from assign_within_component(state, workers, component_id, job, env)
         component_i = (component_i + 1) % len(components)
 
 def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, children: set[TaskId]) -> State:

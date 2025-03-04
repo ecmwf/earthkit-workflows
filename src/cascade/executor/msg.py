@@ -110,12 +110,19 @@ class ExecutorExit:
     host: HostId
 
 @dataclass(frozen=True)
+class Worker:
+    # NOTE keep in sync with low.core.Worker
+    worker_id: WorkerId
+    cpu: int
+    gpu: int
+    memory_mb: int
+
+@dataclass(frozen=True)
 class ExecutorRegistration:
     host: HostId
     maddress: BackboneAddress
     daddress: BackboneAddress
-    workers: list[WorkerId]
-    # TODO resource capacity etc... reuse the Environment?
+    workers: list[Worker]
 
 @dataclass(frozen=True)
 class ExecutorShutdown:

@@ -31,7 +31,7 @@ def run(job: JobInstance, bridge: Bridge, preschedule: Preschedule, outputs: set
             mark({"action": ControllerPhases.assign})
             assignments = []
             if has_computable(state):
-                for assignment in assign(state):
+                for assignment in assign(state, job, env):
                     timer(act, Microtrace.ctrl_act)(bridge, state, assignment)
                     assignments.append(assignment)
 

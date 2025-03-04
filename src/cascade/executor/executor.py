@@ -14,10 +14,11 @@ from multiprocessing.process import BaseProcess
 from typing import cast, Iterable
 import socket
 import logging
+import os
 
 from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
 from cascade.low.func import assert_never
-from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown, Ack
+from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown, Ack, Worker
 from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
 from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.comms import Listener, callback, default_timeout_ms as comms_default_timeout_ms, GraceWatcher, ReliableSender, default_message_resend_ms as resend_grace_ms
@@ -67,11 +68,20 @@ class Executor:
             args=(self.mlistener.address, self.daddress, self.host, shm_port, logging_config)
         )
         self.data_server.start()
+        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
         self.registration = ExecutorRegistration(
             host=self.host,
             maddress=self.mlistener.address,
             daddress=self.daddress,
-            workers=list(self.workers.keys()),
+            workers=[
+                Worker(
+                    worker_id=worker_id,
+                    cpu=1,
+                    gpu=1 if idx < gpus else 0,
+                    memory_mb=1024, # TODO better
+                )
+                for idx, worker_id in enumerate(self.workers.keys())
+            ]
         )
         logger.debug("constructed executor")
 

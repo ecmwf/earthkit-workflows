@@ -8,7 +8,7 @@ import logging
 from time import perf_counter_ns
 from typing import Iterator
 
-from cascade.low.core import WorkerId, DatasetId, TaskId, HostId
+from cascade.low.core import WorkerId, DatasetId, TaskId, HostId, Environment, JobInstance
 from cascade.low.tracing import trace, Microtrace
 from cascade.scheduler.core import State, Assignment, DatasetStatus, Worker2TaskDistance, ComponentId, Task2TaskDistance
 
@@ -46,16 +46,16 @@ def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment
         },
     )
 
-def assign_within_component(state: State, workers: list[WorkerId], component_id: ComponentId) -> Iterator[Assignment]:
+def _assignment_heuristic(state: State, tasks: list[TaskId], workers: list[WorkerId], component_id: ComponentId) -> Iterator[Assignment]:
     """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component"""
     start = perf_counter_ns()
     component = state.components[component_id]
 
     # first, attempt optimum-distance assignment
-    task_i = 0
-    computable_keys = list(component.computable.keys()) # we need to copy because we mutate
-    for task in computable_keys:
+    unassigned: list[TaskId] = []
+    for task in tasks:
         opt_dist = component.computable[task]
+        was_assigned = False
         for idx, worker in enumerate(workers):
             if component.worker2task_distance[worker][task] == opt_dist:
                 end = perf_counter_ns()
@@ -68,10 +68,13 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
                 component.weight -= 1
                 state.computable -= 1
                 state.idle_workers.remove(worker)
+                was_assigned = True
                 break
+        if not was_assigned:
+            unassigned.append(task)
 
     # second, sort task-worker combination by first overhead, second value, and pick greedily
-    remaining_t = set(component.computable.keys())
+    remaining_t = set(unassigned)
     remaining_w = set(workers)
     candidates = [
         (state.worker2task_overhead[w][t], component.core.value[t], w, t)
@@ -95,6 +98,29 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
 
     end = perf_counter_ns()
     trace(Microtrace.ctrl_assign, end-start)
+
+def assign_within_component(state: State, workers: list[WorkerId], component_id: ComponentId, job: JobInstance, env: Environment) -> Iterator[Assignment]:
+    """We first handle gpu things, second cpu things, using the same algorithm for either case"""
+    # TODO employ a more systematic solution and handle all multicriterially at once -- ideally together with adding support for multi-gpu-groups
+    cpu_t: list[TaskId] = []
+    gpu_t: list[TaskId] = []
+    gpu_w: list[WorkerId] = []
+    cpu_w: list[WorkerId] = []
+    for task in state.components[component_id].computable.keys():
+        if job.tasks[task].definition.needs_gpu:
+            gpu_t.append(task)
+        else:
+            cpu_t.append(task)
+    for worker in workers:
+        if env.workers[worker].gpu > 0:
+            gpu_w.append(worker)
+        else:
+            cpu_w.append(worker)
+    yield from _assignment_heuristic(state, gpu_t, gpu_w, component_id)
+    for worker in gpu_w:
+        if worker in state.idle_workers:
+            cpu_w.append(worker)
+    yield from _assignment_heuristic(state, cpu_t, cpu_w, component_id)
 
 def update_worker2task_distance(component_id: ComponentId, task: TaskId, worker: WorkerId, state: State) -> State:
     """For a given task and worker, consider all tasks at the worker and see if any attains a better distance to said

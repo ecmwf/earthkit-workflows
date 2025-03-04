@@ -20,6 +20,8 @@ if [ "$(hostname | cut -f 1 -d.)" == "$CONTROLLER" ] ; then
 else
         LOGDIR=$LOGGING_ROOT/$SLURM_JOBID/worker.$SLURM_PROCID.txt
         echo "$SLURM_PROCID is *WORKER*, will log into $LOGDIR"
+        export CASCADE_GPU_COUNT=$(nvidia-smi --list-gpus | grep -c GPU)
+        echo "WORKER $SLURM_PROCID believes it can use $CASCADE_GPU_COUNT gpus with impunity"
 fi
 
 # TODO check procid == 0 <-> nodelist head -n 1

@@ -42,7 +42,7 @@ class TaskDefinition(BaseModel):
     output_schema: dict[str, str] = Field(
         description="kv of outputs and their types (fqn of class). Assumes key-sorted corresponds to func output order"
     )
-    needs_gpu: bool = Field(False) # NOTE unstable contract, will likely change. Also, we support at most one GPU # TODO use in scheduler?
+    needs_gpu: bool = Field(False) # NOTE unstable contract, will change. Note we support at most one GPU per task
 
     @staticmethod
     def func_dec(f: str) -> Callable:
@@ -118,6 +118,7 @@ class WorkerId:
 # Execution
 class Worker(BaseModel):
     # NOTE we may want to extend cpu/gpu over time with more rich information
+    # NOTE keep in sync with executor.msg.Worker
     cpu: int
     gpu: int
     memory_mb: int
