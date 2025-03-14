@@ -4,7 +4,6 @@
 # In[1]:
 
 
-import pandas as pd
 from bokeh.io import curdoc, output_notebook, show
 from bokeh.models import ColumnDataSource, Grid, HBar, LinearAxis, Plot, VSpan
 

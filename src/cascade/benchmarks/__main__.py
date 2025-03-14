@@ -90,7 +90,6 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
     c = f"tcp://localhost:{portBase}"
     m = f"tcp://localhost:{portBase+1}"
     ps = []
-    spawn = perf_counter_ns()
     for i, executor in enumerate(range(hosts)):
         if i == 0:
             try:
@@ -123,7 +122,7 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
         )
-    except Exception as e:
+    except:
         for p in ps:
             if p.is_alive():
                 callback(m, ExecutorShutdown())

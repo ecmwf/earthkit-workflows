@@ -8,7 +8,6 @@ from logging.config import dictConfig
 from multiprocessing import Process
 
 import numpy as np
-import pytest
 
 import cascade.executor.serde as serde
 from cascade.executor.comms import Listener, callback, send_data
@@ -194,7 +193,7 @@ def test_executor():
         ms = l.recv_messages()
         assert ms == [ExecutorExit(host="test_executor")]
         p.join()
-    except Exception as e:
+    except:
         if p.is_alive():
             callback(m1, ExecutorShutdown())
             import time

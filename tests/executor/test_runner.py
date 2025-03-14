@@ -2,8 +2,6 @@
 Tests running a Callable in the same process
 """
 
-import pytest
-
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
 import cascade.executor.serde as serde

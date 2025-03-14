@@ -12,7 +12,7 @@ import cascade.executor.serde as serde
 import cascade.shm.client as shm_client
 from cascade.executor.comms import callback
 from cascade.executor.msg import BackboneAddress, DatasetPublished
-from cascade.low.core import NO_OUTPUT_PLACEHOLDER, DatasetId, TaskId, WorkerId
+from cascade.low.core import NO_OUTPUT_PLACEHOLDER, DatasetId, WorkerId
 from cascade.low.tracing import Microtrace, timer
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class Memory(AbstractContextManager):
 
     def pop(self, ds: DatasetId) -> None:
         if ds in self.local:
-            val = self.local.pop(ds)
+            val = self.local.pop(ds)  # noqa: F841
             del val
         if ds in self.bufs:
             buf = self.bufs.pop(ds)

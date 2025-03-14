@@ -5,15 +5,13 @@ Implements the mutation of State after Executors have reported some Events
 # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.
 # Thus the caller always *must* use the return value and cease using the input.
 
-import base64
 import logging
 from typing import Iterable
 
 import cascade.executor.serde as serde
 from cascade.executor.bridge import Event
-from cascade.executor.comms import callback
 from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
-from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
+from cascade.low.core import DatasetId, HostId, JobInstance, WorkerId
 from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.assign import set_worker2task_overhead

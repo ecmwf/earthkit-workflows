@@ -13,7 +13,6 @@ import zmq
 from cascade.executor.msg import (
     Ack,
     BackboneAddress,
-    DatasetTransmitCommand,
     DatasetTransmitPayload,
     DatasetTransmitPayloadHeader,
     Message,
@@ -114,12 +113,12 @@ class Listener:
             # TODO move parts of this to serde, including corresponding `send_data` and `ReliableSender.send` parts
             data = ready[0][0].recv_multipart()
             if len(data) == 0:
-                raise ValueError(f"unexpected empty message")
+                raise ValueError("unexpected empty message")
             m0 = des_message(data[0])
             if isinstance(m0, Syn):
                 callback(m0.addr, Ack(idx=m0.idx))
                 if len(data) == 1:
-                    raise ValueError(f"unexpected message with Syn only")
+                    raise ValueError("unexpected message with Syn only")
                 if m0 in self.acked:
                     logger.warning(
                         f"received already-acked {m0}, assuming retry, dropping message"
@@ -140,7 +139,7 @@ class Listener:
                 return m0
             m1 = des_message(data[1])
             if isinstance(m1, Syn):
-                raise ValueError(f"unexpected double Syn")
+                raise ValueError("unexpected double Syn")
             elif isinstance(m1, DatasetTransmitPayloadHeader):
                 if len(data) != 3:
                     raise ValueError(

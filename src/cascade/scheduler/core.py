@@ -1,5 +1,4 @@
-from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -48,9 +47,8 @@ class ComponentSchedule:
     # tasks that are either computable or that are among outputs of currently prepared tasks (as those
     # could become computable without any further planning)
     worker2task_distance: Worker2TaskDistance
-    worker2task_values: set[
-        TaskId
-    ]  # eligible values -- a cached value. Used when migrating new workers to the component, inserted whenever a parent of this task gets `preparing`, removed when this task is made computable
+    # eligible values -- a cached value. Used when migrating new workers to the component, inserted whenever a parent of this task gets `preparing`, removed when this task is made computable
+    worker2task_values: set[TaskId]
 
 
 class DatasetStatus(int, Enum):

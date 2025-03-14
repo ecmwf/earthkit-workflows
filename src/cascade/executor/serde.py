@@ -7,14 +7,8 @@ from typing import Any, Callable, Type
 
 import cloudpickle
 
-from cascade.executor.msg import (
-    DatasetTransmitCommand,
-    DatasetTransmitPayload,
-    DatasetTransmitPayloadHeader,
-    Message,
-)
-from cascade.low.core import DatasetId
-from cascade.low.func import assert_never, resolve_callable
+from cascade.executor.msg import Message
+from cascade.low.func import resolve_callable
 
 # NOTE for start, we simply pickle the msg classes -- this makes it possible
 # to serialize eg `set`s (unlike `msgpack` or json-based serializers) while

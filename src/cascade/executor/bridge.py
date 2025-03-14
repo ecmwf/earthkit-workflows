@@ -5,17 +5,11 @@ Handles communication between controller and remote executors
 import logging
 import time
 
-import zmq
-from pydantic import BaseModel, Field
-
-import cascade.executor.serde as serde
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
-from cascade.executor.comms import get_context
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
 from cascade.executor.msg import (
     Ack,
-    BackboneAddress,
     DatasetPublished,
     DatasetPurge,
     DatasetTransmitCommand,
@@ -29,9 +23,8 @@ from cascade.executor.msg import (
     TaskFailure,
     TaskSequence,
 )
-from cascade.low.core import DatasetId, Environment, HostId, TaskId, Worker, WorkerId
+from cascade.low.core import DatasetId, Environment, HostId, Worker, WorkerId
 from cascade.low.func import assert_never
-from cascade.scheduler.core import DatasetStatus, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +40,6 @@ class Bridge:
         self.transmit_idx_counter = 0
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         registered = 0
-        ctx = get_context()
         self.environment = Environment(workers={})
         logger.debug("about to start receiving registrations")
         registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
@@ -78,7 +70,7 @@ class Bridge:
                 self.heartbeat_checker[message.host].step()
             if time.time_ns() > registration_grace:
                 self.shutdown()
-                raise ValueError(f"failed to recevied registration in due time")
+                raise ValueError("failed to recevied registration in due time")
 
     def _send(self, hostId: HostId, message: Message) -> None:
         self.sender.send(hostId, message)
@@ -136,7 +128,7 @@ class Bridge:
             if shutdown_reason is None:
                 return events
         except Exception as e:
-            logger.exception(f"gotten exception, proceeding with a shutdown")
+            logger.exception("gotten exception, proceeding with a shutdown")
             shutdown_reason = e
         self.shutdown()
         raise ValueError(shutdown_reason)

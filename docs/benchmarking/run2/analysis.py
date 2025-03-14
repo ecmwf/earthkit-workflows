@@ -2,11 +2,11 @@
 # coding: utf-8
 
 # ### Novel observations
-# * Controller reports available as well, showing that a lot of time is spent in the `act` phase of sending (sequentially!) the commands to the hosts. I realize now that the `act` is blocking, so the transmit are effectively serialized at the controller!
-# * Redundant local transports mostly vanished -- there are times when the planner decides in a single step that a dataset is needed at two workers on a host so issues two transmit commands. We could thus replace the redundant sent by idle time, to save network etc. It happens only 3 times out of 55 in the 2,2 scenario
+# * Controller reports available as well, showing that a lot of time is spent in the `act` phase of sending (sequentially!) the commands to the hosts. I realize now that the `act` is blocking, so the transmit are effectively serialized at the controller! # noqa: E501
+# * Redundant local transports mostly vanished -- there are times when the planner decides in a single step that a dataset is needed at two workers on a host so issues two transmit commands. We could thus replace the redundant sent by idle time, to save network etc. It happens only 3 times out of 55 in the 2,2 scenario # noqa: E501
 #
 # The `lA` logs here represent the code/measurements _before_ transmits were reworked to happen async, the `lB` the _after_.
-# The `act` phase duration has shortened considerably, but the overall duration has increased -- possibly due to increased contention, due to introduction of locks, etc. But the overall amount of transmits has stayed roughly the same (even dripped a tiny bit). In particular, duration of the longest transmit has increased 4 times in the 2-host 2-worker scenario, **from 1 second to 4 seconds**. During that time, both sides of the transmit were doing other things as well (transmitting other datasets, computing tasks, etc).
+# The `act` phase duration has shortened considerably, but the overall duration has increased -- possibly due to increased contention, due to introduction of locks, etc. But the overall amount of transmits has stayed roughly the same (even dripped a tiny bit). In particular, duration of the longest transmit has increased 4 times in the 2-host 2-worker scenario, **from 1 second to 4 seconds**. During that time, both sides of the transmit were doing other things as well (transmitting other datasets, computing tasks, etc). # noqa: E501
 #
 # ### Next steps
 # * Rework the client to send asynchronously
@@ -76,7 +76,7 @@ def fmn(n):  # TODO set some central
 
 def ensureColumns(df, columns):
     for column in columns:
-        if not column in df.columns:
+        if column not in df.columns:
             df = df.assign(**{column: np.nan})
     return df
 
