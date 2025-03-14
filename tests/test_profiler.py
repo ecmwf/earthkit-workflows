@@ -1,7 +1,7 @@
 import pytest
 
-from cascade.v0_executors.dask import DaskLocalExecutor
 from cascade.profiler import memray_profile, meters_profile
+from cascade.v0_executors.dask import DaskLocalExecutor
 from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
 
 

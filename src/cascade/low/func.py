@@ -2,19 +2,19 @@
 Things.
 """
 
-from abc import abstractmethod
 import importlib
+from abc import abstractmethod
 from time import perf_counter_ns
 from typing import (
-    Iterator,
-    Type,
     Any,
     Callable,
     Generic,
     Iterable,
+    Iterator,
     NoReturn,
     Optional,
     Protocol,
+    Type,
     TypeVar,
     cast,
     runtime_checkable,
@@ -109,15 +109,21 @@ class Monoid(Protocol):
     def empty(cls) -> Self:
         raise NotImplementedError
 
+
 TMonoid = TypeVar("TMonoid", bound=Monoid)
+
 
 def msum(i: Iterable[TMonoid], t: Type[TMonoid]) -> TMonoid:
     return sum(i, start=t.empty())
 
+
 B = TypeVar("B", bound=BaseModel)
+
+
 def pyd_replace(model: B, **kwargs) -> B:
     """Like dataclasses.replace but for pydantic"""
     return model.model_copy(update=kwargs)
+
 
 def assert_iter_empty(i: Iterator) -> bool:
     try:
@@ -127,9 +133,10 @@ def assert_iter_empty(i: Iterator) -> bool:
     else:
         return False
 
+
 def resolve_callable(s: str) -> Callable:
     """For s = `a.b.func`, imports `a.b` and retrieves `func` Callable object"""
-    if "." not in s: # this branch is for builtins
+    if "." not in s:  # this branch is for builtins
         return eval(s)
     else:
         module_name, function_name = s.rsplit(".", 1)

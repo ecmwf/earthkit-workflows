@@ -9,30 +9,39 @@ import base64
 import logging
 from typing import Iterable
 
-from cascade.scheduler.core import State, TaskStatus, DatasetStatus
+import cascade.executor.serde as serde
 from cascade.executor.bridge import Event
 from cascade.executor.comms import callback
 from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
-from cascade.low.core import TaskId, DatasetId, WorkerId, HostId, JobInstance
+from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.func import assert_never
-from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
+from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.assign import set_worker2task_overhead
-import cascade.executor.serde as serde
+from cascade.scheduler.core import DatasetStatus, State, TaskStatus
 
 logger = logging.getLogger(__name__)
 
+
 def consider_purge(state: State, dataset: DatasetId) -> State:
     no_dependants = not state.purging_tracker[dataset]
-    not_required_output = (dataset not in state.outputs) or (state.outputs[dataset] is not None)
+    not_required_output = (dataset not in state.outputs) or (
+        state.outputs[dataset] is not None
+    )
     if no_dependants and not_required_output:
         state.purging_tracker.pop(dataset)
         state.purging_queue.append(dataset)
     return state
 
+
 def consider_fetch(state: State, dataset: DatasetId, at: HostId) -> State:
-    if dataset in state.outputs and state.outputs[dataset] is None and dataset not in state.fetching_queue:
+    if (
+        dataset in state.outputs
+        and state.outputs[dataset] is None
+        and dataset not in state.fetching_queue
+    ):
         state.fetching_queue[dataset] = at
     return state
+
 
 def consider_computable(state: State, dataset: DatasetId, host: HostId) -> State:
     # In case this is the first time this dataset was made available, we check
@@ -68,43 +77,71 @@ def consider_computable(state: State, dataset: DatasetId, host: HostId) -> State
 
     return state
 
+
 def is_last_output_of(dataset: DatasetId, job: JobInstance) -> bool:
     definition = job.tasks[dataset.task].definition
-    last = sorted(definition.output_schema.keys())[-1] # TODO change the definition to actually be the sorted list
+    last = sorted(definition.output_schema.keys())[
+        -1
+    ]  # TODO change the definition to actually be the sorted list
     return last == dataset.output
- 
+
+
 def notify(state: State, job: JobInstance, events: Iterable[Event]) -> State:
     for event in events:
         if isinstance(event, DatasetPublished):
             logger.debug(f"received {event=}")
             # NOTE here we'll need to distinguish memory-only and host-wide (shm) publications, currently all events mean shm
-            host = event.origin if isinstance(event.origin, HostId) else event.origin.host
+            host = (
+                event.origin if isinstance(event.origin, HostId) else event.origin.host
+            )
             state.host2ds[host][event.ds] = DatasetStatus.available
             state.ds2host[event.ds][host] = DatasetStatus.available
             state = consider_fetch(state, event.ds, host)
             state = consider_computable(state, event.ds, host)
             if event.transmit_idx is not None:
-                mark({"dataset": repr(event.ds), "action": TransmitLifecycle.completed, "target": host, "host": "controller"})
+                mark(
+                    {
+                        "dataset": repr(event.ds),
+                        "action": TransmitLifecycle.completed,
+                        "target": host,
+                        "host": "controller",
+                    }
+                )
             elif is_last_output_of(event.ds, job):
                 if not isinstance((worker := event.origin), WorkerId):
-                    raise ValueError(f"malformed event, expected origin to be WorkerId: {event}")
-                logger.debug(f"last output of {event.ds.task} published, assuming completion")
+                    raise ValueError(
+                        f"malformed event, expected origin to be WorkerId: {event}"
+                    )
+                logger.debug(
+                    f"last output of {event.ds.task} published, assuming completion"
+                )
                 state.worker2ts[worker][event.ds.task] = TaskStatus.succeeded
                 state.ts2worker[event.ds.task][worker] = TaskStatus.succeeded
-                mark({"task": event.ds.task, "action": TaskLifecycle.completed, "worker": repr(worker), "host": "controller"})
+                mark(
+                    {
+                        "task": event.ds.task,
+                        "action": TaskLifecycle.completed,
+                        "worker": repr(worker),
+                        "host": "controller",
+                    }
+                )
                 for sourceDataset in state.edge_i.get(event.ds.task, set()):
-                    state.purging_tracker[sourceDataset].remove(event.ds.task) 
+                    state.purging_tracker[sourceDataset].remove(event.ds.task)
                     state = consider_purge(state, sourceDataset)
                 if event.ds.task in state.ongoing[worker]:
                     state.ongoing[worker].remove(event.ds.task)
                     state.ongoing_total -= 1
                 else:
-                    raise ValueError(f"{event.ds.task} succeeded but removal from `ongoing` impossible")
+                    raise ValueError(
+                        f"{event.ds.task} succeeded but removal from `ongoing` impossible"
+                    )
                 if not state.ongoing[worker]:
                     state.idle_workers.add(worker)
         elif isinstance(event, DatasetTransmitPayload):
             # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
-            state.outputs[event.header.ds] = serde.des_output(event.value, 'Any', event.header.deser_fun)
+            state.outputs[event.header.ds] = serde.des_output(
+                event.value, "Any", event.header.deser_fun
+            )
         else:
             assert_never(event)
     return state

@@ -9,43 +9,73 @@ the tasks themselves.
 # have their own zmq server as well as run the callables themselves
 
 import atexit
-from multiprocessing import get_context
-from multiprocessing.process import BaseProcess
-from typing import cast, Iterable
-import socket
 import logging
 import os
+import socket
+from multiprocessing import get_context
+from multiprocessing.process import BaseProcess
+from typing import Iterable, cast
 
-from cascade.low.core import WorkerId, DatasetId, JobInstance, DatasetId, TaskId, HostId
-from cascade.low.func import assert_never
-from cascade.executor.msg import BackboneAddress, TaskSequence, Message, ExecutorExit, ExecutorFailure, ExecutorRegistration, DatasetPurge, ExecutorShutdown, TaskFailure, DatasetPublished, DatasetTransmitFailure, WorkerReady, WorkerShutdown, Ack, Worker
-from cascade.executor.runner.entrypoint import entrypoint, RunnerContext, worker_address
-from cascade.executor.runner.memory import ds2shmid
-from cascade.executor.comms import Listener, callback, default_timeout_ms as comms_default_timeout_ms, GraceWatcher, ReliableSender, default_message_resend_ms as resend_grace_ms
-from cascade.executor.data_server import start_data_server
-import cascade.shm.client as shm_client
 import cascade.shm.api as shm_api
-from cascade.shm.server import entrypoint as shm_server
+import cascade.shm.client as shm_client
+from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
+from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
+from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
 from cascade.executor.config import logging_config
-from cascade.low.tracing import mark, label, TaskLifecycle, Microtrace, timer
+from cascade.executor.data_server import start_data_server
+from cascade.executor.msg import (
+    Ack,
+    BackboneAddress,
+    DatasetPublished,
+    DatasetPurge,
+    DatasetTransmitFailure,
+    ExecutorExit,
+    ExecutorFailure,
+    ExecutorRegistration,
+    ExecutorShutdown,
+    Message,
+    TaskFailure,
+    TaskSequence,
+    Worker,
+    WorkerReady,
+    WorkerShutdown,
+)
+from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
+from cascade.executor.runner.memory import ds2shmid
+from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
+from cascade.low.func import assert_never
+from cascade.low.tracing import Microtrace, TaskLifecycle, label, mark, timer
 from cascade.low.views import param_source
+from cascade.shm.server import entrypoint as shm_server
 
 logger = logging.getLogger(__name__)
-heartbeat_grace_ms = 2*comms_default_timeout_ms
+heartbeat_grace_ms = 2 * comms_default_timeout_ms
+
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{socket.gethostname()}:{port}"
 
+
 class Executor:
-    def __init__(self, job_instance: JobInstance, controller_address: BackboneAddress, workers: int, host: HostId, portBase: int, shm_vol_gb: int|None = None) -> None:
+    def __init__(
+        self,
+        job_instance: JobInstance,
+        controller_address: BackboneAddress,
+        workers: int,
+        host: HostId,
+        portBase: int,
+        shm_vol_gb: int | None = None,
+    ) -> None:
         self.job_instance = job_instance
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
         self.host = host
-        self.workers: dict[WorkerId, BaseProcess|None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
+        self.workers: dict[WorkerId, BaseProcess | None] = {
+            WorkerId(host, f"w{i}"): None for i in range(workers)
+        }
 
         self.datasets: set[DatasetId] = set()
-        self.heartbeat_watcher = GraceWatcher(grace_ms = heartbeat_grace_ms)
+        self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
 
         self.terminating = False
         atexit.register(self.terminate)
@@ -54,18 +84,29 @@ class Executor:
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         self.sender.add_host("controller", controller_address)
         # TODO make the shm server params configurable
-        shm_port = portBase+2
+        shm_port = portBase + 2
         shm_api.publish_client_port(shm_port)
         ctx = get_context("fork")
         self.shm_process = ctx.Process(
             target=shm_server,
-            args=(shm_port, shm_vol_gb * (1024**3) if shm_vol_gb else None, logging_config, f"sCasc{host}"),
+            args=(
+                shm_port,
+                shm_vol_gb * (1024**3) if shm_vol_gb else None,
+                logging_config,
+                f"sCasc{host}",
+            ),
         )
         self.shm_process.start()
-        self.daddress = address_of(portBase+1)
+        self.daddress = address_of(portBase + 1)
         self.data_server = ctx.Process(
             target=start_data_server,
-            args=(self.mlistener.address, self.daddress, self.host, shm_port, logging_config)
+            args=(
+                self.mlistener.address,
+                self.daddress,
+                self.host,
+                shm_port,
+                logging_config,
+            ),
         )
         self.data_server.start()
         gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
@@ -78,10 +119,10 @@ class Executor:
                     worker_id=worker_id,
                     cpu=1,
                     gpu=1 if idx < gpus else 0,
-                    memory_mb=1024, # TODO better
+                    memory_mb=1024,  # TODO better
                 )
                 for idx, worker_id in enumerate(self.workers.keys())
-            ]
+            ],
         )
         logger.debug("constructed executor")
 
@@ -103,13 +144,21 @@ class Executor:
                     proc.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {worker}")
-        if hasattr(self, 'shm_process') and self.shm_process is not None and self.shm_process.is_alive():
+        if (
+            hasattr(self, "shm_process")
+            and self.shm_process is not None
+            and self.shm_process.is_alive()
+        ):
             try:
                 shm_client.shutdown()
                 self.shm_process.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down shm server")
-        if hasattr(self, 'data_server') and self.data_server is not None and self.data_server.is_alive():
+        if (
+            hasattr(self, "data_server")
+            and self.data_server is not None
+            and self.data_server.is_alive()
+        ):
             self.data_server.kill()
 
     def to_controller(self, m: Message) -> None:
@@ -120,9 +169,14 @@ class Executor:
         # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
         # NOTE a bit risky, but forkserver is too slow. Has unhealthy side effects, like preserving imports caused
         # by JobInstance deser
-        ctx = get_context("fork") 
+        ctx = get_context("fork")
         for worker in workers:
-            runnerContext = RunnerContext(workerId=worker, job=self.job_instance, param_source=self.param_source, callback=self.mlistener.address)
+            runnerContext = RunnerContext(
+                workerId=worker,
+                job=self.job_instance,
+                param_source=self.param_source,
+                callback=self.mlistener.address,
+            )
             p = ctx.Process(target=entrypoint, kwargs={"runnerContext": runnerContext})
             p.start()
             self.workers[worker] = p
@@ -164,13 +218,21 @@ class Executor:
             if e is None:
                 ValueError(f"process on {k} is not alive")
             elif procFail(e.exitcode):
-                ValueError(f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}")
+                ValueError(
+                    f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}"
+                )
         if procFail(self.shm_process.exitcode):
-            ValueError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
+            ValueError(
+                f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}"
+            )
         if procFail(self.data_server.exitcode):
-            ValueError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
+            ValueError(
+                f"data server {self.data_server.pid} failed with {self.data_server.exitcode}"
+            )
         if self.heartbeat_watcher.is_breach() > 0:
-            logger.debug(f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}")
+            logger.debug(
+                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}"
+            )
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
@@ -184,8 +246,16 @@ class Executor:
                     # from controller
                     if isinstance(m, TaskSequence):
                         for task in m.tasks:
-                            mark({"task": task, "worker": repr(m.worker), "action": TaskLifecycle.enqueued})
-                        if (proc := self.workers[m.worker]) is None or proc.exitcode is not None:
+                            mark(
+                                {
+                                    "task": task,
+                                    "worker": repr(m.worker),
+                                    "action": TaskLifecycle.enqueued,
+                                }
+                            )
+                        if (
+                            proc := self.workers[m.worker]
+                        ) is None or proc.exitcode is not None:
                             raise ValueError(f"worker process {m.worker} is not alive")
                         callback(worker_address(m.worker), m)
                     elif isinstance(m, Ack):

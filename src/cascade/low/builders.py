@@ -7,7 +7,13 @@ import pyrsistent
 from typing_extensions import Self
 
 from cascade.graph import Node
-from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance, DatasetId
+from cascade.low.core import (
+    DatasetId,
+    JobInstance,
+    Task2TaskEdge,
+    TaskDefinition,
+    TaskInstance,
+)
 from cascade.low.func import Either
 
 
@@ -80,7 +86,9 @@ class JobBuilder:
     def with_node(self, name: str, task: TaskInstance) -> Self:
         return replace(self, nodes=self.nodes.set(name, task))
 
-    def with_edge(self, source: str, sink: str, into: str | int, frum: str = Node.DEFAULT_OUTPUT) -> Self:
+    def with_edge(
+        self, source: str, sink: str, into: str | int, frum: str = Node.DEFAULT_OUTPUT
+    ) -> Self:
         new_edge = Task2TaskEdge(
             source=DatasetId(source, frum),
             sink_task=sink,

@@ -7,15 +7,16 @@ from typing import Any, Callable, cast
 
 from cascade.graph import Graph, Node, serialise
 from cascade.low.core import (
+    NO_OUTPUT_PLACEHOLDER,
     DatasetId,
     JobInstance,
     Task2TaskEdge,
     TaskDefinition,
     TaskInstance,
-    NO_OUTPUT_PLACEHOLDER,
 )
 
 logger = logging.getLogger(__name__)
+
 
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
 

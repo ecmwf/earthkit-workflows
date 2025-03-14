@@ -20,6 +20,4 @@ The submodules are:
 # - we could start obtaining inputs while we are venv-installing (but beware deser needing venv!)
 # - we could start venv-installing & inputs-obtaining while previous task is running
 # - we could be inputs-obtaining in parallel
-# Ideally, all deser would be doable outside Python -- then this whole module could be eg rust & threads 
-
-
+# Ideally, all deser would be doable outside Python -- then this whole module could be eg rust & threads

@@ -3,25 +3,27 @@ Managing datasets in memory -- inputs and outputs of the executed job
 Interaction with shm
 """
 
+import hashlib
+import logging
 from contextlib import AbstractContextManager
 from typing import Any, Literal
-import logging
-import hashlib
 
-from cascade.low.tracing import Microtrace, timer
-import cascade.shm.client as shm_client
-from cascade.low.core import DatasetId, TaskId, WorkerId, NO_OUTPUT_PLACEHOLDER
-from cascade.executor.msg import BackboneAddress, DatasetPublished
-from cascade.executor.comms import callback
 import cascade.executor.serde as serde
+import cascade.shm.client as shm_client
+from cascade.executor.comms import callback
+from cascade.executor.msg import BackboneAddress, DatasetPublished
+from cascade.low.core import NO_OUTPUT_PLACEHOLDER, DatasetId, TaskId, WorkerId
+from cascade.low.tracing import Microtrace, timer
 
 logger = logging.getLogger(__name__)
+
 
 def ds2shmid(ds: DatasetId) -> str:
     # we cant use too long file names for shm, https://trac.macports.org/ticket/64806
     h = hashlib.new("md5", usedforsecurity=False)
     h.update((ds.task + ds.output).encode())
     return h.hexdigest()[:24]
+
 
 class Memory(AbstractContextManager):
     def __init__(self, callback: BackboneAddress, worker: WorkerId) -> None:
@@ -30,10 +32,14 @@ class Memory(AbstractContextManager):
         self.callback = callback
         self.worker = worker
 
-    def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool) -> None:
+    def handle(
+        self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool
+    ) -> None:
         if outputId == NO_OUTPUT_PLACEHOLDER:
             if outputValue is not None:
-                logger.warning(f"gotten output of type {type(outputValue)} where none was expected, updating annotation")
+                logger.warning(
+                    f"gotten output of type {type(outputValue)} where none was expected, updating annotation"
+                )
                 outputSchema = "Any"
             else:
                 outputValue = "ok"
@@ -44,7 +50,9 @@ class Memory(AbstractContextManager):
         if isPublish:
             logger.debug(f"publishing {outputId}")
             shmid = ds2shmid(outputId)
-            result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
+            result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(
+                outputValue, outputSchema
+            )
             l = len(result_ser)
             rbuf = shm_client.allocate(shmid, l, deser_fun)
             rbuf.view()[:l] = result_ser
@@ -62,7 +70,9 @@ class Memory(AbstractContextManager):
             logger.debug(f"asking for {inputId} via {shmid}")
             buf = shm_client.get(shmid)
             self.bufs[inputId] = buf
-            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation, buf.deser_fun)
+            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(
+                buf.view(), annotation, buf.deser_fun
+            )
 
         return self.local[inputId]
 
@@ -90,5 +100,3 @@ class Memory(AbstractContextManager):
         for buf in self.bufs.values():
             buf.close()
         return False
-
-

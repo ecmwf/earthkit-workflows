@@ -1,15 +1,37 @@
-from collections import defaultdict
 import logging
+from collections import defaultdict
 from typing import Iterator
 
-from cascade.low.core import Environment, WorkerId, DatasetId, HostId, TaskId, JobInstance
-from cascade.low.tracing import timer, Microtrace
-from cascade.scheduler.assign import assign_within_component, migrate_to_component, update_worker2task_distance
-from cascade.scheduler.core import State, Preschedule, ComponentSchedule, ComponentId, Assignment, DatasetStatus, TaskStatus
+from cascade.low.core import (
+    DatasetId,
+    Environment,
+    HostId,
+    JobInstance,
+    TaskId,
+    WorkerId,
+)
+from cascade.low.tracing import Microtrace, timer
+from cascade.scheduler.assign import (
+    assign_within_component,
+    migrate_to_component,
+    update_worker2task_distance,
+)
+from cascade.scheduler.core import (
+    Assignment,
+    ComponentId,
+    ComponentSchedule,
+    DatasetStatus,
+    Preschedule,
+    State,
+    TaskStatus,
+)
 
 logger = logging.getLogger(__name__)
 
-def initialize(environment: Environment, preschedule: Preschedule, outputs: set[DatasetId]) -> State:
+
+def initialize(
+    environment: Environment, preschedule: Preschedule, outputs: set[DatasetId]
+) -> State:
     """Initializes State based on Preschedule and Environment. Assigns hosts to components"""
     purging_tracker = {
         ds: {task for task in dependants}
@@ -18,7 +40,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
 
     components: list[ComponentSchedule] = []
     ts2component: dict[TaskId, ComponentId] = {}
-    host2workers: dict[HostId, list[WorkerId]] = defaultdict(list) 
+    host2workers: dict[HostId, list[WorkerId]] = defaultdict(list)
     for worker in environment.workers:
         host2workers[worker.host].append(worker)
 
@@ -65,6 +87,7 @@ def initialize(environment: Environment, preschedule: Preschedule, outputs: set[
         fetching_queue={},
     )
 
+
 def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignment]:
     """Given idle workers in `state`, assign actions to workers. Mutates the state:
      - pops from computable & idle workers,
@@ -82,24 +105,31 @@ def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignm
 
     for component_id, local_workers in component2workers.items():
         if local_workers:
-            yield from assign_within_component(state, local_workers, component_id, job, env)
-    
+            yield from assign_within_component(
+                state, local_workers, component_id, job, env
+            )
+
     if not state.idle_workers:
         return
 
     # step II: assign remaining workers to new components
     components = [
-        (component.weight, component_id) for component_id, component in enumerate(state.components)
+        (component.weight, component_id)
+        for component_id, component in enumerate(state.components)
         if component.weight > 0
     ]
     if not components:
         return
 
-    components.sort(reverse = True) # TODO consider number of currently assigned workers too
+    components.sort(
+        reverse=True
+    )  # TODO consider number of currently assigned workers too
     migrants = defaultdict(list)
     for worker in state.idle_workers:
         # TODO we dont currently allow partial assignments, this is subopt!
-        if (component := state.host2component[worker.host]) is None or (state.components[component].weight == 0):
+        if (component := state.host2component[worker.host]) is None or (
+            state.components[component].weight == 0
+        ):
             migrants[worker.host].append(worker)
         # TODO we ultimately want to be able to have weight-and-capacity-aware m-n host2component
         # assignments, not just round robin of the whole host2component
@@ -107,18 +137,29 @@ def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignm
     component_i = 0
     for host, workers in migrants.items():
         component_id = components[component_i][1]
-        state = timer(migrate_to_component, Microtrace.ctrl_migrate)(host, component_id, state)
+        state = timer(migrate_to_component, Microtrace.ctrl_migrate)(
+            host, component_id, state
+        )
         yield from assign_within_component(state, workers, component_id, job, env)
         component_i = (component_i + 1) % len(components)
 
-def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, children: set[TaskId]) -> State:
+
+def _set_preparing_at(
+    dataset: DatasetId, worker: WorkerId, state: State, children: set[TaskId]
+) -> State:
     # NOTE this may need to change once we switch to persistent workers. Currently, these `if`s are necessary
     # because we issue transmit command when host *has* DS but worker does *not*. This ends up a no-op, but we
     # totally dont want the host state to reset -- because it wouldnt recover from it
-    if state.host2ds[worker.host].get(dataset, DatasetStatus.missing) != DatasetStatus.available:
+    if (
+        state.host2ds[worker.host].get(dataset, DatasetStatus.missing)
+        != DatasetStatus.available
+    ):
         state.host2ds[worker.host][dataset] = DatasetStatus.preparing
     state.host2ds[worker.host][dataset] = DatasetStatus.preparing
-    if state.ds2host[dataset].get(worker.host, DatasetStatus.missing) != DatasetStatus.available:
+    if (
+        state.ds2host[dataset].get(worker.host, DatasetStatus.missing)
+        != DatasetStatus.available
+    ):
         state.ds2host[dataset][worker.host] = DatasetStatus.preparing
     state.worker2ds[worker][dataset] = DatasetStatus.preparing
     state.ds2worker[dataset][worker] = DatasetStatus.preparing
@@ -130,6 +171,7 @@ def _set_preparing_at(dataset: DatasetId, worker: WorkerId, state: State, childr
         component_id = state.ts2component[task]
         state = update_worker2task_distance(component_id, task, worker, state)
     return state
+
 
 def plan(state: State, assignments: list[Assignment]) -> State:
     """Given actions that were just sent to a worker, update state to reflect it, including preparation

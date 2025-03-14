@@ -5,27 +5,41 @@ Implements the invocation of Bridge/Executor methods given a sequence of Actions
 import logging
 from typing import Iterator
 
-from cascade.scheduler.core import State, DatasetStatus, TaskStatus, Assignment
+from cascade.controller.notify import consider_purge
 from cascade.executor.bridge import Bridge
 from cascade.executor.msg import TaskSequence
-from cascade.controller.notify import consider_purge
 from cascade.low.func import assert_never
-from cascade.low.tracing import mark, TaskLifecycle, TransmitLifecycle
+from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
+from cascade.scheduler.core import Assignment, DatasetStatus, State, TaskStatus
 
 logger = logging.getLogger(__name__)
 
+
 def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
     """Converts an assignment to one or more actions which are sent to the bridge, and returned
-    for tracing/updating purposes. Does *not* mutate State, but executors behind the Bridge *are* mutated."""
+    for tracing/updating purposes. Does *not* mutate State, but executors behind the Bridge *are* mutated.
+    """
 
     for prep in assignment.prep:
-        ds = prep[0] 
+        ds = prep[0]
         source_host = prep[1]
         if assignment.worker.host == source_host:
-            logger.debug(f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op")
+            logger.debug(
+                f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op"
+            )
             continue
-        logger.debug(f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge")
-        mark({"dataset": repr(ds), "action": TransmitLifecycle.planned, "source": source_host, "target": assignment.worker.host, "host": "controller"})
+        logger.debug(
+            f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge"
+        )
+        mark(
+            {
+                "dataset": repr(ds),
+                "action": TransmitLifecycle.planned,
+                "source": source_host,
+                "target": assignment.worker.host,
+                "host": "controller",
+            }
+        )
         bridge.transmit(ds, source_host, assignment.worker.host)
 
     task_sequence = TaskSequence(
@@ -33,9 +47,16 @@ def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
         tasks=assignment.tasks,
         publish=assignment.outputs,
     )
-        
+
     for task in assignment.tasks:
-        mark({"task": task, "action": TaskLifecycle.planned, "worker": repr(assignment.worker), "host": "controller"})
+        mark(
+            {
+                "task": task,
+                "action": TaskLifecycle.planned,
+                "worker": repr(assignment.worker),
+                "host": "controller",
+            }
+        )
     logger.debug(f"sending {task_sequence} to bridge")
     bridge.task_sequence(task_sequence)
 

@@ -3,24 +3,34 @@ Graph decompositions and distance functions.
 Used to obtain a Preschedule object from a Job Instance via the `precompute` function.
 """
 
-from collections import defaultdict
 import logging
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from cascade.low.core import TaskId, DatasetId, JobInstance
+from typing import Iterator
+
+from cascade.low.core import DatasetId, JobInstance, TaskId
 from cascade.low.tracing import Microtrace, timer
 from cascade.low.views import dependants, param_source
-from typing import Iterator
-from cascade.scheduler.core import Task2TaskDistance, TaskValue, ComponentCore, Preschedule
-from concurrent.futures import ThreadPoolExecutor
+from cascade.scheduler.core import (
+    ComponentCore,
+    Preschedule,
+    Task2TaskDistance,
+    TaskValue,
+)
 
 logger = logging.getLogger(__name__)
 
-PlainComponent = tuple[list[TaskId], list[TaskId]] # nodes, sources
+PlainComponent = tuple[list[TaskId], list[TaskId]]  # nodes, sources
 
-def nearest_common_descendant(paths: Task2TaskDistance, nodes: list[TaskId], L: int) -> Task2TaskDistance:
+
+def nearest_common_descendant(
+    paths: Task2TaskDistance, nodes: list[TaskId], L: int
+) -> Task2TaskDistance:
     ncd: Task2TaskDistance = {}
     try:
         import coptrs
+
         logger.debug(f"using coptrs library, watch out for the blazing speed")
         m = {}
         d1 = {}
@@ -57,12 +67,12 @@ def nearest_common_descendant(paths: Task2TaskDistance, nodes: list[TaskId], L: 
     return ncd
 
 
-def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: dict[TaskId, set[TaskId]]) -> Iterator[PlainComponent]:
-    sources: set[TaskId] = {
-        node
-        for node in nodes
-        if not edge_i[node]
-    }
+def decompose(
+    nodes: list[TaskId],
+    edge_i: dict[TaskId, set[TaskId]],
+    edge_o: dict[TaskId, set[TaskId]],
+) -> Iterator[PlainComponent]:
+    sources: set[TaskId] = {node for node in nodes if not edge_i[node]}
 
     sources_l: list[TaskId] = [s for s in sources]
     visited: set[TaskId] = set()
@@ -89,9 +99,16 @@ def decompose(nodes: list[TaskId], edge_i: dict[TaskId, set[TaskId]], edge_o: di
             [e for e in component if e in sources],
         )
 
-def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], edge_o: dict[TaskId, set[TaskId]]) -> ComponentCore:
+
+def enrich(
+    plain_component: PlainComponent,
+    edge_i: dict[TaskId, set[TaskId]],
+    edge_o: dict[TaskId, set[TaskId]],
+) -> ComponentCore:
     nodes, sources = plain_component
-    logger.debug(f"enrich component start; {len(nodes)} nodes, of that {len(sources)} sources")
+    logger.debug(
+        f"enrich component start; {len(nodes)} nodes, of that {len(sources)} sources"
+    )
 
     sinks = [v for v in nodes if not edge_o[v]]
     remaining = {v: len(edge_o[v]) for v in nodes if edge_o[v]}
@@ -115,22 +132,22 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
     # calculate value, ie, inv distance to sink
     for v in layers[0]:
         value[v] = L
-        paths[v] = defaultdict(lambda : L)
+        paths[v] = defaultdict(lambda: L)
         paths[v][v] = 0
 
     for layer in layers[1:]:
         for v in layer:
             value[v] = 0
-            paths[v] = defaultdict(lambda : L)
+            paths[v] = defaultdict(lambda: L)
             paths[v][v] = 0
             for c in edge_o[v]:
                 paths[v][c] = 1
                 for desc, dist in paths[c].items():
-                    paths[v][desc] = min(paths[v][desc], dist+1)
+                    paths[v][desc] = min(paths[v][desc], dist + 1)
                 value[v] = max(value[v], value[c] - 1)
 
     ncd = nearest_common_descendant(paths, nodes, L)
-                
+
     return ComponentCore(
         nodes=nodes,
         sources=sources,
@@ -138,6 +155,7 @@ def enrich(plain_component: PlainComponent, edge_i: dict[TaskId, set[TaskId]], e
         value=value,
         depth=L,
     )
+
 
 def precompute(job_instance: JobInstance) -> Preschedule:
     edge_o: dict[DatasetId, set[TaskId]] = dependants(job_instance.edges)
@@ -152,15 +170,15 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     for vert, inps in edge_i.items():
         edge_i_proj[vert] = {dataset.task for dataset in inps}
 
-    task_o = {
-        task: job_instance.outputs_of(task)
-        for task in job_instance.tasks.keys()
-    }
+    task_o = {task: job_instance.outputs_of(task) for task in job_instance.tasks.keys()}
 
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
-        f = lambda plain_component: timer(enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj)
-        plain_components = (plain_component
+        f = lambda plain_component: timer(enrich, Microtrace.presched_enrich)(
+            plain_component, edge_i_proj, edge_o_proj
+        )
+        plain_components = (
+            plain_component
             for plain_component in timer(decompose, Microtrace.presched_decompose)(
                 list(job_instance.tasks.keys()),
                 edge_i_proj,
@@ -168,7 +186,9 @@ def precompute(job_instance: JobInstance) -> Preschedule:
             )
         )
         components = list(tp.map(f, plain_components))
-        
+
     components.sort(key=lambda c: c.weight(), reverse=True)
 
-    return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o)
+    return Preschedule(
+        components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o
+    )

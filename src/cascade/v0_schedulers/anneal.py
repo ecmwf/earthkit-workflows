@@ -4,9 +4,9 @@ from typing import Callable, cast
 
 import numpy as np
 
-from cascade.v0_contextgraph import ContextGraph
 from cascade.graph import Graph
 from cascade.taskgraph import TaskGraph
+from cascade.v0_contextgraph import ContextGraph
 
 from .depthfirst import DepthFirstScheduler
 from .schedule import Schedule

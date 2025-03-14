@@ -2,13 +2,19 @@
 This module is responsible for Serialization & Deserialization of messages and outputs
 """
 
-from cascade.low.func import assert_never, resolve_callable
-from cascade.low.core import DatasetId
-from cascade.executor.msg import Message, DatasetTransmitCommand, DatasetTransmitPayload, DatasetTransmitPayloadHeader
-from typing import Any, Type, Callable
-import cloudpickle
 import pickle
+from typing import Any, Callable, Type
 
+import cloudpickle
+
+from cascade.executor.msg import (
+    DatasetTransmitCommand,
+    DatasetTransmitPayload,
+    DatasetTransmitPayloadHeader,
+    Message,
+)
+from cascade.low.core import DatasetId
+from cascade.low.func import assert_never, resolve_callable
 
 # NOTE for start, we simply pickle the msg classes -- this makes it possible
 # to serialize eg `set`s (unlike `msgpack` or json-based serializers) while
@@ -22,13 +28,16 @@ import pickle
 # costing us both time and memory overhead. This would be a core feature of the
 # custom serde. The message where this matters is DatasetTransmitPayload
 
+
 def ser_message(m: Message) -> bytes:
     return pickle.dumps(m)
+
 
 def des_message(b: bytes) -> Message:
     return pickle.loads(b)
 
-class SerdeRegistry():
+
+class SerdeRegistry:
     # NOTE the contract is a bit odd -- Callable for ser, str for deser
     # We could switch to both being Callable, by having shm/DatasetTransmitPayload
     # operate with Type instead of deser_fun. But I'm a bit worried about Type being
@@ -42,7 +51,8 @@ class SerdeRegistry():
             resolve_callable(ser),
             des,
         )
-    
+
+
 def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     """Utilizes `custom_ser` attr if present, otherwise defaults to cloudpickle as the most
     robust general purpose serde"""
@@ -51,6 +61,7 @@ def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     else:
         value, deser_fun = cloudpickle.dumps(v), "cloudpickle.loads"
     return value, deser_fun
+
 
 def des_output(v: bytes, annotation: str, deser_fun: str) -> Any:
     if deser_fun == "cloudpickle.loads":

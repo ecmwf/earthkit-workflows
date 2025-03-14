@@ -14,9 +14,9 @@ logging_config = {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stderr",
         },
-    }, 
+    },
     "loggers": {
-        "uvicorn": {"level": "INFO"}, 
+        "uvicorn": {"level": "INFO"},
         "forecastbox": {"level": "INFO"},
         "forecastbox.worker": {"level": "DEBUG"},
         "forecastbox.executor": {"level": "DEBUG"},
@@ -31,4 +31,3 @@ logging_config = {
         "": {"level": "WARNING", "handlers": ["default"]},
     },
 }
-

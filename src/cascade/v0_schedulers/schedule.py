@@ -1,7 +1,7 @@
 from typing import Iterable, Iterator
 
-from cascade.v0_contextgraph import ContextGraph
 from cascade.graph import Graph, Node, copy_graph
+from cascade.v0_contextgraph import ContextGraph
 
 
 class Schedule(Graph):
