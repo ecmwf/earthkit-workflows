@@ -6,11 +6,10 @@ import re
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Callable, Optional, Type, cast
 
 import cloudpickle
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from typing_extensions import Self
 
 # NOTE it would be tempting to dict[str|int, ...] at places where we deal with kwargs/args, instead of

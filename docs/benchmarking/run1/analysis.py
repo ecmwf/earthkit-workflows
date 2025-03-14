@@ -65,7 +65,7 @@ def fixMode(df):
 
 def ensureColumns(df, columns):
     for column in columns:
-        if not column in df.columns:
+        if column not in df.columns:
             df = df.assign(**{column: np.nan})
     return df
 
@@ -206,7 +206,7 @@ taskCompareF1F4.sort_values(by="dif")[-10:]
 # ## Task Takeaways:
 # * There is a big difference between f1 and f4 in pure runtimes of tasks, 17e9 vs 28e9, suggesting some contention happening
 #   * Comparing individual tasks, we see only small relative/abs differences in concats and disk-accessing retrieves, but big in compute intensive sot or efi, suggesting there is some CPU contention
-#   * The difference is also visible for m scenarios -- m1_4 is expectedly like f4, but m2_2 and m4_1 are 20e9 being thus closer to f1. It could be that there is less overlap in those scenarios, as the scheduling is more gappy due to interleaved http comms?
+#   * The difference is also visible for m scenarios -- m1_4 is expectedly like f4, but m2_2 and m4_1 are 20e9 being thus closer to f1. It could be that there is less overlap in those scenarios, as the scheduling is more gappy due to interleaved http comms? # noqa:E501
 # * Queue delay exhibits no real difference over f/m scenarios
 # * Comm delays are 1e7 for f scenarios, 1e8 for m4_1, and 1e9 for m2_2 and m1_4 -- m4_1 being midway looks more like a glitch
 # * m2_2 is showing a slight disbalance of one worker being less utilised than the others, all others look balanced

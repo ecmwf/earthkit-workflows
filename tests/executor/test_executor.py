@@ -8,7 +8,6 @@ from logging.config import dictConfig
 from multiprocessing import Process
 
 import numpy as np
-import pytest
 
 import cascade.executor.serde as serde
 from cascade.executor.comms import Listener, callback, send_data
@@ -27,6 +26,7 @@ from cascade.executor.msg import (
     ExecutorShutdown,
     Syn,
     TaskSequence,
+    Worker,
 )
 from cascade.low.core import (
     DatasetId,
@@ -47,9 +47,6 @@ def launch_executor(
     executor.recv_loop()
 
 
-@pytest.mark.skip(
-    reason="This test is currently failing, please fix at first opportunity"
-)
 def test_executor():
     # job
     def test_func(x: np.ndarray) -> np.ndarray:
@@ -93,13 +90,21 @@ def test_executor():
     p.start()
     try:
         # register
-        ms = l.recv_messages()
+        ms = l.recv_messages(None)
         assert ms == [
             ExecutorRegistration(
                 host="test_executor",
                 maddress=m1,
                 daddress=d1,
-                workers=[WorkerId("test_executor", f"w{i}") for i in range(4)],
+                workers=[
+                    Worker(
+                        worker_id=WorkerId("test_executor", f"w{i}"),
+                        cpu=1,
+                        gpu=0,
+                        memory_mb=1024,
+                    )
+                    for i in range(4)
+                ],
             ),
         ]
 
@@ -188,7 +193,7 @@ def test_executor():
         ms = l.recv_messages()
         assert ms == [ExecutorExit(host="test_executor")]
         p.join()
-    except Exception as e:
+    except:
         if p.is_alive():
             callback(m1, ExecutorShutdown())
             import time

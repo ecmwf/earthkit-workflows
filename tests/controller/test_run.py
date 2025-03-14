@@ -12,12 +12,7 @@ from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import (
-    Environment,
-    JobExecutionRecord,
-    JobInstance,
-    TaskExecutionRecord,
-)
+from cascade.low.core import JobInstance
 from cascade.scheduler.graph import precompute
 
 
@@ -51,7 +46,7 @@ def run_cluster(job: JobInstance, portBase: int, executors: int):
     try:
         b = Bridge(c, executors)
         run(job, b, preschedule)
-    except Exception as e:
+    except:
         for p in ps:
             if p.is_alive():
                 callback(m, ExecutorShutdown())

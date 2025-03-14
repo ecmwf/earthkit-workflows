@@ -16,7 +16,6 @@ from cascade.scheduler.core import (
     ComponentCore,
     Preschedule,
     Task2TaskDistance,
-    TaskValue,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ def nearest_common_descendant(
     try:
         import coptrs
 
-        logger.debug(f"using coptrs library, watch out for the blazing speed")
+        logger.debug("using coptrs library, watch out for the blazing speed")
         m = {}
         d1 = {}
         d2 = {}
@@ -54,7 +53,7 @@ def nearest_common_descendant(
                 ncd[d2[ai]] = {}
             ncd[d2[ai]][d2[bi]] = e
     except ImportError:
-        logger.warning(f"coptrs not found, falling back to python")
+        logger.warning("coptrs not found, falling back to python")
         for a in nodes:
             ncd[a] = {}
             for b in nodes:

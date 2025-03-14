@@ -6,13 +6,9 @@ level since this is assumed to be high level tracing
 """
 
 import logging
-import os
 from enum import Enum
 from functools import wraps
 from time import perf_counter_ns, time_ns
-from typing import Literal
-
-from cascade.low.func import assert_never
 
 d: dict[str, str] = {}
 

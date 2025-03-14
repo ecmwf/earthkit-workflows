@@ -12,7 +12,7 @@ as externally to eg Controller or Runner
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from cascade.low.core import DatasetId, HostId, TaskId, TaskInstance, WorkerId
+from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 
 ## Meta
 

@@ -1,5 +1,10 @@
 [flake8]
-max-line-length = 120
-
-# E731: lambdas are legit, E741: nothing wrong with `l` variable name, E203: whitespace before : fights with black
-extend-ignore = E731, E741, E203
+max-line-length = 210
+# E731: lambdas are legit
+# E741: nothing wrong with `l` variable name
+# E203: whitespace before : fights with black
+# E722: bare except is ok
+# E266: ## is ok
+# E228: no ws around modulo is ok
+extend-ignore = E731, E741, E203, E722, E266, E228
+exclude = ["docs"] # zounds! Doesnt seem to work at all, even as cli `--exclude`... its even claimed to be the default settings

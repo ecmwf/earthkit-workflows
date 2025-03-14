@@ -4,14 +4,12 @@ Thin wrapper over a single Task/Callable
 Just io handling (ie, using Memory api), tracing and callable invocation
 """
 
-import importlib
 import logging
 from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Any, Callable
 
-from cascade.executor.comms import callback
-from cascade.executor.msg import BackboneAddress, TaskSequence
+from cascade.executor.msg import BackboneAddress
 from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
 from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
@@ -99,10 +97,10 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
                 outputId in executionContext.publish,
             )
         if not assert_iter_empty(outputsI):
-            raise ValueError(f"schema declared more outputs than there were results")
+            raise ValueError("schema declared more outputs than there were results")
         if not assert_iter_empty(result):
             raise ValueError(
-                f"function produced more results than there were schema outputs"
+                "function produced more results than there were schema outputs"
             )
         # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
         mark({"task": taskId, "action": TaskLifecycle.computed})

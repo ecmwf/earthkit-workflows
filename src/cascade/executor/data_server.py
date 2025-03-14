@@ -101,7 +101,7 @@ class DataServer:
             except shm_client.ConflictError as e:
                 # NOTE this branch is for situations where the controller issued redundantly two transmits
                 logger.warning(
-                    f"store of {payload.header.ds} failed, presumably already computed; continuing"
+                    f"store of {payload.header.ds} failed with {e}, presumably already computed; continuing"
                 )
                 mark(
                     {
@@ -287,7 +287,7 @@ class DataServer:
                         fut = self.ds_proc_tp.submit(self.send_payload, command)
                         self.futs_in_progress[command] = fut
                         self.awaiting_confirmation[e] = (command, -1)
-            except Exception as e:
+            except:
                 # NOTE do something more clean here? Not critical since we monitor this process anyway
                 raise
 

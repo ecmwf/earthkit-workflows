@@ -4,7 +4,6 @@ Things.
 
 import importlib
 from abc import abstractmethod
-from time import perf_counter_ns
 from typing import (
     Any,
     Callable,
@@ -127,7 +126,7 @@ def pyd_replace(model: B, **kwargs) -> B:
 
 def assert_iter_empty(i: Iterator) -> bool:
     try:
-        v = next(i)
+        _ = next(i)
     except StopIteration:
         return True
     else:

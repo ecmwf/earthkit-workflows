@@ -22,8 +22,6 @@ from cascade.scheduler.core import (
     ComponentId,
     DatasetStatus,
     State,
-    Task2TaskDistance,
-    Worker2TaskDistance,
 )
 
 logger = logging.getLogger(__name__)

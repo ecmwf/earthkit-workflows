@@ -1,7 +1,6 @@
 from collections import defaultdict
 
 from cascade.low.core import TaskId
-from cascade.scheduler.core import Preschedule, Task2TaskDistance, TaskValue
 from cascade.scheduler.graph import decompose, enrich
 
 

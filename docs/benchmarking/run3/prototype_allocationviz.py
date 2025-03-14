@@ -27,7 +27,7 @@ def add_inputs(g, l: str):
 
 
 # cat l1ctrl.txt  | grep 'action=taskPlanned' | sed 's/.*task=\([^;]*\).*worker=\([^;]*\).*/\1;\2/' > g1_task_host.csv
-# cat l1*.txt  | grep 'about to start subgraph' | sed 's/.*name=.\(.*\).,.*wirings=\[\([^]]*\)\].*/\1;\2/' | sed "s/'Any')/@/g" | sed "s/@, /@;/g" | sed "s/Variable[^@]*task='\([^']*\)'[^@]*@/\1/g" > g1_task_inputs.csv
+# cat l1*.txt  | grep 'about to start subgraph' | sed 's/.*name=.\(.*\).,.*wirings=\[\([^]]*\)\].*/\1;\2/' | sed "s/'Any')/@/g" | sed "s/@, /@;/g" | sed "s/Variable[^@]*task='\([^']*\)'[^@]*@/\1/g" > g1_task_inputs.csv # noqa: E501
 
 
 def vizLogs(pref: str):

@@ -1,5 +1,4 @@
 from cascade import Cascade
-from cascade.graph import serialise
 
 
 def get_graph(lead_time, ensemble_members, CKPT=None, date="2024-12-02T00:00"):

@@ -14,7 +14,7 @@ import os
 import socket
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
-from typing import Iterable, cast
+from typing import Iterable
 
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
@@ -41,10 +41,8 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
-from cascade.executor.runner.memory import ds2shmid
-from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
-from cascade.low.func import assert_never
-from cascade.low.tracing import Microtrace, TaskLifecycle, label, mark, timer
+from cascade.low.core import DatasetId, HostId, JobInstance, WorkerId
+from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
 
@@ -202,7 +200,7 @@ class Executor:
             self.start_workers(self.workers.keys())
             logger.debug(f"about to send register message from {self.host}")
             self.to_controller(self.registration)
-        except Exception as e:
+        except:
             logger.exception("failed during register")
             self.terminate()
         # NOTE we don't mind this registration message being lost -- if that happens, we send it
@@ -261,7 +259,7 @@ class Executor:
                     elif isinstance(m, Ack):
                         self.sender.ack(m.idx)
                     elif isinstance(m, DatasetPurge):
-                        if not m.ds in self.datasets:
+                        if m.ds not in self.datasets:
                             logger.warning(f"unexpected purge of {m.ds}")
                         else:
                             for worker in self.workers:

@@ -1,21 +1,15 @@
 import logging
-from time import perf_counter_ns
-from typing import Any
 
 import cascade.executor.serde as serde
 from cascade.controller.act import act, flush_queues
 from cascade.controller.notify import notify
 from cascade.executor.bridge import Bridge, Event
-from cascade.low.core import DatasetId, Environment, JobInstance, TaskId, WorkerId
-from cascade.low.func import assert_never
+from cascade.low.core import DatasetId, JobInstance
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
-from cascade.low.views import dependants, param_source
 from cascade.scheduler.api import assign, initialize, plan
 from cascade.scheduler.core import (
-    Assignment,
     Preschedule,
     State,
-    TaskStatus,
     has_awaitable,
     has_computable,
 )
@@ -55,7 +49,7 @@ def run(
 
             mark({"action": ControllerPhases.wait})
             if has_awaitable(state):
-                logger.debug(f"about to await bridge")
+                logger.debug("about to await bridge")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify, Microtrace.ctrl_notify)(state, job, events)
                 logger.debug(f"received {len(events)} events")
@@ -64,6 +58,6 @@ def run(
         raise
     finally:
         mark({"action": ControllerPhases.shutdown})
-        logger.debug(f"shutting down executors")
+        logger.debug("shutting down executors")
         bridge.shutdown()
     return state

@@ -3,14 +3,12 @@ Implements the invocation of Bridge/Executor methods given a sequence of Actions
 """
 
 import logging
-from typing import Iterator
 
 from cascade.controller.notify import consider_purge
 from cascade.executor.bridge import Bridge
 from cascade.executor.msg import TaskSequence
-from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
-from cascade.scheduler.core import Assignment, DatasetStatus, State, TaskStatus
+from cascade.scheduler.core import Assignment, State
 
 logger = logging.getLogger(__name__)
 

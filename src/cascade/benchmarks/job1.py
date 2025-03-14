@@ -7,17 +7,12 @@ Controlled by env var params: JOB1_{DATA_ROOT, GRID, ...}, see below
 """
 
 import os
-from pathlib import Path
 
 import earthkit.data
 from ppcascade.fluent import from_source
-from ppcascade.utils.request import Request
 from ppcascade.utils.window import Range
 
-from cascade.cascade import Cascade
 from cascade.fluent import Payload
-from cascade.fluent import from_source as c_from_source
-from cascade.graph import Graph, deduplicate_nodes
 
 # *** PARAMS ***
 
