@@ -9,25 +9,30 @@ import os
 from typing import Iterator
 
 import numpy as np
-from cascade.low.core import JobInstance, TaskDefinition, TaskInstance
+
 from cascade.low.builders import JobBuilder, TaskBuilder
+from cascade.low.core import JobInstance, TaskDefinition, TaskInstance
 
 N = int(os.environ["GENERATORS_N"])
 K = int(os.environ["GENERATORS_K"])
 size = (2**K, 2**K)
 L = int(os.environ["GENERATORS_L"])
 
+
 def generator() -> Iterator[np.ndarray]:
     for i in range(N):
         yield np.random.uniform(size=size)
 
-def consumer(i: np.ndarray) -> np.ndarray:
-    return np.reshape(i, size)**L
 
-def ser_numpy(a: np.ndarray) -> memoryview: # bytes:
+def consumer(i: np.ndarray) -> np.ndarray:
+    return np.reshape(i, size) ** L
+
+
+def ser_numpy(a: np.ndarray) -> memoryview:  # bytes:
     """Exists just because numpy.ndarray cant be imported"""
     # return a.tobytes() # beware, this includes a big copy
-    return a.data.cast('B')
+    return a.data.cast("B")
+
 
 def get_job() -> JobInstance:
     generator_d = TaskDefinition(
@@ -36,9 +41,11 @@ def get_job() -> JobInstance:
         input_schema={},
         output_schema={f"{i}": "ndarray" for i in range(N)},
     )
-    generator_i = TaskInstance(definition=generator_d, static_input_kw={}, static_input_ps={})
+    generator_i = TaskInstance(
+        definition=generator_d, static_input_kw={}, static_input_ps={}
+    )
     consumer
-        
+
     builder = JobBuilder()
     builder = builder.with_node("generator", generator_i)
     for i in range(N):

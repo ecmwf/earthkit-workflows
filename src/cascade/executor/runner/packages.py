@@ -5,19 +5,20 @@ Note that venv itself is left untouched after the run finishes -- we extend sys 
 with a temporary directory and install in there
 """
 
-from contextlib import AbstractContextManager
-import tempfile
+import logging
+import os
 import subprocess
 import sys
-import os
-import logging
+import tempfile
+from contextlib import AbstractContextManager
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
+
 class PackagesEnv(AbstractContextManager):
     def __init__(self) -> None:
-        self.td: tempfile.TemporaryDirectory|None = None
+        self.td: tempfile.TemporaryDirectory | None = None
 
     def extend(self, packages: list[str]) -> None:
         if not packages:
@@ -30,7 +31,9 @@ class PackagesEnv(AbstractContextManager):
             # outside of site-packages. Thus we then install with --prefix, not with --target
             subprocess.run(venv_command, check=True)
 
-        logger.debug(f"installing {len(packages)} packages: {','.join(packages[:3])}{',...' if len(packages) > 3 else ''}")
+        logger.debug(
+            f"installing {len(packages)} packages: {','.join(packages[:3])}{',...' if len(packages) > 3 else ''}"
+        )
         install_command = ["uv", "pip", "install", "--prefix", self.td.name]
         if os.environ.get("VENV_OFFLINE", "") == "YES":
             install_command += ["--offline"]
@@ -45,5 +48,3 @@ class PackagesEnv(AbstractContextManager):
         if self.td is not None:
             self.td.cleanup()
         return False
-
-

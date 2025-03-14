@@ -37,7 +37,9 @@ class LocalServer:
             payload, client = self.receive()
             try:
                 if isinstance(payload, api.AllocateRequest):
-                    shmid, error = self.manager.add(payload.key, payload.l, payload.deser_fun)
+                    shmid, error = self.manager.add(
+                        payload.key, payload.l, payload.deser_fun
+                    )
                     if error:
                         response = api.AllocateResponse(shmid="", error=error)
                     else:
@@ -90,12 +92,17 @@ class LocalServer:
 
 
 def entrypoint(
-    port: int, capacity: int | None = None, logging_config: dict | None = None, shm_pref: str = "shm"
+    port: int,
+    capacity: int | None = None,
+    logging_config: dict | None = None,
+    shm_pref: str = "shm",
 ):
     if logging_config:
         logging.config.dictConfig(logging_config)
     server = LocalServer(port, shm_pref, capacity)
-    logger.info(f"shm server starting on {port=} with {capacity=} and prefix {shm_pref}")
+    logger.info(
+        f"shm server starting on {port=} with {capacity=} and prefix {shm_pref}"
+    )
     try:
         server.start()
     except Exception as e:

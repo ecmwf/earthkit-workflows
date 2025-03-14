@@ -2,24 +2,34 @@
 This module handles basic communication structures and functions
 """
 
-from dataclasses import dataclass
-import threading
 import logging
+import pickle
+import threading
 import time
+from dataclasses import dataclass
 
 import zmq
 
+from cascade.executor.msg import (
+    Ack,
+    BackboneAddress,
+    DatasetTransmitCommand,
+    DatasetTransmitPayload,
+    DatasetTransmitPayloadHeader,
+    Message,
+    Syn,
+)
+from cascade.executor.serde import des_message, ser_message
 from cascade.low.core import HostId
-from cascade.executor.msg import BackboneAddress, Message, DatasetTransmitCommand, DatasetTransmitPayload, Syn, Ack, DatasetTransmitPayloadHeader
-from cascade.executor.serde import ser_message, des_message
-import pickle
 
 logger = logging.getLogger(__name__)
 default_timeout_ms = 1_000
 default_message_resend_ms = 800
 
+
 class GraceWatcher:
     """For watching whether certain event occurred more than `grace_ms` ago"""
+
     def __init__(self, grace_ms: int):
         self.step_time_ms = 0
         self.log_time_ms = 0
@@ -52,19 +62,22 @@ class GraceWatcher:
         """How many ms elapsed since last `step()`"""
         return self._now() - self.step_time_ms
 
+
 def get_context() -> zmq.Context:
     local = threading.local()
-    if not hasattr(local, 'context'):
+    if not hasattr(local, "context"):
         local.context = zmq.Context()
     return local.context
 
+
 def get_socket(address: BackboneAddress) -> zmq.Socket:
-    socket = get_context().socket(zmq.PUSH) 
+    socket = get_context().socket(zmq.PUSH)
     # NOTE we set the linger in case the executor dies before consuming a message sent
     # by the child -- otherwise the child process would hang indefinitely
     socket.set(zmq.LINGER, 1000)
     socket.connect(address)
     return socket
+
 
 def callback(address: BackboneAddress, msg: Message):
     # NOTE should be used for local comms only, as does not prepend with Syn message
@@ -79,6 +92,7 @@ def send_data(address: BackboneAddress, data: DatasetTransmitPayload, syn: Syn) 
     byt = (ser_message(syn), pickle.dumps(data.header), data.value)
     socket.send_multipart(byt)
 
+
 class Listener:
     def __init__(self, address: BackboneAddress):
         self.address = address
@@ -86,9 +100,11 @@ class Listener:
         self.socket.bind(address)
         self.poller = zmq.Poller()
         self.poller.register(self.socket, flags=zmq.POLLIN)
-        self.acked: set[Syn] = set() # TODO eventually pop things from here (timestamp lapse?) to prevent mem growth
-    
-    def _recv_one(self, timeout_ms: int|None) -> Message|None:
+        self.acked: set[Syn] = (
+            set()
+        )  # TODO eventually pop things from here (timestamp lapse?) to prevent mem growth
+
+    def _recv_one(self, timeout_ms: int | None) -> Message | None:
         ready = self.poller.poll(timeout_ms if timeout_ms is not None else None)
         if len(ready) > 1:
             raise ValueError(f"unexpected number of socket events: {len(ready)}")
@@ -105,13 +121,17 @@ class Listener:
                 if len(data) == 1:
                     raise ValueError(f"unexpected message with Syn only")
                 if m0 in self.acked:
-                    logger.warning(f"received already-acked {m0}, assuming retry, dropping message")
+                    logger.warning(
+                        f"received already-acked {m0}, assuming retry, dropping message"
+                    )
                     return None
                 else:
                     self.acked.add(m0)
             elif isinstance(m0, DatasetTransmitPayloadHeader):
                 if len(data) != 2:
-                    raise ValueError(f"first message was payload header, but {len(data)=} != 2")
+                    raise ValueError(
+                        f"first message was payload header, but {len(data)=} != 2"
+                    )
                 else:
                     return DatasetTransmitPayload(header=m0, value=data[1])
             else:
@@ -123,7 +143,9 @@ class Listener:
                 raise ValueError(f"unexpected double Syn")
             elif isinstance(m1, DatasetTransmitPayloadHeader):
                 if len(data) != 3:
-                    raise ValueError(f"second message was payload header, but {len(data)=} != 3")
+                    raise ValueError(
+                        f"second message was payload header, but {len(data)=} != 3"
+                    )
                 else:
                     return DatasetTransmitPayload(header=m1, value=data[2])
             else:
@@ -131,7 +153,9 @@ class Listener:
                     raise ValueError(f"expected {len(data)=} to equal 2")
                 return m1
 
-    def recv_messages(self, timeout_ms: int|None = default_timeout_ms) -> list[Message]:
+    def recv_messages(
+        self, timeout_ms: int | None = default_timeout_ms
+    ) -> list[Message]:
         messages: list[Message] = []
         # logger.debug(f"receiving messages on {self.address} with {timeout_sec=}")
         message = self._recv_one(timeout_ms)
@@ -145,13 +169,15 @@ class Listener:
                     messages.append(message)
         return messages
 
+
 @dataclass
 class _InFlightRecord:
     host: HostId
     message: tuple[bytes, bytes]
     at: int
 
-class ReliableSender():
+
+class ReliableSender:
     def __init__(self, address: BackboneAddress, resend_grace_ms: int) -> None:
         self.hosts: dict[HostId, tuple[zmq.Socket, BackboneAddress]] = {}
         self.inflight: dict[int, _InFlightRecord] = {}
@@ -165,7 +191,9 @@ class ReliableSender():
     def send(self, host: HostId, m: Message) -> None:
         raw = ser_message(m)
         syn = ser_message(Syn(idx=self.idx, addr=self.address))
-        self.inflight[self.idx] = _InFlightRecord(host=host, message=(syn, raw), at=time.time_ns())
+        self.inflight[self.idx] = _InFlightRecord(
+            host=host, message=(syn, raw), at=time.time_ns()
+        )
         self.hosts[host][0].send_multipart((syn, raw))
         self.idx += 1
 
@@ -175,14 +203,18 @@ class ReliableSender():
         else:
             logger.warning(f"repeated ack of {idx=}, assuming repeated syn")
             # NOTE probably not worth checking syn counter, but we could
-        
+
     def maybe_retry(self) -> None:
         watermark = time.time_ns() - self.resend_grace
         for idx, record in self.inflight.items():
             if record.at < watermark:
-                logger.warning(f"retrying message {idx} due to not having it confirmed after {watermark-record.at}ns")
+                logger.warning(
+                    f"retrying message {idx} due to not having it confirmed after {watermark-record.at}ns"
+                )
                 if (socket := self.hosts.get(record.host, None)) is not None:
                     socket[0].send_multipart(record.message)
                     self.inflight[idx].at = time.time_ns()
                 else:
-                    logger.warning(f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown")
+                    logger.warning(
+                        f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown"
+                    )

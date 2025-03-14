@@ -5,11 +5,11 @@ from typing import Callable, cast
 
 import numpy as np
 
-from cascade.v0_contextgraph import Communicator, ContextGraph, Processor
 from cascade.graph import Graph, Node
 from cascade.taskgraph import Communication, Task, TaskGraph
 from cascade.transformers import to_execution_graph
 from cascade.utility import EventLoop, predecessors, successors
+from cascade.v0_contextgraph import Communicator, ContextGraph, Processor
 
 from .schedule import Schedule
 

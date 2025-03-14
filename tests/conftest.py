@@ -3,8 +3,8 @@ import functools
 import numpy as np
 import pytest
 
-from cascade.v0_contextgraph import ContextGraph
 from cascade.fluent import Payload, from_source
+from cascade.v0_contextgraph import ContextGraph
 
 
 @pytest.fixture(scope="function")

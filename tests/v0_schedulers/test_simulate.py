@@ -3,6 +3,8 @@ from contextlib import nullcontext as does_not_raise
 import pytest
 from schedule_utils import example_graph
 
+from cascade.taskgraph import Communication, Resources, Task
+from cascade.transformers import to_task_graph
 from cascade.v0_contextgraph import ContextGraph, Processor
 from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
 from cascade.v0_schedulers.schedule import Schedule
@@ -13,8 +15,6 @@ from cascade.v0_schedulers.simulate import (
     Simulator,
     TaskState,
 )
-from cascade.taskgraph import Communication, Resources, Task
-from cascade.transformers import to_task_graph
 
 
 @pytest.mark.parametrize(

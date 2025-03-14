@@ -8,14 +8,16 @@ Controlled by env var params: JOB1_{DATA_ROOT, GRID, ...}, see below
 
 import os
 from pathlib import Path
+
+import earthkit.data
 from ppcascade.fluent import from_source
-from cascade.fluent import from_source as c_from_source
-from ppcascade.utils.window import Range
 from ppcascade.utils.request import Request
-from cascade.graph import deduplicate_nodes, Graph
+from ppcascade.utils.window import Range
+
 from cascade.cascade import Cascade
 from cascade.fluent import Payload
-import earthkit.data
+from cascade.fluent import from_source as c_from_source
+from cascade.graph import Graph, deduplicate_nodes
 
 # *** PARAMS ***
 
@@ -39,64 +41,61 @@ files = [
 ]
 payloads = [
     Payload(
-        lambda f : earthkit.data.from_source("file", f),
+        lambda f: earthkit.data.from_source("file", f),
         (f,),
-    ) for f in files
+    )
+    for f in files
 ]
-inputs = from_source([
-    {
-        "source": "fileset", "location": data_root + "/data_{number}_{step}.grib",
-        "number": list(range(1, NUM_ENSEMBLES + 1)),
-        "step": list(range(0, END_STEP + 1, 3)),
-    }
-])
-climatology = from_source([
-    {
-        "source": "fileset", "location": data_root + "/data_clim_{stepRange}.grib",
-        "stepRange": ['0-24', '24-48'], # list(range(0, END_STEP - 23, 24)),
-    }
-])
+inputs = from_source(
+    [
+        {
+            "source": "fileset",
+            "location": data_root + "/data_{number}_{step}.grib",
+            "number": list(range(1, NUM_ENSEMBLES + 1)),
+            "step": list(range(0, END_STEP + 1, 3)),
+        }
+    ]
+)
+climatology = from_source(
+    [
+        {
+            "source": "fileset",
+            "location": data_root + "/data_clim_{stepRange}.grib",
+            "stepRange": ["0-24", "24-48"],  # list(range(0, END_STEP - 23, 24)),
+        }
+    ]
+)
 
 
 def get_prob():
-    prob_windows = [
-        Range(f"{x}-{x}", [x]) for x in range(0, END_STEP + 1, 24)
-    ] + [
-        Range(f"{x}-{x + 120}", list(range(x + 6, x + 121, 6))) for x in range(0, END_STEP  - 119, 120)
+    prob_windows = [Range(f"{x}-{x}", [x]) for x in range(0, END_STEP + 1, 24)] + [
+        Range(f"{x}-{x + 120}", list(range(x + 6, x + 121, 6)))
+        for x in range(0, END_STEP - 119, 120)
     ]
     return (
-        inputs
-        .window_operation(
-            "min",
-            prob_windows,
-            dim="step", batch_size=2)
+        inputs.window_operation("min", prob_windows, dim="step", batch_size=2)
         .ensemble_operation(
             "threshold_prob",
             comparison="<=",
             local_scale_factor=2,
-            value= 273.15,
+            value=273.15,
         )
         .graph()
     )
 
+
 def get_ensms():
     # Graph for computing ensemble mean and standard deviation for each time step
-    return (
-        inputs
-        .ensemble_operation("ensms", dim="number", batch_size=2)
-        .graph()
-    )
+    return inputs.ensemble_operation("ensms", dim="number", batch_size=2).graph()
+
 
 def get_efi():
     efi_windows = [
-        Range(f"{x}-{x+24}", list(range(x+6, x+25, 6))) for x in range(0, END_STEP - 23, 24)
+        Range(f"{x}-{x+24}", list(range(x + 6, x + 25, 6)))
+        for x in range(0, END_STEP - 23, 24)
     ]
     return (
-        inputs
-        .window_operation(
-            "mean",
-            efi_windows,
-            dim="step", batch_size=2)
+        inputs.window_operation("mean", efi_windows, dim="step", batch_size=2)
         .ensemble_extreme(
             "extreme",
             climatology,
@@ -108,13 +107,15 @@ def get_efi():
                 "gribTablesVersionNo": 132,
                 "indicatorOfParameter": 167,
                 "localDefinitionNumber": 19,
-                "timeRangeIndicator": 3
-            }
+                "timeRangeIndicator": 3,
+            },
         )
         .graph()
     )
 
+
 # *** DATA DOWNLOADERS ***
+
 
 def download_inputs():
     for number in range(1, NUM_ENSEMBLES + 1):
@@ -133,8 +134,9 @@ def download_inputs():
                 "grid": GRID,
             }
             data = earthkit.data.from_source("mars", **ekp)
-            with open(f"{data_root}/data_{number}_{step}.grib", 'wb') as f:
+            with open(f"{data_root}/data_{number}_{step}.grib", "wb") as f:
                 data.write(f)
+
 
 def download_climatology():
     for step in range(0, END_STEP - 23, 24):
@@ -152,8 +154,9 @@ def download_climatology():
             "grid": GRID,
         }
         data = earthkit.data.from_source("mars", **ekp)
-        with open(f"{data_root}/data_clim_{step}.grib", 'wb') as f:
+        with open(f"{data_root}/data_clim_{step}.grib", "wb") as f:
             data.write(f)
+
 
 if __name__ == "__main__":
     download_inputs()

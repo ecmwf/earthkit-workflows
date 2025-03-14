@@ -4,30 +4,33 @@ Thin wrapper over a single Task/Callable
 Just io handling (ie, using Memory api), tracing and callable invocation
 """
 
-import logging
 import importlib
-from typing import Callable, Any
-from time import perf_counter_ns
+import logging
 from dataclasses import dataclass
+from time import perf_counter_ns
+from typing import Any, Callable
 
-from cascade.low.core import TaskDefinition, DatasetId, TaskId, TaskInstance
-from cascade.low.func import ensure, assert_never, assert_iter_empty, resolve_callable
-from cascade.executor.msg import TaskSequence, BackboneAddress
 from cascade.executor.comms import callback
-from cascade.low.tracing import mark, TaskLifecycle, Microtrace, trace
+from cascade.executor.msg import BackboneAddress, TaskSequence
 from cascade.executor.runner.memory import Memory
+from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
+from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
+from cascade.low.tracing import Microtrace, TaskLifecycle, mark, trace
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class ExecutionContext:
     """A projection of JobInstance relevant to particular TaskSequence"""
+
     # NOTE once we have long lived workers, this would be replaced by full JobInstance present at the worker
     tasks: dict[TaskId, TaskInstance]
     # int: pos argument, str: kw argument. Values are dsid + annotation
-    param_source: dict[TaskId, dict[int|str, tuple[DatasetId, str]]]
+    param_source: dict[TaskId, dict[int | str, tuple[DatasetId, str]]]
     callback: BackboneAddress
     publish: set[DatasetId]
+
 
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
     start = perf_counter_ns()
@@ -51,7 +54,9 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     kwargs: dict[str, Any] = {}
     kwargs.update(task.static_input_kw)
 
-    for param_pos, (dataset_id, annotation) in executionContext.param_source[taskId].items():
+    for param_pos, (dataset_id, annotation) in executionContext.param_source[
+        taskId
+    ].items():
         value = memory.provide(dataset_id, annotation)
         if isinstance(param_pos, str):
             kwargs[param_pos] = value
@@ -79,17 +84,26 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     if outputsN == 1:
         outputKey, outputSchema = outputs[0]
         outputId = DatasetId(taskId, outputKey)
-        memory.handle(outputId, outputSchema, result, outputId in executionContext.publish)
+        memory.handle(
+            outputId, outputSchema, result, outputId in executionContext.publish
+        )
         mark({"task": taskId, "action": TaskLifecycle.published})
     else:
         outputsI = iter(outputs)
         for (outputKey, outputSchema), outputValue in zip(outputsI, result):
             outputId = DatasetId(taskId, outputKey)
-            memory.handle(outputId, outputSchema, outputValue, outputId in executionContext.publish)
+            memory.handle(
+                outputId,
+                outputSchema,
+                outputValue,
+                outputId in executionContext.publish,
+            )
         if not assert_iter_empty(outputsI):
             raise ValueError(f"schema declared more outputs than there were results")
         if not assert_iter_empty(result):
-            raise ValueError(f"function produced more results than there were schema outputs")
+            raise ValueError(
+                f"function produced more results than there were schema outputs"
+            )
         # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
         mark({"task": taskId, "action": TaskLifecycle.computed})
         run_end = perf_counter_ns()

@@ -1,10 +1,10 @@
 import functools
 from typing import cast
 
-from cascade.v0_contextgraph import ContextGraph, Processor
 from cascade.graph import Graph
 from cascade.taskgraph import TaskGraph
 from cascade.transformers import to_task_graph
+from cascade.v0_contextgraph import ContextGraph, Processor
 
 from .schedule import Schedule
 from .simulate import ContextState, ExecutionState, Simulator

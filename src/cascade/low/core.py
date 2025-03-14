@@ -2,12 +2,12 @@
 Core graph data structures -- prescribes most of the API
 """
 
+import re
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-import re
-from typing import Any, Callable, Optional, cast, Type
+from typing import Any, Callable, Optional, Type, cast
 
 import cloudpickle
 from pydantic import BaseModel, Field, model_validator
@@ -21,6 +21,7 @@ from typing_extensions import Self
 # Thus, if there are no genuine outputs, we insert a `placeholder: str` output
 # and expect every executor to generate some value like "ok" in such case
 NO_OUTPUT_PLACEHOLDER = "__NO_OUTPUT__"
+
 
 # Definitions
 class TaskDefinition(BaseModel):
@@ -42,7 +43,9 @@ class TaskDefinition(BaseModel):
     output_schema: dict[str, str] = Field(
         description="kv of outputs and their types (fqn of class). Assumes key-sorted corresponds to func output order"
     )
-    needs_gpu: bool = Field(False) # NOTE unstable contract, will change. Note we support at most one GPU per task
+    needs_gpu: bool = Field(
+        False
+    )  # NOTE unstable contract, will change. Note we support at most one GPU per task
 
     @staticmethod
     def func_dec(f: str) -> Callable:
@@ -52,7 +55,9 @@ class TaskDefinition(BaseModel):
     def func_enc(f: Callable) -> str:
         return b64encode(cloudpickle.dumps(f)).decode("ascii")
 
+
 TaskId = str
+
 
 @dataclass(frozen=True)
 class DatasetId:
@@ -61,6 +66,7 @@ class DatasetId:
 
     def __repr__(self) -> str:
         return f"{self.task}.{self.output}"
+
 
 class Task2TaskEdge(BaseModel):
     source: DatasetId
@@ -74,6 +80,7 @@ class JobDefinition(BaseModel):
     definitions: dict[TaskId, TaskDefinition]
     edges: list[Task2TaskEdge]
 
+
 # Instances
 class TaskInstance(BaseModel):
     definition: TaskDefinition
@@ -84,6 +91,7 @@ class TaskInstance(BaseModel):
         description="input parameters for the entrypoint. Must be json/msgpack-serializable"
     )
 
+
 class JobInstance(BaseModel):
     tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
@@ -93,9 +101,14 @@ class JobInstance(BaseModel):
     )
 
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
-        return {DatasetId(task_id, output) for output in self.tasks[task_id].definition.output_schema.keys()}
+        return {
+            DatasetId(task_id, output)
+            for output in self.tasks[task_id].definition.output_schema.keys()
+        }
+
 
 HostId = str
+
 
 @dataclass(frozen=True)
 class WorkerId:
@@ -115,6 +128,7 @@ class WorkerId:
         # TODO this should actually be precalculated at *Environment* construction, to modulo by gpu count etc
         return int(cast(re.Match[str], re.match("[^0-9]*([0-9]*)", self.worker))[1])
 
+
 # Execution
 class Worker(BaseModel):
     # NOTE we may want to extend cpu/gpu over time with more rich information
@@ -123,8 +137,10 @@ class Worker(BaseModel):
     gpu: int
     memory_mb: int
 
+
 class Environment(BaseModel):
     workers: dict[WorkerId, Worker]
+
 
 class TaskExecutionRecord(BaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds
@@ -139,6 +155,7 @@ class TaskExecutionRecord(BaseModel):
 # possibly made configurable, overridable -- quite job dependent
 no_record_ts = TaskExecutionRecord(cpuseconds=1, memory_mb=1)
 no_record_ds = 1
+
 
 class JobExecutionRecord(BaseModel):
     tasks: dict[TaskId, TaskExecutionRecord] = Field(

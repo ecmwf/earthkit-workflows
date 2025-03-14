@@ -4,7 +4,8 @@ Utility functions and transformers for the core graph objects
 
 from collections import defaultdict
 
-from cascade.low.core import Task2TaskEdge, DatasetId, TaskId, JobInstance
+from cascade.low.core import DatasetId, JobInstance, Task2TaskEdge, TaskId
+
 
 def param_source(
     edges: list[Task2TaskEdge],
@@ -33,6 +34,7 @@ def dependants(edges: list[Task2TaskEdge]) -> dict[DatasetId, set[TaskId]]:
     for e in edges:
         rv[e.source].add(e.sink_task)
     return rv
+
 
 def sinks(job: JobInstance) -> set[DatasetId]:
     non_sinks = {k for k, v in dependants(job.edges).items() if v}

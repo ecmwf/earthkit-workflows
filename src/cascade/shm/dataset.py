@@ -28,13 +28,17 @@ logger = logging.getLogger(__name__)
 def get_capacity() -> int:
     try:
         r = subprocess.run(
-            ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"], check=True, capture_output=True
+            ["findmnt", "-b", "-o", "AVAIL", "/dev/shm"],
+            check=True,
+            capture_output=True,
         )
         # be careful -- hpc clusters have typically more rich output of findmnt
         avail = r.stdout.decode("ascii").split("\n")[1].strip()
         return int(avail)
     except FileNotFoundError:
-        return 128 * (1024**3) # gets likely trimmed later... this is for macos which doest have findmnt
+        return 128 * (
+            1024**3
+        )  # gets likely trimmed later... this is for macos which doest have findmnt
 
 
 class DatasetStatus(int, Enum):
@@ -138,7 +142,7 @@ class Manager:
 
         h = hashlib.new("md5", usedforsecurity=False)
         h.update((key).encode())
-        shmid = self.prefix + h.hexdigest()[:(24 - len(self.prefix))]
+        shmid = self.prefix + h.hexdigest()[: (24 - len(self.prefix))]
 
         self.datasets[key] = Dataset(
             shmid=shmid,
@@ -271,11 +275,13 @@ class Manager:
                 ds = self.datasets[key]
                 if ds.ongoing_reads and not is_exit:
                     # logging as debug because this is a common and legit scenario due to scheduler speed
-                    logger.debug(f"premature purge of {key} while there are still reads, delaying")
+                    logger.debug(
+                        f"premature purge of {key} while there are still reads, delaying"
+                    )
                     ds.delayed_purge = True
                     return
             except Exception:
-                if not is_exit: # if this happens during exit, its acceptable race
+                if not is_exit:  # if this happens during exit, its acceptable race
                     raise
                 else:
                     return
@@ -294,7 +300,7 @@ class Manager:
             logger.debug(f"attempting purge-unlink of {key} with {ds.shmid}")
             shm.unlink()
             shm.close()
-            if not is_exit: # we dont want to lock at exit, we may hang out unhealthily
+            if not is_exit:  # we dont want to lock at exit, we may hang out unhealthily
                 with self.pageout_one:
                     self.free_space += ds.size
             self.datasets.pop(key)
@@ -306,5 +312,5 @@ class Manager:
     def atexit(self) -> None:
         keys = list(self.datasets.keys())
         for key in keys:
-            self.purge(key, is_exit = True)
+            self.purge(key, is_exit=True)
         self.disk.atexit()

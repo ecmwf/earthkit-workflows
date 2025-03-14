@@ -1,7 +1,9 @@
 from collections import defaultdict
+
 from cascade.low.core import TaskId
-from cascade.scheduler.core import Task2TaskDistance, TaskValue, Preschedule
+from cascade.scheduler.core import Preschedule, Task2TaskDistance, TaskValue
 from cascade.scheduler.graph import decompose, enrich
+
 
 def _oedge2iedge(edge_o: dict[TaskId, set[TaskId]]) -> dict[TaskId, set[TaskId]]:
     edge_i: dict[TaskId, set[TaskId]] = defaultdict(set)
@@ -10,16 +12,20 @@ def _oedge2iedge(edge_o: dict[TaskId, set[TaskId]]) -> dict[TaskId, set[TaskId]]
             edge_i[i] = edge_i[i].union({v})
     return edge_i
 
+
 def test_decompose():
     # comp1: v0 -> v1 -> v2 + v3 -> v1
     # comp2: v4 -> v5, v4 -> v6
     nodes = [f"v{i}" for i in range(7)]
-    edge_o = defaultdict(set, **{
-        "v0": {"v1"},
-        "v1": {"v2"},
-        "v3": {"v1"},
-        "v4": {"v5", "v6"},
-    })
+    edge_o = defaultdict(
+        set,
+        **{
+            "v0": {"v1"},
+            "v1": {"v2"},
+            "v3": {"v1"},
+            "v4": {"v5", "v6"},
+        },
+    )
     edge_i = _oedge2iedge(edge_o)
 
     expected = {
@@ -29,21 +35,25 @@ def test_decompose():
     for component in decompose(nodes, edge_i, edge_o):
         e = (frozenset(component[0]), frozenset(component[1]))
         expected.remove(e)
-    
+
     assert expected == set()
+
 
 def test_enrich():
     # v0 -> v1 -> v2
     # v3 -> v1
     # v4 -> v5 -> v2
     # v4 -> v6
-    edge_o = defaultdict(set, **{
-        "v0": {"v1"},
-        "v1": {"v2"},
-        "v3": {"v1"},
-        "v4": {"v5", "v6"},
-        "v5": {"v2"},
-    })
+    edge_o = defaultdict(
+        set,
+        **{
+            "v0": {"v1"},
+            "v1": {"v2"},
+            "v3": {"v1"},
+            "v4": {"v5", "v6"},
+            "v5": {"v2"},
+        },
+    )
     edge_i = _oedge2iedge(edge_o)
     component = (list(set(edge_o.keys()).union(set(edge_i.keys()))), ["v0", "v3", "v4"])
 

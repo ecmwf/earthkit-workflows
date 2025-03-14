@@ -1,21 +1,34 @@
 import logging
-from typing import Any
-from cascade.low.core import JobInstance, DatasetId, Environment, WorkerId, TaskId
-from cascade.low.views import param_source, dependants
-from cascade.scheduler.core import Preschedule, has_computable, has_awaitable, Assignment
-from cascade.scheduler.api import initialize, assign, plan
-from cascade.executor.bridge import Bridge, Event
-from cascade.scheduler.core import State, TaskStatus
-from cascade.controller.notify import notify
-from cascade.controller.act import act, flush_queues
 from time import perf_counter_ns
-from cascade.low.tracing import mark, label, ControllerPhases, Microtrace, timer
-from cascade.low.func import assert_never
+from typing import Any
+
 import cascade.executor.serde as serde
+from cascade.controller.act import act, flush_queues
+from cascade.controller.notify import notify
+from cascade.executor.bridge import Bridge, Event
+from cascade.low.core import DatasetId, Environment, JobInstance, TaskId, WorkerId
+from cascade.low.func import assert_never
+from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
+from cascade.low.views import dependants, param_source
+from cascade.scheduler.api import assign, initialize, plan
+from cascade.scheduler.core import (
+    Assignment,
+    Preschedule,
+    State,
+    TaskStatus,
+    has_awaitable,
+    has_computable,
+)
 
 logger = logging.getLogger(__name__)
 
-def run(job: JobInstance, bridge: Bridge, preschedule: Preschedule, outputs: set[DatasetId]|None = None) -> State:
+
+def run(
+    job: JobInstance,
+    bridge: Bridge,
+    preschedule: Preschedule,
+    outputs: set[DatasetId] | None = None,
+) -> State:
     if outputs is None:
         outputs = set()
     env = bridge.get_environment()
@@ -23,7 +36,7 @@ def run(job: JobInstance, bridge: Bridge, preschedule: Preschedule, outputs: set
     state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
     label("host", "controller")
     events: list[Event] = []
-    for (serdeType, (serdeSer, serdeDes)) in job.serdes.items():
+    for serdeType, (serdeSer, serdeDes) in job.serdes.items():
         serde.SerdeRegistry.register(serdeType, serdeSer, serdeDes)
 
     try:

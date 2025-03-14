@@ -2,15 +2,24 @@
 Tests running a Callable in the same process
 """
 
-from cascade.executor.msg import TaskSequence, DatasetPublished
-from cascade.low.core import WorkerId, TaskDefinition, TaskInstance, DatasetId, JobInstance, Task2TaskEdge
-from cascade.low.views import param_source
-import cascade.executor.serde as serde
-import cascade.shm.client as shm_cli
+import pytest
+
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
+import cascade.executor.serde as serde
+import cascade.shm.client as shm_cli
+from cascade.executor.msg import DatasetPublished, TaskSequence
 from cascade.executor.runner.packages import PackagesEnv
-import pytest
+from cascade.low.core import (
+    DatasetId,
+    JobInstance,
+    Task2TaskEdge,
+    TaskDefinition,
+    TaskInstance,
+    WorkerId,
+)
+from cascade.low.views import param_source
+
 
 def test_runner(monkeypatch):
     worker = WorkerId("h0", "w0")
@@ -19,17 +28,36 @@ def test_runner(monkeypatch):
     monkeypatch.setattr(shm_cli, "is_unregister", False)
     test_address = "zmq:test"
     msgs = []
+
     def verify_msg(address, msg):
         assert address == test_address
         msgs.append(msg)
+
     monkeypatch.setattr(memory, "callback", verify_msg)
     monkeypatch.setattr(entrypoint, "callback", verify_msg)
 
-    def allocate(key: str, l: int, timeout_sec: float = 60.0) -> shm_cli.AllocatedBuffer:
-        return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=l, create=True, close_callback=lambda : None, deser_fun="cloudpickle.loads")
+    def allocate(
+        key: str, l: int, timeout_sec: float = 60.0
+    ) -> shm_cli.AllocatedBuffer:
+        return shm_cli.AllocatedBuffer(
+            shmid=f"test_{key}",
+            l=l,
+            create=True,
+            close_callback=lambda: None,
+            deser_fun="cloudpickle.loads",
+        )
+
     monkeypatch.setattr(shm_cli, "allocate", allocate)
+
     def get(key: str, timeout_sec: float = 60.0) -> shm_cli.AllocatedBuffer:
-        return shm_cli.AllocatedBuffer(shmid=f"test_{key}", l=1024, create=False, close_callback=lambda : None, deser_fun="cloudpickle.loads")
+        return shm_cli.AllocatedBuffer(
+            shmid=f"test_{key}",
+            l=1024,
+            create=False,
+            close_callback=lambda: None,
+            deser_fun="cloudpickle.loads",
+        )
+
     monkeypatch.setattr(shm_cli, "get", get)
 
     # test 1: no tasks
@@ -50,7 +78,7 @@ def test_runner(monkeypatch):
     assert msgs == []
 
     def test_func(x):
-        return x+1
+        return x + 1
 
     # test 2: one task with a single static input and a published output
     task_definition = TaskDefinition(
@@ -70,10 +98,7 @@ def test_runner(monkeypatch):
         tasks=["t2"],
         publish={t2ds},
     )
-    oneTaskJob = JobInstance(
-        tasks = {"t2": t2},
-        edges = []
-    )
+    oneTaskJob = JobInstance(tasks={"t2": t2}, edges=[])
     oneTaskRc = entrypoint.RunnerContext(
         workerId=worker,
         callback=test_address,
@@ -83,12 +108,10 @@ def test_runner(monkeypatch):
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
         entrypoint.execute_sequence(oneTaskTs, memoryInstance, pckg, oneTaskRc)
-    assert msgs == [
-        DatasetPublished(origin=worker, ds=t2ds, transmit_idx=None)
-    ]
+    assert msgs == [DatasetPublished(origin=worker, ds=t2ds, transmit_idx=None)]
     msgs = []
     so = get(memory.ds2shmid(t2ds))
-    assert serde.des_output(so.view(), 'int', so.deser_fun) == 2
+    assert serde.des_output(so.view(), "int", so.deser_fun) == 2
     so.close()
 
     # test 3: two task pipeline
@@ -110,8 +133,12 @@ def test_runner(monkeypatch):
         publish={t3o},
     )
     twoTaskJob = JobInstance(
-        tasks = {"t3a": t3a, "t3b": t3b},
-        edges = [Task2TaskEdge(source=t3i, sink_task="t3b", sink_input_kw="x", sink_input_ps=None)],
+        tasks={"t3a": t3a, "t3b": t3b},
+        edges=[
+            Task2TaskEdge(
+                source=t3i, sink_task="t3b", sink_input_kw="x", sink_input_ps=None
+            )
+        ],
     )
     twoTaskRc = entrypoint.RunnerContext(
         workerId=worker,
@@ -127,14 +154,16 @@ def test_runner(monkeypatch):
     ]
     msgs = []
     so = get(memory.ds2shmid(t3o))
-    assert serde.des_output(so.view(), 'int', so.deser_fun) == 4
+    assert serde.des_output(so.view(), "int", so.deser_fun) == 4
     so.close()
 
     # test 4: generator
     N = 4
+
     def gen_func():
         for i in range(N):
             yield i
+
     gen_definition = TaskDefinition(
         func=TaskDefinition.func_enc(gen_func),
         environment=[],
@@ -159,8 +188,16 @@ def test_runner(monkeypatch):
         publish=set(t4pOutputs),
     )
     t4Job = JobInstance(
-        tasks = {**{"t4g": t4g}, **{f"t4c{i}": t4c for i in range(N)}},
-        edges = [Task2TaskEdge(source=t4gOutputs[i], sink_task=f"t4c{i}", sink_input_kw="x", sink_input_ps=None) for i in range(N)],
+        tasks={**{"t4g": t4g}, **{f"t4c{i}": t4c for i in range(N)}},
+        edges=[
+            Task2TaskEdge(
+                source=t4gOutputs[i],
+                sink_task=f"t4c{i}",
+                sink_input_kw="x",
+                sink_input_ps=None,
+            )
+            for i in range(N)
+        ],
     )
     t4Rc = entrypoint.RunnerContext(
         workerId=worker,
@@ -179,6 +216,5 @@ def test_runner(monkeypatch):
     ]
     for i, o in enumerate(t4pOutputs):
         so = get(memory.ds2shmid(o))
-        assert serde.des_output(so.view(), 'int', so.deser_fun) == i+1
+        assert serde.des_output(so.view(), "int", so.deser_fun) == i + 1
         so.close()
-

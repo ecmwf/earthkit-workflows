@@ -10,10 +10,12 @@ import cascade.shm.api as api
 logger = logging.getLogger(__name__)
 
 # TODO eleminate in favour of track=False, once we are on python 3.13+
-is_unregister = True # NOTE exposed for pytest control
+is_unregister = True  # NOTE exposed for pytest control
+
 
 class ConflictError(Exception):
     pass
+
 
 class AllocatedBuffer:
     def __init__(
@@ -92,11 +94,15 @@ def close_callback(key: str, rdid: str) -> None:
     _send_command(comm, api.OkResponse)
 
 
-def allocate(key: str, l: int, deser_fun: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
+def allocate(
+    key: str, l: int, deser_fun: str, timeout_sec: float = 60.0
+) -> AllocatedBuffer:
     comm = api.AllocateRequest(key=key, l=l, deser_fun=deser_fun)
     resp = _send_command(comm, api.AllocateResponse, timeout_sec)
     callback = lambda: close_callback(key, "")
-    return AllocatedBuffer(shmid=resp.shmid, l=l, create=True, close_callback=callback, deser_fun=deser_fun)
+    return AllocatedBuffer(
+        shmid=resp.shmid, l=l, create=True, close_callback=callback, deser_fun=deser_fun
+    )
 
 
 def get(key: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
@@ -104,7 +110,11 @@ def get(key: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
     resp = _send_command(comm, api.GetResponse, timeout_sec)
     callback = lambda: close_callback(key, resp.rdid)
     return AllocatedBuffer(
-        shmid=resp.shmid, l=resp.l, deser_fun=resp.deser_fun, create=False, close_callback=callback
+        shmid=resp.shmid,
+        l=resp.l,
+        deser_fun=resp.deser_fun,
+        create=False,
+        close_callback=callback,
     )
 
 

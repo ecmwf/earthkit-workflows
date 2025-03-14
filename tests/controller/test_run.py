@@ -2,28 +2,42 @@
 For a given graph and instant executor, check that things complete
 """
 
-from multiprocessing import Process
 from logging.config import dictConfig
+from multiprocessing import Process
 
 from cascade.controller.impl import run
-from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import Environment, JobExecutionRecord, TaskExecutionRecord, JobInstance
-from cascade.scheduler.graph import precompute
+from cascade.executor.bridge import Bridge
+from cascade.executor.comms import callback
 from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
-from cascade.executor.bridge import Bridge
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.executor.comms import callback
+from cascade.low.builders import JobBuilder, TaskBuilder
+from cascade.low.core import (
+    Environment,
+    JobExecutionRecord,
+    JobInstance,
+    TaskExecutionRecord,
+)
+from cascade.scheduler.graph import precompute
 
 
 def _payload(a: int, b: int) -> int:
     return a + b
 
-def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int, i: int):
+
+def launch_executor(
+    job_instance: JobInstance,
+    controller_address: BackboneAddress,
+    portBase: int,
+    i: int,
+):
     dictConfig(logging_config)
-    executor = Executor(job_instance, controller_address, 2, f"test_executor{i}", portBase)
+    executor = Executor(
+        job_instance, controller_address, 2, f"test_executor{i}", portBase
+    )
     executor.register()
     executor.recv_loop()
+
 
 def run_cluster(job: JobInstance, portBase: int, executors: int):
     preschedule = precompute(job)
@@ -31,7 +45,7 @@ def run_cluster(job: JobInstance, portBase: int, executors: int):
     m = f"tcp://localhost:{portBase+1}"
     ps = []
     for i, executor in enumerate(range(executors)):
-        p = Process(target=launch_executor, args=(job, c, portBase+1+i*10, i))
+        p = Process(target=launch_executor, args=(job, c, portBase + 1 + i * 10, i))
         p.start()
         ps.append(p)
     try:
@@ -42,9 +56,11 @@ def run_cluster(job: JobInstance, portBase: int, executors: int):
             if p.is_alive():
                 callback(m, ExecutorShutdown())
                 import time
+
                 time.sleep(1)
                 p.kill()
         raise
+
 
 def test_simple():
     # 2-node graph
@@ -59,6 +75,7 @@ def test_simple():
         .get_or_raise()
     )
     run_cluster(job, 12335, 1)
+
 
 def test_para():
     # 3-component graph:

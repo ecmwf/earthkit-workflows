@@ -3,16 +3,31 @@ Utility functions for handling assignments -- invocation assumed from scheduler.
 for all other purposes this should be treated private
 """
 
-from collections import defaultdict
 import logging
+from collections import defaultdict
 from time import perf_counter_ns
 from typing import Iterator
 
-from cascade.low.core import WorkerId, DatasetId, TaskId, HostId, Environment, JobInstance
-from cascade.low.tracing import trace, Microtrace
-from cascade.scheduler.core import State, Assignment, DatasetStatus, Worker2TaskDistance, ComponentId, Task2TaskDistance
+from cascade.low.core import (
+    DatasetId,
+    Environment,
+    HostId,
+    JobInstance,
+    TaskId,
+    WorkerId,
+)
+from cascade.low.tracing import Microtrace, trace
+from cascade.scheduler.core import (
+    Assignment,
+    ComponentId,
+    DatasetStatus,
+    State,
+    Task2TaskDistance,
+    Worker2TaskDistance,
+)
 
 logger = logging.getLogger(__name__)
+
 
 def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment:
     eligible_load = {DatasetStatus.preparing, DatasetStatus.available}
@@ -21,11 +36,18 @@ def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment
     for dataset in state.edge_i[task]:
         at_worker = state.worker2ds[worker]
         if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
-            if state.host2ds[worker.host].get(dataset, DatasetStatus.missing) in eligible_load:
+            if (
+                state.host2ds[worker.host].get(dataset, DatasetStatus.missing)
+                in eligible_load
+            ):
                 # NOTE this currently leads to no-op, but with persistent workers would possibly allow an early fetch
                 prep.append((dataset, worker.host))
             else:
-                if any(candidate := host for host, status in state.ds2host[dataset].items() if status in eligible_transmit):
+                if any(
+                    candidate := host
+                    for host, status in state.ds2host[dataset].items()
+                    if status in eligible_transmit
+                ):
                     prep.append((dataset, candidate))
                     # NOTE this is a slight hack, to prevent issuing further transmit commands of this ds to this host
                     # in this phase. A proper state transition happens later in the `plan` phase. We may want to instead
@@ -34,19 +56,25 @@ def build_assignment(worker: WorkerId, task: TaskId, state: State) -> Assignment
                     state.ds2host[dataset][worker.host] = DatasetStatus.preparing
                 else:
                     raise ValueError(f"{dataset=} not found in any host, whoa whoa!")
-            
-                
+
     return Assignment(
         worker=worker,
-        tasks=[task], # TODO eager fusing for outdeg=1? Or heuristic via ratio of outdeg vs workers@component?
+        tasks=[
+            task
+        ],  # TODO eager fusing for outdeg=1? Or heuristic via ratio of outdeg vs workers@component?
         prep=prep,
-        outputs={ # TODO trim for only the necessary ones
-            ds
-            for ds in state.task_o[task]
+        outputs={  # TODO trim for only the necessary ones
+            ds for ds in state.task_o[task]
         },
     )
 
-def _assignment_heuristic(state: State, tasks: list[TaskId], workers: list[WorkerId], component_id: ComponentId) -> Iterator[Assignment]:
+
+def _assignment_heuristic(
+    state: State,
+    tasks: list[TaskId],
+    workers: list[WorkerId],
+    component_id: ComponentId,
+) -> Iterator[Assignment]:
     """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component"""
     start = perf_counter_ns()
     component = state.components[component_id]
@@ -59,7 +87,7 @@ def _assignment_heuristic(state: State, tasks: list[TaskId], workers: list[Worke
         for idx, worker in enumerate(workers):
             if component.worker2task_distance[worker][task] == opt_dist:
                 end = perf_counter_ns()
-                trace(Microtrace.ctrl_assign, end-start)
+                trace(Microtrace.ctrl_assign, end - start)
                 yield build_assignment(worker, task, state)
                 start = perf_counter_ns()
                 workers.pop(idx)
@@ -85,7 +113,7 @@ def _assignment_heuristic(state: State, tasks: list[TaskId], workers: list[Worke
     for _, _, worker, task in candidates:
         if task in remaining_t and worker in remaining_w:
             end = perf_counter_ns()
-            trace(Microtrace.ctrl_assign, end-start)
+            trace(Microtrace.ctrl_assign, end - start)
             yield build_assignment(worker, task, state)
             start = perf_counter_ns()
             component.computable.pop(task)
@@ -97,9 +125,16 @@ def _assignment_heuristic(state: State, tasks: list[TaskId], workers: list[Worke
             component.weight -= 1
 
     end = perf_counter_ns()
-    trace(Microtrace.ctrl_assign, end-start)
+    trace(Microtrace.ctrl_assign, end - start)
 
-def assign_within_component(state: State, workers: list[WorkerId], component_id: ComponentId, job: JobInstance, env: Environment) -> Iterator[Assignment]:
+
+def assign_within_component(
+    state: State,
+    workers: list[WorkerId],
+    component_id: ComponentId,
+    job: JobInstance,
+    env: Environment,
+) -> Iterator[Assignment]:
     """We first handle gpu things, second cpu things, using the same algorithm for either case"""
     # TODO employ a more systematic solution and handle all multicriterially at once -- ideally together with adding support for multi-gpu-groups
     cpu_t: list[TaskId] = []
@@ -122,7 +157,10 @@ def assign_within_component(state: State, workers: list[WorkerId], component_id:
             cpu_w.append(worker)
     yield from _assignment_heuristic(state, cpu_t, cpu_w, component_id)
 
-def update_worker2task_distance(component_id: ComponentId, task: TaskId, worker: WorkerId, state: State) -> State:
+
+def update_worker2task_distance(
+    component_id: ComponentId, task: TaskId, worker: WorkerId, state: State
+) -> State:
     """For a given task and worker, consider all tasks at the worker and see if any attains a better distance to said
     task. If additionally the task is _already_ computable and the global minimum attained by `component.computable`
     is improved, set that too."""
@@ -150,6 +188,7 @@ def update_worker2task_distance(component_id: ComponentId, task: TaskId, worker:
 
     return state
 
+
 def set_worker2task_overhead(state: State, worker: WorkerId, task: TaskId) -> State:
     # NOTE beware this is used in migrate host2component as well as twice in notify. We may
     # want to later distinguish between `calc_new` (for migrate and new computable) vs
@@ -158,13 +197,13 @@ def set_worker2task_overhead(state: State, worker: WorkerId, task: TaskId) -> St
     # and dataset volumes
     overhead = 0
     for ds in state.edge_i[task]:
-        workerState = state.worker2ds[worker].get(ds, DatasetStatus.missing) 
+        workerState = state.worker2ds[worker].get(ds, DatasetStatus.missing)
         if workerState == DatasetStatus.available:
             continue
         if workerState == DatasetStatus.preparing:
             overhead += 1
             continue
-        hostState = state.host2ds[worker.host].get(ds, DatasetStatus.missing) 
+        hostState = state.host2ds[worker.host].get(ds, DatasetStatus.missing)
         if hostState == DatasetStatus.available or hostState == DatasetStatus.preparing:
             overhead += 10
             continue
@@ -172,14 +211,21 @@ def set_worker2task_overhead(state: State, worker: WorkerId, task: TaskId) -> St
     state.worker2task_overhead[worker][task] = overhead
     return state
 
-def migrate_to_component(host: HostId, component_id: ComponentId, state: State) -> State:
+
+def migrate_to_component(
+    host: HostId, component_id: ComponentId, state: State
+) -> State:
     """Assuming original component assigned to the host didn't have enough tasks anymore,
     we invoke this function and update state to reflect it"""
     state.host2component[host] = component_id
     component = state.components[component_id]
-    logger.debug(f"migrate {host=} to {component_id=} => {component.worker2task_values=}")
+    logger.debug(
+        f"migrate {host=} to {component_id=} => {component.worker2task_values=}"
+    )
     for worker in state.host2workers[host]:
-        component.worker2task_distance[worker] = defaultdict(lambda : component.core.depth)
+        component.worker2task_distance[worker] = defaultdict(
+            lambda: component.core.depth
+        )
         for task in component.worker2task_values:
             state = update_worker2task_distance(component_id, task, worker, state)
             state = set_worker2task_overhead(state, worker, task)
