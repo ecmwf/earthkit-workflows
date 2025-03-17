@@ -91,22 +91,24 @@ def test_executor():
     try:
         # register
         ms = l.recv_messages(None)
-        assert ms == [
-            ExecutorRegistration(
-                host="test_executor",
-                maddress=m1,
-                daddress=d1,
-                workers=[
-                    Worker(
-                        worker_id=WorkerId("test_executor", f"w{i}"),
-                        cpu=1,
-                        gpu=0,
-                        memory_mb=1024,
-                    )
-                    for i in range(4)
-                ],
-            ),
-        ]
+        expected_registration = ExecutorRegistration(
+            host="test_executor",
+            maddress=m1,
+            daddress=d1,
+            workers=[
+                Worker(
+                    worker_id=WorkerId("test_executor", f"w{i}"),
+                    cpu=1,
+                    gpu=0,
+                    memory_mb=1024,
+                )
+                for i in range(4)
+            ],
+        )
+        assert len(ms) >= 1
+        for m in ms:
+            # we may receive the registration multiple times due to retries
+            assert m == expected_registration
 
         # submit graph
         w0 = WorkerId("test_executor", "w0")
