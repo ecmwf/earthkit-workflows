@@ -3,6 +3,7 @@ import logging
 import cascade.executor.serde as serde
 from cascade.controller.act import act, flush_queues
 from cascade.controller.notify import notify
+from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
 from cascade.low.core import DatasetId, JobInstance
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
@@ -22,6 +23,7 @@ def run(
     bridge: Bridge,
     preschedule: Preschedule,
     outputs: set[DatasetId] | None = None,
+    report_address: str|None = None,
 ) -> State:
     if outputs is None:
         outputs = set()
@@ -32,6 +34,7 @@ def run(
     events: list[Event] = []
     for serdeType, (serdeSer, serdeDes) in job.serdes.items():
         serde.SerdeRegistry.register(serdeType, serdeSer, serdeDes)
+    reporter = Reporter(report_address)
 
     try:
         while has_computable(state) or has_awaitable(state):
@@ -51,7 +54,7 @@ def run(
             if has_awaitable(state):
                 logger.debug("about to await bridge")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
-                timer(notify, Microtrace.ctrl_notify)(state, job, events)
+                timer(notify, Microtrace.ctrl_notify)(state, job, events, reporter)
                 logger.debug(f"received {len(events)} events")
     except Exception:
         logger.error("crash in controller, shuting down")
@@ -60,4 +63,5 @@ def run(
         mark({"action": ControllerPhases.shutdown})
         logger.debug("shutting down executors")
         bridge.shutdown()
+        reporter.shutdown()
     return state

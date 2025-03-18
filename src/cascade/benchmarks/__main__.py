@@ -83,7 +83,7 @@ def launch_executor(
     executor.recv_loop()
 
 
-def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 12345):
+def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 12345, report_address: str|None = None):
     logging.config.dictConfig(logging_config)
     launch = perf_counter_ns()
     preschedule = precompute(job)
@@ -117,7 +117,7 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
     try:
         b = Bridge(c, hosts)
         start = perf_counter_ns()
-        run(job, b, preschedule)
+        run(job, b, preschedule, report_address)
         end = perf_counter_ns()
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
@@ -133,9 +133,9 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
         raise
 
 
-def main_local(job: str, workers_per_host: int, hosts: int = 1) -> None:
+def main_local(job: str, workers_per_host: int, hosts: int = 1, report_address: str|None = None) -> None:
     jobInstance = get_job(job)
-    run_locally(jobInstance, hosts, workers_per_host)
+    run_locally(jobInstance, hosts, workers_per_host, report_address)
 
 
 def main_dist(
@@ -145,6 +145,7 @@ def main_dist(
     hosts: int = 3,
     workers_per_host: int = 10,
     shm_vol_gb: int = 64,
+    report_address: str|None = None,
 ) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
     controller, 1+ for worker. Assumed to come from slurm procid."""
@@ -160,7 +161,7 @@ def main_dist(
         preschedule = preschedule_fut.result()
         tp.shutdown()
         start = perf_counter_ns()
-        run(jobInstance, b, preschedule)
+        run(jobInstance, b, preschedule, report_address)
         end = perf_counter_ns()
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"

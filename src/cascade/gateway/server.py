@@ -9,6 +9,7 @@ from cascade.gateway.client import parse_request, serialize_response
 import cascade.gateway.api as api
 from cascade.gateway.router import JobRouter
 from cascade.controller.report import JobProgress, deserialize
+from cascade.executor.comms import get_context
 
 def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
     rr = socket.recv()
@@ -16,7 +17,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
     rv: api.CascadeGatewayAPI
     if isinstance(m, api.SubmitJobRequest):
         try:
-            job_id = jobs.spawn_job(m.job, m.resources)
+            job_id = jobs.spawn_job(m.job)
             rv = api.SubmitJobResponse(job_id=job_id, error=None)
         except Exception as e:
             logger.exception(f"failed to spawn a job: {m}")
@@ -48,7 +49,7 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
         jobs.put_result(report.job_id, dataset_id, result)
 
 def serve(url: str) -> None:
-    cxt = zmq.Context()
+    cxt = get_context()
     sockets: list[zmq.Socket] = []
 
     fe = ctx.socket(zmq.REP)
