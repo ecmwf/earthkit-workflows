@@ -95,20 +95,20 @@ class State:
 
     # trackers
     # add by controller.notify, remove by scheduler.api.assign
-    idle_workers: set[WorkerId]  
+    idle_workers: set[WorkerId]
     # add by scheduler.api.plan, remove by controller.notify. A projection of worker2ts for running only
-    ongoing: dict[WorkerId, set[TaskId]]  
+    ongoing: dict[WorkerId, set[TaskId]]
     ongoing_total: int  # view of the above
     # NOTE the purging_tracker is also used in `consider_computable` and `api.plan` -- come up with a better name! Or separate lookup from tracker?
     # add by scheduler.api.initialize, remove by controller.notify
-    purging_tracker: dict[DatasetId, set[TaskId]]  
+    purging_tracker: dict[DatasetId, set[TaskId]]
     # add by controller.act post-fetch and by controller.notify, removed by controller.act.
     # TODO extend with `at`, for fine graining?
     purging_queue: list[DatasetId]
     # key add by scheduler.api.init, value add by controller.notify
-    outputs: dict[DatasetId, Any]  
+    outputs: dict[DatasetId, Any]
     # add by controller.notify, remove by controller.act
-    fetching_queue: dict[DatasetId, HostId]  
+    fetching_queue: dict[DatasetId, HostId]
 
 
 def has_computable(state: State) -> bool:

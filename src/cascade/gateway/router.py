@@ -24,6 +24,7 @@ from cascade.low.func import next_uuid
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class Job:
     socket: zmq.Socket
@@ -31,24 +32,38 @@ class Job:
     last_seen: int
     results: dict[DatasetId, bytes]
 
+
 def _spawn_local_job(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
-    base = ["python", "-m", "cascade.benchmarks", "local", "--job", job_spec.benchmark_name]
-    infra = ["--workers_per_host", f"{job_spec.workers_per_host}", "--hosts", f"{job_spec.hosts}"]
+    base = [
+        "python",
+        "-m",
+        "cascade.benchmarks",
+        "local",
+        "--job",
+        job_spec.benchmark_name,
+    ]
+    infra = [
+        "--workers_per_host",
+        f"{job_spec.workers_per_host}",
+        "--hosts",
+        f"{job_spec.hosts}",
+    ]
     report = ["--report_address", f"{addr},{job_id}"]
     job_env = {
         "GENERATORS_N": "8",
         "GENERATORS_K": "10",
         "GENERATORS_L": "4",
-    } # TODO this must be generic
-    subprocess.Popen(base + infra + report, env = {**os.environ, **job_env})
+    }  # TODO this must be generic
+    subprocess.Popen(base + infra + report, env={**os.environ, **job_env})
 
-class JobRouter():
+
+class JobRouter:
     def __init__(self, poller: zmq.Poller):
         self.poller = poller
         self.jobs = {}
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
-        job_id = next_uuid(self.jobs.keys(), lambda : str(uuid.uuid4()))
+        job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
         base_addr = f"tcp://{getfqdn()}"
         socket = get_context().socket(zmq.PULL)
         port = socket.bind_to_random_port(base_addr)
@@ -65,7 +80,9 @@ class JobRouter():
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
         return self.jobs[job_id].results[dataset_id]
 
-    def maybe_update(self, job_id: JobId, progress: JobProgress|None, timestamp: int) -> None:
+    def maybe_update(
+        self, job_id: JobId, progress: JobProgress | None, timestamp: int
+    ) -> None:
         if progress is None:
             return
         job = self.jobs[job_id]

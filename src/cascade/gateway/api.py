@@ -7,6 +7,7 @@ from cascade.low.core import DatasetId, Worker
 
 CascadeGatewayAPI = BaseModel
 
+
 @dataclass
 class JobSpec:
     benchmark_name: str
@@ -14,8 +15,10 @@ class JobSpec:
     workers_per_host: int
     hosts: int
 
+
 class SubmitJobRequest(CascadeGatewayAPI):
     job: JobSpec
+
 
 class SubmitJobResponse(CascadeGatewayAPI):
     job_id: JobId | None

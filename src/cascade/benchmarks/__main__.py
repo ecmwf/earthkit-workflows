@@ -83,7 +83,13 @@ def launch_executor(
     executor.recv_loop()
 
 
-def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 12345, report_address: str|None = None):
+def run_locally(
+    job: JobInstance,
+    hosts: int,
+    workers: int,
+    portBase: int = 12345,
+    report_address: str | None = None,
+):
     logging.config.dictConfig(logging_config)
     launch = perf_counter_ns()
     preschedule = precompute(job)
@@ -133,7 +139,9 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
         raise
 
 
-def main_local(job: str, workers_per_host: int, hosts: int = 1, report_address: str|None = None) -> None:
+def main_local(
+    job: str, workers_per_host: int, hosts: int = 1, report_address: str | None = None
+) -> None:
     jobInstance = get_job(job)
     run_locally(jobInstance, hosts, workers_per_host, report_address=report_address)
 
@@ -145,7 +153,7 @@ def main_dist(
     hosts: int = 3,
     workers_per_host: int = 10,
     shm_vol_gb: int = 64,
-    report_address: str|None = None,
+    report_address: str | None = None,
 ) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
     controller, 1+ for worker. Assumed to come from slurm procid."""

@@ -133,11 +133,13 @@ def assert_iter_empty(i: Iterator) -> bool:
     else:
         return False
 
+
 def next_uuid(s: Container[T], g: Callable[[], T]) -> T:
     while True:
         n = g()
         if n not in s:
             return n
+
 
 def resolve_callable(s: str) -> Callable:
     """For s = `a.b.func`, imports `a.b` and retrieves `func` Callable object"""

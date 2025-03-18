@@ -80,11 +80,13 @@ def consider_computable(state: State, dataset: DatasetId, host: HostId) -> State
 def is_last_output_of(dataset: DatasetId, job: JobInstance) -> bool:
     definition = job.tasks[dataset.task].definition
     # TODO change the definition to actually be the sorted list
-    last = sorted(definition.output_schema.keys())[-1]  
+    last = sorted(definition.output_schema.keys())[-1]
     return last == dataset.output
 
 
-def notify(state: State, job: JobInstance, events: Iterable[Event], reporter: Reporter) -> State:
+def notify(
+    state: State, job: JobInstance, events: Iterable[Event], reporter: Reporter
+) -> State:
     for event in events:
         if isinstance(event, DatasetPublished):
             logger.debug(f"received {event=}")

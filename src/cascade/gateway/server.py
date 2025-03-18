@@ -15,6 +15,7 @@ from cascade.gateway.router import JobRouter
 
 logger = logging.getLogger(__name__)
 
+
 def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
     rr = socket.recv()
     m = parse_request(rr)
@@ -46,6 +47,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
     response = serialize_response(rv)
     socket.send(response)
 
+
 def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
     raw = socket.recv()
     report = deserialize(raw)
@@ -53,6 +55,7 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
     jobs.maybe_update(report.job_id, report.current_status, report.timestamp)
     for dataset_id, result in report.results:
         jobs.put_result(report.job_id, dataset_id, result)
+
 
 def serve(url: str) -> None:
     ctx = get_context()

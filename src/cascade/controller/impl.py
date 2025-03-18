@@ -18,7 +18,7 @@ def run(
     bridge: Bridge,
     preschedule: Preschedule,
     outputs: set[DatasetId] | None = None,
-    report_address: str|None = None,
+    report_address: str | None = None,
 ) -> State:
     if outputs is None:
         outputs = set()
