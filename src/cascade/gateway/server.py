@@ -8,7 +8,7 @@ import logging
 import zmq
 
 import cascade.gateway.api as api
-from cascade.controller.report import JobProgress, deserialize
+from cascade.controller.report import deserialize
 from cascade.executor.comms import get_context
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter

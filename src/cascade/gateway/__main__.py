@@ -1,5 +1,4 @@
 import logging.config
-from multiprocessing import Process
 
 import fire
 

@@ -2,6 +2,7 @@
 Handles request & response communication for classes in gateway.api
 """
 
+import logging
 import threading
 from typing import cast
 
@@ -9,6 +10,8 @@ import orjson
 import zmq
 
 import cascade.gateway.api as api
+
+logger = logging.getLogger(__name__)
 
 
 def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAPI:
@@ -23,10 +26,10 @@ def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAP
             raise ValueError("field `clazz` must not be present in the message")
         d["clazz"] = type(m).__name__
         if not d["clazz"].endswith("Request"):
-            raise ValueError(f"message must be a Request")
+            raise ValueError("message must be a Request")
         b = orjson.dumps(d)
     except Exception as e:
-        logger.exception("failed to serialize message: {repr(m)[:32]}")
+        logger.exception(f"failed to serialize message: {repr(m)[:32]}")
         raise ValueError(
             f"failed to serialize message: {repr(m)[:32]} => {repr(e)[:32]}"
         )
@@ -37,21 +40,21 @@ def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAP
         s.send(b)
         rr = s.recv()
     except Exception as e:
-        logger.exception("failed to communicate on {url=}")
+        logger.exception(f"failed to communicate on {url=}")
         raise ValueError(f"failed to communicate on {url=} => {repr(e)[:32]}")
 
     try:
         rd = orjson.loads(rr)
         rdc = rd.pop("clazz")
         if not rdc.endswith("Response"):
-            raise ValueError(f"recieved message is not a Response")
+            raise ValueError("recieved message is not a Response")
         if d["clazz"][: -len("Request")] != rdc[: -len("Response")]:
-            raise ValueError(f"mismatch between sent and received classes")
-        if not rdc in api.__dict__.keys():
-            raise ValueError(f"message clazz not understood")
+            raise ValueError("mismatch between sent and received classes")
+        if rdc not in api.__dict__.keys():
+            raise ValueError("message clazz not understood")
         return cast(api.CascadeGatewayAPI, api.__dict__[rdc](**rd))
     except Exception as e:
-        logger.exception("failed to parse message: {rr[:32]}")
+        logger.exception(f"failed to parse message: {rr[:32]}")
         raise ValueError(f"failed to parse message: {rr[:32]} => {repr(e)[:32]}")
 
 
@@ -60,12 +63,12 @@ def parse_request(rr: bytes) -> api.CascadeGatewayAPI:
         rd = orjson.loads(rr)
         rdc = rd.pop("clazz")
         if not rdc.endswith("Request"):
-            raise ValueError(f"recieved message is not a Request")
-        if not rdc in api.__dict__.keys():
-            raise ValueError(f"message clazz not understood")
+            raise ValueError("recieved message is not a Request")
+        if rdc not in api.__dict__.keys():
+            raise ValueError("message clazz not understood")
         return cast(api.CascadeGatewayAPI, api.__dict__[rdc](**rd))
     except Exception as e:
-        logger.exception("failed to parse message: {rr[:32]}")
+        logger.exception(f"failed to parse message: {rr[:32]}")
         raise ValueError(f"failed to parse message: {rr[:32]} => {repr(e)[:32]}")
 
 
@@ -76,10 +79,10 @@ def serialize_response(m: api.CascadeGatewayAPI) -> bytes:
             raise ValueError("field `clazz` must not be present in the message")
         d["clazz"] = type(m).__name__
         if not d["clazz"].endswith("Response"):
-            raise ValueError(f"message must be a Response")
+            raise ValueError("message must be a Response")
         return orjson.dumps(d)
     except Exception as e:
-        logger.exception("failed to serialize message: {repr(m)[:32]}")
+        logger.exception(f"failed to serialize message: {repr(m)[:32]}")
         raise ValueError(
             f"failed to serialize message: {repr(m)[:32]} => {repr(e)[:32]}"
         )

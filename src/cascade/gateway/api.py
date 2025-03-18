@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 
 from cascade.controller.report import JobId, JobProgress
-from cascade.low.core import DatasetId, Worker
+from cascade.low.core import DatasetId
 
 CascadeGatewayAPI = BaseModel
 
