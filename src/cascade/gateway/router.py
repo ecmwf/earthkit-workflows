@@ -2,15 +2,20 @@
 Represents information about submitted jobs. The main business logic of `cascade.gateway`
 """
 
+import os
 import zmq
 import uuid
-import socket
+import logging
+import subprocess
+from socket import getfqdn
+from dataclasses import dataclass
 from cascade.low.core import DatasetId
 from cascade.low.func import next_uuid
 from cascade.controller.report import JobProgress, JobProgressStarted, JobProgressShutdown, JobId
 from cascade.gateway.api import JobSpec
 from cascade.executor.comms import get_context
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Job:
@@ -19,21 +24,32 @@ class Job:
     last_seen: int
     results: dict[DatasetId, bytes]
 
+def _spawn_local_job(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
+    base = ["python", "-m", "cascade.benchmarks", "local", "--job", job_spec.benchmark_name]
+    infra = ["--workers_per_host", f"{job_spec.workers_per_host}", "--hosts", f"{job_spec.hosts}"]
+    report = ["--report_address", f"{addr},{job_id}"]
+    job_env = {
+        "GENERATORS_N": "8",
+        "GENERATORS_K": "10",
+        "GENERATORS_L": "4",
+    } # TODO this must be generic
+    subprocess.Popen(base + infra + report, env = {**os.environ, **job_env})
+
 class JobRouter():
-    def __init__(self, sockets: list[zmq.Socket]):
-        self.sockets = sockets
+    def __init__(self, poller: zmq.Poller):
+        self.poller = poller
         self.jobs = {}
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda : str(uuid.uuid4()))
-        base_addr = f"tcp://{socket.getfqdn()}"
+        base_addr = f"tcp://{getfqdn()}"
         socket = get_context().socket(zmq.PULL)
         port = socket.bind_to_random_port(base_addr)
         full_addr = f"{base_addr}:{port}"
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
-        self.sockets.append(socket)
+        self.poller.register(socket, flags=zmq.POLLIN)
         self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
-        # TODO! spawn actually
+        _spawn_local_job(job_spec, full_addr, job_id)
         return job_id
 
     def progres_of(self, job_id: JobId) -> JobProgress:
@@ -47,12 +63,9 @@ class JobRouter():
             return
         job = self.jobs[job_id]
         if progress == JobProgressShutdown:
-            for i in range(self.sockets):
-                if self.sockets[i] == job.socket:
-                    self.sockets.pop(i)
-                    break
+            self.poller.unregister(job.socket)
             return
-        if job.last_seen >= timestamp
+        if job.last_seen >= timestamp:
             return
         else:
             job.progress = progress

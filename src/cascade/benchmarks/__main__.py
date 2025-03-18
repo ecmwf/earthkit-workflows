@@ -117,7 +117,7 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
     try:
         b = Bridge(c, hosts)
         start = perf_counter_ns()
-        run(job, b, preschedule, report_address)
+        run(job, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
@@ -135,7 +135,7 @@ def run_locally(job: JobInstance, hosts: int, workers: int, portBase: int = 1234
 
 def main_local(job: str, workers_per_host: int, hosts: int = 1, report_address: str|None = None) -> None:
     jobInstance = get_job(job)
-    run_locally(jobInstance, hosts, workers_per_host, report_address)
+    run_locally(jobInstance, hosts, workers_per_host, report_address=report_address)
 
 
 def main_dist(

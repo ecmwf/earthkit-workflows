@@ -4,6 +4,7 @@ here we just match the right method of `gateway.router` based on what message we
 """
 
 import zmq
+import logging
 
 from cascade.gateway.client import parse_request, serialize_response
 import cascade.gateway.api as api
@@ -11,9 +12,12 @@ from cascade.gateway.router import JobRouter
 from cascade.controller.report import JobProgress, deserialize
 from cascade.executor.comms import get_context
 
+logger = logging.getLogger(__name__)
+
 def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
     rr = socket.recv()
     m = parse_request(rr)
+    logger.debug(f"received frontend request {m}")
     rv: api.CascadeGatewayAPI
     if isinstance(m, api.SubmitJobRequest):
         try:
@@ -44,21 +48,24 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
 def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
     raw = socket.recv()
     report = deserialize(raw)
+    logger.debug(f"received controller message {report}")
     jobs.maybe_update(report.job_id, report.current_status, report.timestamp)
     for dataset_id, result in report.results:
         jobs.put_result(report.job_id, dataset_id, result)
 
 def serve(url: str) -> None:
-    cxt = get_context()
-    sockets: list[zmq.Socket] = []
+    ctx = get_context()
+    poller = zmq.Poller()
 
     fe = ctx.socket(zmq.REP)
-    sockets.append(fe)
-    jobs = JobRouter(sockets)
+    fe.bind(url)
+    poller.register(fe, flags=zmq.POLLIN)
+    jobs = JobRouter(poller)
 
+    logger.debug("entering recv loop")
     while True:
-        ready = zmq.poll(sockets, timeout=None)
-        for socket in ready:
+        ready = poller.poll(None)
+        for socket, _ in ready:
             if socket == fe:
                 handle_fe(socket, jobs)
             else:

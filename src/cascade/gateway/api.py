@@ -1,4 +1,4 @@
-from dataclasess import dataclass
+from dataclasses import dataclass
 from pydantic import BaseModel
 
 from cascade.low.core import DatasetId, Worker
@@ -10,7 +10,8 @@ CascadeGatewayAPI = BaseModel
 class JobSpec:
     benchmark_name: str
     # job: JobInstance
-    resources: list[Worker]
+    workers_per_host: int
+    hosts: int
 
 class SubmitJobRequest(CascadeGatewayAPI):
     job: JobSpec
