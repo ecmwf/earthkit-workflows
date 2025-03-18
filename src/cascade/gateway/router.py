@@ -2,18 +2,25 @@
 Represents information about submitted jobs. The main business logic of `cascade.gateway`
 """
 
-import os
-import zmq
-import uuid
 import logging
+import os
 import subprocess
-from socket import getfqdn
+import uuid
 from dataclasses import dataclass
+from socket import getfqdn
+
+import zmq
+
+from cascade.controller.report import (
+    JobId,
+    JobProgress,
+    JobProgressShutdown,
+    JobProgressStarted,
+)
+from cascade.executor.comms import get_context
+from cascade.gateway.api import JobSpec
 from cascade.low.core import DatasetId
 from cascade.low.func import next_uuid
-from cascade.controller.report import JobProgress, JobProgressStarted, JobProgressShutdown, JobId
-from cascade.gateway.api import JobSpec
-from cascade.executor.comms import get_context
 
 logger = logging.getLogger(__name__)
 

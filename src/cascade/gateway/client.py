@@ -2,11 +2,14 @@
 Handles request & response communication for classes in gateway.api
 """
 
+import threading
+from typing import cast
+
 import orjson
 import zmq
+
 import cascade.gateway.api as api
-from typing import cast
-import threading
+
 
 def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAPI:
     """Sends a Request message, provides a corresponding Response message in a blocking manner"""

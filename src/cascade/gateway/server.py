@@ -3,14 +3,15 @@ The recv-loop of `gateway`, as well as basic deser. Actual business logic happen
 here we just match the right method of `gateway.router` based on what message we parsed
 """
 
-import zmq
 import logging
 
-from cascade.gateway.client import parse_request, serialize_response
+import zmq
+
 import cascade.gateway.api as api
-from cascade.gateway.router import JobRouter
 from cascade.controller.report import JobProgress, deserialize
 from cascade.executor.comms import get_context
+from cascade.gateway.client import parse_request, serialize_response
+from cascade.gateway.router import JobRouter
 
 logger = logging.getLogger(__name__)
 

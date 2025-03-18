@@ -9,6 +9,7 @@ import logging
 from typing import Iterable
 
 import cascade.executor.serde as serde
+from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
 from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, JobInstance, WorkerId
@@ -16,7 +17,6 @@ from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.assign import set_worker2task_overhead
 from cascade.scheduler.core import DatasetStatus, State, TaskStatus
-from cascade.controller.report import Reporter
 
 logger = logging.getLogger(__name__)
 

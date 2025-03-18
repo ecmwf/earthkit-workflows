@@ -2,14 +2,16 @@
 Handles reporting to gateway
 """
 
-from dataclasses import dataclass
-import pickle
-from cascade.low.core import DatasetId
-from cascade.executor.comms import get_context
-from cascade.scheduler.core import State
-import zmq
-from time import monotonic_ns
 import logging
+import pickle
+from dataclasses import dataclass
+from time import monotonic_ns
+
+import zmq
+
+from cascade.executor.comms import get_context
+from cascade.low.core import DatasetId
+from cascade.scheduler.core import State
 
 logger = logging.getLogger(__name__)
 

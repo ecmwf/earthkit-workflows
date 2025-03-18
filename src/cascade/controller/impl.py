@@ -8,12 +8,7 @@ from cascade.executor.bridge import Bridge, Event
 from cascade.low.core import DatasetId, JobInstance
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, initialize, plan
-from cascade.scheduler.core import (
-    Preschedule,
-    State,
-    has_awaitable,
-    has_computable,
-)
+from cascade.scheduler.core import Preschedule, State, has_awaitable, has_computable
 
 logger = logging.getLogger(__name__)
 
