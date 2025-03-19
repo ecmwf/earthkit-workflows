@@ -10,10 +10,17 @@ CascadeGatewayAPI = BaseModel
 
 @dataclass
 class JobSpec:
+    # job -- atm its "catalog" approach, alternatively we just job: JobInstance
     benchmark_name: str
-    # job: JobInstance
+    envvars: dict[str, str]
+    # example values:
+    # benchmark_name="generators"
+    # envvars={"GENERATORS_N": "8", "GENERATORS_K": "10", "GENERATORS_L": "4"}
+
+    # infra
     workers_per_host: int
     hosts: int
+    use_slurm: bool
 
 
 class SubmitJobRequest(CascadeGatewayAPI):

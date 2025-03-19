@@ -23,7 +23,7 @@ def run(
     if outputs is None:
         outputs = set()
     env = bridge.get_environment()
-    logger.debug(f"starting with {env=}")
+    logger.debug(f"starting with {env=} and {report_address=}")
     state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
     label("host", "controller")
     events: list[Event] = []
@@ -47,7 +47,7 @@ def run(
 
             mark({"action": ControllerPhases.wait})
             if has_awaitable(state):
-                logger.debug("about to await bridge")
+                logger.debug(f"about to await bridge with {state.ongoing_total=}")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify, Microtrace.ctrl_notify)(state, job, events, reporter)
                 logger.debug(f"received {len(events)} events")

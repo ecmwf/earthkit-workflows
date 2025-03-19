@@ -1,5 +1,4 @@
-"""
-Entrypoint for running the benchmark suite
+"""Entrypoint for running the benchmark suite
 
 Example:
 ```
@@ -156,20 +155,21 @@ def main_dist(
     report_address: str | None = None,
 ) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
-    controller, 1+ for worker. Assumed to come from slurm procid."""
+    controller, 1+ for worker. Assumed to come from slurm procid.
+    """
     launch = perf_counter_ns()
 
     jobInstance = get_job(job)
 
     if idx == 0:
+        logging.config.dictConfig(logging_config)
         tp = ThreadPoolExecutor(max_workers=1)
         preschedule_fut = tp.submit(precompute, jobInstance)
-        logging.config.dictConfig(logging_config)
         b = Bridge(controller_url, hosts)
         preschedule = preschedule_fut.result()
         tp.shutdown()
         start = perf_counter_ns()
-        run(jobInstance, b, preschedule, report_address)
+        run(jobInstance, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
