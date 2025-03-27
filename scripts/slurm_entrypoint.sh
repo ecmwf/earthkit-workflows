@@ -31,7 +31,10 @@ else
         echo "WORKER $SLURM_PROCID believes it can use $CASCADE_GPU_COUNT gpus with impunity"
         EXTRA_ARGS=""
 fi
+if [ -n "$JOB" ] ; then EXTRA_ARGS="$EXTRA_ARGS --job $JOB" ;
+elif [ -n "$INSTANCE" ]; then EXTRA_ARGS="$EXTRA_ARGS --instance $INSTANCE" ;
+else echo "neither job nor instance"; exit 1 ; fi
 
 # TODO check procid == 0 <-> nodelist head -n 1
-python -m cascade.benchmarks dist --job $JOB --idx $SLURM_PROCID $EXTRA_ARGS --controller-url $CONTROLLER_URL --hosts $EXECUTOR_HOSTS --workers-per-host $WORKERS_PER_HOST --shm-vol-gb $SHM_VOL_GB 2>&1 | tee $LOGDIR
+python -m cascade.benchmarks dist --idx $SLURM_PROCID $EXTRA_ARGS --controller-url $CONTROLLER_URL --hosts $EXECUTOR_HOSTS --workers-per-host $WORKERS_PER_HOST --shm-vol-gb $SHM_VOL_GB 2>&1 | tee $LOGDIR
 # *** ------- ***
