@@ -277,3 +277,4 @@ def test_generators():
     assert cas.nodes.shape == (5, 2)
     graph = cas.graph()
     assert len(graph.sinks) == 5
+    serialise(graph)
