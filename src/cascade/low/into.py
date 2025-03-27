@@ -43,7 +43,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         for param, other in node["inputs"].items():
             edges.append(
                 Task2TaskEdge(
-                    source=DatasetId(other, Node.DEFAULT_OUTPUT),
+                    source=DatasetId(other, Node.DEFAULT_OUTPUT) if isinstance(other, str) else DatasetId(other[0], other[1]),
                     sink_task=name,
                     sink_input_ps=rev_lookup[param],
                     sink_input_kw=None,
