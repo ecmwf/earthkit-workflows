@@ -11,3 +11,5 @@ venv
 .venv
 cascade.code-workspace
 build
+.dmypy.json
+localConfigs

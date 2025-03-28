@@ -8,11 +8,11 @@ import filelock
 from memray import FileDestination, FileReader, Tracker
 from meters import metered
 
-from .executors.executor import Executor
 from .fluent import Node
 from .graph import Graph, Output, Transformer
-from .schedulers.schedule import Schedule
 from .taskgraph import Resources, Task, TaskGraph
+from .v0_executors.executor import Executor
+from .v0_schedulers.schedule import Schedule
 
 
 def _memray_wrap_task(node: Node, path: pathlib.Path, native_traces: bool) -> Node:

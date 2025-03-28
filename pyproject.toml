@@ -29,6 +29,8 @@ dependencies = [
     "filelock>=3.12.0",
     "pyrsistent",
     "pydantic",
+    "zmq",
+    "fire",
 ]
 
 [project.optional-dependencies]
@@ -50,3 +52,10 @@ where = ["src"]
 
 [tool.isort]
 profile = "black"
+
+[tool.mypy]
+plugins = "pydantic.mypy"
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "DEBUG"

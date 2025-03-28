@@ -2,15 +2,24 @@
 Core graph data structures -- prescribes most of the API
 """
 
+import re
 from base64 import b64decode, b64encode
-from typing import Any, Callable, Optional, cast
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any, Callable, Optional, Type, cast
 
 import cloudpickle
 from pydantic import BaseModel, Field
+from typing_extensions import Self
 
 # NOTE it would be tempting to dict[str|int, ...] at places where we deal with kwargs/args, instead of
 # double field dict[str] and dict[int]. However, that won't survive serde -- you end up with ints being
 # strings
+
+# NOTE We want *every* task to have an output, to simplify reasoning wrt completion.
+# Thus, if there are no genuine outputs, we insert a `placeholder: str` output
+# and expect every executor to generate some value like "ok" in such case
+NO_OUTPUT_PLACEHOLDER = "__NO_OUTPUT__"
 
 
 # Definitions
@@ -31,8 +40,11 @@ class TaskDefinition(BaseModel):
         description="kv of input kw params and their types (fqn of class). Non-kw params not validated"
     )
     output_schema: dict[str, str] = Field(
-        description="kv of outputs and their types (fqn of class)"
+        description="kv of outputs and their types (fqn of class). Assumes key-sorted corresponds to func output order"
     )
+    needs_gpu: bool = Field(
+        False
+    )  # NOTE unstable contract, will change. Note we support at most one GPU per task
 
     @staticmethod
     def func_dec(f: str) -> Callable:
@@ -43,17 +55,28 @@ class TaskDefinition(BaseModel):
         return b64encode(cloudpickle.dumps(f)).decode("ascii")
 
 
+TaskId = str
+
+
+@dataclass(frozen=True)
+class DatasetId:
+    task: TaskId
+    output: str
+
+    def __repr__(self) -> str:
+        return f"{self.task}.{self.output}"
+
+
 class Task2TaskEdge(BaseModel):
-    source_task: str
-    source_output: str
-    sink_task: str
+    source: DatasetId
+    sink_task: TaskId
     sink_input_kw: Optional[str]
     sink_input_ps: Optional[int]
 
 
 class JobDefinition(BaseModel):
     # NOTE may be redundant altogether as not used rn -- or maybe useful with ProductDefinitions
-    definitions: dict[str, TaskDefinition]
+    definitions: dict[TaskId, TaskDefinition]
     edges: list[Task2TaskEdge]
 
 
@@ -69,22 +92,76 @@ class TaskInstance(BaseModel):
 
 
 class JobInstance(BaseModel):
-    tasks: dict[str, TaskInstance]
+    tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
+    serdes: dict[Type, tuple[str, str]] = Field(
+        {},
+        description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
+    )
+
+    def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
+        return {
+            DatasetId(task_id, output)
+            for output in self.tasks[task_id].definition.output_schema.keys()
+        }
+
+
+HostId = str
+
+
+@dataclass(frozen=True)
+class WorkerId:
+    host: HostId
+    worker: str
+
+    def __repr__(self) -> str:
+        return f"{self.host}.{self.worker}"
+
+    @classmethod
+    def from_repr(cls, value: str) -> Self:
+        host, worker = value.split(".", 1)
+        return cls(host=host, worker=worker)
+
+    def worker_num(self) -> int:
+        """Used eg for gpu allocation"""
+        # TODO this should actually be precalculated at *Environment* construction, to modulo by gpu count etc
+        return int(cast(re.Match[str], re.match("[^0-9]*([0-9]*)", self.worker))[1])
 
 
 # Execution
-class Host(BaseModel):
-    # NOTE missing: cpu, gpu
+class Worker(BaseModel):
+    # NOTE we may want to extend cpu/gpu over time with more rich information
+    # NOTE keep in sync with executor.msg.Worker
+    cpu: int
+    gpu: int
     memory_mb: int
 
 
 class Environment(BaseModel):
-    # NOTE missing: comm speed etc
-    # NOTE hosts are str|int because of Dask, but the int wont survive serde so dont use it
-    hosts: dict[str | int, Host]
+    workers: dict[WorkerId, Worker]
 
 
-class Schedule(BaseModel):
-    # NOTE hosts are str|int because of Dask, but the int wont survive serde so dont use it
-    host_task_queues: dict[str | int, list[str]]
+class TaskExecutionRecord(BaseModel):
+    # NOTE rather crude -- we may want to granularize cpuseconds
+    cpuseconds: int = Field(
+        description="as measured from process start to process end, assuming full cpu util"
+    )
+    memory_mb: int = Field(
+        description="observed rss peak held by the process minus sizes of shared memory inputs"
+    )
+
+
+# possibly made configurable, overridable -- quite job dependent
+no_record_ts = TaskExecutionRecord(cpuseconds=1, memory_mb=1)
+no_record_ds = 1
+
+
+class JobExecutionRecord(BaseModel):
+    tasks: dict[TaskId, TaskExecutionRecord] = Field(
+        default_factory=lambda: defaultdict(lambda: no_record_ts)
+    )
+    datasets_mb: dict[DatasetId, int] = Field(
+        default_factory=lambda: defaultdict(lambda: no_record_ds)
+    )  # keyed by (task, output)
+
+    # TODO extend this with some approximation/default from TaskInstance only

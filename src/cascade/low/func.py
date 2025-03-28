@@ -1,17 +1,25 @@
+"""
+Things.
+"""
+
+import importlib
 from abc import abstractmethod
 from typing import (
     Any,
     Callable,
     Generic,
     Iterable,
+    Iterator,
     NoReturn,
     Optional,
     Protocol,
+    Type,
     TypeVar,
     cast,
     runtime_checkable,
 )
 
+from pydantic import BaseModel
 from typing_extensions import Self
 
 T = TypeVar("T")
@@ -86,3 +94,50 @@ def ensure(l: list, i: int) -> None:
     """Ensures list l has at least i elements, for a safe l[i] = ..."""
     if (k := (i + 1 - len(l))) > 0:
         l.extend([None] * k)
+
+
+@runtime_checkable
+class Monoid(Protocol):
+
+    @abstractmethod
+    def __add__(self, other: Self) -> Self:
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def empty(cls) -> Self:
+        raise NotImplementedError
+
+
+TMonoid = TypeVar("TMonoid", bound=Monoid)
+
+
+def msum(i: Iterable[TMonoid], t: Type[TMonoid]) -> TMonoid:
+    return sum(i, start=t.empty())
+
+
+B = TypeVar("B", bound=BaseModel)
+
+
+def pyd_replace(model: B, **kwargs) -> B:
+    """Like dataclasses.replace but for pydantic"""
+    return model.model_copy(update=kwargs)
+
+
+def assert_iter_empty(i: Iterator) -> bool:
+    try:
+        _ = next(i)
+    except StopIteration:
+        return True
+    else:
+        return False
+
+
+def resolve_callable(s: str) -> Callable:
+    """For s = `a.b.func`, imports `a.b` and retrieves `func` Callable object"""
+    if "." not in s:  # this branch is for builtins
+        return eval(s)
+    else:
+        module_name, function_name = s.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        return module.__dict__[function_name]

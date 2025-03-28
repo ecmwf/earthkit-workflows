@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from cascade.executors.dask import DaskLocalExecutor
 from cascade.fluent import from_source
+from cascade.v0_executors.dask import DaskLocalExecutor
 
 
 @pytest.mark.parametrize(
