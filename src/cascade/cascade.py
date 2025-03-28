@@ -44,7 +44,7 @@ class Cascade:
         graph = Graph([])
         for action in actions:
             graph += action.graph()
-        return cls(graph)
+        return cls(deduplicate_nodes(graph))
 
     @classmethod
     def from_serialised(cls, filename: str):
