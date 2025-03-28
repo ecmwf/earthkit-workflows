@@ -87,9 +87,9 @@ class Node(BaseNode):
 
         if name is None:
             name = payload.name()
-        name += (":" + custom_hash(
+        name += ":" + custom_hash(
             f'{payload}{[x.name if isinstance(x, BaseNode) else f"{x.parent.name}.{x.name}" for x in inputs]}'
-        ))
+        )
 
         super().__init__(
             name,
