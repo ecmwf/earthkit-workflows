@@ -1,6 +1,4 @@
-"""
-Core graph data structures -- prescribes most of the API
-"""
+"""Core graph data structures -- prescribes most of the API"""
 
 import re
 from base64 import b64decode, b64encode
@@ -91,10 +89,19 @@ class TaskInstance(BaseModel):
     )
 
 
+# Type can't be json serialized directly -- use these two functions with `serdes` on JobInstance
+def type_dec(t: str) -> Type:
+    return cast(Type, cloudpickle.loads(b64decode(t)))
+
+
+def type_enc(t: Type) -> str:
+    return b64encode(cloudpickle.dumps(t)).decode("ascii")
+
+
 class JobInstance(BaseModel):
     tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
-    serdes: dict[Type, tuple[str, str]] = Field(
+    serdes: dict[str, tuple[str, str]] = Field(
         {},
         description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
     )

@@ -1,5 +1,4 @@
-"""
-An extension of executor that handles its own zmq socket for DatasetTransmit messages.
+"""An extension of executor that handles its own zmq socket for DatasetTransmit messages.
 The reason for the split is to not block the message zmq socket with potentially
 large data object.
 """
@@ -243,7 +242,9 @@ class DataServer:
                             else:
                                 assert_never(commandProg)
                             if m.ds == val:
-                                logger.debug(f"waiting for future of {commandProg=}")
+                                logger.debug(
+                                    f"waiting for future of {type(commandProg)} of {val}"
+                                )
                                 to_wait.append(fut)
                         wait(self.futs_in_progress.values(), return_when=ALL_COMPLETED)
                         self.maybe_clean()

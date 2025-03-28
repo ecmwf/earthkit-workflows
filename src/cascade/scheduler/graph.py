@@ -12,11 +12,7 @@ from typing import Iterator
 from cascade.low.core import DatasetId, JobInstance, TaskId
 from cascade.low.tracing import Microtrace, timer
 from cascade.low.views import dependants, param_source
-from cascade.scheduler.core import (
-    ComponentCore,
-    Preschedule,
-    Task2TaskDistance,
-)
+from cascade.scheduler.core import ComponentCore, Preschedule, Task2TaskDistance
 
 logger = logging.getLogger(__name__)
 

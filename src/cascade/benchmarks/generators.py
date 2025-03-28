@@ -1,5 +1,4 @@
-"""
-A completely artificial job to showcase a use of Generator in the output of a task
+"""A completely artificial job to showcase a use of Generator in the output of a task
 
 There is one source which belches out N matrices of size 2**K, and the consumer tasks
 just compute their Lth power
@@ -11,21 +10,7 @@ from typing import Iterator
 import numpy as np
 
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance, TaskDefinition, TaskInstance
-
-N = int(os.environ["GENERATORS_N"])
-K = int(os.environ["GENERATORS_K"])
-size = (2**K, 2**K)
-L = int(os.environ["GENERATORS_L"])
-
-
-def generator() -> Iterator[np.ndarray]:
-    for i in range(N):
-        yield np.random.uniform(size=size)
-
-
-def consumer(i: np.ndarray) -> np.ndarray:
-    return np.reshape(i, size) ** L
+from cascade.low.core import JobInstance, TaskDefinition, TaskInstance, type_enc
 
 
 def ser_numpy(a: np.ndarray) -> memoryview:  # bytes:
@@ -35,6 +20,18 @@ def ser_numpy(a: np.ndarray) -> memoryview:  # bytes:
 
 
 def get_job() -> JobInstance:
+    N = int(os.environ["GENERATORS_N"])
+    K = int(os.environ["GENERATORS_K"])
+    size = (2**K, 2**K)
+    L = int(os.environ["GENERATORS_L"])
+
+    def generator() -> Iterator[np.ndarray]:
+        for i in range(N):
+            yield np.random.uniform(size=size)
+
+    def consumer(i: np.ndarray) -> np.ndarray:
+        return np.reshape(i, size) ** L
+
     generator_d = TaskDefinition(
         func=TaskDefinition.func_enc(generator),
         environment=[],
@@ -53,6 +50,9 @@ def get_job() -> JobInstance:
         builder = builder.with_edge("generator", f"consumer{i}", "i", f"{i}")
     job = builder.build().get_or_raise()
     job.serdes = {
-        np.ndarray: ("cascade.benchmarks.generators.ser_numpy", "numpy.frombuffer")
+        type_enc(np.ndarray): (
+            "cascade.benchmarks.generators.ser_numpy",
+            "numpy.frombuffer",
+        )
     }
     return job
