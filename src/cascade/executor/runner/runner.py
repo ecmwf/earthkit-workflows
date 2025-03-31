@@ -1,5 +1,4 @@
-"""
-Thin wrapper over a single Task/Callable
+"""Thin wrapper over a single Task/Callable
 
 Just io handling (ie, using Memory api), tracing and callable invocation
 """
@@ -46,7 +45,8 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         raise TypeError("neither entrypoint nor func given")
 
     args: list[Any] = []
-    for idx, arg in task.static_input_ps.items():
+    for idx_str, arg in task.static_input_ps.items():
+        idx = int(idx_str)
         ensure(args, idx)
         args[idx] = arg
     kwargs: dict[str, Any] = {}
