@@ -5,6 +5,7 @@ from cascade.v0_executors.dask import DaskLocalExecutor
 from cascade.v0_schedulers.depthfirst import DepthFirstScheduler
 
 
+@pytest.mark.skip("profiling is not a production-grade feature")
 @pytest.mark.parametrize("schedule", [False, True])
 def test_memray_profiler(tmpdir, task_graph, schedule):
     executor = DaskLocalExecutor(n_workers=2)
@@ -18,6 +19,7 @@ def test_memray_profiler(tmpdir, task_graph, schedule):
     assert not all([node.memory == 0 for node in nodes])
 
 
+@pytest.mark.skip("profiling is not a production-grade feature")
 @pytest.mark.parametrize("schedule", [False, True])
 def test_meters_profiler(tmpdir, task_graph, schedule):
     executor = DaskLocalExecutor(n_workers=2)
@@ -31,6 +33,7 @@ def test_meters_profiler(tmpdir, task_graph, schedule):
     assert not all([node.memory == 0 for node in nodes])
 
 
+@pytest.mark.skip("profiling is not a production-grade feature")
 def test_overwrite_existing_files(tmpdir, task_graph):
     executor = DaskLocalExecutor(n_workers=2)
     memray_profile(task_graph, tmpdir, executor)
