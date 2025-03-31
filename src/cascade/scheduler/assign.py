@@ -17,12 +17,7 @@ from cascade.low.core import (
     WorkerId,
 )
 from cascade.low.tracing import Microtrace, trace
-from cascade.scheduler.core import (
-    Assignment,
-    ComponentId,
-    DatasetStatus,
-    State,
-)
+from cascade.scheduler.core import Assignment, ComponentId, DatasetStatus, State
 
 logger = logging.getLogger(__name__)
 

@@ -9,6 +9,7 @@ import logging
 from typing import Iterable
 
 import cascade.executor.serde as serde
+from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
 from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, JobInstance, WorkerId
@@ -78,13 +79,14 @@ def consider_computable(state: State, dataset: DatasetId, host: HostId) -> State
 
 def is_last_output_of(dataset: DatasetId, job: JobInstance) -> bool:
     definition = job.tasks[dataset.task].definition
-    last = sorted(definition.output_schema.keys())[
-        -1
-    ]  # TODO change the definition to actually be the sorted list
+    # TODO change the definition to actually be the sorted list
+    last = sorted(definition.output_schema.keys())[-1]
     return last == dataset.output
 
 
-def notify(state: State, job: JobInstance, events: Iterable[Event]) -> State:
+def notify(
+    state: State, job: JobInstance, events: Iterable[Event], reporter: Reporter
+) -> State:
     for event in events:
         if isinstance(event, DatasetPublished):
             logger.debug(f"received {event=}")
@@ -129,6 +131,8 @@ def notify(state: State, job: JobInstance, events: Iterable[Event]) -> State:
                 if event.ds.task in state.ongoing[worker]:
                     state.ongoing[worker].remove(event.ds.task)
                     state.ongoing_total -= 1
+                    state.remaining -= 1
+                    reporter.send_progress(state)
                 else:
                     raise ValueError(
                         f"{event.ds.task} succeeded but removal from `ongoing` impossible"
@@ -140,6 +144,7 @@ def notify(state: State, job: JobInstance, events: Iterable[Event]) -> State:
             state.outputs[event.header.ds] = serde.des_output(
                 event.value, "Any", event.header.deser_fun
             )
+            reporter.send_result(event.header.ds, event.value)
         else:
             assert_never(event)
     return state

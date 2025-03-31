@@ -45,6 +45,7 @@ def initialize(
         host2workers[worker.host].append(worker)
 
     computable = 0
+    total = 0
     for componentId, precomponent in enumerate(preschedule.components):
         component = ComponentSchedule(
             core=precomponent,
@@ -61,6 +62,7 @@ def initialize(
         computable += len(precomponent.sources)
         for task in precomponent.nodes:
             ts2component[task] = componentId
+        total += len(component.core.nodes)
 
     return State(
         edge_o=preschedule.edge_o,
@@ -77,6 +79,8 @@ def initialize(
         host2component={host: None for host in host2workers.keys()},
         host2workers=host2workers,
         computable=computable,
+        remaining=total,
+        total=total,
         worker2task_overhead=defaultdict(dict),
         idle_workers=set(environment.workers.keys()),
         ongoing=defaultdict(set),

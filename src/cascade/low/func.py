@@ -7,6 +7,7 @@ from abc import abstractmethod
 from typing import (
     Any,
     Callable,
+    Container,
     Generic,
     Iterable,
     Iterator,
@@ -131,6 +132,13 @@ def assert_iter_empty(i: Iterator) -> bool:
         return True
     else:
         return False
+
+
+def next_uuid(s: Container[T], g: Callable[[], T]) -> T:
+    while True:
+        n = g()
+        if n not in s:
+            return n
 
 
 def resolve_callable(s: str) -> Callable:

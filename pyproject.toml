@@ -59,3 +59,6 @@ plugins = "pydantic.mypy"
 [tool.pytest.ini_options]
 log_cli = true
 log_cli_level = "DEBUG"
+
+[tool.ruff.lint]
+ignore = ["E741"]
