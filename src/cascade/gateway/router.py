@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from socket import getfqdn
 
+import orjson
 import zmq
 
 from cascade.controller.report import (
@@ -38,9 +39,18 @@ def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
         "-m",
         "cascade.benchmarks",
         "local",
-        "--job",
-        job_spec.benchmark_name,
     ]
+    if job_spec.benchmark_name is not None:
+        if job_spec.job_instance is not None:
+            raise TypeError("specified both benchmark name and job instance")
+        base += ["--job", job_spec.benchmark_name]
+    else:
+        if job_spec.job_instance is None:
+            raise TypeError("specified neither benchmark name nor job instance")
+        with open(f"/tmp/{job_id}.json", "wb") as f:
+            f.write(orjson.dumps(job_spec.job_instance.dict()))
+        base += ["--instance", f"/tmp/{job_id}.json"]
+
     infra = [
         "--workers_per_host",
         f"{job_spec.workers_per_host}",
@@ -58,8 +68,17 @@ def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
         # NOTE put to infra specs
         "SHM_VOL_GB": "64",
         "REPORT_ADDRESS": f"{addr},{job_id}",
-        "JOB": job_spec.benchmark_name,
     }
+    if job_spec.benchmark_name is not None:
+        if job_spec.job_instance is not None:
+            raise TypeError("specified both benchmark name and job instance")
+        extra_vars["JOB"] = job_spec.benchmark_name
+    else:
+        if job_spec.job_instance is None:
+            raise TypeError("specified neither benchmark name nor job instance")
+        with open(f"./localConfigs/_tmp/{job_id}.json", "wb") as f:
+            f.write(orjson.dumps(job_spec.job_instance.dict()))
+        extra_vars["INSTANCE"] = f"./localConfigs/_tmp/{job_id}.json"
     subprocess.run(
         ["cp", "localConfigs/gateway.sh", f"localConfigs/_tmp/{job_id}"], check=True
     )
@@ -79,7 +98,7 @@ def _spawn_subprocess(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
 class JobRouter:
     def __init__(self, poller: zmq.Poller):
         self.poller = poller
-        self.jobs = {}
+        self.jobs: dict[str, Job] = {}
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))

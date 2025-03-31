@@ -22,6 +22,7 @@ from multiprocessing import Process
 from time import perf_counter_ns
 
 import fire
+import orjson
 
 import cascade.low.into
 from cascade.controller.impl import run
@@ -38,27 +39,36 @@ from cascade.scheduler.graph import precompute
 logger = logging.getLogger("cascade.benchmarks")
 
 
-def get_job(id_: str) -> JobInstance:
+def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
     # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
-    if id_.startswith("j1"):
-        import cascade.benchmarks.job1 as job1
+    if benchmark is not None and instance_path is not None:
+        raise TypeError("specified both benchmark name and job instance")
+    elif instance_path is not None:
+        with open(instance_path, "rb") as f:
+            d = orjson.loads(f.read())
+            return JobInstance(**d)
+    elif benchmark is not None:
+        if benchmark.startswith("j1"):
+            import cascade.benchmarks.job1 as job1
 
-        graphs = {
-            "j1.prob": job1.get_prob(),
-            "j1.ensms": job1.get_ensms(),
-            "j1.efi": job1.get_efi(),
-        }
-        union = lambda prefix: deduplicate_nodes(
-            msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph)
-        )
-        graphs["j1.all"] = union("j1.")
-        return cascade.low.into.graph2job(graphs[id_])
-    elif id_.startswith("generators"):
-        import cascade.benchmarks.generators as generators
+            graphs = {
+                "j1.prob": job1.get_prob(),
+                "j1.ensms": job1.get_ensms(),
+                "j1.efi": job1.get_efi(),
+            }
+            union = lambda prefix: deduplicate_nodes(
+                msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph)
+            )
+            graphs["j1.all"] = union("j1.")
+            return cascade.low.into.graph2job(graphs[benchmark])
+        elif benchmark.startswith("generators"):
+            import cascade.benchmarks.generators as generators
 
-        return generators.get_job()
+            return generators.get_job()
+        else:
+            raise NotImplementedError(benchmark)
     else:
-        raise NotImplementedError(id_)
+        raise TypeError("specified neither benchmark name nor job instance")
 
 
 def launch_executor(
@@ -139,19 +149,24 @@ def run_locally(
 
 
 def main_local(
-    job: str, workers_per_host: int, hosts: int = 1, report_address: str | None = None
+    workers_per_host: int,
+    hosts: int = 1,
+    report_address: str | None = None,
+    job: str | None = None,
+    instance: str | None = None,
 ) -> None:
-    jobInstance = get_job(job)
+    jobInstance = get_job(job, instance)
     run_locally(jobInstance, hosts, workers_per_host, report_address=report_address)
 
 
 def main_dist(
-    job: str,
     idx: int,
     controller_url: str,
     hosts: int = 3,
     workers_per_host: int = 10,
     shm_vol_gb: int = 64,
+    job: str | None = None,
+    instance: str | None = None,
     report_address: str | None = None,
 ) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
@@ -159,7 +174,7 @@ def main_dist(
     """
     launch = perf_counter_ns()
 
-    jobInstance = get_job(job)
+    jobInstance = get_job(job, instance)
 
     if idx == 0:
         logging.config.dictConfig(logging_config)

@@ -1,5 +1,4 @@
-"""
-Intended to be run inside a jupyter notebook
+"""Intended to be run inside a jupyter notebook
 
 Run `dirTaskLane(<path-to-your-logs-directory>)`
 """
@@ -108,8 +107,8 @@ def plotTaskLane(
     yaxis = LinearAxis()
     plot.add_layout(yaxis, "left")
 
-    plot.add_layout(Grid(dimension=0, ticker=xaxis.ticker))
-    plot.add_layout(Grid(dimension=1, ticker=yaxis.ticker))
+    plot.add_layout(Grid(dimension=0, ticker=xaxis.ticker))  # type: ignore
+    plot.add_layout(Grid(dimension=1, ticker=yaxis.ticker))  # type: ignore
 
     curdoc().add_root(plot)
 
