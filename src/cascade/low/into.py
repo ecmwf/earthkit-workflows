@@ -1,6 +1,4 @@
-"""
-Lowering of the cascade.graph structures into cascade.low representation
-"""
+"""Lowering of the cascade.graph structures into cascade.low representation"""
 
 import logging
 from typing import Any, Callable, cast
@@ -30,10 +28,10 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
             input_schema[k] = "Any"
 
         static_input_kw: dict[str, Any] = kwargs.copy()
-        static_input_ps: dict[int, Any] = {}
+        static_input_ps: dict[str, Any] = {}
         rev_lookup: dict[str, int] = {}
         for i, e in enumerate(args):
-            static_input_ps[i] = e
+            static_input_ps[str(i)] = e
             # NOTE we may get a "false positive", ie, what is a genuine static string param ending up in rev_lookup
             # But it doesnt hurt, since we only pick `node["inputs"]` later on only.
             # Furthermore, we don't need rev lookup into kwargs since cascade fluent doesnt support that
@@ -41,15 +39,19 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
                 rev_lookup[e] = i
         edges = []
         for param, other in node["inputs"].items():
+            if isinstance(other, str):
+                source = DatasetId(other, Node.DEFAULT_OUTPUT)
+            else:
+                source = DatasetId(other[0], other[1])
             edges.append(
                 Task2TaskEdge(
-                    source=DatasetId(other, Node.DEFAULT_OUTPUT) if isinstance(other, str) else DatasetId(other[0], other[1]),
+                    source=source,
                     sink_task=name,
                     sink_input_ps=rev_lookup[param],
                     sink_input_kw=None,
                 )
             )
-            static_input_ps[rev_lookup[param]] = None
+            static_input_ps[str(rev_lookup[param])] = None
 
         outputs = node["outputs"] if node["outputs"] else [Node.DEFAULT_OUTPUT]
 

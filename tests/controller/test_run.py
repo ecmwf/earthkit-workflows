@@ -1,6 +1,4 @@
-"""
-For a given graph and instant executor, check that things complete
-"""
+"""For a given graph and instant executor, check that things complete"""
 
 from logging.config import dictConfig
 from multiprocessing import Process
@@ -108,5 +106,5 @@ def test_para():
         .get_or_raise()
     )
 
-    run_cluster(job, 12345, 2)
+    run_cluster(job, 12445, 2)
     run_cluster(job, 12365, 4)

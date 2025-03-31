@@ -1,5 +1,4 @@
-"""
-Here we spin a fullblown executor instance, submit a job to it, and observe that the right zmq messages
+"""Here we spin a fullblown executor instance, submit a job to it, and observe that the right zmq messages
 get sent out. In essence, we build a pseudo-controller in this test.
 """
 
@@ -80,11 +79,11 @@ def test_executor():
     )
 
     # cluster setup
-    c1 = "tcp://localhost:12345"
-    m1 = f"tcp://{socket.gethostname()}:12346"
-    d1 = f"tcp://{socket.gethostname()}:12347"
+    c1 = "tcp://localhost:12545"
+    m1 = f"tcp://{socket.gethostname()}:12546"
+    d1 = f"tcp://{socket.gethostname()}:12547"
     l = Listener(c1)  # controller
-    p = Process(target=launch_executor, args=(job, c1, 12346))
+    p = Process(target=launch_executor, args=(job, c1, 12546))
 
     # run
     p.start()

@@ -61,4 +61,4 @@ log_cli = true
 log_cli_level = "DEBUG"
 
 [tool.ruff.lint]
-ignore = ["E741"]
+ignore = ["E731", "E741"]

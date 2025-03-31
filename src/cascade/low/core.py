@@ -84,7 +84,7 @@ class TaskInstance(BaseModel):
     static_input_kw: dict[str, Any] = Field(
         description="input parameters for the entrypoint. Must be json/msgpack-serializable"
     )
-    static_input_ps: dict[int, Any] = Field(
+    static_input_ps: dict[str, Any] = Field(
         description="input parameters for the entrypoint. Must be json/msgpack-serializable"
     )
 
