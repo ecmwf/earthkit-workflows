@@ -5,7 +5,7 @@ from cascade.controller.act import act, flush_queues
 from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
-from cascade.low.core import DatasetId, JobInstance
+from cascade.low.core import DatasetId, JobInstance, type_dec
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, initialize, plan
 from cascade.scheduler.core import Preschedule, State, has_awaitable, has_computable
@@ -23,12 +23,12 @@ def run(
     if outputs is None:
         outputs = set()
     env = bridge.get_environment()
-    logger.debug(f"starting with {env=}")
+    logger.debug(f"starting with {env=} and {report_address=}")
     state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
     label("host", "controller")
     events: list[Event] = []
-    for serdeType, (serdeSer, serdeDes) in job.serdes.items():
-        serde.SerdeRegistry.register(serdeType, serdeSer, serdeDes)
+    for serdeTypeEnc, (serdeSer, serdeDes) in job.serdes.items():
+        serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
     reporter = Reporter(report_address)
 
     try:
@@ -47,7 +47,7 @@ def run(
 
             mark({"action": ControllerPhases.wait})
             if has_awaitable(state):
-                logger.debug("about to await bridge")
+                logger.debug(f"about to await bridge with {state.ongoing_total=}")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify, Microtrace.ctrl_notify)(state, job, events, reporter)
                 logger.debug(f"received {len(events)} events")

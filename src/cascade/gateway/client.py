@@ -1,6 +1,4 @@
-"""
-Handles request & response communication for classes in gateway.api
-"""
+"""Handles request & response communication for classes in gateway.api"""
 
 import logging
 import threading
@@ -68,8 +66,8 @@ def parse_request(rr: bytes) -> api.CascadeGatewayAPI:
             raise ValueError("message clazz not understood")
         return cast(api.CascadeGatewayAPI, api.__dict__[rdc](**rd))
     except Exception as e:
-        logger.exception(f"failed to parse message: {rr[:32]}")
-        raise ValueError(f"failed to parse message: {rr[:32]} => {repr(e)[:32]}")
+        logger.exception(f"failed to parse message: {rr[:32]!r}")
+        raise ValueError(f"failed to parse message: {rr[:32]!r} => {repr(e)[:32]}")
 
 
 def serialize_response(m: api.CascadeGatewayAPI) -> bytes:

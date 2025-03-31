@@ -1,6 +1,4 @@
-"""
-The entrypoint itself
-"""
+"""The entrypoint itself"""
 
 import logging
 import logging.config
@@ -24,7 +22,7 @@ from cascade.executor.msg import (
 from cascade.executor.runner.memory import Memory
 from cascade.executor.runner.packages import PackagesEnv
 from cascade.executor.runner.runner import ExecutionContext, run
-from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId
+from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
 from cascade.low.tracing import label
 
 logger = logging.getLogger(__name__)
@@ -101,8 +99,8 @@ def entrypoint(runnerContext: RunnerContext):
         # NOTE check any(task.definition.needs_gpu) anywhere?
         # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
-        for serdeType, (serdeSer, serdeDes) in runnerContext.job.serdes.items():
-            serde.SerdeRegistry.register(serdeType, serdeSer, serdeDes)
+        for serdeTypeEnc, (serdeSer, serdeDes) in runnerContext.job.serdes.items():
+            serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
 
         availab_ds: set[DatasetId] = set()
         waiting_ts: TaskSequence | None = None
