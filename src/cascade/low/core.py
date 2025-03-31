@@ -105,6 +105,9 @@ class JobInstance(BaseModel):
         {},
         description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
     )
+    ext_outputs: list[DatasetId] = Field(
+        [], description="ids to externally materialize"
+    )
 
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {

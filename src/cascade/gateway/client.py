@@ -19,7 +19,10 @@ def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAP
         local.context = zmq.Context()
 
     try:
-        d = m.dict()
+        # NOTE it would be nice to avoid orjson and go with 'model_dump_json()' and
+        # 'model_validate_json()'. That would require constructing two-frame message instead,
+        # with first frame being the `clazz`
+        d = m.model_dump(mode="json")
         if "clazz" in d:
             raise ValueError("field `clazz` must not be present in the message")
         d["clazz"] = type(m).__name__

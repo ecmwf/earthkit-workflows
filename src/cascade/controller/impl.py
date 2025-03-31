@@ -5,7 +5,7 @@ from cascade.controller.act import act, flush_queues
 from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
-from cascade.low.core import DatasetId, JobInstance, type_dec
+from cascade.low.core import JobInstance, type_dec
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, initialize, plan
 from cascade.scheduler.core import Preschedule, State, has_awaitable, has_computable
@@ -17,11 +17,9 @@ def run(
     job: JobInstance,
     bridge: Bridge,
     preschedule: Preschedule,
-    outputs: set[DatasetId] | None = None,
     report_address: str | None = None,
 ) -> State:
-    if outputs is None:
-        outputs = set()
+    outputs = set(job.ext_outputs)
     env = bridge.get_environment()
     logger.debug(f"starting with {env=} and {report_address=}")
     state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
