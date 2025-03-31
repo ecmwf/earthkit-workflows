@@ -71,6 +71,24 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
         raise TypeError("specified neither benchmark name nor job instance")
 
 
+def get_gpu_count() -> int:
+    try:
+        gpus = sum(
+            1
+            for l in subprocess.run(
+                ["nvidia-smi", "--list-gpus"], check=True, capture_output=True
+            )
+            .stdout.decode("ascii")
+            .split("\n")
+            if "GPU" in l
+        )
+    except:
+        # TODO support macos
+        logger.exception("unable to determine available gpus")
+        gpus = 0
+    return gpus
+
+
 def launch_executor(
     job_instance: JobInstance,
     controller_address: BackboneAddress,
@@ -78,8 +96,11 @@ def launch_executor(
     portBase: int,
     i: int,
     shm_vol_gb: int | None,
+    gpu_count: int,
 ):
     logging.config.dictConfig(logging_config)
+    logger.info(f"will set {gpu_count} gpus on host {i}")
+    os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
     executor = Executor(
         job_instance,
         controller_address,
@@ -107,25 +128,12 @@ def run_locally(
     ps = []
     for i, executor in enumerate(range(hosts)):
         if i == 0:
-            try:
-                gpus = sum(
-                    1
-                    for l in subprocess.run(
-                        ["nvidia-smi", "--list-gpus"], check=True, capture_output=True
-                    )
-                    .stdout.decode("ascii")
-                    .split("\n")
-                    if "GPU" in l
-                )
-            except:
-                # TODO support macos
-                logger.exception("unable to determine available gpus")
-                gpus = 0
-            logger.info(f"will set {gpus} gpus on host {i}")
-            os.environ["CASCADE_GPU_COUNT"] = str(gpus)
+            gpu_count = get_gpu_count()
+        else:
+            gpu_count = 0
         p = Process(
             target=launch_executor,
-            args=(job, c, workers, portBase + 1 + i * 10, i, None),
+            args=(job, c, workers, portBase + 1 + i * 10, i, None, gpu_count),
         )
         p.start()
         ps.append(p)
@@ -190,8 +198,15 @@ def main_dist(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
         )
     else:
+        gpu_count = get_gpu_count()
         launch_executor(
-            jobInstance, controller_url, workers_per_host, 12345, idx, shm_vol_gb
+            jobInstance,
+            controller_url,
+            workers_per_host,
+            12345,
+            idx,
+            shm_vol_gb,
+            gpu_count,
         )
 
 
