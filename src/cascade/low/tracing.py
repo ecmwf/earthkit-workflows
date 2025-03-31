@@ -1,5 +1,4 @@
-"""
-Interface for tracing important events that can be used for extracting performance information
+"""Interface for tracing important events that can be used for extracting performance information
 
 Currently, the export is handled just by logging, assuming to be parsed later. We log at debug
 level since this is assumed to be high level tracing
@@ -93,14 +92,15 @@ def _labels(labels: Labels) -> str:
 
 def label(key: str, value: str) -> None:
     """Makes all subsequent marks contain this KV. Carries over to later-forked subprocesses, but
-    not to forkspawned"""
-    global d
+    not to forkspawned
+    """
+    global d  # noqa: F824
     d[key] = value
 
 
 def mark(labels: Labels) -> None:
     at = time_ns()
-    global d
+    global d  # noqa: F824
     event = _labels({**d, **labels})
     marker.debug(f"{dataBegin}{event};{at=}")
 
