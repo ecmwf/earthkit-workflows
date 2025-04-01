@@ -1,43 +1,71 @@
-[![ci](https://github.com/ecmwf/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/ecmwf/cascade/actions/workflows/ci.yml)
+<p align="center">
+  <picture>
+    <source srcset="https://github.com/ecmwf/logos/raw/refs/heads/main/logos/earthkit/earthkit-workflows-dark.svg" media="(prefers-color-scheme: dark)">
+    <img src="https://github.com/ecmwf/logos/raw/refs/heads/main/logos/earthkit/earthkit-workflows-light.svg" height="120">
+  </picture>
+</p>
 
-![Image](cascade.png)
+<p align="center">
+  <a href="https://github.com/ecmwf/codex/raw/refs/heads/main/ESEE">
+    <img src="https://github.com/ecmwf/codex/raw/refs/heads/main/ESEE/foundation_badge.svg" alt="ECMWF Software EnginE">
+  </a>
+  <a href="https://github.com/ecmwf/codex/raw/refs/heads/main/Project Maturity">
+    <img src="https://github.com/ecmwf/codex/raw/refs/heads/main/Project Maturity/sandbox_badge.svg" alt="Maturity Level">
+  </a>
+  <a href="https://opensource.org/licenses/apache-2-0">
+    <img src="https://img.shields.io/badge/Licence-Apache 2.0-blue.svg" alt="Licence">
+  </a>
+  <a href="https://github.com/ecmwf/earthkit-workflows/releases">
+    <img src="https://img.shields.io/github/v/release/ecmwf/earthkit-workflows?color=purple&label=Release" alt="Latest Release">
+  </a>
+</p>
+
+<p align="center">
+  <a href="#installation">Installation</a>
+  •
+  <a href="#quick-start">Quick Start</a>
+  •
+  <a href="#documentation">Documentation</a>
+</p>
+
+> \[!IMPORTANT\]
+> This software is **Sandbox** and subject to ECMWF's guidelines on [Software Maturity](https://github.com/ecmwf/codex/raw/refs/heads/main/Project%20Maturity).
+
 
 > **DISCLAIMER**
-> This project is **BETA** and will be **experimental** for the foreseeable future. Interfaces and functionality are likely to change, and the project itself may be scrapped. **DO NOT** use this software in any project/software that is operational.
+> This project is **Sandbox** and will be **sandbox** for the foreseeable future. Interfaces and functionality are likely to change, and the project itself may be scrapped. **DO NOT** use this software in any project/software that is operational.
 
-Cascade is designed to execute task graphs optimally across heterogeneous platforms with complex network technologies and topologies. It effectively performs task-based parallelism across CPUs, GPUs, distributed systems (HPC), and any combination thereof. It is designed for a no-IO approach, where expensive storage of intermediate data is minimised whilst maximising all available transport technologies between different hardware.
+Earthkit Workflows is a Python library for declaring earthkit task as DAGs.
+It contains an internal `cascade` engine for scheduling and executing task graphs almost optimally across heterogeneous platforms with complex network technologies and topologies.
+It effectively performs task-based parallelism across CPUs, GPUs, distributed systems (HPC), and any combination thereof.
+It is designed for a no-IO approach, where expensive storage of intermediate data is minimised whilst maximising all available transport technologies between different hardware.
 
 Cascade is designed to work on well-profiled task graphs, where:
-* the task graph is a static DAG
-* the DAG nodes are defined by tasks with well-known execution times
-* the DAG edges are defined by data dependencies with well-known data sizes
-* the characteristics of the hardware (processors, network connections) are known
+* the task graph is a static DAG,
+* the DAG nodes are defined by tasks with well-known execution times,
+* the DAG edges are defined by data dependencies with well-known data sizes,
+* the characteristics of the hardware (processors, network connections) are known.
 
-There are two main components to Cascade:
+Earthkit Workflows allows for declaring such task graphs using a neat fluent API, and interoperates pleasantly with the rest of the Earthkit ecosystem.
 
-## The Executor
-
-The executor is responsible for executing the plan created by the scheduler on the target hardware. Each executor should be capable of simulating its execution plan.
-
-## The Scheduler
-
-The scheduler is responsible for creating an execution plan for the DAG. For schedulers based on optimization, the scheduler is likely to use a simulated execution as a fitness function for the optimization.
-
-## Development
+## Installation
 
 Install via `pip` with:
 
 ```
-$ pip install -e cascade
+$ pip install 'earthkit-workflows[all]'
 ```
 
-Install precommit hooks
+For development, you can use `pip install -e .` though there is currently an issue with earthkit masking. Additionally you may want to install pre-commit hooks via
 ```
 $ pip install pre-commit
 $ pre-commit install
 ```
 
-## Executions
+## Quick Start
+
+*Note*: this section is moderately outdated.
+
 We support two regimes for cascade executions -- local mode (ideal for developing and debugging small graphs) and distributed mode (assumed for slurm & HPC).
 
 To launch in local mode, in your python repl / jupyno:
@@ -70,24 +98,10 @@ Most likely, you want to define your own -- for the local mode, just pass `casca
 
 There is also `python -m cascade.benchmarks local <..>` -- you may use that as an alternative path to local mode, for your own e2e tests.
 
+## Documentation
+
+This is a sandbox project. Read the code.
+
 ## License
 
-```
-Copyright 2022, European Centre for Medium Range Weather Forecasts.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-In applying this licence, ECMWF does not waive the privileges and immunities
-granted to it by virtue of its status as an intergovernmental organisation
-nor does it submit to any jurisdiction.
-```
+See [license](./LICENSE).
