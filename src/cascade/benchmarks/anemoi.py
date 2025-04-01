@@ -1,4 +1,4 @@
-from cascade import Cascade
+from earthkit.workflows import Cascade
 
 
 def get_graph(lead_time, ensemble_members, CKPT=None, date="2024-12-02T00:00"):
