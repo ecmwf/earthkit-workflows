@@ -6,7 +6,6 @@ from typing import Callable, Iterable, Iterator, Type, cast
 import pyrsistent
 from typing_extensions import Self
 
-from cascade.graph import Node
 from cascade.low.core import (
     DatasetId,
     JobInstance,
@@ -15,6 +14,7 @@ from cascade.low.core import (
     TaskInstance,
 )
 from cascade.low.func import Either
+from earthkit.workflows.graph import Node
 
 
 class TaskBuilder(TaskInstance):
