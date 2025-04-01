@@ -1,5 +1,4 @@
-"""
-The recv-loop of `gateway`, as well as basic deser. Actual business logic happens in `gateway.router`,
+"""The recv-loop of `gateway`, as well as basic deser. Actual business logic happens in `gateway.router`,
 here we just match the right method of `gateway.router` based on what message we parsed
 """
 
@@ -30,11 +29,11 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
             rv = api.SubmitJobResponse(job_id=None, error=repr(e))
     elif isinstance(m, api.JobProgressRequest):
         try:
-            progress = jobs.progress_of(m.job_id)
-            rv = api.JobProgressResponse(progress=progress, error=None)
+            progresses = jobs.progress_of(m.job_ids)
+            rv = api.JobProgressResponse(progresses=progresses, error=None)
         except Exception as e:
             logger.exception(f"failed to get progress of: {m}")
-            rv = api.JobProgressResponse(progress=None, error=repr(e))
+            rv = api.JobProgressResponse(progresses={}, error=repr(e))
     elif isinstance(m, api.ResultRetrievalRequest):
         try:
             result = jobs.get_result(m.job_id, m.dataset_id)

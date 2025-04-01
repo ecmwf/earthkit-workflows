@@ -34,12 +34,12 @@ class SubmitJobResponse(CascadeGatewayAPI):
 
 
 class JobProgressRequest(CascadeGatewayAPI):
-    job_id: JobId
+    job_ids: list[JobId]  # on empty list, return all
 
 
 class JobProgressResponse(CascadeGatewayAPI):
-    progress: JobProgress | None
-    error: str | None
+    progresses: dict[JobId, JobProgress]
+    error: str | None  # top level error
 
 
 class ResultRetrievalRequest(CascadeGatewayAPI):
