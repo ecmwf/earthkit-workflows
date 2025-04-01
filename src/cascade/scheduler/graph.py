@@ -1,5 +1,12 @@
-"""
-Graph decompositions and distance functions.
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""Graph decompositions and distance functions.
 Used to obtain a Preschedule object from a Job Instance via the `precompute` function.
 """
 
@@ -45,7 +52,7 @@ def nearest_common_descendant(
                 m[(d1[a], d1[b])] = paths[a][b]
         ncdT: dict[tuple[int, int], int] = coptrs.nearest_common_descendant(m, L)
         for (ai, bi), e in ncdT.items():
-            if not d2[ai] in ncd:
+            if d2[ai] not in ncd:
                 ncd[d2[ai]] = {}
             ncd[d2[ai]][d2[bi]] = e
     except ImportError:

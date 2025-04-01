@@ -1,6 +1,12 @@
-"""
-Implements the invocation of Bridge/Executor methods given a sequence of Actions
-"""
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""Implements the invocation of Bridge/Executor methods given a sequence of Actions"""
 
 import logging
 
@@ -61,7 +67,8 @@ def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
 
 def flush_queues(bridge: Bridge, state: State) -> State:
     """Flushes elements in purging and fetching queues in State (and mutating it thus, as well as Executor).
-    Returns the mutated State, as all tracing and updates are handled here."""
+    Returns the mutated State, as all tracing and updates are handled here.
+    """
 
     # TODO handle this in some eg thread pool... may need lock on state, result queueing, handle purge tracking, etc
     fetchable = list(state.fetching_queue.keys())

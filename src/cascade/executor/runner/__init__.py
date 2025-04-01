@@ -1,5 +1,12 @@
-"""
-This module is responsible for running actual tasks -- a thin wrapper over a Callable that handles:
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""This module is responsible for running actual tasks -- a thin wrapper over a Callable that handles:
  - getting & deserializing the inputs
  - serializing & storing the outputs
  - invoking callback to report task success, dataset publication, failures

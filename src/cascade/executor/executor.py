@@ -1,5 +1,12 @@
-"""
-Represents the main on-host process, together with the SHM server. Launched at the
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""Represents the main on-host process, together with the SHM server. Launched at the
 cluster startup, torn down when the controller reaches exit. Spawns `runner`s
 for every task sequence it receives from controller -- those processes actually run
 the tasks themselves.
@@ -210,7 +217,8 @@ class Executor:
 
     def healthcheck(self) -> None:
         """Checks that no process died, and sends a heartbeat message in case the last message to controller
-        was too long ago"""
+        was too long ago
+        """
         procFail = lambda ex: ex is not None and ex != 0
         for k, e in self.workers.items():
             if e is None:

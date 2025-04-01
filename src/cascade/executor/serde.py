@@ -1,6 +1,12 @@
-"""
-This module is responsible for Serialization & Deserialization of messages and outputs
-"""
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""This module is responsible for Serialization & Deserialization of messages and outputs"""
 
 import pickle
 from typing import Any, Callable, Type
@@ -49,7 +55,8 @@ class SerdeRegistry:
 
 def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     """Utilizes `custom_ser` attr if present, otherwise defaults to cloudpickle as the most
-    robust general purpose serde"""
+    robust general purpose serde
+    """
     if (serde := SerdeRegistry.serde.get(type(v), None)) is not None:
         value, deser_fun = serde[0](v), serde[1]
     else:

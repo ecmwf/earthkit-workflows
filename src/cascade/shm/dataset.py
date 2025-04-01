@@ -1,5 +1,12 @@
-"""
-Abstraction of shared memory, keeps track of:
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""Abstraction of shared memory, keeps track of:
 - shared memory id
 - size
 - state (in shm / on disk)
@@ -105,7 +112,8 @@ class Manager:
     ourselves.
 
     4/ the at-exit based invocation of `purge` is more robust, assuming that some of
-    the datasets have been purged half-way, and doing its best to clean up."""
+    the datasets have been purged half-way, and doing its best to clean up.
+    """
 
     def __init__(self, prefix: str, capacity: int | None = None) -> None:
         # key is as understood by the external apps
