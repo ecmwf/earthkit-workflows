@@ -1,6 +1,6 @@
-"""
-Tests running a Callable in the same process
-"""
+"""Tests running a Callable in the same process"""
+
+from multiprocessing.shared_memory import SharedMemory
 
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
@@ -37,13 +37,22 @@ def test_runner(monkeypatch):
     def allocate(
         key: str, l: int, timeout_sec: float = 60.0
     ) -> shm_cli.AllocatedBuffer:
-        return shm_cli.AllocatedBuffer(
-            shmid=f"test_{key}",
+        shmid = f"test_{key}"
+        _allocate = lambda: shm_cli.AllocatedBuffer(
+            shmid=shmid,
             l=l,
             create=True,
             close_callback=lambda: None,
             deser_fun="cloudpickle.loads",
         )
+        try:
+            return _allocate()
+        except FileExistsError:
+            # for some reason, the is_unregister doesnt seem to cover all cases
+            shm = SharedMemory(shmid, create=False)
+            shm.unlink()
+            shm.close()
+            return _allocate()
 
     monkeypatch.setattr(shm_cli, "allocate", allocate)
 
