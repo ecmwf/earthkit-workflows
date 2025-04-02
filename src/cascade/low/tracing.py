@@ -1,3 +1,11 @@
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
 """Interface for tracing important events that can be used for extracting performance information
 
 Currently, the export is handled just by logging, assuming to be parsed later. We log at debug

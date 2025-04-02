@@ -1,5 +1,12 @@
-"""
-A lightweight server for managing SharedMemory, ie, for passing output of one process as another's input.
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""A lightweight server for managing SharedMemory, ie, for passing output of one process as another's input.
 Intended to run in every worker instance (regardless whether created by fiab, cascade-cluster, dask, ...)
 Does not handle cross-worker coms on its own, but participates -- thats expected to work via
   1. controller issues command

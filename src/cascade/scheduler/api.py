@@ -1,3 +1,11 @@
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
 import logging
 from collections import defaultdict
 from typing import Iterator
@@ -99,7 +107,8 @@ def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignm
      - changes host2component.
     Yields, to allow for immediate async sending to workers.
     Performance critical section, we need to output an assignment asap. Steps taking longer
-    should be deferred to `plan`"""
+    should be deferred to `plan`
+    """
 
     # step I: assign within existing components
     component2workers: dict[ComponentId, list[WorkerId]] = defaultdict(list)

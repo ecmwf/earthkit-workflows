@@ -1,6 +1,12 @@
-"""
-This module handles basic communication structures and functions
-"""
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""This module handles basic communication structures and functions"""
 
 import logging
 import pickle
@@ -45,7 +51,8 @@ class GraceWatcher:
         """If the last `step()` occurred less than `grace_ms` ago, returns = 0, otherwise > 0.
         If the last return of > 0 occurred more than `grace_ms` ago, return 2, otherwise 1.
         The 2-vs-1 should be used for rate limiting logs, whereas business logic should heed
-        0-vs-non0"""
+        0-vs-non0
+        """
         now = self._now()
         breachStep = self._now() > self.step_time_ms + self.grace_ms
         breachLog = self._now() > self.log_time_ms + self.grace_ms

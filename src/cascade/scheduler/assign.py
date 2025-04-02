@@ -1,5 +1,12 @@
-"""
-Utility functions for handling assignments -- invocation assumed from scheduler.api module,
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""Utility functions for handling assignments -- invocation assumed from scheduler.api module,
 for all other purposes this should be treated private
 """
 
@@ -156,7 +163,8 @@ def update_worker2task_distance(
 ) -> State:
     """For a given task and worker, consider all tasks at the worker and see if any attains a better distance to said
     task. If additionally the task is _already_ computable and the global minimum attained by `component.computable`
-    is improved, set that too."""
+    is improved, set that too.
+    """
     # TODO we don't currently consider other workers at the host, probably subopt! Ultimately,
     # we need the `assign_within_component` to take both overhead *and* distance into account
     # simultaneously
@@ -209,7 +217,8 @@ def migrate_to_component(
     host: HostId, component_id: ComponentId, state: State
 ) -> State:
     """Assuming original component assigned to the host didn't have enough tasks anymore,
-    we invoke this function and update state to reflect it"""
+    we invoke this function and update state to reflect it
+    """
     state.host2component[host] = component_id
     component = state.components[component_id]
     logger.debug(
