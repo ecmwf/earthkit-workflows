@@ -8,6 +8,7 @@
 
 import dill
 
+from ._version import __version__
 from .graph import Graph, deduplicate_nodes
 from .graph.export import deserialise, serialise
 from .visualise import visualise

@@ -14,3 +14,4 @@ build
 .dmypy.json
 localConfigs
 dist
+**/_version.py
