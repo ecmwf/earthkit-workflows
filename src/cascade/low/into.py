@@ -11,7 +11,7 @@
 import logging
 from typing import Any, Callable, cast
 
-from cascade.graph import Graph, Node, serialise
+from earthkit.workflows.graph import Graph, Node, serialise
 from cascade.low.core import (
     DatasetId,
     JobInstance,
