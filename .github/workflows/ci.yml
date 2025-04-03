@@ -26,7 +26,7 @@ jobs:
     if: ${{ !github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci' }}
     uses: ecmwf/private-downstream-ci/.github/workflows/downstream-ci.yml@main
     with:
-      cascade: ecmwf/cascade@${{ github.event.pull_request.head.sha || github.sha }}
+      earthkit-workflows: ecmwf/earthkit-workflows@${{ github.event.pull_request.head.sha || github.sha }}
       python_qa: true
     secrets: inherit
 
@@ -36,5 +36,5 @@ jobs:
     if: ${{ !github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci' }}
     uses: ecmwf/private-downstream-ci/.github/workflows/downstream-ci-hpc.yml@main
     with:
-      cascade: ecmwf/cascade@${{ github.event.pull_request.head.sha || github.sha }}
+      earthkit-workflows: ecmwf/earthkit-workflows@${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit
