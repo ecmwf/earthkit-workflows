@@ -6,8 +6,11 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import base64
 from dataclasses import dataclass
+from typing import Any
 
+import cloudpickle
 from pydantic import BaseModel
 
 from cascade.controller.report import JobId, JobProgress
@@ -56,5 +59,13 @@ class ResultRetrievalRequest(CascadeGatewayAPI):
 
 
 class ResultRetrievalResponse(CascadeGatewayAPI):
-    result: bytes | None
+    result: str | None
     error: str | None
+
+
+def decoded_result(result: ResultRetrievalResponse, job: JobInstance) -> Any:
+    # TODO dont base64, instead skip the whole json business and send two zmq frames
+    # TODO dont cloudpickle, instead use the JobInstance's registered serde
+    as_bytes = base64.b64decode(result.result)
+    as_value = cloudpickle.loads(as_bytes)
+    return as_value
