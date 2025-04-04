@@ -66,7 +66,7 @@ class Reporter:
     def send_progress(self, state: State) -> None:
         if self.socket is None:
             return
-        progress = "{:.2}".format(1.0 - state.remaining / state.total)
+        progress = "{:.2%}".format(1.0 - state.remaining / state.total)[:-1]
         logger.debug(f"reporting {progress=}")
         report = ControllerReport(self.job_id, progress, monotonic_ns(), [])
         _send(self.socket, report)
