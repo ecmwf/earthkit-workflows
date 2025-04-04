@@ -20,8 +20,11 @@ import cascade.gateway.api as api
 logger = logging.getLogger(__name__)
 
 
-def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAPI:
+def request_response(
+    m: api.CascadeGatewayAPI, url: str, timeout_ms: int = 1000
+) -> api.CascadeGatewayAPI:
     """Sends a Request message, provides a corresponding Response message in a blocking manner"""
+
     local = threading.local()
     if not hasattr(local, "context"):
         local.context = zmq.Context()
@@ -45,9 +48,14 @@ def request_response(m: api.CascadeGatewayAPI, url: str) -> api.CascadeGatewayAP
 
     try:
         s = local.context.socket(zmq.REQ)
+        s.set(zmq.LINGER, timeout_ms)
         s.connect(url)
         s.send(b)
-        rr = s.recv()
+        mask = s.poll(timeout_ms, flags=zmq.POLLIN)
+        if mask == 0:
+            raise TimeoutError  # NOTE consider setting `err` on the response instead
+        else:
+            rr = s.recv()
     except Exception as e:
         logger.exception(f"failed to communicate on {url=}")
         raise ValueError(f"failed to communicate on {url=} => {repr(e)[:32]}")
