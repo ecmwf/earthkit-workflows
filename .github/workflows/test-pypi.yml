@@ -1,0 +1,11 @@
+name: cd
+
+on:
+  workflow_dispatch: ~
+
+jobs:
+  deploy:
+    uses: ecmwf/reusable-workflows/.github/workflows/cd-pypi.yml@v2
+    secrets: inherit
+    with:
+      testpypi: true
