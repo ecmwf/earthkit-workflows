@@ -57,6 +57,7 @@ write_to = "src/earthkit/workflows/_version.py"
 write_to_template = '''# Do not change! Do not track in version control!
 __version__ = "{version}"
 '''
+local_scheme = "no-local-version"
 
 [tool.setuptools.packages.find]
 include = ["earthkit.workflows*", "cascade*"]
