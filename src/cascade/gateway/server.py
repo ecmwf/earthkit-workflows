@@ -10,6 +10,7 @@
 here we just match the right method of `gateway.router` based on what message we parsed
 """
 
+import base64
 import logging
 
 import zmq
@@ -45,7 +46,8 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
     elif isinstance(m, api.ResultRetrievalRequest):
         try:
             result = jobs.get_result(m.job_id, m.dataset_id)
-            rv = api.ResultRetrievalResponse(result=result, error=None)
+            encoded = base64.b64encode(result)
+            rv = api.ResultRetrievalResponse(result=encoded, error=None)
         except Exception as e:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultRetrievalResponse(result=None, error=repr(e))
