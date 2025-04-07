@@ -8,6 +8,11 @@
 
 import dill
 
+try:
+    from ._version import __version__
+except ImportError:
+    # assuming editable install etc
+    pass
 from .graph import Graph, deduplicate_nodes
 from .graph.export import deserialise, serialise
 from .visualise import visualise
