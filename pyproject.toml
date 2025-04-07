@@ -1,49 +1,77 @@
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=65", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cascade-python"
-version = "0.0.1"
-description = "Cascade is a Python library for scheduling tasks on heterogeneous computing systems."
+name = "earthkit-workflows"
+description = "Earthkit Workflows is a Python library for declaring earthkit task DAGs, as well as scheduling and executing them on heterogeneous computing systems."
 authors = [
   { name = "European Centre for Medium-Range Weather Forecasts (ECMWF)", email = "software.support@ecmwf.int" },
 ]
-license = { text = "Apache License Version 2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
+    "earthkit-data",
+    "cloudpickle",
     "numpy",
     "xarray",
     "networkx",
-    "dask",
-    "dask[distributed]",
-    "bokeh",
     "array-api-compat",
-    "bs4", 
-    "sortedcontainers", 
+    "sortedcontainers",
     "pyvis",
     "dill",
-    "multiprocess",
-    "memray",
-    "code-meters",
-    "filelock>=3.12.0"
+    "pyrsistent",
+    "pydantic",
+    "zmq",
+    "fire",
 ]
+# version provided via setuptools_scm module, which derives it from git tag
+dynamic = ["version", "readme"]
 
 [project.optional-dependencies]
-tests = ["pytest"]
-kubernetes = ["dask_kubernetes"]
+tests = ["pytest", "earthkit-data"]
 lint = ["black", "isort", "flake8"]
 gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
-examples = ["cftime"]
-profiling = ["memray"]
+examples = ["cftime", "bokeh"]
+earthkit = ["earthkit-data"]
+all = ["cascade[tests,kubernetes,lint,gpu,examples,earthkit]"]
 
 [tool.setuptools]
 include-package-data = true
 zip-safe = false
 
+[tool.setuptools.dynamic]
+readme = {file = ["readme.md"], content-type = "text/markdown"}
+
+[tool.setuptools_scm]
+write_to = "src/earthkit/workflows/_version.py"
+write_to_template = '''# Do not change! Do not track in version control!
+__version__ = "{version}"
+'''
+local_scheme = "no-local-version"
+
 [tool.setuptools.packages.find]
+include = ["earthkit.workflows*", "cascade*"]
 where = ["src"]
 
 [tool.isort]
 profile = "black"
 
+[tool.mypy]
+plugins = "pydantic.mypy"
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "DEBUG"
+
+[tool.ruff.lint]
+ignore = ["E722", "E731", "E741"]
