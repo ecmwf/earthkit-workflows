@@ -78,7 +78,7 @@ def test_simple():
     run_cluster(job, 12335, 1)
 
 
-def test_para():
+def get_job() -> JobInstance:
     # 3-component graph:
     # c1: 2 sources, 4 sinks
     # c2: 2 sources, 1 sink
@@ -113,6 +113,14 @@ def test_para():
         .build()
         .get_or_raise()
     )
+    return job
 
+
+def test_para2():
+    job = get_job()
     run_cluster(job, 12445, 2)
+
+
+def test_para4():
+    job = get_job()
     run_cluster(job, 12365, 4)
