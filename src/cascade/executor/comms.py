@@ -180,7 +180,12 @@ class Listener:
 class _InFlightRecord:
     host: HostId
     message: tuple[bytes, bytes]
+    clazz: str
     at: int
+    remaining: int
+
+
+max_retries_per_message = 20
 
 
 class ReliableSender:
@@ -198,7 +203,11 @@ class ReliableSender:
         raw = ser_message(m)
         syn = ser_message(Syn(idx=self.idx, addr=self.address))
         self.inflight[self.idx] = _InFlightRecord(
-            host=host, message=(syn, raw), at=time.time_ns()
+            host=host,
+            message=(syn, raw),
+            at=time.time_ns(),
+            clazz=type(m).__name__,
+            remaining=max_retries_per_message,
         )
         self.hosts[host][0].send_multipart((syn, raw))
         self.idx += 1
@@ -215,11 +224,16 @@ class ReliableSender:
         for idx, record in self.inflight.items():
             if record.at < watermark:
                 logger.warning(
-                    f"retrying message {idx} due to not having it confirmed after {watermark-record.at}ns"
+                    f"retrying message {idx} ({record.clazz}) due to no confirmation after {watermark-record.at}ns"
                 )
                 if (socket := self.hosts.get(record.host, None)) is not None:
                     socket[0].send_multipart(record.message)
                     self.inflight[idx].at = time.time_ns()
+                    self.inflight[idx].remaining -= 1
+                    if self.inflight[idx].remaining <= 0:
+                        raise ValueError(
+                            f"message {idx} ({record.clazz}) retried too many times"
+                        )
                 else:
                     logger.warning(
                         f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown"
