@@ -10,6 +10,7 @@
 get sent out. In essence, we build a pseudo-controller in this test.
 """
 
+import logging
 import socket
 from logging.config import dictConfig
 from multiprocessing import Process
@@ -43,6 +44,8 @@ from cascade.low.core import (
     TaskInstance,
     WorkerId,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def launch_executor(
@@ -170,6 +173,7 @@ def test_executor():
         while expected:
             ms = l.recv_messages()
             for m in ms:
+                logger.debug(f"about to remove received message {m}")
                 expected.remove(m)
         callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}))
         expected = [
