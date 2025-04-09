@@ -39,10 +39,10 @@ from cascade.executor.comms import callback
 from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.graph import Graph, deduplicate_nodes
 from cascade.low.core import JobInstance
 from cascade.low.func import msum
 from cascade.scheduler.graph import precompute
+from earthkit.workflows.graph import Graph, deduplicate_nodes
 
 logger = logging.getLogger("cascade.benchmarks")
 

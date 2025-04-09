@@ -49,7 +49,6 @@ def get_job() -> JobInstance:
     generator_i = TaskInstance(
         definition=generator_d, static_input_kw={}, static_input_ps={}
     )
-    consumer
 
     builder = JobBuilder()
     builder = builder.with_node("generator", generator_i)

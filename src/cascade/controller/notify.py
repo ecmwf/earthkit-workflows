@@ -28,12 +28,12 @@ logger = logging.getLogger(__name__)
 
 
 def consider_purge(state: State, dataset: DatasetId) -> State:
-    no_dependants = not state.purging_tracker[dataset]
-    not_required_output = (dataset not in state.outputs) or (
-        state.outputs[dataset] is not None
-    )
+    no_dependants = not state.purging_tracker.get(dataset, None)
+    not_required_output = state.outputs.get(dataset, 1) is not None
     if no_dependants and not_required_output:
-        state.purging_tracker.pop(dataset)
+        logger.debug(f"adding {dataset=} to purging queue")
+        if dataset in state.purging_tracker:
+            state.purging_tracker.pop(dataset)
         state.purging_queue.append(dataset)
     return state
 

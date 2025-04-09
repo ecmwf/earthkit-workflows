@@ -33,6 +33,7 @@ dependencies = [
     "pydantic",
     "zmq",
     "fire",
+    "orjson",
 ]
 # version provided via setuptools_scm module, which derives it from git tag
 dynamic = ["version", "readme"]
