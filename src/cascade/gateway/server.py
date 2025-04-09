@@ -24,7 +24,7 @@ from cascade.gateway.router import JobRouter
 logger = logging.getLogger(__name__)
 
 
-def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
+def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
     rr = socket.recv()
     m = parse_request(rr)
     logger.debug(f"received frontend request {m}")
@@ -51,10 +51,13 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> None:
         except Exception as e:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultRetrievalResponse(result=None, error=repr(e))
+    elif isinstance(m, api.ShutdownRequest):
+        rv = api.ShutdownResponse(error=None)
     else:
         raise TypeError(m)
     response = serialize_response(rv)
     socket.send(response)
+    return isinstance(rv, api.ShutdownResponse)
 
 
 def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
@@ -76,10 +79,11 @@ def serve(url: str) -> None:
     jobs = JobRouter(poller)
 
     logger.debug("entering recv loop")
-    while True:
+    is_break = False
+    while not is_break:
         ready = poller.poll(None)
         for socket, _ in ready:
             if socket == fe:
-                handle_fe(socket, jobs)
+                is_break = handle_fe(socket, jobs)
             else:
                 handle_controller(socket, jobs)
