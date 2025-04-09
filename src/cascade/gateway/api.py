@@ -63,6 +63,14 @@ class ResultRetrievalResponse(CascadeGatewayAPI):
     error: str | None
 
 
+class ShutdownRequest(CascadeGatewayAPI):
+    pass
+
+
+class ShutdownResponse(CascadeGatewayAPI):
+    error: str | None
+
+
 def decoded_result(result: ResultRetrievalResponse, job: JobInstance) -> Any:
     # TODO dont base64, instead skip the whole json business and send two zmq frames
     # TODO dont cloudpickle, instead use the JobInstance's registered serde
