@@ -42,6 +42,12 @@ class Job:
     results: dict[DatasetId, bytes]
 
 
+# TODO this is a hotfix to not port collide on local jobs. There should be way more
+# bind-to-random-port overall, but the current code often needs to use the port number
+# before the actual bind happens -- this should be inverted
+local_job_port = 12345
+
+
 def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
     base = [
         "python",
@@ -67,7 +73,12 @@ def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
         f"{job_spec.hosts}",
     ]
     report = ["--report_address", f"{addr},{job_id}"]
-    subprocess.Popen(base + infra + report, env={**os.environ, **job_spec.envvars})
+    global local_job_port
+    portBase = ["--port_base", local_job_port]
+    local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
+    subprocess.Popen(
+        base + infra + report + portBase, env={**os.environ, **job_spec.envvars}
+    )
 
 
 def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
