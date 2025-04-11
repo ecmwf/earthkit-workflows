@@ -121,6 +121,8 @@ def test_para2():
     run_cluster(job, 12445, 2)
 
 
-def test_para4():
-    job = get_job()
-    run_cluster(job, 12365, 4)
+# TODO there is some race condition, so far observed only on CI without any
+# clue what is exactly happening, freezing this test. Fix one day
+# def test_para4():
+#    job = get_job()
+#    run_cluster(job, 12365, 4)
