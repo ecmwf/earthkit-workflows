@@ -170,9 +170,16 @@ def main_local(
     report_address: str | None = None,
     job: str | None = None,
     instance: str | None = None,
+    port_base: int = 12345,
 ) -> None:
     jobInstance = get_job(job, instance)
-    run_locally(jobInstance, hosts, workers_per_host, report_address=report_address)
+    run_locally(
+        jobInstance,
+        hosts,
+        workers_per_host,
+        report_address=report_address,
+        portBase=port_base,
+    )
 
 
 def main_dist(
