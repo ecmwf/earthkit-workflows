@@ -74,7 +74,7 @@ def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
     ]
     report = ["--report_address", f"{addr},{job_id}"]
     global local_job_port
-    portBase = ["--port_base", local_job_port]
+    portBase = ["--port_base", str(local_job_port)]
     local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
     subprocess.Popen(
         base + infra + report + portBase, env={**os.environ, **job_spec.envvars}
