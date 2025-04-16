@@ -51,6 +51,13 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
         except Exception as e:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultRetrievalResponse(result=None, error=repr(e))
+    elif isinstance(m, api.ResultDeletionRequest):
+        try:
+            error = "\n".join(jobs.delete_results(m.datasets))
+            rv = api.ResultDeletionResponse(error=error if error else None)
+        except Exception as e:
+            logger.exception(f"failed to get result: {m}")
+            rv = api.ResultDeletionResponse(error=repr(e))
     elif isinstance(m, api.ShutdownRequest):
         rv = api.ShutdownResponse(error=None)
     else:

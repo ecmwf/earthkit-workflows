@@ -86,6 +86,12 @@ def test_job():
         deser = api.decoded_result(result_retrieval_res, ji)
         assert deser == job_func(init_value)
 
+        result_deletion_req = api.ResultDeletionRequest(
+            datasets={job_id: [ji.ext_outputs[0]]}
+        )
+        result_deletion_res = client.request_response(result_deletion_req, url)
+        assert result_deletion_res.error is None
+
         shutdown_req = api.ShutdownRequest()
         shutdown_res = client.request_response(shutdown_req, url)
         assert shutdown_res.error is None
