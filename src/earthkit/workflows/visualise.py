@@ -15,7 +15,6 @@ from .taskgraph import Task
 
 def node_info_ext(node):
     info = node_info(node)
-    info["color"] = "#648FFF"
     if not node.inputs:
         info["shape"] = "diamond"
         info["color"] = "#DC267F"

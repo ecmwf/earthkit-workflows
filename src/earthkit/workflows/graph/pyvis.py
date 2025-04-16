@@ -17,6 +17,43 @@ from .nodes import Node
 _P = ParamSpec("_P")
 
 
+AVAILABLE_SHAPES = ["ellipse", "circle", "box", "dot", "triangleDown", "square"]
+AVAILABLE_COLOURS = [
+    "#6ba472",
+    "#726bf9",
+    "#fefc6e",
+    "#fb69b9",
+    "#74fbf1",
+    "#c1e7b4",
+    "#d68569",
+    "#c8a5f4",
+    "#9c6ca5",
+    "#8afe6f",
+    "#79aacc",
+    "#73f8ae",
+    "#fec3a5",
+    "#f76cf8",
+    "#c4d67c",
+    "#bef7f0",
+    "#986e6f",
+    "#c26dd2",
+    "#98b29b",
+    "#89bffe",
+    "#fdb1d9",
+    "#d0979b",
+    "#f8fbc4",
+    "#69899c",
+    "#f6ba73",
+    "#c1b2c9",
+    "#6c69c8",
+    "#f0698b",
+    "#92dcd3",
+    "#a3ae6c",
+    "#72d385",
+    "#d8fe93",
+]
+
+
 def _make_attr_func(attr: dict | Callable[_P, dict] | None) -> Callable[_P, dict]:
     if attr is None:
         return cast(Callable[_P, dict], lambda *args: {})
@@ -26,14 +63,28 @@ def _make_attr_func(attr: dict | Callable[_P, dict] | None) -> Callable[_P, dict
 
 
 def node_info(node):
-    """Simple node info function showing the node inputs and outputs as node title"""
+    """Simple node info function showing the node inputs and outputs as node title.
+
+    Additionally uses function name as the seed to select the shape and colour.
+    """
     labels = []
     inputs_s = ", ".join(inp for inp in node.inputs.keys()) if node.inputs else "None"
     labels.append(f"Input{'' if len(node.inputs) == 1 else 's'}: {inputs_s}")
     if node.outputs != [Node.DEFAULT_OUTPUT]:
         outputs_s = ", ".join(node.outputs) if node.outputs else "None"
         labels.append(f"Output{'' if len(node.outputs) == 1 else 's'}: {outputs_s}")
-    return {"title": "\n".join(labels)}
+
+    # Init shape and colour from node_name hash
+    shape_index = hash(node.name.split(":")[0]) % len(AVAILABLE_SHAPES)
+
+    colour_hash = f"{node.name.split(':')[0]}-{str(node.outputs)}"
+    colour_index = hash(colour_hash) % len(AVAILABLE_COLOURS)
+
+    return {
+        "title": "\n".join(labels),
+        "shape": AVAILABLE_SHAPES[shape_index],
+        "color": AVAILABLE_COLOURS[colour_index],
+    }
 
 
 def edge_info(sname, snode, dname, dnode):
