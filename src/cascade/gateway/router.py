@@ -156,3 +156,23 @@ class JobRouter:
 
     def put_result(self, job_id: JobId, dataset_id: DatasetId, result: bytes) -> None:
         self.jobs[job_id].results[dataset_id] = result
+
+    def delete_results(self, delete_map: dict[JobId, list[DatasetId]]) -> list[str]:
+        if not delete_map:
+            for job in self.jobs.values():
+                job.results = {}
+            return []
+        errs = []
+        for job_id, datasets in delete_map.items():
+            if job_id not in self.jobs:
+                errs.append(f"{job_id=} not found")
+                continue
+            if not datasets:
+                self.jobs[job_id].results = {}
+                continue
+            for dataset in datasets:
+                if dataset not in self.jobs[job_id].results:
+                    errs.append(f"{dataset=} not found for {job_id=}")
+                else:
+                    del self.jobs[job_id].results[dataset]
+        return errs
