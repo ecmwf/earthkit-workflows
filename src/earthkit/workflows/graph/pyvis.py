@@ -7,6 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 import json
+import random
 from typing import Any, Callable, Literal, ParamSpec, cast
 
 from pyvis.network import Network
@@ -74,16 +75,15 @@ def node_info(node):
         outputs_s = ", ".join(node.outputs) if node.outputs else "None"
         labels.append(f"Output{'' if len(node.outputs) == 1 else 's'}: {outputs_s}")
 
-    # Init shape and colour from node_name hash
-    shape_index = hash(node.name.split(":")[0]) % len(AVAILABLE_SHAPES)
-
-    colour_hash = f"{node.name.split(':')[0]}-{str(node.outputs)}"
-    colour_index = hash(colour_hash) % len(AVAILABLE_COLOURS)
+    shape = random.Random(node.name.split(":")[0]).choice(AVAILABLE_SHAPES)
+    colour = random.Random(f"{node.name.split(':')[0]}-{str(node.outputs)}").choice(
+        AVAILABLE_COLOURS
+    )
 
     return {
         "title": "\n".join(labels),
-        "shape": AVAILABLE_SHAPES[shape_index],
-        "color": AVAILABLE_COLOURS[colour_index],
+        "shape": shape,
+        "color": colour,
     }
 
 
