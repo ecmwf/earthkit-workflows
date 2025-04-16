@@ -96,6 +96,19 @@ class VisualisationPresets:
 PRESET_OPTIONS = Literal["hierarchical", "quick", "blob", "none"]
 
 
+def truncate_name(name: str, max_length: int = 10) -> str:
+    """Truncate a name to a maximum length"""
+
+    if ":" not in name:
+        return name
+
+    func, id = name.split(":", maxsplit=1)
+    if len(id) <= max_length:
+        return name
+
+    return f"{func}:{id[:max_length]}"
+
+
 def to_pyvis(
     graph: Graph,
     node_attrs: dict | Callable[[Node], dict] | None = None,
@@ -133,10 +146,17 @@ def to_pyvis(
     edge_func = _make_attr_func(edge_attrs)
     net = Network(directed=True, **kwargs)
     for node in graph.nodes(forwards=True):
-        net.add_node(node.name, **node_func(node))
+        net.add_node(truncate_name(node.name), **node_func(node))
         for iname, isrc in node.inputs.items():
-            eattrs = edge_func(str(isrc), isrc.parent, f"{node.name}.{iname}", node)
-            net.add_edge(isrc.parent.name, node.name, **eattrs)
+            eattrs = edge_func(
+                str(isrc),
+                isrc.parent,
+                f"{truncate_name(node.name)}.{truncate_name(iname)}",
+                node,
+            )
+            net.add_edge(
+                truncate_name(isrc.parent.name), truncate_name(node.name), **eattrs
+            )
 
     options = options or {}
     preset_options = getattr(VisualisationPresets, preset)()
