@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from time import monotonic_ns
 
 import zmq
+from typing_extensions import Self
 
 from cascade.executor.comms import get_context
 from cascade.low.core import DatasetId
@@ -22,9 +23,31 @@ from cascade.scheduler.core import State
 logger = logging.getLogger(__name__)
 
 JobId = str
-JobProgress = str
-JobProgressStarted: JobProgress = "0.00"
-JobProgressShutdown: JobProgress = "Shutdown"
+
+
+@dataclass
+class JobProgress:
+    completed: bool
+    pct: (
+        str | None
+    )  # number in (0, 1) formatted as {:.2%} without the percent sign -- eg 0.10, 23.68
+    failure: str | None
+
+    @classmethod
+    def failure(cls, failure: str) -> Self:
+        return cls(True, None, failure)
+
+    @classmethod
+    def progress(cls, pct: float) -> Self:
+        progress = "{:.2%}".format(pct)[:-1]
+        return cls(False, progress, None)
+
+    @classmethod
+    def success(cls) -> Self:
+        return cls(True, None, None)
+
+
+JobProgressStarted = JobProgress(False, "0.00", None)
 
 
 @dataclass
@@ -66,23 +89,36 @@ class Reporter:
     def send_progress(self, state: State) -> None:
         if self.socket is None:
             return
-        progress = "{:.2%}".format(1.0 - state.remaining / state.total)[:-1]
-        logger.debug(f"reporting {progress=}")
-        report = ControllerReport(self.job_id, progress, monotonic_ns(), [])
+        pct = 1.0 - state.remaining / state.total
+        logger.debug(f"reporting progress {pct=}")
+        report = ControllerReport(
+            self.job_id, JobProgress.progress(pct), monotonic_ns(), []
+        )
         _send(self.socket, report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:
         if self.socket is None:
             return
-        logger.debug(f"uploading reuslt {dataset=}")
+        logger.debug(f"uploading result {dataset=}")
         report = ControllerReport(
             self.job_id, None, monotonic_ns(), [(dataset, result)]
         )
         _send(self.socket, report)
 
-    def shutdown(self) -> None:
+    def send_failure(self, failure: str) -> None:
         if self.socket is None:
             return
-        logger.debug("reporter shutting down")
-        report = ControllerReport(self.job_id, JobProgressShutdown, monotonic_ns(), [])
+        logger.debug(f"reporting failure {failure=}")
+        report = ControllerReport(
+            self.job_id, JobProgress.failure(failure), monotonic_ns(), []
+        )
+        _send(self.socket, report)
+
+    def success(self) -> None:
+        if self.socket is None:
+            return
+        logger.debug("reporter sending shutdown")
+        report = ControllerReport(
+            self.job_id, JobProgress.success(), monotonic_ns(), []
+        )
         _send(self.socket, report)
