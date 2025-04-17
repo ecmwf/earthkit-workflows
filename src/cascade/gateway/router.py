@@ -20,12 +20,7 @@ from typing import Iterable
 import orjson
 import zmq
 
-from cascade.controller.report import (
-    JobId,
-    JobProgress,
-    JobProgressShutdown,
-    JobProgressStarted,
-)
+from cascade.controller.report import JobId, JobProgress, JobProgressStarted
 from cascade.executor.comms import get_context
 from cascade.gateway.api import JobSpec
 from cascade.low.core import DatasetId
@@ -146,12 +141,13 @@ class JobRouter:
         if progress is None:
             return
         job = self.jobs[job_id]
-        if progress == JobProgressShutdown:
+        if progress.completed:
             self.poller.unregister(job.socket)
-            return
-        if job.last_seen >= timestamp:
-            return
-        else:
+        if progress.failure is not None and job.progress.failure is None:
+            job.progress = progress
+        elif job.last_seen >= timestamp or job.progress.failure is not None:
+            pass
+        elif progress.pct is not None:
             job.progress = progress
 
     def put_result(self, job_id: JobId, dataset_id: DatasetId, result: bytes) -> None:

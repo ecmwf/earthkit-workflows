@@ -11,7 +11,7 @@ init_value = 10
 job_func = lambda i: i * 2
 
 
-def get_job() -> JobInstance:
+def get_job_succ() -> JobInstance:
     sod = TaskDefinition(
         func=TaskDefinition.func_enc(lambda: init_value),
         environment=[],
@@ -39,6 +39,19 @@ def get_job() -> JobInstance:
     return ji
 
 
+def get_job_fail() -> JobInstance:
+    td = TaskDefinition(
+        func=TaskDefinition.func_enc(job_func),
+        environment=[],
+        input_schema={},
+        output_schema={"o": "int"},
+    )
+    ti = TaskInstance(definition=td, static_input_kw={}, static_input_ps={"0": None})
+
+    ji = JobBuilder().with_node("t", ti).build().get_or_raise()
+    return ji
+
+
 def spawn_gateway() -> tuple[str, Process]:
     url = "tcp://localhost:12355"
     p = Process(target=gateway_entrypoint, args=(url,))
@@ -49,7 +62,8 @@ def spawn_gateway() -> tuple[str, Process]:
 def test_job():
     url, gw = spawn_gateway()
     try:
-        ji = get_job()
+        # succ job
+        ji = get_job_succ()
         js = api.JobSpec(
             benchmark_name=None,
             envvars={},
@@ -70,7 +84,7 @@ def test_job():
         while tries > 0:
             job_progress_res = client.request_response(job_progress_req, url)
             assert job_progress_res.error is None
-            if job_progress_res.progresses[job_id] == "100.00":
+            if job_progress_res.progresses[job_id].pct == "100.00":
                 break
             else:
                 tries -= 1
@@ -92,11 +106,43 @@ def test_job():
         result_deletion_res = client.request_response(result_deletion_req, url)
         assert result_deletion_res.error is None
 
+        # fail job
+        ji = get_job_fail()
+        js = api.JobSpec(
+            benchmark_name=None,
+            envvars={},
+            job_instance=ji,
+            workers_per_host=1,
+            hosts=1,
+            use_slurm=False,
+        )
+
+        submit_job_req = api.SubmitJobRequest(job=js)
+        submit_job_res = client.request_response(submit_job_req, url)
+        job_id = submit_job_res.job_id
+        assert submit_job_res.error is None
+        assert job_id is not None
+
+        tries = 3
+        job_progress_req = api.JobProgressRequest(job_ids=[job_id])
+        while tries > 0:
+            job_progress_res = client.request_response(job_progress_req, url)
+            assert job_progress_res.error is None
+            assert job_progress_res.progresses[job_id].pct != "100.00"
+            if job_progress_res.progresses[job_id].failure is not None:
+                break
+            else:
+                tries -= 1
+                time.sleep(1)
+        assert tries > 0
+
+        # gw shutdown
         shutdown_req = api.ShutdownRequest()
         shutdown_res = client.request_response(shutdown_req, url)
         assert shutdown_res.error is None
         gw.join(5)
         assert gw.exitcode == 0
+
     except:
         if gw.is_alive():
             gw.kill()

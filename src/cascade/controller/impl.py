@@ -57,12 +57,14 @@ def run(
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify, Microtrace.ctrl_notify)(state, job, events, reporter)
                 logger.debug(f"received {len(events)} events")
-    except Exception:
+    except Exception as ex:
         logger.error("crash in controller, shuting down")
+        reporter.send_failure(repr(ex))
         raise
+    else:
+        reporter.success()
     finally:
         mark({"action": ControllerPhases.shutdown})
         logger.debug("shutting down executors")
         bridge.shutdown()
-        reporter.shutdown()
     return state
