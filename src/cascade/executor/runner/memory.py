@@ -107,11 +107,12 @@ class Memory(AbstractContextManager):
         try:
             import torch
 
-            free, total = torch.cuda.mem_get_info()
-            logger.debug(f"cuda mem occ: {free/total:.2%}")
-            if free / total < 0.9:
-                torch.cuda.empty_cache()
-                logger.debug(f"cuda mem occ post cache empty: {free/total:.2%}")
+            if torch.cuda.is_available():
+                free, total = torch.cuda.mem_get_info()
+                logger.debug(f"cuda mem avail: {free/total:.2%}")
+                if free / total < 0.8:
+                    torch.cuda.empty_cache()
+                    logger.debug(f"cuda mem avail post cache empty: {free/total:.2%}")
         except ImportError:
             return
         except Exception:
