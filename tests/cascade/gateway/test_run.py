@@ -79,12 +79,14 @@ def test_job():
         assert submit_job_res.error is None
         assert job_id is not None
 
-        tries = 3
+        tries = 4
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries > 0:
             job_progress_res = client.request_response(job_progress_req, url)
             assert job_progress_res.error is None
-            if job_progress_res.progresses[job_id].pct == "100.00":
+            is_computed = job_progress_res.progresses[job_id].pct == "100.00"
+            is_datasets = ji.ext_outputs[0] in job_progress_res.datasets[job_id]
+            if is_computed and is_datasets:
                 break
             else:
                 tries -= 1

@@ -127,10 +127,16 @@ class JobRouter:
         _spawn_subprocess(job_spec, full_addr, job_id)
         return job_id
 
-    def progress_of(self, job_ids: Iterable[JobId]) -> dict[JobId, JobProgress]:
+    def progress_of(
+        self, job_ids: Iterable[JobId]
+    ) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]]]:
         if not job_ids:
             job_ids = self.jobs.keys()
-        return {job_id: self.jobs[job_id].progress for job_id in job_ids}
+        progresses = {job_id: self.jobs[job_id].progress for job_id in job_ids}
+        datasets = {
+            job_id: list(self.jobs[job_id].results.keys()) for job_id in job_ids
+        }
+        return progresses, datasets
 
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
         return self.jobs[job_id].results[dataset_id]
