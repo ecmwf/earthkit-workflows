@@ -10,7 +10,7 @@ from typing import TypeAlias
 
 import array_api_compat
 from earthkit.data import FieldList
-from earthkit.data.readers.grib.metadata import StandAloneGribMetadata
+from earthkit.data.core.metadata import Metadata as ekdMetadata
 
 from earthkit.workflows.backends import num_args
 
@@ -44,7 +44,7 @@ def resolve_metadata(metadata: Metadata, *args) -> dict:
     return metadata(*args)
 
 
-def new_fieldlist(data, metadata: list[StandAloneGribMetadata], overrides: dict):
+def new_fieldlist(data, metadata: list[ekdMetadata], overrides: dict):
     if len(overrides) > 0:
         try:
             new_metadata = [
@@ -58,10 +58,8 @@ def new_fieldlist(data, metadata: list[StandAloneGribMetadata], overrides: dict)
             print(
                 "Error setting metadata",
                 overrides,
-                "edition",
-                metadata[0]["edition"],
-                "param",
-                metadata[0]["paramId"],
+                "On data with: ",
+                list(map(lambda x: x.dump(), metadata))
             )
             print(e)
     return FieldList.from_array(standardise_output(data), metadata)
