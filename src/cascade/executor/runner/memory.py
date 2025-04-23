@@ -112,7 +112,11 @@ class Memory(AbstractContextManager):
                 logger.debug(f"cuda mem avail: {free/total:.2%}")
                 if free / total < 0.8:
                     torch.cuda.empty_cache()
+                    free, total = torch.cuda.mem_get_info()
                     logger.debug(f"cuda mem avail post cache empty: {free/total:.2%}")
+                    if free / total < 0.8:
+                        logger.warning("cuda mem avail low despite cache empty!")
+                        logger.debug(torch.cuda.memory_summary())
         except ImportError:
             return
         except Exception:
