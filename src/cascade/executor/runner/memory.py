@@ -101,6 +101,23 @@ class Memory(AbstractContextManager):
         for inputId in purgeable:
             self.local.pop(inputId)
 
+        # NOTE poor man's gpu mem management -- currently torch only. Given the task sequence limitation,
+        # this may not be the best place to invoke. Additionally, we may want to check first whether
+        # the worker is gpu aware, etc
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                free, total = torch.cuda.mem_get_info()
+                logger.debug(f"cuda mem avail: {free/total:.2%}")
+                if free / total < 0.8:
+                    torch.cuda.empty_cache()
+                    logger.debug(f"cuda mem avail post cache empty: {free/total:.2%}")
+        except ImportError:
+            return
+        except Exception:
+            logger.exception("failed to free cuda cache")
+
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         # this is required so that the Shm can be properly freed, otherwise you get 'pointers cannot be closed'
         del self.local
