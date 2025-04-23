@@ -59,7 +59,7 @@ def new_fieldlist(data, metadata: list[ekdMetadata], overrides: dict):
                 "Error setting metadata",
                 overrides,
                 "On data with: ",
-                list(map(lambda x: x.dump(), metadata))
+                list(map(lambda x: x.dump(), metadata)),
             )
             print(e)
     return FieldList.from_array(standardise_output(data), metadata)
