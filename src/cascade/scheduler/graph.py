@@ -160,19 +160,17 @@ def enrich(
 
 
 def precompute(job_instance: JobInstance) -> Preschedule:
-    edge_o: dict[DatasetId, set[TaskId]] = dependants(job_instance.edges)
+    edge_o = dependants(job_instance.edges)
+    edge_i: dict[TaskId, set[DatasetId]] = defaultdict(set)
+    for task, inputs in param_source(job_instance.edges).items():
+        edge_i[task] = {e for e in inputs.values()}
     edge_o_proj: dict[TaskId, set[TaskId]] = defaultdict(set)
     for dataset, outs in edge_o.items():
         edge_o_proj[dataset.task] = edge_o_proj[dataset.task].union(outs)
 
-    edge_i: dict[TaskId, set[DatasetId]] = defaultdict(set)
-    for task, inputs in param_source(job_instance.edges).items():
-        edge_i[task] = {e for e in inputs.values()}
     edge_i_proj: dict[TaskId, set[TaskId]] = defaultdict(set)
     for vert, inps in edge_i.items():
         edge_i_proj[vert] = {dataset.task for dataset in inps}
-
-    task_o = {task: job_instance.outputs_of(task) for task in job_instance.tasks.keys()}
 
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
@@ -191,6 +189,4 @@ def precompute(job_instance: JobInstance) -> Preschedule:
 
     components.sort(key=lambda c: c.weight(), reverse=True)
 
-    return Preschedule(
-        components=components, edge_o=edge_o, edge_i=edge_i, task_o=task_o
-    )
+    return Preschedule(components=components, edge_o=edge_o, edge_i=edge_i)

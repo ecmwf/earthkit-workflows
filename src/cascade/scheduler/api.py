@@ -10,14 +10,8 @@ import logging
 from collections import defaultdict
 from typing import Iterator
 
-from cascade.low.core import (
-    DatasetId,
-    Environment,
-    HostId,
-    JobInstance,
-    TaskId,
-    WorkerId,
-)
+from cascade.low.core import DatasetId, TaskId, WorkerId
+from cascade.low.execution_context import DatasetStatus, JobExecutionContext, TaskStatus
 from cascade.low.tracing import Microtrace, timer
 from cascade.scheduler.assign import (
     assign_within_component,
@@ -28,32 +22,18 @@ from cascade.scheduler.core import (
     Assignment,
     ComponentId,
     ComponentSchedule,
-    DatasetStatus,
     Preschedule,
-    State,
-    TaskStatus,
+    Schedule,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def initialize(
-    environment: Environment, preschedule: Preschedule, outputs: set[DatasetId]
-) -> State:
-    """Initializes State based on Preschedule and Environment. Assigns hosts to components"""
-    purging_tracker = {
-        ds: {task for task in dependants}
-        for ds, dependants in preschedule.edge_o.items()
-    }
-
+def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Schedule:
     components: list[ComponentSchedule] = []
     ts2component: dict[TaskId, ComponentId] = {}
-    host2workers: dict[HostId, list[WorkerId]] = defaultdict(list)
-    for worker in environment.workers:
-        host2workers[worker.host].append(worker)
 
     computable = 0
-    total = 0
     for componentId, precomponent in enumerate(preschedule.components):
         component = ComponentSchedule(
             core=precomponent,
@@ -62,7 +42,7 @@ def initialize(
             worker2task_distance={},
             worker2task_values=set(precomponent.sources),
             is_computable_tracker={
-                task: {inp for inp in preschedule.edge_i[task]}
+                task: {inp for inp in context.edge_i[task]}
                 for task in precomponent.nodes
             },
         )
@@ -70,37 +50,17 @@ def initialize(
         computable += len(precomponent.sources)
         for task in precomponent.nodes:
             ts2component[task] = componentId
-        total += len(component.core.nodes)
 
-    return State(
-        edge_o=preschedule.edge_o,
-        edge_i=preschedule.edge_i,
-        task_o=preschedule.task_o,
-        worker2ds=defaultdict(dict),
-        ds2worker=defaultdict(dict),
-        ts2worker=defaultdict(dict),
-        worker2ts=defaultdict(dict),
-        host2ds=defaultdict(dict),
-        ds2host=defaultdict(dict),
+    return Schedule(
         components=components,
         ts2component=ts2component,
-        host2component={host: None for host in host2workers.keys()},
-        host2workers=host2workers,
+        host2component={host: None for host in context.host2workers.keys()},
         computable=computable,
-        remaining=total,
-        total=total,
         worker2task_overhead=defaultdict(dict),
-        idle_workers=set(environment.workers.keys()),
-        ongoing=defaultdict(set),
-        ongoing_total=0,
-        purging_tracker=purging_tracker,
-        purging_queue=[],
-        outputs={e: None for e in outputs},
-        fetching_queue={},
     )
 
 
-def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignment]:
+def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignment]:
     """Given idle workers in `state`, assign actions to workers. Mutates the state:
      - pops from computable & idle workers,
      - decreases weight,
@@ -112,23 +72,23 @@ def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignm
 
     # step I: assign within existing components
     component2workers: dict[ComponentId, list[WorkerId]] = defaultdict(list)
-    for worker in state.idle_workers:
-        if (component := state.host2component[worker.host]) is not None:
+    for worker in context.idle_workers:
+        if (component := schedule.host2component[worker.host]) is not None:
             component2workers[component].append(worker)
 
     for component_id, local_workers in component2workers.items():
         if local_workers:
             yield from assign_within_component(
-                state, local_workers, component_id, job, env
+                schedule, local_workers, component_id, context
             )
 
-    if not state.idle_workers:
+    if not context.idle_workers:
         return
 
     # step II: assign remaining workers to new components
     components = [
         (component.weight, component_id)
-        for component_id, component in enumerate(state.components)
+        for component_id, component in enumerate(schedule.components)
         if component.weight > 0
     ]
     if not components:
@@ -138,10 +98,10 @@ def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignm
         reverse=True
     )  # TODO consider number of currently assigned workers too
     migrants = defaultdict(list)
-    for worker in state.idle_workers:
+    for worker in context.idle_workers:
         # TODO we dont currently allow partial assignments, this is subopt!
-        if (component := state.host2component[worker.host]) is None or (
-            state.components[component].weight == 0
+        if (component := schedule.host2component[worker.host]) is None or (
+            schedule.components[component].weight == 0
         ):
             migrants[worker.host].append(worker)
         # TODO we ultimately want to be able to have weight-and-capacity-aware m-n host2component
@@ -150,43 +110,48 @@ def assign(state: State, job: JobInstance, env: Environment) -> Iterator[Assignm
     component_i = 0
     for host, workers in migrants.items():
         component_id = components[component_i][1]
-        state = timer(migrate_to_component, Microtrace.ctrl_migrate)(
-            host, component_id, state
+        timer(migrate_to_component, Microtrace.ctrl_migrate)(
+            host, component_id, schedule, context
         )
-        yield from assign_within_component(state, workers, component_id, job, env)
+        yield from assign_within_component(schedule, workers, component_id, context)
         component_i = (component_i + 1) % len(components)
 
 
 def _set_preparing_at(
-    dataset: DatasetId, worker: WorkerId, state: State, children: set[TaskId]
-) -> State:
+    dataset: DatasetId,
+    worker: WorkerId,
+    schedule: Schedule,
+    context: JobExecutionContext,
+    children: set[TaskId],
+):
     # NOTE this may need to change once we switch to persistent workers. Currently, these `if`s are necessary
     # because we issue transmit command when host *has* DS but worker does *not*. This ends up a no-op, but we
     # totally dont want the host state to reset -- because it wouldnt recover from it
     if (
-        state.host2ds[worker.host].get(dataset, DatasetStatus.missing)
+        context.host2ds[worker.host].get(dataset, DatasetStatus.missing)
         != DatasetStatus.available
     ):
-        state.host2ds[worker.host][dataset] = DatasetStatus.preparing
-    state.host2ds[worker.host][dataset] = DatasetStatus.preparing
+        context.host2ds[worker.host][dataset] = DatasetStatus.preparing
+    context.host2ds[worker.host][dataset] = DatasetStatus.preparing
     if (
-        state.ds2host[dataset].get(worker.host, DatasetStatus.missing)
+        context.ds2host[dataset].get(worker.host, DatasetStatus.missing)
         != DatasetStatus.available
     ):
-        state.ds2host[dataset][worker.host] = DatasetStatus.preparing
-    state.worker2ds[worker][dataset] = DatasetStatus.preparing
-    state.ds2worker[dataset][worker] = DatasetStatus.preparing
+        context.ds2host[dataset][worker.host] = DatasetStatus.preparing
+    context.worker2ds[worker][dataset] = DatasetStatus.preparing
+    context.ds2worker[dataset][worker] = DatasetStatus.preparing
     # TODO check that there is no invalid transition? Eg, if it already was preparing or available
     # TODO do we want to do anything for the other workers on the same host? Probably not, rather consider
     # host2ds during assignments
 
     for task in children:
-        component_id = state.ts2component[task]
-        state = update_worker2task_distance(component_id, task, worker, state)
-    return state
+        component_id = schedule.ts2component[task]
+        update_worker2task_distance(component_id, task, worker, schedule, context)
 
 
-def plan(state: State, assignments: list[Assignment]) -> State:
+def plan(
+    schedule: Schedule, context: JobExecutionContext, assignments: list[Assignment]
+):
     """Given actions that were just sent to a worker, update state to reflect it, including preparation
     and planning for future assignments.
     Unlike `assign`, this is less performance critical, so slightly longer calculations can happen here.
@@ -197,17 +162,15 @@ def plan(state: State, assignments: list[Assignment]) -> State:
 
     for assignment in assignments:
         for prep in assignment.prep:
-            children = state.purging_tracker[prep[0]]
-            state = _set_preparing_at(prep[0], assignment.worker, state, children)
+            children = context.edge_o[prep[0]]
+            _set_preparing_at(prep[0], assignment.worker, schedule, context, children)
         for task in assignment.tasks:
             for ds in assignment.outputs:
-                children = state.edge_o[ds]
-                state = _set_preparing_at(ds, assignment.worker, state, children)
-            state.worker2ts[assignment.worker][task] = TaskStatus.enqueued
-            state.ts2worker[task][assignment.worker] = TaskStatus.enqueued
-            if task in state.ongoing[assignment.worker]:
+                children = context.edge_o[ds]
+                _set_preparing_at(ds, assignment.worker, schedule, context, children)
+            context.worker2ts[assignment.worker][task] = TaskStatus.enqueued
+            context.ts2worker[task][assignment.worker] = TaskStatus.enqueued
+            if task in context.ongoing[assignment.worker]:
                 raise ValueError(f"double add of {task} to {assignment.worker}")
-            state.ongoing[assignment.worker].add(task)
-            state.ongoing_total += 1
-
-    return state
+            context.ongoing[assignment.worker].add(task)
+            context.ongoing_total += 1
