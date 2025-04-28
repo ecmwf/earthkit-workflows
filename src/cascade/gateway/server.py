@@ -38,8 +38,10 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
             rv = api.SubmitJobResponse(job_id=None, error=repr(e))
     elif isinstance(m, api.JobProgressRequest):
         try:
-            progresses = jobs.progress_of(m.job_ids)
-            rv = api.JobProgressResponse(progresses=progresses, error=None)
+            progresses, datasets = jobs.progress_of(m.job_ids)
+            rv = api.JobProgressResponse(
+                progresses=progresses, datasets=datasets, error=None
+            )
         except Exception as e:
             logger.exception(f"failed to get progress of: {m}")
             rv = api.JobProgressResponse(progresses={}, error=repr(e))

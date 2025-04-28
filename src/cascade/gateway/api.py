@@ -50,6 +50,7 @@ class JobProgressRequest(CascadeGatewayAPI):
 
 class JobProgressResponse(CascadeGatewayAPI):
     progresses: dict[JobId, JobProgress]
+    datasets: dict[JobId, list[DatasetId]]
     error: str | None  # top level error
 
 
