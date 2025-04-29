@@ -14,7 +14,6 @@
 import logging
 from typing import Iterable
 
-import cascade.executor.serde as serde
 from cascade.controller.core import State
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
@@ -27,25 +26,6 @@ from cascade.scheduler.assign import set_worker2task_overhead
 from cascade.scheduler.core import Schedule
 
 logger = logging.getLogger(__name__)
-
-
-def consider_purge(state: State, dataset: DatasetId):
-    no_dependants = not state.purging_tracker.get(dataset, None)
-    not_required_output = state.outputs.get(dataset, 1) is not None
-    if no_dependants and not_required_output:
-        logger.debug(f"adding {dataset=} to purging queue")
-        if dataset in state.purging_tracker:
-            state.purging_tracker.pop(dataset)
-        state.purging_queue.append(dataset)
-
-
-def consider_fetch(state: State, dataset: DatasetId, at: HostId):
-    if (
-        dataset in state.outputs
-        and state.outputs[dataset] is None
-        and dataset not in state.fetching_queue
-    ):
-        state.fetching_queue[dataset] = at
 
 
 # TODO refac move to scheduler
@@ -106,7 +86,7 @@ def notify(
             )
             context.host2ds[host][event.ds] = DatasetStatus.available
             context.ds2host[event.ds][host] = DatasetStatus.available
-            consider_fetch(state, event.ds, host)
+            state.consider_fetch(event.ds, host)
             consider_computable(schedule, state, context, event.ds, host)
             if event.transmit_idx is not None:
                 mark(
@@ -135,9 +115,7 @@ def notify(
                         "host": "controller",
                     }
                 )
-                for sourceDataset in context.edge_i.get(event.ds.task, set()):
-                    state.purging_tracker[sourceDataset].remove(event.ds.task)
-                    consider_purge(state, sourceDataset)
+                state.task_done(event.ds.task, context.edge_i.get(event.ds.task, set()))
                 if event.ds.task in context.ongoing[worker]:
                     context.ongoing[worker].remove(event.ds.task)
                     context.ongoing_total -= 1
@@ -150,11 +128,7 @@ def notify(
                 if not context.ongoing[worker]:
                     context.idle_workers.add(worker)
         elif isinstance(event, DatasetTransmitPayload):
-            # TODO ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
-            state.outputs[event.header.ds] = serde.des_output(
-                event.value, "Any", event.header.deser_fun
-            )
+            state.receive_payload(event)
             reporter.send_result(event.header.ds, event.value)
         else:
             assert_never(event)
-    return state

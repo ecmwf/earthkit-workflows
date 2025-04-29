@@ -14,6 +14,7 @@ Primarily manifesting in the JobExecutionContext class -- a proto-scheduler of s
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
+from typing import Iterator
 
 from cascade.low.core import (
     DatasetId,
@@ -79,6 +80,17 @@ class JobExecutionContext:
         # TODO dont sort on each invoke -- precompute
         last = sorted(definition.output_schema.keys())[-1]
         return last == dataset.output
+
+    def purge_dataset(self, ds: DatasetId) -> Iterator[HostId]:
+        """Drop dataset from all tracking structures, yields hosts that should be sent purge command"""
+        for host in self.ds2host[ds]:
+            self.host2ds[host].pop(ds)
+            for worker in self.host2workers[host]:
+                if ds in self.worker2ds[worker]:
+                    self.worker2ds[worker].pop(ds)
+                    self.ds2worker[ds].pop(worker)
+            yield host
+        self.ds2host.pop(ds)
 
     # TODO refac pop idle worker, extend ongoing
     def assign_task(self) -> None:

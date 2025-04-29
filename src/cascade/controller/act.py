@@ -11,7 +11,6 @@
 import logging
 
 from cascade.controller.core import State
-from cascade.controller.notify import consider_purge
 from cascade.executor.bridge import Bridge
 from cascade.executor.msg import TaskSequence
 from cascade.low.execution_context import JobExecutionContext
@@ -67,30 +66,18 @@ def act(bridge: Bridge, assignment: Assignment) -> None:
     bridge.task_sequence(task_sequence)
 
 
-# TODO refac less explicit mutation of context, use class methods
 def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
-    """Flushes elements in purging and fetching queues in State. Mutates State, JobExecutionContext,
+    """Flushes elements in purging and fetching queues in State. Marks the respective
+    changes in Context, sends commands via Bridge. Mutates State, JobExecutionContext,
     and via bridge the Executors.
     """
 
-    # TODO handle this in some eg thread pool... may need lock on state, result queueing, handle purge tracking, etc
-    fetchable = list(state.fetching_queue.keys())
-    for dataset in fetchable:
-        host = state.fetching_queue.pop(dataset)
+    for dataset, host in state.drain_fetching_queue():
         bridge.fetch(dataset, host)
-        consider_purge(state, dataset)
 
-    for ds in state.purging_queue:
-        # TODO finegraining, restrictions, checks for validity, etc. Do in concert with extension of `purging_queue`
-        for host in context.ds2host[ds]:
-            logger.debug(f"identified purge of {ds} at {host}")
+    for ds in state.drain_purging_queue():
+        for host in context.purge_dataset(ds):
+            logger.debug(f"issuing purge of {ds=} to {host=}")
             bridge.purge(host, ds)
-            context.host2ds[host].pop(ds)
-            for worker in context.host2workers[host]:
-                if ds in context.worker2ds[worker]:
-                    context.worker2ds[worker].pop(ds)
-                    context.ds2worker[ds].pop(worker)
-        context.ds2host.pop(ds)
-    state.purging_queue = []
 
     return state
