@@ -51,7 +51,7 @@ class Payload:
         ------
         tuple, containing function, arguments and kwargs
         """
-        return (self.func, self.args, self.kwargs)
+        return (self.func, self.args, self.kwargs, self.metadata)
 
     def name(self) -> str:
         """Return

@@ -26,57 +26,64 @@ logger = logging.getLogger(__name__)
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
 
     # TODO this is hotfix. Strict schema and the like required for payload
-    if isinstance(node["payload"], tuple):
-        func = cast(Callable, node["payload"][0])
-        args = cast(list[Any], node["payload"][1])
-        kwargs = cast(dict[str, Any], node["payload"][2])
+    if hasattr(node["payload"], "to_tuple"):
+        payload_tuple = node["payload"].to_tuple()
+    elif isinstance(node["payload"], tuple):
+        payload_tuple = node["payload"]
 
-        input_schema: dict[str, str] = {}
-        for k in kwargs.keys():
-            input_schema[k] = "Any"
-
-        static_input_kw: dict[str, Any] = kwargs.copy()
-        static_input_ps: dict[str, Any] = {}
-        rev_lookup: dict[str, int] = {}
-        for i, e in enumerate(args):
-            static_input_ps[str(i)] = e
-            # NOTE we may get a "false positive", ie, what is a genuine static string param ending up in rev_lookup
-            # But it doesnt hurt, since we only pick `node["inputs"]` later on only.
-            # Furthermore, we don't need rev lookup into kwargs since cascade fluent doesnt support that
-            if isinstance(e, str):
-                rev_lookup[e] = i
-        edges = []
-        for param, other in node["inputs"].items():
-            if isinstance(other, str):
-                source = DatasetId(other, Node.DEFAULT_OUTPUT)
-            else:
-                source = DatasetId(other[0], other[1])
-            edges.append(
-                Task2TaskEdge(
-                    source=source,
-                    sink_task=name,
-                    sink_input_ps=rev_lookup[param],
-                    sink_input_kw=None,
-                )
-            )
-            static_input_ps[str(rev_lookup[param])] = None
-
-        outputs = node["outputs"] if node["outputs"] else [Node.DEFAULT_OUTPUT]
-
-        definition = TaskDefinition(
-            func=TaskDefinition.func_enc(func),
-            environment=[],
-            entrypoint="",
-            input_schema=input_schema,
-            output_schema={e: "Any" for e in outputs},
-        )
-        task = TaskInstance(
-            definition=definition,
-            static_input_kw=static_input_kw,
-            static_input_ps=static_input_ps,
-        )
+    func = cast(Callable, payload_tuple[0])
+    args = cast(list[Any], payload_tuple[1])
+    kwargs = cast(dict[str, Any], payload_tuple[2])
+    if len(node["payload"]) > 2:
+        metadata = cast(dict[str, Any], payload_tuple[3])
     else:
-        raise NotImplementedError(node["payload"])
+        metadata: dict[str, Any] = {}
+
+    input_schema: dict[str, str] = {}
+    for k in kwargs.keys():
+        input_schema[k] = "Any"
+
+    static_input_kw: dict[str, Any] = kwargs.copy()
+    static_input_ps: dict[str, Any] = {}
+    rev_lookup: dict[str, int] = {}
+    for i, e in enumerate(args):
+        static_input_ps[str(i)] = e
+        # NOTE we may get a "false positive", ie, what is a genuine static string param ending up in rev_lookup
+        # But it doesnt hurt, since we only pick `node["inputs"]` later on only.
+        # Furthermore, we don't need rev lookup into kwargs since cascade fluent doesnt support that
+        if isinstance(e, str):
+            rev_lookup[e] = i
+    edges = []
+    for param, other in node["inputs"].items():
+        if isinstance(other, str):
+            source = DatasetId(other, Node.DEFAULT_OUTPUT)
+        else:
+            source = DatasetId(other[0], other[1])
+        edges.append(
+            Task2TaskEdge(
+                source=source,
+                sink_task=name,
+                sink_input_ps=rev_lookup[param],
+                sink_input_kw=None,
+            )
+        )
+        static_input_ps[str(rev_lookup[param])] = None
+
+    outputs = node["outputs"] if node["outputs"] else [Node.DEFAULT_OUTPUT]
+
+    definition = TaskDefinition(
+        func=TaskDefinition.func_enc(func),
+        environment=cast(list[str], metadata.get("environment", [])),
+        entrypoint="",
+        input_schema=input_schema,
+        output_schema={e: "Any" for e in outputs},
+        needs_gpu=cast(bool, metadata.get("needs_gpu", False)),
+    )
+    task = TaskInstance(
+        definition=definition,
+        static_input_kw=static_input_kw,
+        static_input_ps=static_input_ps,
+    )
 
     return task, edges
 
