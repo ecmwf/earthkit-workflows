@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Optional, Sequence
+from typing import Any, Callable, Hashable, Iterable, Optional, Sequence, TypeVar
 
 import numpy as np
 import xarray as xr
@@ -25,7 +25,11 @@ class Payload:
     """Class for detailing function, args and kwargs to be computing in a graph node"""
 
     def __init__(
-        self, func: Callable, args: Iterable | None = None, kwargs: dict | None = None
+        self,
+        func: Callable,
+        args: Iterable | None = None,
+        kwargs: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         self.args: list
         if isinstance(func, functools.partial):
@@ -39,12 +43,15 @@ class Payload:
             self.args = [] if args is None else list(args)
             self.kwargs = kwargs or {}
 
+        self.metadata = getattr(self.func, "_cascade", {})
+        self.metadata.update(metadata or {})
+
     def to_tuple(self) -> tuple:
         """Return
         ------
         tuple, containing function, arguments and kwargs
         """
-        return (self.func, self.args, self.kwargs)
+        return (self.func, self.args, self.kwargs, self.metadata)
 
     def name(self) -> str:
         """Return
@@ -60,7 +67,7 @@ class Payload:
         return f"{self.name()}{self.args}{self.kwargs}"
 
     def copy(self) -> "Payload":
-        return Payload(self.func, self.args, self.kwargs)
+        return Payload(self.func, self.args, self.kwargs, metadata=self.metadata)
 
 
 def custom_hash(string: str) -> str:
@@ -71,6 +78,30 @@ def custom_hash(string: str) -> str:
 
 Coord = tuple[str, list[Any]]
 Input = BaseNode | Output
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def capture_payload_metadata(func: F) -> F:
+    """Wrap a function which returns a new action and insert
+    given `payload_metadata`
+    """
+
+    @functools.wraps(func)
+    def decorator(*args, **kwargs):
+        metadata = kwargs.pop("payload_metadata", {})
+        result = func(*args, **kwargs)
+
+        if isinstance(result, Action):
+            for node in np.atleast_1d(result.nodes.values).flatten():
+                node.payload.metadata.update(metadata)
+        elif isinstance(result, Node):
+            result.payload.metadata.update(metadata)
+        else:
+            raise TypeError(f"Expected Action or Node, got {type(result)}")
+        return result
+
+    return decorator
 
 
 class Node(BaseNode):
@@ -104,7 +135,7 @@ class Node(BaseNode):
             outputs=(
                 None if num_outputs == 1 else [str(x) for x in range(num_outputs)]
             ),
-            payload=payload.to_tuple(),
+            payload=payload,
             **{self.input_name(x): node for x, node in enumerate(inputs)},
         )
         self.attributes: dict[str, Any] = {}
@@ -494,6 +525,7 @@ class Action:
             )
         return result
 
+    @capture_payload_metadata
     def flatten(
         self, dim: str = "", axis: int = 0, backend_kwargs: dict = {}
     ) -> "Action":
@@ -526,6 +558,7 @@ class Action:
                     )
         return criteria
 
+    @capture_payload_metadata
     def select(
         self, criteria: dict | None = None, drop: bool = False, **kwargs
     ) -> "Action":
@@ -552,6 +585,7 @@ class Action:
 
     sel = select
 
+    @capture_payload_metadata
     def iselect(
         self, criteria: dict | None = None, drop: bool = False, **kwargs
     ) -> "Action":
@@ -578,6 +612,7 @@ class Action:
 
     isel = iselect
 
+    @capture_payload_metadata
     def concatenate(
         self,
         dim: str,
@@ -587,6 +622,7 @@ class Action:
     ) -> "Action":
         return _combine_nodes(self, "concat", dim, batch_size, keep_dim, backend_kwargs)
 
+    @capture_payload_metadata
     def stack(
         self,
         dim: str,
@@ -604,6 +640,7 @@ class Action:
             backend_kwargs={"axis": axis, **backend_kwargs},
         )
 
+    @capture_payload_metadata
     def sum(
         self,
         dim: str = "",
@@ -618,6 +655,7 @@ class Action:
             keep_dim=keep_dim,
         )
 
+    @capture_payload_metadata
     def mean(
         self,
         dim: str = "",
@@ -639,6 +677,7 @@ class Action:
             dim=dim, batch_size=batch_size, keep_dim=keep_dim, **backend_kwargs
         ).divide(self.nodes.sizes[dim])
 
+    @capture_payload_metadata
     def std(
         self,
         dim: str = "",
@@ -662,6 +701,7 @@ class Action:
         )
         return norm.subtract(mean_sq).power(0.5)
 
+    @capture_payload_metadata
     def max(
         self,
         dim: str = "",
@@ -676,6 +716,7 @@ class Action:
             keep_dim=keep_dim,
         )
 
+    @capture_payload_metadata
     def min(
         self,
         dim: str = "",
@@ -690,6 +731,7 @@ class Action:
             keep_dim=keep_dim,
         )
 
+    @capture_payload_metadata
     def prod(
         self,
         dim: str = "",
@@ -715,18 +757,23 @@ class Action:
             Payload(method, args=(Node.input_name(0), other), kwargs=kwargs)
         )
 
+    @capture_payload_metadata
     def subtract(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
         return self.__two_arg_method(backends.subtract, other, backend_kwargs)
 
+    @capture_payload_metadata
     def divide(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
         return self.__two_arg_method(backends.divide, other, backend_kwargs)
 
+    @capture_payload_metadata
     def add(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
         return self.__two_arg_method(backends.add, other, backend_kwargs)
 
+    @capture_payload_metadata
     def multiply(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
         return self.__two_arg_method(backends.multiply, other, backend_kwargs)
 
+    @capture_payload_metadata
     def power(self, other: "Action | float", backend_kwargs: dict = {}) -> "Action":
         return self.__two_arg_method(backends.pow, other, backend_kwargs)
 
