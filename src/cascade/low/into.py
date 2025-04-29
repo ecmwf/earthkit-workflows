@@ -34,10 +34,9 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     func = cast(Callable, payload_tuple[0])
     args = cast(list[Any], payload_tuple[1])
     kwargs = cast(dict[str, Any], payload_tuple[2])
+    metadata: dict[str, Any] = {}
     if len(node["payload"]) > 2:
         metadata = cast(dict[str, Any], payload_tuple[3])
-    else:
-        metadata: dict[str, Any] = {}
 
     input_schema: dict[str, str] = {}
     for k in kwargs.keys():
