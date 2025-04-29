@@ -13,7 +13,7 @@ try:
 except ImportError:
     # assuming editable install etc
     pass
-from . import mark
+from . import fluent, mark
 from .graph import Graph, deduplicate_nodes
 from .graph.export import deserialise, serialise
 from .visualise import visualise
@@ -55,3 +55,10 @@ class Cascade:
         self._graph += other._graph
         self._graph = deduplicate_nodes(self._graph)
         return self
+
+
+__all__ = [
+    "mark",
+    "fluent",
+    "Cascade",
+]
