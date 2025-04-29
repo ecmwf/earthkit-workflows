@@ -35,7 +35,8 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     args = cast(list[Any], payload_tuple[1])
     kwargs = cast(dict[str, Any], payload_tuple[2])
     metadata: dict[str, Any] = {}
-    if len(node["payload"]) > 2:
+
+    if len(payload_tuple) > 2:
         metadata = cast(dict[str, Any], payload_tuple[3])
 
     input_schema: dict[str, str] = {}

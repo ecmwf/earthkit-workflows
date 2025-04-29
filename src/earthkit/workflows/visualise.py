@@ -25,7 +25,7 @@ def node_info_ext(node):
         t = []
         if "title" in info:
             t.append(info["title"])
-        func, args, kwargs = node.payload
+        func, args, kwargs, _ = node.payload.to_tuple()
         t.append(f"Function: {func}")
         if args:
             t.append("Arguments:")
