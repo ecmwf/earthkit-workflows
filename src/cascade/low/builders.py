@@ -1,3 +1,11 @@
+# (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
 import inspect
 import itertools
 from dataclasses import dataclass, field, replace
@@ -6,9 +14,15 @@ from typing import Callable, Iterable, Iterator, Type, cast
 import pyrsistent
 from typing_extensions import Self
 
-from cascade.graph import Node
-from cascade.low.core import JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
+from cascade.low.core import (
+    DatasetId,
+    JobInstance,
+    Task2TaskEdge,
+    TaskDefinition,
+    TaskInstance,
+)
 from cascade.low.func import Either
+from earthkit.workflows.graph import Node
 
 
 class TaskBuilder(TaskInstance):
@@ -66,7 +80,8 @@ class TaskBuilder(TaskInstance):
 
     def with_values(self, *args, **kwargs) -> Self:
         new_kwargs = {**self.static_input_kw, **kwargs}
-        new_args = {**self.static_input_ps, **dict(enumerate(args))}
+        ps_args = {str(k): v for k, v in dict(enumerate(args)).values()}
+        new_args = {**self.static_input_ps, **ps_args}
         return self.model_copy(
             update={"static_input_kw": new_kwargs, "static_input_ps": new_args}
         )
@@ -80,10 +95,11 @@ class JobBuilder:
     def with_node(self, name: str, task: TaskInstance) -> Self:
         return replace(self, nodes=self.nodes.set(name, task))
 
-    def with_edge(self, source: str, sink: str, into: str | int) -> Self:
+    def with_edge(
+        self, source: str, sink: str, into: str | int, frum: str = Node.DEFAULT_OUTPUT
+    ) -> Self:
         new_edge = Task2TaskEdge(
-            source_task=source,
-            source_output=Node.DEFAULT_OUTPUT,
+            source=DatasetId(source, frum),
             sink_task=sink,
             sink_input_kw=into if isinstance(into, str) else None,
             sink_input_ps=into if isinstance(into, int) else None,
@@ -112,15 +128,16 @@ class JobBuilder:
 
         # edge correctness
         def get_edge_errors(edge: Task2TaskEdge) -> Iterator[str]:
-            source_task = self.nodes.get(edge.source_task, None)
+            source_task = self.nodes.get(edge.source.task, None)
+            output_param = None
             if not source_task:
-                yield f"edge pointing from non-existent task {edge.source_task}"
+                yield f"edge pointing from non-existent task {edge.source}"
             else:
                 output_param = source_task.definition.output_schema.get(
-                    edge.source_output, None
+                    edge.source.output, None
                 )
                 if not output_param:
-                    yield f"edge pointing from non-existent param {edge.source_output}"
+                    yield f"edge pointing from non-existent param {edge.source.output}"
             sink_task = self.nodes.get(edge.sink_task, None)
             if not sink_task:
                 yield f"edge pointing to non-existent task {edge.sink_task}"
