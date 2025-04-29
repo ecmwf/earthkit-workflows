@@ -13,6 +13,7 @@ try:
 except ImportError:
     # assuming editable install etc
     pass
+from . import mark
 from .graph import Graph, deduplicate_nodes
 from .graph.export import deserialise, serialise
 from .visualise import visualise
