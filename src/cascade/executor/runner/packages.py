@@ -42,8 +42,10 @@ class PackagesEnv(AbstractContextManager):
             return
 
         python_version = None
+
         if any(map(lambda p: "python" in p, packages)):
             python_version = [p.split("==", 2)[1] for p in packages if "python" in p][0]
+            packages = [p for p in packages if "python" not in p]
 
         if self.td is None:
             logger.debug("creating a new venv")
