@@ -12,6 +12,7 @@ Note that venv itself is left untouched after the run finishes -- we extend sys 
 with a temporary directory and install in there
 """
 
+import glob
 import logging
 import os
 import subprocess
@@ -23,6 +24,15 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 
+def _find_site_packages(venv_dir: str) -> str:
+    """Find the site-packages directory in a virtual environment."""
+    site_packages_pattern = os.path.join(venv_dir, "lib", "python*", "site-packages")
+    site_packages_dirs = glob.glob(site_packages_pattern)
+    if site_packages_dirs:
+        return site_packages_dirs[0]
+    raise ValueError(f"Could not find site-packages in {venv_dir}")
+
+
 class PackagesEnv(AbstractContextManager):
     def __init__(self) -> None:
         self.td: tempfile.TemporaryDirectory | None = None
@@ -30,10 +40,24 @@ class PackagesEnv(AbstractContextManager):
     def extend(self, packages: list[str]) -> None:
         if not packages:
             return
+
+        python_version = None
+        if any(map(lambda p: "python" in p, packages)):
+            python_version = [p.split("==", 2)[1] for p in packages if "python" in p][0]
+
         if self.td is None:
             logger.debug("creating a new venv")
             self.td = tempfile.TemporaryDirectory()
-            venv_command = ["uv", "venv", self.td.name]
+            if python_version:
+                venv_command = [
+                    "uv",
+                    "venv",
+                    self.td.name,
+                    "--python",
+                    f"{python_version}",
+                ]
+            else:
+                venv_command = ["uv", "venv", self.td.name]
             # NOTE we create a venv instead of just plain directory, because some of the packages create files
             # outside of site-packages. Thus we then install with --prefix, not with --target
             subprocess.run(venv_command, check=True)
@@ -48,8 +72,7 @@ class PackagesEnv(AbstractContextManager):
             install_command += ["--cache-dir", cache_dir]
         install_command.extend(set(packages))
         subprocess.run(install_command, check=True)
-        # TODO somehow fragile -- try to obtain it from {td.name}/bin/activate?
-        sys.path.append(f"{self.td.name}/lib/python3.11/site-packages/")
+        sys.path = [_find_site_packages(self.td.name), *sys.path]
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         if self.td is not None:
