@@ -64,7 +64,12 @@ class Payload:
         return ""
 
     def __str__(self) -> str:
-        return f"{self.name()}{self.args}{self.kwargs}"
+        return f"{self.name()}{self.args}{self.kwargs}:{self.metadata}"
+
+    def __eq__(self, other: Payload) -> bool:
+        if not isinstance(other, Payload):
+            return False
+        return str(self) == str(other)
 
     def copy(self) -> "Payload":
         return Payload(self.func, self.args, self.kwargs, metadata=self.metadata)
