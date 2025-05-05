@@ -1,4 +1,4 @@
-# (C) Copyright 2025- ECMWF.
+# ) (C) Copyright 2025- ECMWF.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -39,7 +39,7 @@ class TaskDefinition(BaseModel):
         description="a cloud-pickled callable. Prefered over `entrypoint` if given",
     )
     environment: list[str] = Field(
-        description="pip-installable packages, should contain entrypoint and all deps it requires"
+        description="pip-installable packages, as required by entrypoint/func. Version pins supported"
     )
     # NOTE we could accept eg has_kwargs, has_args, etc... or serialize the whole inspect.signature here?
     input_schema: dict[str, str] = Field(

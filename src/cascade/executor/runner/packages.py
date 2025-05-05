@@ -14,6 +14,7 @@ with a temporary directory and install in there
 
 import logging
 import os
+import site
 import subprocess
 import sys
 import tempfile
@@ -48,8 +49,11 @@ class PackagesEnv(AbstractContextManager):
             install_command += ["--cache-dir", cache_dir]
         install_command.extend(set(packages))
         subprocess.run(install_command, check=True)
-        # TODO somehow fragile -- try to obtain it from {td.name}/bin/activate?
-        sys.path.append(f"{self.td.name}/lib/python3.11/site-packages/")
+        # NOTE not sure if getsitepackages was intended for this -- if issues, attempt replacing
+        # with something like f"{self.td.name}/lib/python*/site-packages" + globbing
+        extra_sp = site.getsitepackages(prefixes=[self.td.name])
+        # NOTE this makes the explicit packages go first, in case of a different version
+        sys.path = extra_sp + sys.path
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         if self.td is not None:
