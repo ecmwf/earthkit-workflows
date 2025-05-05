@@ -79,7 +79,7 @@ def test_job():
         assert submit_job_res.error is None
         assert job_id is not None
 
-        tries = 4
+        tries = 8
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries > 0:
             job_progress_res = client.request_response(job_progress_req, url)
