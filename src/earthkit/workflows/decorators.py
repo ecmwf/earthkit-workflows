@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 from functools import wraps
-from typing import Callable, TypeVar, ParamSpec
+from typing import Callable, ParamSpec, TypeVar
 
 from .fluent import Payload
 
