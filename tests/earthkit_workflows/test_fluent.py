@@ -26,7 +26,9 @@ def test_payload():
     payload3 = Payload(np.random.rand, (2, 3, 4), {"test": 1})
     hash3 = custom_hash(f"{payload3}")
     assert hash1 == hash2
+    assert payload == payload2
     assert hash1 != hash3
+    assert payload != payload3
 
 
 @pytest.mark.parametrize(

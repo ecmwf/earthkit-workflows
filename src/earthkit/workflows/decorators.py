@@ -7,14 +7,14 @@
 # nor does it submit to any jurisdiction.
 
 from functools import wraps
-from typing import Any, Callable, TypeVar
+from typing import Callable, ParamSpec, TypeVar
 
 from .fluent import Payload
 
-F = TypeVar("F", bound=Callable[..., Any])
+P = ParamSpec("P")
+R = TypeVar("R")
 
-
-def as_payload(func: F) -> Callable[..., Payload]:
+def as_payload(func: Callable[P, R]) -> Callable[P, Payload]:    
     """Wrap a function and return a payload object.
 
     Will pop metadata from kwargs and pass it to the payload.
