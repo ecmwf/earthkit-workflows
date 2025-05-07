@@ -20,6 +20,8 @@ from .graph import Graph
 from .graph import Node as BaseNode
 from .graph import Output
 
+ActionType = TypeVar("ActionType", bound="Action")
+
 
 class Payload:
     """Class for detailing function, args and kwargs to be computing in a graph node"""
@@ -221,6 +223,10 @@ class Action:
     def flush_registry(cls):
         """Flush the registry of all registered actions"""
         cls.REGISTRY = {}
+
+    def as_action(self, other: ActionType) -> ActionType:
+        """Parse action into another action class"""
+        return other(self.nodes)
 
     def __getattr__(self, attr):
         if attr in Action.REGISTRY:
