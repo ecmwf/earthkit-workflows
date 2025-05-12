@@ -13,7 +13,7 @@ for all other purposes this should be treated private
 import logging
 from collections import defaultdict
 from time import perf_counter_ns
-from typing import Iterator
+from typing import Iterable, Iterator
 
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
@@ -155,8 +155,7 @@ def assign_within_component(
 
 
 def update_worker2task_distance(
-    component_id: ComponentId,
-    task: TaskId,
+    tasks: Iterable[TaskId],
     worker: WorkerId,
     schedule: Schedule,
     context: JobExecutionContext,
@@ -168,24 +167,26 @@ def update_worker2task_distance(
     # TODO we don't currently consider other workers at the host, probably subopt! Ultimately,
     # we need the `assign_within_component` to take both overhead *and* distance into account
     # simultaneously
-    worker2task = schedule.components[component_id].worker2task_distance
-    task2task = schedule.components[component_id].core.distance_matrix
     eligible = {DatasetStatus.preparing, DatasetStatus.available}
-    schedule.components[component_id].worker2task_values.add(task)
-    computable = schedule.components[component_id].computable
-    for ds_key, ds_status in context.worker2ds[worker].items():
-        if ds_status not in eligible:
-            continue
-        if schedule.ts2component[ds_key.task] != component_id:
-            continue
-        # TODO we only consider min task distance, whereas weighing by volume/ratio would make more sense
-        val = min(
-            worker2task[worker][task],
-            task2task[ds_key.task][task],
-        )
-        worker2task[worker][task] = val
-        if ((current := computable.get(task, None)) is not None) and current > val:
-            computable[task] = val
+    for task in tasks:
+        component_id = schedule.ts2component[task]
+        worker2task = schedule.components[component_id].worker2task_distance
+        task2task = schedule.components[component_id].core.distance_matrix
+        schedule.components[component_id].worker2task_values.add(task)
+        computable = schedule.components[component_id].computable
+        for ds_key, ds_status in context.worker2ds[worker].items():
+            if ds_status not in eligible:
+                continue
+            if schedule.ts2component[ds_key.task] != component_id:
+                continue
+            # TODO we only consider min task distance, whereas weighing by volume/ratio would make more sense
+            val = min(
+                worker2task[worker][task],
+                task2task[ds_key.task][task],
+            )
+            worker2task[worker][task] = val
+            if ((current := computable.get(task, None)) is not None) and current > val:
+                computable[task] = val
 
 
 def set_worker2task_overhead(
@@ -230,6 +231,8 @@ def migrate_to_component(
         component.worker2task_distance[worker] = defaultdict(
             lambda: component.core.depth
         )
+        update_worker2task_distance(
+            component.worker2task_values, worker, schedule, context
+        )
         for task in component.worker2task_values:
-            update_worker2task_distance(component_id, task, worker, schedule, context)
             set_worker2task_overhead(schedule, context, worker, task)

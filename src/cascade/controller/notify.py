@@ -19,7 +19,7 @@ from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
 from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, WorkerId
-from cascade.low.execution_context import DatasetStatus, JobExecutionContext, TaskStatus
+from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.assign import set_worker2task_overhead
@@ -98,35 +98,24 @@ def notify(
                     }
                 )
             elif context.is_last_output_of(event.ds):
-                if not isinstance((worker := event.origin), WorkerId):
+                worker = event.origin
+                task = event.ds.task
+                if not isinstance(worker, WorkerId):
                     raise ValueError(
                         f"malformed event, expected origin to be WorkerId: {event}"
                     )
-                logger.debug(
-                    f"last output of {event.ds.task} published, assuming completion"
-                )
-                context.worker2ts[worker][event.ds.task] = TaskStatus.succeeded
-                context.ts2worker[event.ds.task][worker] = TaskStatus.succeeded
+                logger.debug(f"last output of {task}, assuming completion")
                 mark(
                     {
-                        "task": event.ds.task,
+                        "task": task,
                         "action": TaskLifecycle.completed,
                         "worker": repr(worker),
                         "host": "controller",
                     }
                 )
-                state.task_done(event.ds.task, context.edge_i.get(event.ds.task, set()))
-                if event.ds.task in context.ongoing[worker]:
-                    context.ongoing[worker].remove(event.ds.task)
-                    context.ongoing_total -= 1
-                    context.remaining -= 1
-                    reporter.send_progress(context)
-                else:
-                    raise ValueError(
-                        f"{event.ds.task} succeeded but removal from `ongoing` impossible"
-                    )
-                if not context.ongoing[worker]:
-                    context.idle_workers.add(worker)
+                state.task_done(task, context.edge_i.get(event.ds.task, set()))
+                context.task_done(task, worker)
+                reporter.send_progress(context)
         elif isinstance(event, DatasetTransmitPayload):
             state.receive_payload(event)
             reporter.send_result(event.header.ds, event.value)

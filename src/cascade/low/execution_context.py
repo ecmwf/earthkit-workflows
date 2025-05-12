@@ -96,9 +96,34 @@ class JobExecutionContext:
     def assign_task(self) -> None:
         raise NotImplementedError
 
-    # TODO refac mutate ongoing, ongoing total
-    def finish_task(self) -> None:
-        raise NotImplementedError
+    def task_done(self, task: TaskId, worker: WorkerId) -> None:
+        self.worker2ts[worker][task] = TaskStatus.succeeded
+        self.ts2worker[task][worker] = TaskStatus.succeeded
+        if task in self.ongoing[worker]:
+            self.ongoing[worker].remove(task)
+            self.ongoing_total -= 1
+            self.remaining -= 1
+        else:
+            raise ValueError(f"{task} success but cant remove from `ongoing`")
+        if not self.ongoing[worker]:
+            self.idle_workers.add(worker)
+
+    def dataset_preparing(self, dataset: DatasetId, worker: WorkerId) -> None:
+        # NOTE Currently, these `if`s are necessary because we issue transmit
+        # command when host *has* DS but worker does *not*. This ends up no-op,
+        # but we totally dont want host state to reset -- it wouldnt recover
+        host_s = self.host2ds[worker.host].get(dataset, DatasetStatus.missing)
+        if host_s != DatasetStatus.available:
+            self.host2ds[worker.host][dataset] = DatasetStatus.preparing
+        ds_s = self.ds2host[dataset].get(worker.host, DatasetStatus.missing)
+        if ds_s != DatasetStatus.available:
+            self.ds2host[dataset][worker.host] = DatasetStatus.preparing
+        self.worker2ds[worker][dataset] = DatasetStatus.preparing
+        self.ds2worker[dataset][worker] = DatasetStatus.preparing
+        # TODO check that there is no invalid transition? Eg, if it already was
+        # preparing or available
+        # TODO do we want to do anything for the other workers on the same host?
+        # Probably not, rather consider host2ds during assignments
 
 
 def init_context(

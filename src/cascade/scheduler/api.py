@@ -10,8 +10,8 @@ import logging
 from collections import defaultdict
 from typing import Iterator
 
-from cascade.low.core import DatasetId, TaskId, WorkerId
-from cascade.low.execution_context import DatasetStatus, JobExecutionContext, TaskStatus
+from cascade.low.core import TaskId, WorkerId
+from cascade.low.execution_context import JobExecutionContext, TaskStatus
 from cascade.low.tracing import Microtrace, timer
 from cascade.scheduler.assign import (
     assign_within_component,
@@ -117,38 +117,6 @@ def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignm
         component_i = (component_i + 1) % len(components)
 
 
-def _set_preparing_at(
-    dataset: DatasetId,
-    worker: WorkerId,
-    schedule: Schedule,
-    context: JobExecutionContext,
-    children: set[TaskId],
-):
-    # NOTE this may need to change once we switch to persistent workers. Currently, these `if`s are necessary
-    # because we issue transmit command when host *has* DS but worker does *not*. This ends up a no-op, but we
-    # totally dont want the host state to reset -- because it wouldnt recover from it
-    if (
-        context.host2ds[worker.host].get(dataset, DatasetStatus.missing)
-        != DatasetStatus.available
-    ):
-        context.host2ds[worker.host][dataset] = DatasetStatus.preparing
-    context.host2ds[worker.host][dataset] = DatasetStatus.preparing
-    if (
-        context.ds2host[dataset].get(worker.host, DatasetStatus.missing)
-        != DatasetStatus.available
-    ):
-        context.ds2host[dataset][worker.host] = DatasetStatus.preparing
-    context.worker2ds[worker][dataset] = DatasetStatus.preparing
-    context.ds2worker[dataset][worker] = DatasetStatus.preparing
-    # TODO check that there is no invalid transition? Eg, if it already was preparing or available
-    # TODO do we want to do anything for the other workers on the same host? Probably not, rather consider
-    # host2ds during assignments
-
-    for task in children:
-        component_id = schedule.ts2component[task]
-        update_worker2task_distance(component_id, task, worker, schedule, context)
-
-
 def plan(
     schedule: Schedule, context: JobExecutionContext, assignments: list[Assignment]
 ):
@@ -162,12 +130,16 @@ def plan(
 
     for assignment in assignments:
         for prep in assignment.prep:
+            context.dataset_preparing(prep[0], assignment.worker)
             children = context.edge_o[prep[0]]
-            _set_preparing_at(prep[0], assignment.worker, schedule, context, children)
+            update_worker2task_distance(children, assignment.worker, schedule, context)
         for task in assignment.tasks:
             for ds in assignment.outputs:
                 children = context.edge_o[ds]
-                _set_preparing_at(ds, assignment.worker, schedule, context, children)
+                context.dataset_preparing(ds, assignment.worker)
+                update_worker2task_distance(
+                    children, assignment.worker, schedule, context
+                )
             context.worker2ts[assignment.worker][task] = TaskStatus.enqueued
             context.ts2worker[task][assignment.worker] = TaskStatus.enqueued
             if task in context.ongoing[assignment.worker]:
