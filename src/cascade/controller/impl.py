@@ -10,13 +10,15 @@ import logging
 
 import cascade.executor.serde as serde
 from cascade.controller.act import act, flush_queues
+from cascade.controller.core import State, init_state
 from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
 from cascade.low.core import JobInstance, type_dec
+from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
-from cascade.scheduler.api import assign, initialize, plan
-from cascade.scheduler.core import Preschedule, State, has_awaitable, has_computable
+from cascade.scheduler.api import assign, init_schedule, plan
+from cascade.scheduler.core import Preschedule
 
 logger = logging.getLogger(__name__)
 
@@ -27,35 +29,44 @@ def run(
     preschedule: Preschedule,
     report_address: str | None = None,
 ) -> State:
-    outputs = set(job.ext_outputs)
     env = bridge.get_environment()
+    context = init_context(env, job, preschedule.edge_o, preschedule.edge_i)
+    outputs = set(context.job_instance.ext_outputs)
     logger.debug(f"starting with {env=} and {report_address=}")
-    state = timer(initialize, Microtrace.ctrl_init)(env, preschedule, outputs)
+    schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
+    state = init_state(outputs, context.edge_o)
+
     label("host", "controller")
     events: list[Event] = []
-    for serdeTypeEnc, (serdeSer, serdeDes) in job.serdes.items():
+    for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
         serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
     reporter = Reporter(report_address)
 
     try:
-        while has_computable(state) or has_awaitable(state):
+        while (
+            state.has_awaitable()
+            or context.has_awaitable()
+            or schedule.has_computable()
+        ):
             mark({"action": ControllerPhases.assign})
             assignments = []
-            if has_computable(state):
-                for assignment in assign(state, job, env):
-                    timer(act, Microtrace.ctrl_act)(bridge, state, assignment)
+            if schedule.has_computable():
+                for assignment in assign(schedule, context):
+                    timer(act, Microtrace.ctrl_act)(bridge, assignment)
                     assignments.append(assignment)
 
             mark({"action": ControllerPhases.plan})
-            state = plan(state, assignments)
+            plan(schedule, context, assignments)
             mark({"action": ControllerPhases.flush})
-            state = flush_queues(bridge, state)
+            flush_queues(bridge, state, context)
 
             mark({"action": ControllerPhases.wait})
-            if has_awaitable(state):
-                logger.debug(f"about to await bridge with {state.ongoing_total=}")
+            if state.has_awaitable() or context.has_awaitable():
+                logger.debug(f"about to await bridge with {context.ongoing_total=}")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
-                timer(notify, Microtrace.ctrl_notify)(state, job, events, reporter)
+                timer(notify, Microtrace.ctrl_notify)(
+                    state, schedule, context, events, reporter
+                )
                 logger.debug(f"received {len(events)} events")
     except Exception as ex:
         logger.error("crash in controller, shuting down")

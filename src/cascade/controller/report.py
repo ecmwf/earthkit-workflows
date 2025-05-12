@@ -18,7 +18,7 @@ from typing_extensions import Self
 
 from cascade.executor.comms import get_context
 from cascade.low.core import DatasetId
-from cascade.scheduler.core import State
+from cascade.low.execution_context import JobExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +34,16 @@ class JobProgress:
     failure: str | None
 
     @classmethod
-    def failure(cls, failure: str) -> Self:
+    def failed(cls, failure: str) -> Self:
         return cls(True, None, failure)
 
     @classmethod
-    def progress(cls, pct: float) -> Self:
+    def progressed(cls, pct: float) -> Self:
         progress = "{:.2%}".format(pct)[:-1]
         return cls(False, progress, None)
 
     @classmethod
-    def success(cls) -> Self:
+    def succeeded(cls) -> Self:
         return cls(True, None, None)
 
 
@@ -86,13 +86,13 @@ class Reporter:
         self.socket = get_context().socket(zmq.PUSH)
         self.socket.connect(address)
 
-    def send_progress(self, state: State) -> None:
+    def send_progress(self, context: JobExecutionContext) -> None:
         if self.socket is None:
             return
-        pct = 1.0 - state.remaining / state.total
+        pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
         report = ControllerReport(
-            self.job_id, JobProgress.progress(pct), monotonic_ns(), []
+            self.job_id, JobProgress.progressed(pct), monotonic_ns(), []
         )
         _send(self.socket, report)
 
@@ -110,7 +110,7 @@ class Reporter:
             return
         logger.debug(f"reporting failure {failure=}")
         report = ControllerReport(
-            self.job_id, JobProgress.failure(failure), monotonic_ns(), []
+            self.job_id, JobProgress.failed(failure), monotonic_ns(), []
         )
         _send(self.socket, report)
 
@@ -119,6 +119,6 @@ class Reporter:
             return
         logger.debug("reporter sending shutdown")
         report = ControllerReport(
-            self.job_id, JobProgress.success(), monotonic_ns(), []
+            self.job_id, JobProgress.succeeded(), monotonic_ns(), []
         )
         _send(self.socket, report)

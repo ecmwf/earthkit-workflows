@@ -9,8 +9,9 @@
 """Tests calculation of preschedule, state initialize & first assign and plan"""
 
 from cascade.low.core import DatasetId, WorkerId
-from cascade.scheduler.api import assign, initialize, plan
-from cascade.scheduler.core import Assignment, TaskStatus
+from cascade.low.execution_context import TaskStatus, init_context
+from cascade.scheduler.api import assign, init_schedule, plan
+from cascade.scheduler.core import Assignment
 from cascade.scheduler.graph import precompute
 
 from .util import get_env, get_job0, get_job1
@@ -25,8 +26,9 @@ def test_job0():
 
     h1w1 = get_env(1, 1)
     h1w1_w = WorkerId("h0", "w0")
-    state = initialize(h1w1, preschedule, set())
-    assignment = list(assign(state, job0, h1w1))
+    context = init_context(h1w1, job0, preschedule.edge_o, preschedule.edge_i)
+    schedule = init_schedule(preschedule, context)
+    assignment = list(assign(schedule, context))
     assert assignment == [
         Assignment(
             worker=h1w1_w,
@@ -36,8 +38,8 @@ def test_job0():
         )
     ]
 
-    state = plan(state, assignment)
-    assert state.worker2ts == {h1w1_w: {"source": TaskStatus.enqueued}}
+    plan(schedule, context, assignment)
+    assert context.worker2ts == {h1w1_w: {"source": TaskStatus.enqueued}}
 
 
 def test_job1():
@@ -46,8 +48,9 @@ def test_job1():
 
     h1w1 = get_env(1, 1)
     h1w1_w = WorkerId("h0", "w0")
-    state = initialize(h1w1, preschedule, set())
-    assignment = list(assign(state, job1, h1w1))
+    context = init_context(h1w1, job1, preschedule.edge_o, preschedule.edge_i)
+    schedule = init_schedule(preschedule, context)
+    assignment = list(assign(schedule, context))
     assert assignment == [
         Assignment(
             worker=h1w1_w,
@@ -57,8 +60,8 @@ def test_job1():
         )
     ]
 
-    state = plan(state, assignment)
-    assert state.worker2ts == {h1w1_w: {"source": TaskStatus.enqueued}}
+    plan(schedule, context, assignment)
+    assert context.worker2ts == {h1w1_w: {"source": TaskStatus.enqueued}}
 
 
 # TODO add some multi-source or multi-component job

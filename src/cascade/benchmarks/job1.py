@@ -19,7 +19,7 @@ import earthkit.data
 from ppcascade.fluent import from_source
 from ppcascade.utils.window import Range
 
-from cascade.fluent import Payload
+from earthkit.workflows.fluent import Payload
 
 # *** PARAMS ***
 

@@ -10,16 +10,17 @@
 
 import logging
 
-from cascade.controller.notify import consider_purge
+from cascade.controller.core import State
 from cascade.executor.bridge import Bridge
 from cascade.executor.msg import TaskSequence
+from cascade.low.execution_context import JobExecutionContext
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
-from cascade.scheduler.core import Assignment, State
+from cascade.scheduler.core import Assignment
 
 logger = logging.getLogger(__name__)
 
 
-def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
+def act(bridge: Bridge, assignment: Assignment) -> None:
     """Converts an assignment to one or more actions which are sent to the bridge, and returned
     for tracing/updating purposes. Does *not* mutate State, but executors behind the Bridge *are* mutated.
     """
@@ -65,29 +66,18 @@ def act(bridge: Bridge, state: State, assignment: Assignment) -> None:
     bridge.task_sequence(task_sequence)
 
 
-def flush_queues(bridge: Bridge, state: State) -> State:
-    """Flushes elements in purging and fetching queues in State (and mutating it thus, as well as Executor).
-    Returns the mutated State, as all tracing and updates are handled here.
+def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
+    """Flushes elements in purging and fetching queues in State. Marks the respective
+    changes in Context, sends commands via Bridge. Mutates State, JobExecutionContext,
+    and via bridge the Executors.
     """
 
-    # TODO handle this in some eg thread pool... may need lock on state, result queueing, handle purge tracking, etc
-    fetchable = list(state.fetching_queue.keys())
-    for dataset in fetchable:
-        host = state.fetching_queue.pop(dataset)
+    for dataset, host in state.drain_fetching_queue():
         bridge.fetch(dataset, host)
-        state = consider_purge(state, dataset)
 
-    for ds in state.purging_queue:
-        # TODO finegraining, restrictions, checks for validity, etc. Do in concert with extension of `purging_queue`
-        for host in state.ds2host[ds]:
-            logger.debug(f"identified purge of {ds} at {host}")
+    for ds in state.drain_purging_queue():
+        for host in context.purge_dataset(ds):
+            logger.debug(f"issuing purge of {ds=} to {host=}")
             bridge.purge(host, ds)
-            state.host2ds[host].pop(ds)
-            for worker in state.host2workers[host]:
-                if ds in state.worker2ds[worker]:
-                    state.worker2ds[worker].pop(ds)
-                    state.ds2worker[ds].pop(worker)
-        state.ds2host.pop(ds)
-    state.purging_queue = []
 
     return state
