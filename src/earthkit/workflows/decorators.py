@@ -14,7 +14,8 @@ from .fluent import Payload
 P = ParamSpec("P")
 R = TypeVar("R")
 
-def as_payload(func: Callable[P, R]) -> Callable[P, Payload]:    
+
+def as_payload(func: Callable[P, R]) -> Callable[P, Payload]:
     """Wrap a function and return a payload object.
 
     Will pop metadata from kwargs and pass it to the payload.
