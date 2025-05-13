@@ -46,14 +46,14 @@ class RunnerContext:
     param_source: dict[TaskId, dict[int | str, DatasetId]]
 
     def project(self, taskSequence: TaskSequence) -> ExecutionContext:
+        schema_lookup: dict[DatasetId, str] = {}
+        for task_id, task_instance in self.job.tasks.items():
+            for output, fqn in task_instance.definition.output_schema:
+                schema_lookup[DatasetId(task_id, output)] = fqn
+
         param_source_ext: dict[TaskId, dict[int | str, tuple[DatasetId, str]]] = {
             task: {
-                k: (
-                    dataset_id,
-                    self.job.tasks[dataset_id.task].definition.output_schema[
-                        dataset_id.output
-                    ],
-                )
+                k: (dataset_id, schema_lookup[dataset_id])
                 for k, dataset_id in self.param_source[task].items()
             }
             for task in taskSequence.tasks
@@ -143,9 +143,7 @@ def entrypoint(runnerContext: RunnerContext):
                 } - {
                     DatasetId(task, key)
                     for task in mDes.tasks
-                    for key in runnerContext.job.tasks[
-                        task
-                    ].definition.output_schema.keys()
+                    for key, _ in runnerContext.job.tasks[task].definition.output_schema
                 }
                 missing_ds = required - availab_ds
                 if missing_ds:

@@ -45,8 +45,8 @@ class TaskDefinition(BaseModel):
     input_schema: dict[str, str] = Field(
         description="kv of input kw params and their types (fqn of class). Non-kw params not validated"
     )
-    output_schema: dict[str, str] = Field(
-        description="kv of outputs and their types (fqn of class). Assumes key-sorted corresponds to func output order"
+    output_schema: list[tuple[str, str]] = Field(
+        description="kv of outputs and their types (fqn of class). Assumes listing in func output order"
     )
     needs_gpu: bool = Field(
         False
@@ -120,7 +120,7 @@ class JobInstance(BaseModel):
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
         return {
             DatasetId(task_id, output)
-            for output in self.tasks[task_id].definition.output_schema.keys()
+            for output, _ in self.tasks[task_id].definition.output_schema
         }
 
 

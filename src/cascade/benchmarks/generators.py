@@ -44,7 +44,7 @@ def get_job() -> JobInstance:
         func=TaskDefinition.func_enc(generator),
         environment=[],
         input_schema={},
-        output_schema={f"{i}": "ndarray" for i in range(N)},
+        output_schema=[(f"{i}", "ndarray") for i in range(N)],
     )
     generator_i = TaskInstance(
         definition=generator_d, static_input_kw={}, static_input_ps={}

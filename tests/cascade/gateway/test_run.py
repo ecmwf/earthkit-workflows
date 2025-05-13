@@ -16,14 +16,14 @@ def get_job_succ() -> JobInstance:
         func=TaskDefinition.func_enc(lambda: init_value),
         environment=[],
         input_schema={},
-        output_schema={"o": "int"},
+        output_schema=[("o", "int")],
     )
     soi = TaskInstance(definition=sod, static_input_kw={}, static_input_ps={})
     sid = TaskDefinition(
         func=TaskDefinition.func_enc(job_func),
         environment=[],
         input_schema={},  # TODO add 0: int once supported
-        output_schema={"o": "int"},
+        output_schema=[("o", "int")],
     )
     sii = TaskInstance(definition=sid, static_input_kw={}, static_input_ps={})
 
@@ -44,7 +44,7 @@ def get_job_fail() -> JobInstance:
         func=TaskDefinition.func_enc(job_func),
         environment=[],
         input_schema={},
-        output_schema={"o": "int"},
+        output_schema=[("o", "int")],
     )
     ti = TaskInstance(definition=td, static_input_kw={}, static_input_ps={"0": None})
 
