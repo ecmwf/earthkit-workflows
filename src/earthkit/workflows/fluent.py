@@ -140,7 +140,9 @@ class Node(BaseNode):
         super().__init__(
             name,
             outputs=(
-            None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
+                None
+                if num_outputs == 1
+                else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
             ),
             payload=payload,
             **{self.input_name(x): node for x, node in enumerate(inputs)},
