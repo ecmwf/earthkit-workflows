@@ -76,7 +76,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         environment=cast(list[str], metadata.get("environment", [])),
         entrypoint="",
         input_schema=input_schema,
-        output_schema={e: "Any" for e in outputs},
+        output_schema=[(e, "Any") for e in outputs],
         needs_gpu=cast(bool, metadata.get("needs_gpu", False)),
     )
     task = TaskInstance(

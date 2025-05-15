@@ -77,8 +77,7 @@ class JobExecutionContext:
         Generic KV outputs not supported -- this method wouldnt make any sense.
         """
         definition = self.job_instance.tasks[dataset.task].definition
-        # TODO dont sort on each invoke -- precompute
-        last = sorted(definition.output_schema.keys())[-1]
+        last = definition.output_schema[-1][0]
         return last == dataset.output
 
     def purge_dataset(self, ds: DatasetId) -> Iterator[HostId]:

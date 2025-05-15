@@ -100,7 +100,7 @@ def test_runner(monkeypatch):
         func=TaskDefinition.func_enc(test_func),
         environment=[],
         input_schema={"x": "int"},
-        output_schema={"o": "int"},
+        output_schema=[("o", "int")],
     )
     t2 = TaskInstance(
         definition=task_definition,
@@ -183,14 +183,14 @@ def test_runner(monkeypatch):
         func=TaskDefinition.func_enc(gen_func),
         environment=[],
         input_schema={},
-        output_schema={f"{i}": "int" for i in range(N)},
+        output_schema=[(f"{i}", "int") for i in range(N)],
     )
     t4g = TaskInstance(
         definition=gen_definition,
         static_input_kw={},
         static_input_ps={},
     )
-    t4gOutputs = [DatasetId("t4g", k) for k in gen_definition.output_schema.keys()]
+    t4gOutputs = [DatasetId("t4g", k) for k, _ in gen_definition.output_schema]
     t4c = TaskInstance(
         definition=task_definition,
         static_input_kw={},

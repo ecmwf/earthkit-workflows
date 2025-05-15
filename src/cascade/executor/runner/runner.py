@@ -72,8 +72,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         else:
             assert_never(param_pos)
 
-    outputs = list(task.definition.output_schema.items())
-    outputs.sort()
+    outputs = task.definition.output_schema
     outputsN = len(outputs)
     if outputsN == 0:
         raise ValueError(f"no output key for task {taskId}")

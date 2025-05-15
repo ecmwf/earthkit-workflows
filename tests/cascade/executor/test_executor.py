@@ -66,7 +66,7 @@ def test_executor():
         func=TaskDefinition.func_enc(test_func),
         environment=[],
         input_schema={"x": "ndarray"},
-        output_schema={"o": "ndarray"},
+        output_schema=[("o", "ndarray")],
     )
     source = TaskInstance(
         definition=task_definition,

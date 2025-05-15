@@ -52,7 +52,7 @@ class TaskBuilder(TaskInstance):
             func=TaskDefinition.func_enc(f),
             environment=environment if environment else [],
             input_schema=input_schema,
-            output_schema={Node.DEFAULT_OUTPUT: type2str(sig.return_annotation)},
+            output_schema=[(Node.DEFAULT_OUTPUT, type2str(sig.return_annotation))],
         )
         return cls(
             definition=definition, static_input_kw=static_input_kw, static_input_ps={}
@@ -74,7 +74,7 @@ class TaskBuilder(TaskInstance):
             func=None,
             environment=environment if environment else [],
             input_schema=input_schema,
-            output_schema={Node.DEFAULT_OUTPUT: output_class},
+            output_schema=[(Node.DEFAULT_OUTPUT, output_class)],
         )
         return cls(definition=definition, static_input_kw={}, static_input_ps={})
 
@@ -133,9 +133,9 @@ class JobBuilder:
             if not source_task:
                 yield f"edge pointing from non-existent task {edge.source}"
             else:
-                output_param = source_task.definition.output_schema.get(
-                    edge.source.output, None
-                )
+                for key, schema in source_task.definition.output_schema:
+                    if key == edge.source.output:
+                        output_param = schema
                 if not output_param:
                     yield f"edge pointing from non-existent param {edge.source.output}"
             sink_task = self.nodes.get(edge.sink_task, None)
