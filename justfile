@@ -12,7 +12,7 @@ set dotenv-path := ".env"
 val:
 	mypy src/cascade --ignore-missing-imports
 	mypy tests --ignore-missing-imports
-	pytest tests
+	pytest -n 8 tests
 
 fmt:
     # TODO replace with pre-commit
