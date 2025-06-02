@@ -36,7 +36,8 @@ dependencies = [
     "orjson",
 ]
 # version provided via setuptools_scm module, which derives it from git tag
-dynamic = ["version", "readme"]
+dynamic = ["version"]
+readme = "README.md"
 
 [project.optional-dependencies]
 tests = ["pytest", "pytest-xdist", "earthkit-data"]

@@ -128,6 +128,7 @@ class Manager:
             )
             capacity = default_capacity
         self.capacity = capacity
+        logger.info(f"dataset started with actual capacity {self.capacity}")
         self.free_space = capacity
         self.pageout_all = threading.Lock()
         self.pageout_one = threading.Lock()
