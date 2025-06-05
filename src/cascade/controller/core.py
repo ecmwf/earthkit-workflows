@@ -27,7 +27,11 @@ class State:
 
     def has_awaitable(self) -> bool:
         # TODO replace the None in outputs with check on fetch queue (but change that from binary to ternary first)
-        return None in self.outputs.values()
+        # NOTE this `return None in self.outputs.values()` doesnt work because of numpy `truth value ambiguous`
+        for e in self.outputs.values():
+            if e is None:
+                return True
+        return False
 
     def _consider_purge(self, dataset: DatasetId) -> None:
         """If dataset not required anymore, add to purging_queue"""
