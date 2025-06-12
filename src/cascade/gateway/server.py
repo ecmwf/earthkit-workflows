@@ -61,6 +61,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultDeletionResponse(error=repr(e))
     elif isinstance(m, api.ShutdownRequest):
+        jobs.shutdown()
         rv = api.ShutdownResponse(error=None)
     else:
         raise TypeError(m)

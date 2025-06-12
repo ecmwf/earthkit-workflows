@@ -140,7 +140,7 @@ def test_job():
 
         # gw shutdown
         shutdown_req = api.ShutdownRequest()
-        shutdown_res = client.request_response(shutdown_req, url)
+        shutdown_res = client.request_response(shutdown_req, url, 3000)
         assert shutdown_res.error is None
         gw.join(5)
         assert gw.exitcode == 0
