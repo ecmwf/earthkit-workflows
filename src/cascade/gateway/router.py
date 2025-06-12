@@ -43,7 +43,7 @@ class Job:
 local_job_port = 12345
 
 
-def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
+def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
     base = [
         "python",
         "-m",
@@ -71,12 +71,12 @@ def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
     global local_job_port
     portBase = ["--port_base", str(local_job_port)]
     local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
-    subprocess.Popen(
+    return subprocess.Popen(
         base + infra + report + portBase, env={**os.environ, **job_spec.envvars}
     )
 
 
-def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
+def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
     extra_vars = {
         "EXECUTOR_HOSTS": str(job_spec.hosts),
         "WORKERS_PER_HOST": str(job_spec.workers_per_host),
@@ -100,20 +100,23 @@ def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
     with open(f"./localConfigs/_tmp/{job_id}", "a") as f:
         for k, v in itertools.chain(job_spec.envvars.items(), extra_vars.items()):
             f.write(f"export {k}={v}\n")
-    subprocess.Popen(["./scripts/launch_slurm.sh", f"localConfigs/_tmp/{job_id}"])
+    return subprocess.Popen(
+        ["./scripts/launch_slurm.sh", f"localConfigs/_tmp/{job_id}"]
+    )
 
 
-def _spawn_subprocess(job_spec: JobSpec, addr: str, job_id: JobId) -> None:
+def _spawn_subprocess(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
     if job_spec.use_slurm:
-        _spawn_slurm(job_spec, addr, job_id)
+        return _spawn_slurm(job_spec, addr, job_id)
     else:
-        _spawn_local(job_spec, addr, job_id)
+        return _spawn_local(job_spec, addr, job_id)
 
 
 class JobRouter:
     def __init__(self, poller: zmq.Poller):
         self.poller = poller
         self.jobs: dict[str, Job] = {}
+        self.procs: dict[str, subprocess.Popen] = {}
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
@@ -124,7 +127,7 @@ class JobRouter:
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
         self.poller.register(socket, flags=zmq.POLLIN)
         self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
-        _spawn_subprocess(job_spec, full_addr, job_id)
+        self.procs[job_id] = _spawn_subprocess(job_spec, full_addr, job_id)
         return job_id
 
     def progress_of(
@@ -178,3 +181,11 @@ class JobRouter:
                 else:
                     del self.jobs[job_id].results[dataset]
         return errs
+
+    def shutdown(self):
+        for job_id, proc in self.procs.items():
+            logger.debug(f"awaiting job {job_id}")
+            try:
+                proc.wait(2)
+            except subprocess.TimeoutExpired:
+                logger.error(f"{job_id=} failed to terminate")
