@@ -34,7 +34,18 @@ class AllocatedBuffer:
         close_callback: Callable[[], None] | None,
         deser_fun: str,
     ):
-        self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
+        try:
+            self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
+        except FileExistsError:
+            # NOTE this is quite wrong as instead of crashing, it would lead to undefined behaviour
+            # However, as the systems we operate on don't seem to be reliable wrt cleanup/isolation,
+            # it ends up being a lesser evil
+            logger.error(
+                f"attempted opening {shmid=} but gotten FileExists. Will delete and retry"
+            )
+            _shm = SharedMemory(shmid, create=False)
+            _shm.unlink()
+            self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
         self.l = l
         self.readonly = not create
         self.close_callback = close_callback
