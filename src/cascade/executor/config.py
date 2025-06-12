@@ -17,7 +17,7 @@ logging_config = {
     },
     "loggers": {
         "uvicorn": {"level": "INFO"},
-        "forecastbox": {"level": "INFO"},
+        "forecastbox": {"level": "DEBUG"},
         "forecastbox.worker": {"level": "DEBUG"},
         "forecastbox.executor": {"level": "DEBUG"},
         "cascade": {"level": "INFO"},

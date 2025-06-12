@@ -80,7 +80,7 @@ class TaskBuilder(TaskInstance):
 
     def with_values(self, *args, **kwargs) -> Self:
         new_kwargs = {**self.static_input_kw, **kwargs}
-        ps_args = {str(k): v for k, v in dict(enumerate(args)).values()}
+        ps_args = {str(k): v for k, v in dict(enumerate(args)).items()}
         new_args = {**self.static_input_ps, **ps_args}
         return self.model_copy(
             update={"static_input_kw": new_kwargs, "static_input_ps": new_args}
