@@ -32,3 +32,18 @@ logging_config = {
         "": {"level": "WARNING", "handlers": ["default"]},
     },
 }
+
+
+def logging_config_filehandler(filename) -> dict:
+    return {
+        **logging_config,
+        **{
+            "handlers": {
+                "default": {
+                    "formatter": "default",
+                    "class": "logging.FileHandler",
+                    "filename": filename,
+                },
+            },
+        },
+    }
