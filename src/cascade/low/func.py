@@ -17,6 +17,7 @@ from typing import (
     Generic,
     Iterable,
     Iterator,
+    Mapping,
     NoReturn,
     Optional,
     Protocol,
@@ -155,3 +156,39 @@ def resolve_callable(s: str) -> Callable:
         module_name, function_name = s.rsplit(".", 1)
         module = importlib.import_module(module_name)
         return module.__dict__[function_name]
+
+
+def pydantic_recursive_collect(
+    base: BaseModel | Iterable, attr: str, prefix: str = "."
+) -> list[tuple[str, Any]]:
+    """Recurse into base, visiting each sub-model, list, dictionary, etc, invoking `attr` if present
+    and collecting results. Assumes the `attr` has signature `Callable[[self], list[T]]`. The collected
+    results are (source, item), where item is returned by `attr` and source is the dot-separated path
+    of the issuer -- eg if base has BaseModel field `x` whose `attr` yields [1, 2], then this returns
+    [(.x, 1), (.x, 2)]
+    """
+
+    # NOTE a bit ugly, instead of attr it would be better to accept a signature/protocol type
+
+    results: list[str] = []
+    if hasattr(base, attr):
+        results.extend((prefix, e) for e in getattr(base, attr)())
+    generator: Iterable[tuple[Any, Any]]
+    if isinstance(base, BaseModel):
+        generator = base
+        formatter = lambda k: f"{k}."
+    elif isinstance(base, Mapping):
+        generator = base.items()
+        formatter = lambda k: f"{k}."
+    elif isinstance(base, Iterable):
+        generator = enumerate(base)
+        formatter = lambda k: f"[{k}]."
+    else:
+        return results
+    for k, v in generator:
+        # we exclude the string as a circuit-breaker optimisation
+        if isinstance(v, str):
+            continue
+        if isinstance(v, BaseModel) or isinstance(v, Iterable):
+            results.extend(pydantic_recursive_collect(v, attr, prefix + formatter(k)))
+    return results
