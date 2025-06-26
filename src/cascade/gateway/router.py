@@ -186,6 +186,8 @@ class JobRouter:
         for job_id, proc in self.procs.items():
             logger.debug(f"awaiting job {job_id}")
             try:
+                proc.terminate()
                 proc.wait(2)
             except subprocess.TimeoutExpired:
-                logger.error(f"{job_id=} failed to terminate")
+                logger.error(f"{job_id=} failed to terminate, killing")
+                proc.kill()
