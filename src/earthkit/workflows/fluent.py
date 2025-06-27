@@ -424,12 +424,8 @@ class Action:
             )
 
         # Applies operation to every node, keeping node array structure
-        new_nodes = xr.DataArray(
-            np.empty(self.nodes.shape, dtype=object),
-            coords=self.nodes.coords,
-            dims=self.nodes.dims,
-            attrs=self.nodes.attrs,
-        )
+        new_nodes = np.empty(self.nodes.shape, dtype=object)
+
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
         node_payload = payload
         for node in it:
@@ -441,7 +437,14 @@ class Action:
                 num_outputs=len(yields[1]) if yields else 1,
             )
 
-        return type(self)(new_nodes, yields)
+        new_nodes_xr = xr.DataArray(
+            new_nodes,
+            coords=self.nodes.coords,
+            dims=self.nodes.dims,
+            attrs=self.nodes.attrs,
+        )
+
+        return type(self)(new_nodes_xr, yields)
 
     def reduce(
         self,
