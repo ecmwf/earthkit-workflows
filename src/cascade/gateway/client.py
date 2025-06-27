@@ -56,6 +56,8 @@ def request_response(
             raise TimeoutError  # NOTE consider setting `err` on the response instead
         else:
             rr = s.recv()
+    except TimeoutError:
+        raise
     except Exception as e:
         logger.exception(f"failed to communicate on {url=}")
         raise ValueError(f"failed to communicate on {url=} => {repr(e)[:32]}")
