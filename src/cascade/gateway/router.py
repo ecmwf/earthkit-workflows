@@ -120,7 +120,11 @@ class JobRouter:
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
-        base_addr = f"tcp://{getfqdn()}"
+        if job_spec.use_slurm:
+            base_addr = f"tcp://{getfqdn()}"
+        else:
+            # NOTE on macos, it seems getfqdn does not give zmq-bindable addr
+            base_addr = "tcp://localhost"
         socket = get_context().socket(zmq.PULL)
         port = socket.bind_to_random_port(base_addr)
         full_addr = f"{base_addr}:{port}"

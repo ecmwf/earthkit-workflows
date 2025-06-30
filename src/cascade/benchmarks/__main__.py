@@ -23,10 +23,10 @@ Make sure you correctly configure:
 
 import logging
 import logging.config
+import multiprocessing
 import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Process
 from time import perf_counter_ns
 
 import fire
@@ -139,7 +139,8 @@ def run_locally(
             gpu_count = get_gpu_count()
         else:
             gpu_count = 0
-        p = Process(
+        # NOTE forkserver/spawn seem to forget venv, we need fork
+        p = multiprocessing.get_context("fork").Process(
             target=launch_executor,
             args=(job, c, workers, portBase + 1 + i * 10, i, None, gpu_count),
         )
