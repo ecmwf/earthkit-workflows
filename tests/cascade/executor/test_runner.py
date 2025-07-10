@@ -86,6 +86,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=JobInstance(tasks={}, edges=[]),
         param_source={},
+        log_base=None,
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -119,6 +120,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=oneTaskJob,
         param_source=param_source(oneTaskJob.edges),
+        log_base=None,
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -160,6 +162,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=twoTaskJob,
         param_source=param_source(twoTaskJob.edges),
+        log_base=None,
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -219,6 +222,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=t4Job,
         param_source=param_source(t4Job.edges),
+        log_base=None,
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:

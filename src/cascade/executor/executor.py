@@ -28,7 +28,7 @@ import cascade.shm.client as shm_client
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
-from cascade.executor.config import logging_config
+from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.data_server import start_data_server
 from cascade.executor.msg import (
     Ack,
@@ -70,6 +70,7 @@ class Executor:
         host: HostId,
         portBase: int,
         shm_vol_gb: int | None = None,
+        log_base: str | None = None,
     ) -> None:
         self.job_instance = job_instance
         self.param_source = param_source(job_instance.edges)
@@ -78,6 +79,7 @@ class Executor:
         self.workers: dict[WorkerId, BaseProcess | None] = {
             WorkerId(host, f"w{i}"): None for i in range(workers)
         }
+        self.log_base = log_base
 
         self.datasets: set[DatasetId] = set()
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
@@ -92,17 +94,25 @@ class Executor:
         shm_port = portBase + 2
         shm_api.publish_client_port(shm_port)
         ctx = get_context("fork")
+        if log_base:
+            shm_logging = logging_config_filehandler(f"{log_base}.shm.txt")
+        else:
+            shm_logging = logging_config
         self.shm_process = ctx.Process(
             target=shm_server,
             args=(
                 shm_port,
                 shm_vol_gb * (1024**3) if shm_vol_gb else None,
-                logging_config,
+                shm_logging,
                 f"sCasc{host}",
             ),
         )
         self.shm_process.start()
         self.daddress = address_of(portBase + 1)
+        if log_base:
+            dsr_logging = logging_config_filehandler(f"{log_base}.dsr.txt")
+        else:
+            dsr_logging = logging_config
         self.data_server = ctx.Process(
             target=start_data_server,
             args=(
@@ -110,7 +120,7 @@ class Executor:
                 self.daddress,
                 self.host,
                 shm_port,
-                logging_config,
+                dsr_logging,
             ),
         )
         self.data_server.start()
@@ -181,6 +191,7 @@ class Executor:
                 job=self.job_instance,
                 param_source=self.param_source,
                 callback=self.mlistener.address,
+                log_base=self.log_base,
             )
             p = ctx.Process(target=entrypoint, kwargs={"runnerContext": runnerContext})
             p.start()

@@ -36,7 +36,7 @@ import cascade.low.into
 from cascade.controller.impl import run
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
-from cascade.executor.config import logging_config
+from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import JobInstance
@@ -105,8 +105,14 @@ def launch_executor(
     i: int,
     shm_vol_gb: int | None,
     gpu_count: int,
+    log_base: str | None,
 ):
-    logging.config.dictConfig(logging_config)
+    if log_base is not None:
+        log_base = f"{log_base}.host{i}"
+        log_path = f"{log_base}.txt"
+        logging.config.dictConfig(logging_config_filehandler(log_path))
+    else:
+        logging.config.dictConfig(logging_config)
     logger.info(f"will set {gpu_count} gpus on host {i}")
     os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
     executor = Executor(
@@ -116,6 +122,7 @@ def launch_executor(
         f"h{i}",
         portBase,
         shm_vol_gb,
+        log_base,
     )
     executor.register()
     executor.recv_loop()
@@ -126,9 +133,14 @@ def run_locally(
     hosts: int,
     workers: int,
     portBase: int = 12345,
+    log_base: str | None = None,
     report_address: str | None = None,
 ):
-    logging.config.dictConfig(logging_config)
+    if log_base is not None:
+        log_path = f"{log_base}.controller.txt"
+        logging.config.dictConfig(logging_config_filehandler(log_path))
+    else:
+        logging.config.dictConfig(logging_config)
     launch = perf_counter_ns()
     preschedule = precompute(job)
     c = f"tcp://localhost:{portBase}"
@@ -142,7 +154,7 @@ def run_locally(
         # NOTE forkserver/spawn seem to forget venv, we need fork
         p = multiprocessing.get_context("fork").Process(
             target=launch_executor,
-            args=(job, c, workers, portBase + 1 + i * 10, i, None, gpu_count),
+            args=(job, c, workers, portBase + 1 + i * 10, i, None, gpu_count, log_base),
         )
         p.start()
         ps.append(p)
@@ -172,6 +184,7 @@ def main_local(
     job: str | None = None,
     instance: str | None = None,
     port_base: int = 12345,
+    log_base: str | None = None,
 ) -> None:
     jobInstance = get_job(job, instance)
     run_locally(
@@ -180,6 +193,7 @@ def main_local(
         workers_per_host,
         report_address=report_address,
         portBase=port_base,
+        log_base=log_base,
     )
 
 

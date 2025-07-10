@@ -43,7 +43,9 @@ class Job:
 local_job_port = 12345
 
 
-def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
+def _spawn_local(
+    job_spec: JobSpec, addr: str, job_id: JobId, log_base: str | None
+) -> subprocess.Popen:
     base = [
         "python",
         "-m",
@@ -68,11 +70,15 @@ def _spawn_local(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Pope
         f"{job_spec.hosts}",
     ]
     report = ["--report_address", f"{addr},{job_id}"]
+    if log_base:
+        logs = ["--log_base", f"{log_base}/job.{job_id}"]
+    else:
+        logs = []
     global local_job_port
     portBase = ["--port_base", str(local_job_port)]
     local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
     return subprocess.Popen(
-        base + infra + report + portBase, env={**os.environ, **job_spec.envvars}
+        base + infra + report + portBase + logs, env={**os.environ, **job_spec.envvars}
     )
 
 
@@ -105,18 +111,23 @@ def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Pope
     )
 
 
-def _spawn_subprocess(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
+def _spawn_subprocess(
+    job_spec: JobSpec, addr: str, job_id: JobId, log_base: str | None
+) -> subprocess.Popen:
     if job_spec.use_slurm:
+        if log_base is not None:
+            raise ValueError(f"unexpected {log_base=}")
         return _spawn_slurm(job_spec, addr, job_id)
     else:
-        return _spawn_local(job_spec, addr, job_id)
+        return _spawn_local(job_spec, addr, job_id, log_base)
 
 
 class JobRouter:
-    def __init__(self, poller: zmq.Poller):
+    def __init__(self, poller: zmq.Poller, log_base: str | None):
         self.poller = poller
         self.jobs: dict[str, Job] = {}
         self.procs: dict[str, subprocess.Popen] = {}
+        self.log_base = log_base
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
@@ -131,7 +142,9 @@ class JobRouter:
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
         self.poller.register(socket, flags=zmq.POLLIN)
         self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
-        self.procs[job_id] = _spawn_subprocess(job_spec, full_addr, job_id)
+        self.procs[job_id] = _spawn_subprocess(
+            job_spec, full_addr, job_id, self.log_base
+        )
         return job_id
 
     def progress_of(
