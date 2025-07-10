@@ -222,17 +222,17 @@ class Executor:
         procFail = lambda ex: ex is not None and ex != 0
         for k, e in self.workers.items():
             if e is None:
-                ValueError(f"process on {k} is not alive")
+                raise ValueError(f"process on {k} is not alive")
             elif procFail(e.exitcode):
-                ValueError(
+                raise ValueError(
                     f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}"
                 )
         if procFail(self.shm_process.exitcode):
-            ValueError(
+            raise ValueError(
                 f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}"
             )
         if procFail(self.data_server.exitcode):
-            ValueError(
+            raise ValueError(
                 f"data server {self.data_server.pid} failed with {self.data_server.exitcode}"
             )
         if self.heartbeat_watcher.is_breach() > 0:

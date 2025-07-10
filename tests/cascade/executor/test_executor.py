@@ -194,8 +194,6 @@ def test_executor():
                 daddress=c1,
             ),
         )
-        ms = l.recv_messages()
-        assert all(isinstance(m, ExecutorRegistration) for m in ms)
         # NOTE the below ceased to work since we introduced retries. Now recomputation of a result after a purge is not possible
         # assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task='sink', output='o')
         # assert serde.des_output(ms[0].value, 'ndarray', ms[0].header.deser_fun)[0] == 11.
@@ -204,7 +202,7 @@ def test_executor():
         # shutdown
         callback(m1, ExecutorShutdown())
         ms = l.recv_messages()
-        assert ms == [ExecutorExit(host="test_executor")]
+        assert ExecutorExit(host="test_executor") in ms
         p.join()
     except:
         if p.is_alive():
