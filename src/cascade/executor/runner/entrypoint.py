@@ -17,7 +17,7 @@ import zmq
 
 import cascade.executor.serde as serde
 from cascade.executor.comms import callback
-from cascade.executor.config import logging_config
+from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.msg import (
     BackboneAddress,
     DatasetPublished,
@@ -44,6 +44,7 @@ class RunnerContext:
     job: JobInstance
     callback: BackboneAddress
     param_source: dict[TaskId, dict[int | str, DatasetId]]
+    log_base: str | None
 
     def project(self, taskSequence: TaskSequence) -> ExecutionContext:
         schema_lookup: dict[DatasetId, str] = {}
@@ -92,7 +93,11 @@ def execute_sequence(
 
 
 def entrypoint(runnerContext: RunnerContext):
-    logging.config.dictConfig(logging_config)
+    if runnerContext.log_base:
+        log_path = f"{runnerContext.log_base}.{runnerContext.workerId.worker}"
+        logging.config.dictConfig(logging_config_filehandler(log_path))
+    else:
+        logging.config.dictConfig(logging_config)
     ctx = zmq.Context()
     socket = ctx.socket(zmq.PULL)
     socket.bind(worker_address(runnerContext.workerId))

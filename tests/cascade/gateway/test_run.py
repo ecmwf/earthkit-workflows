@@ -3,7 +3,7 @@ from multiprocessing import Process
 
 import cascade.gateway.api as api
 import cascade.gateway.client as client
-from cascade.gateway.__main__ import main as gateway_entrypoint
+from cascade.gateway.__main__ import main
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstance, TaskDefinition, TaskInstance
 
@@ -54,7 +54,7 @@ def get_job_fail() -> JobInstance:
 
 def spawn_gateway() -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=gateway_entrypoint, args=(url,))
+    p = Process(target=main, args=(url,))
     p.start()
     return url, p
 

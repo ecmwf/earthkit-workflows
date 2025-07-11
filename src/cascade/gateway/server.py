@@ -79,14 +79,14 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
         jobs.put_result(report.job_id, dataset_id, result)
 
 
-def serve(url: str) -> None:
+def serve(url: str, log_base: str | None = None) -> None:
     ctx = get_context()
     poller = zmq.Poller()
 
     fe = ctx.socket(zmq.REP)
     fe.bind(url)
     poller.register(fe, flags=zmq.POLLIN)
-    jobs = JobRouter(poller)
+    jobs = JobRouter(poller, log_base)
 
     logger.debug("entering recv loop")
     is_break = False
