@@ -27,45 +27,50 @@ PlainComponent = tuple[list[TaskId], list[TaskId]]  # nodes, sources
 
 
 def nearest_common_descendant(
-    paths: Task2TaskDistance, nodes: list[TaskId], L: int
+    paths: Task2TaskDistance,
+    nodes: list[TaskId],
+    L: int,
+    parents: dict[TaskId, set[TaskId]],
+    children: dict[TaskId, set[TaskId]],
 ) -> Task2TaskDistance:
-    ncd: Task2TaskDistance = {}
-    try:
-        import coptrs
+    # well crawl through the graph starting from sinks
+    remaining_children = {v: len(children[v]) for v in nodes}
+    queue = [v for v in nodes if remaining_children[v] == 0]
 
-        logger.debug("using coptrs library, watch out for the blazing speed")
-        m = {}
-        d1 = {}
-        d2 = {}
-        i = 0
-        # TODO we convert from double dict to dict of tuples -- extend coptrs to support the other as well to get rid fo this
-        for a in paths.keys():
-            for b in paths[a].keys():
-                if a not in d1:
-                    d1[a] = i
-                    d2[i] = a
-                    i += 1
-                if b not in d1:
-                    d1[b] = i
-                    d2[i] = b
-                    i += 1
-                m[(d1[a], d1[b])] = paths[a][b]
-        ncdT: dict[tuple[int, int], int] = coptrs.nearest_common_descendant(m, L)
-        for (ai, bi), e in ncdT.items():
-            if d2[ai] not in ncd:
-                ncd[d2[ai]] = {}
-            ncd[d2[ai]][d2[bi]] = e
-    except ImportError:
-        logger.warning("coptrs not found, falling back to python")
-        for a in nodes:
-            ncd[a] = {}
-            for b in nodes:
-                if b == a:
-                    ncd[a][b] = 0
-                    continue
-                ncd[a][b] = L
-                for c in nodes:
-                    ncd[a][b] = min(ncd[a][b], max(paths[a][c], paths[b][c]))
+    # for each pair of vertices V & U, we store here their so-far-nearest common descendant D + max(dist(V, D), dist(U, D))
+    # we need to keep track of D while we build this to be able to recalculate, but we'll drop it in the end
+    result: dict[TaskId, dict[TaskId, tuple[TaskId, int]]] = {}
+    while queue:
+        v = queue.pop(0)
+        result[v] = {}
+        # for each u, do we have a common ancestor with it?
+        for u in nodes:
+            # if we are their ancestor then we are a common ancestor, though not necessarily the nearest one
+            if v in paths[u]:
+                result[v][u] = (v, paths[u][v])
+            # some of our children may have a common ancestor with u
+            for c in children[v]:
+                if u in result[c]:
+                    d = result[c][u][0]
+                    dist = max(paths[v][d], paths[u][d])
+                    if u not in result[v] or result[v][u][1] > dist:
+                        result[v][u] = (d, dist)
+        # identify whether any of our parents children were completely processed -- if yes,
+        # we can continue the crawl with them
+        for p in parents[v]:
+            remaining_children[p] -= 1
+            if remaining_children[p] == 0:
+                queue.append(p)
+
+    # just drop the D witness, and fill default L if no common ancestor whatsoever
+    ncd: Task2TaskDistance = {}
+    for v in nodes:
+        ncd[v] = {}
+        for u in nodes:
+            if u in result[v]:
+                ncd[v][u] = result[v][u][1]
+            else:
+                ncd[v][u] = L
     return ncd
 
 
@@ -148,7 +153,8 @@ def enrich(
                     paths[v][desc] = min(paths[v][desc], dist + 1)
                 value[v] = max(value[v], value[c] - 1)
 
-    ncd = nearest_common_descendant(paths, nodes, L)
+    # calculate ncd
+    ncd = nearest_common_descendant(paths, nodes, L, edge_i, edge_o)
 
     return ComponentCore(
         nodes=nodes,
