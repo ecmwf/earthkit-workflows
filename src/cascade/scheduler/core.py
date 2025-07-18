@@ -22,6 +22,7 @@ class ComponentCore:
     distance_matrix: Task2TaskDistance  # nearest common descendant
     value: TaskValue  # closer to a sink -> higher value
     depth: int  # maximum value
+    fusing_opportunities: dict[TaskId, list[TaskId]]
 
     def weight(self) -> int:
         # TODO eventually replace with runtime sum or smth

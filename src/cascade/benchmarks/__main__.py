@@ -41,7 +41,7 @@ from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import JobInstance
 from cascade.low.func import msum
-from cascade.scheduler.graph import precompute
+from cascade.scheduler.precompute import precompute
 from earthkit.workflows.graph import Graph, deduplicate_nodes
 
 logger = logging.getLogger("cascade.benchmarks")
@@ -73,6 +73,10 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
             import cascade.benchmarks.generators as generators
 
             return generators.get_job()
+        elif benchmark.startswith("matmul"):
+            import cascade.benchmarks.matmul as matmul
+
+            return matmul.get_job()
         else:
             raise NotImplementedError(benchmark)
     else:
@@ -81,6 +85,12 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
 
 def get_gpu_count() -> int:
     try:
+        if "CUDA_VISIBLE_DEVICES" in os.environ:
+            # TODO we dont want to just count, we want to actually use literally these ids
+            # NOTE this is particularly useful for "" value -- careful when refactoring
+            visible = os.environ["CUDA_VISIBLE_DEVICES"]
+            visible_count = sum(1 for e in visible if e == ",") + (1 if visible else 0)
+            return visible_count
         gpus = sum(
             1
             for l in subprocess.run(

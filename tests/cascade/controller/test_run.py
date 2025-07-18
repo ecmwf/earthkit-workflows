@@ -19,7 +19,7 @@ from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import JobInstance
-from cascade.scheduler.graph import precompute
+from cascade.scheduler.precompute import precompute
 
 
 def _payload(a: int, b: int) -> int:

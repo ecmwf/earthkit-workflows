@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 PlainComponent = tuple[list[TaskId], list[TaskId]]  # nodes, sources
 
 
-def nearest_common_descendant(
+def _nearest_common_descendant(
     paths: Task2TaskDistance,
     nodes: list[TaskId],
     L: int,
@@ -74,7 +74,7 @@ def nearest_common_descendant(
     return ncd
 
 
-def decompose(
+def _decompose(
     nodes: list[TaskId],
     edge_i: dict[TaskId, set[TaskId]],
     edge_o: dict[TaskId, set[TaskId]],
@@ -107,7 +107,7 @@ def decompose(
         )
 
 
-def enrich(
+def _enrich(
     plain_component: PlainComponent,
     edge_i: dict[TaskId, set[TaskId]],
     edge_o: dict[TaskId, set[TaskId]],
@@ -154,7 +154,7 @@ def enrich(
                 value[v] = max(value[v], value[c] - 1)
 
     # calculate ncd
-    ncd = nearest_common_descendant(paths, nodes, L, edge_i, edge_o)
+    ncd = _nearest_common_descendant(paths, nodes, L, edge_i, edge_o)
 
     return ComponentCore(
         nodes=nodes,
@@ -162,6 +162,7 @@ def enrich(
         distance_matrix=ncd,
         value=value,
         depth=L,
+        fusing_opportunities={},
     )
 
 
@@ -180,12 +181,12 @@ def precompute(job_instance: JobInstance) -> Preschedule:
 
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
-        f = lambda plain_component: timer(enrich, Microtrace.presched_enrich)(
+        f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(
             plain_component, edge_i_proj, edge_o_proj
         )
         plain_components = (
             plain_component
-            for plain_component in timer(decompose, Microtrace.presched_decompose)(
+            for plain_component in timer(_decompose, Microtrace.presched_decompose)(
                 list(job_instance.tasks.keys()),
                 edge_i_proj,
                 edge_o_proj,

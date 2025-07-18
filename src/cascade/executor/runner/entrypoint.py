@@ -67,6 +67,25 @@ class RunnerContext:
         )
 
 
+class Config:
+    """Some parameters to drive behaviour. Currently not exposed externally -- no clear argument
+    that they should be. As is, just a means of code experimentation.
+    """
+
+    # flushing approach -- when we finish a computation of task sequence, there is a question what
+    # to do with the output. We could either publish & drop, or publish and retain in memory. The
+    # former is is slower -- if the next task sequence needs this output, it requires a fetch & deser
+    # from cashme. But the latter is more risky -- we effectively have the same dataset twice in
+    # system memory. The `posttask_flush` below goes the former way, the `pretask_flush` is a careful
+    # way of latter -- we drop the output from memory only if the *next* task sequence does not need
+    # it, ie, we retain a cache of age 1. We could ultimately have controller decide about this, or
+    # decide dynamically based on memory pressure -- but neither is easy.
+    posttask_flush = False  # after task is done, drop all outputs from memory
+    pretask_flush = (
+        True  # when we receive a task, we drop those in memory that wont be needed
+    )
+
+
 def worker_address(workerId: WorkerId) -> BackboneAddress:
     return f"ipc:///tmp/{repr(workerId)}.socket"
 
@@ -83,7 +102,8 @@ def execute_sequence(
         for taskId in taskSequence.tasks:
             pckg.extend(executionContext.tasks[taskId].definition.environment)
             run(taskId, executionContext, memory)
-        memory.flush()
+        if Config.posttask_flush:
+            memory.flush()
     except Exception as e:
         logger.exception("runner failure, about to report")
         callback(
@@ -107,8 +127,11 @@ def entrypoint(runnerContext: RunnerContext):
         PackagesEnv() as pckg,
     ):
         label("worker", repr(runnerContext.workerId))
-        gpu_id = str(runnerContext.workerId.worker_num())
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_id)
+        worker_num = runnerContext.workerId.worker_num()
+        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
+        os.environ["CUDA_VISIBLE_DEVICES"] = (
+            ",".join(str(worker_num)) if worker_num < gpus else ""
+        )
         # NOTE check any(task.definition.needs_gpu) anywhere?
         # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
@@ -151,6 +174,9 @@ def entrypoint(runnerContext: RunnerContext):
                     for key, _ in runnerContext.job.tasks[task].definition.output_schema
                 }
                 missing_ds = required - availab_ds
+                if Config.pretask_flush:
+                    extraneous_ds = availab_ds - required
+                    memory.flush(extraneous_ds)
                 if missing_ds:
                     waiting_ts = mDes
                     for ds in availab_ds.intersection(required):

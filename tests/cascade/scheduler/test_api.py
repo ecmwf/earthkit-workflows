@@ -12,7 +12,7 @@ from cascade.low.core import DatasetId, WorkerId
 from cascade.low.execution_context import TaskStatus, init_context
 from cascade.scheduler.api import assign, init_schedule, plan
 from cascade.scheduler.core import Assignment
-from cascade.scheduler.graph import precompute
+from cascade.scheduler.precompute import precompute
 
 from .util import get_env, get_job0, get_job1
 

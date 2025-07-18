@@ -9,7 +9,7 @@
 from collections import defaultdict
 
 from cascade.low.core import TaskId
-from cascade.scheduler.graph import decompose, enrich
+from cascade.scheduler.precompute import _decompose, _enrich
 
 
 def _oedge2iedge(edge_o: dict[TaskId, set[TaskId]]) -> dict[TaskId, set[TaskId]]:
@@ -39,7 +39,7 @@ def test_decompose():
         (frozenset({"v0", "v1", "v2", "v3"}), frozenset({"v0", "v3"})),
         (frozenset({"v4", "v5", "v6"}), frozenset({"v4"})),
     }
-    for component in decompose(nodes, edge_i, edge_o):
+    for component in _decompose(nodes, edge_i, edge_o):
         e = (frozenset(component[0]), frozenset(component[1]))
         expected.remove(e)
 
@@ -64,7 +64,7 @@ def test_enrich():
     edge_i = _oedge2iedge(edge_o)
     component = (list(set(edge_o.keys()).union(set(edge_i.keys()))), ["v0", "v3", "v4"])
 
-    res = enrich(component, edge_i, edge_o)
+    res = _enrich(component, edge_i, edge_o)
 
     assert res.nodes == component[0]
     assert res.sources == component[1]

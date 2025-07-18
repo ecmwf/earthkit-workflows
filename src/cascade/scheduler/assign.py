@@ -18,50 +18,69 @@ from typing import Iterable, Iterator
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.tracing import Microtrace, trace
-from cascade.scheduler.core import Assignment, ComponentId, Schedule
+from cascade.scheduler.core import Assignment, ComponentCore, ComponentId, Schedule
 
 logger = logging.getLogger(__name__)
 
 
 def build_assignment(
-    worker: WorkerId, task: TaskId, context: JobExecutionContext
+    worker: WorkerId, task: TaskId, context: JobExecutionContext, core: ComponentCore
 ) -> Assignment:
     eligible_load = {DatasetStatus.preparing, DatasetStatus.available}
     eligible_transmit = {DatasetStatus.available}
     prep: list[tuple[DatasetId, HostId]] = []
-    for dataset in context.edge_i[task]:
+    if task in core.fusing_opportunities:
+        tasks = core.fusing_opportunities.pop(task)
+    else:
+        tasks = [task]
+    assigned = []
+    exhausted = False
+    while tasks and not exhausted:
+        task = tasks[0]
         at_worker = context.worker2ds[worker]
-        if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
-            if (
-                context.host2ds[worker.host].get(dataset, DatasetStatus.missing)
-                in eligible_load
-            ):
-                # NOTE this currently leads to no-op, but with persistent workers would possibly allow an early fetch
-                prep.append((dataset, worker.host))
-            else:
-                if any(
-                    candidate := host
-                    for host, status in context.ds2host[dataset].items()
-                    if status in eligible_transmit
+        for dataset in context.edge_i[task]:
+            if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
+                if (
+                    context.host2ds[worker.host].get(dataset, DatasetStatus.missing)
+                    in eligible_load
                 ):
-                    prep.append((dataset, candidate))
-                    # NOTE this is a slight hack, to prevent issuing further transmit commands of this ds to this host
-                    # in this phase. A proper state transition happens later in the `plan` phase. We may want to instead
-                    # create a new `transmit_queue` state field to capture this, and consume it later during plan
-                    context.host2ds[worker.host][dataset] = DatasetStatus.preparing
-                    context.ds2host[dataset][worker.host] = DatasetStatus.preparing
+                    prep.append((dataset, worker.host))
                 else:
-                    raise ValueError(f"{dataset=} not found in any host, whoa whoa!")
+                    if any(
+                        candidate := host
+                        for host, status in context.ds2host[dataset].items()
+                        if status in eligible_transmit
+                    ):
+                        prep.append((dataset, candidate))
+                        # NOTE this is a slight hack, to prevent issuing further transmit commands of this ds to this host
+                        # in this phase. A proper state transition happens later in the `plan` phase. We may want to instead
+                        # create a new `transmit_queue` state field to capture this, and consume it later during plan
+                        context.host2ds[worker.host][dataset] = DatasetStatus.preparing
+                        context.ds2host[dataset][worker.host] = DatasetStatus.preparing
+                    else:
+                        if not assigned:
+                            raise ValueError(
+                                f"{dataset=} not found in any host, whoa whoa!"
+                            )
+                        else:
+                            # TODO rollback preps done for this one task
+                            exhausted = True
+                            break
+        if not exhausted:
+            assigned.append(tasks.pop(0))
 
+    if len(tasks) > 1:
+        head = tasks.pop(0)
+        if head in core.fusing_opportunities:
+            raise ValueError(f"double assignment to {head} in fusing opportunities!")
+        core.fusing_opportunities[head] = tasks
+
+    # TODO trim for only the necessary ones. But when doing so, modify executor to publish some FakePublished message *anyway*, to ensure state update
     return Assignment(
         worker=worker,
-        tasks=[
-            task
-        ],  # TODO eager fusing for outdeg=1? Or heuristic via ratio of outdeg vs workers@component?
+        tasks=assigned,
         prep=prep,
-        outputs={  # TODO trim for only the necessary ones
-            ds for ds in context.task_o[task]
-        },
+        outputs={ds for task in assigned for ds in context.task_o[task]},
     )
 
 
@@ -76,23 +95,35 @@ def _assignment_heuristic(
     start = perf_counter_ns()
     component = schedule.components[component_id]
 
+    def postproc_assignment(assignment: Assignment) -> None:
+        for assigned in assignment.tasks:
+            if assigned in component.computable:
+                component.computable.pop(assigned)
+                component.worker2task_values.remove(assigned)
+                schedule.computable -= 1
+            else:
+                # shortcut for fused-in tasks
+                component.is_computable_tracker[assigned] = set()
+        context.idle_workers.remove(worker)
+        component.weight -= len(assignment.tasks)
+
     # first, attempt optimum-distance assignment
     unassigned: list[TaskId] = []
     for task in tasks:
+        if task not in component.computable:
+            # it may be that some fusing for previous task already assigned this
+            continue
         opt_dist = component.computable[task]
         was_assigned = False
         for idx, worker in enumerate(workers):
             if component.worker2task_distance[worker][task] == opt_dist:
                 end = perf_counter_ns()
                 trace(Microtrace.ctrl_assign, end - start)
-                yield build_assignment(worker, task, context)
+                assignment = build_assignment(worker, task, context, component.core)
+                yield assignment
                 start = perf_counter_ns()
+                postproc_assignment(assignment)
                 workers.pop(idx)
-                component.computable.pop(task)
-                component.worker2task_values.remove(task)
-                component.weight -= 1
-                schedule.computable -= 1
-                context.idle_workers.remove(worker)
                 was_assigned = True
                 break
         if not was_assigned:
@@ -109,17 +140,17 @@ def _assignment_heuristic(
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in remaining_t and worker in remaining_w:
+            if task not in component.computable:
+                # it may be that some fusing for previous task already assigned this
+                continue
             end = perf_counter_ns()
             trace(Microtrace.ctrl_assign, end - start)
-            yield build_assignment(worker, task, context)
+            assignment = build_assignment(worker, task, context, component.core)
+            yield assignment
             start = perf_counter_ns()
-            component.computable.pop(task)
-            component.worker2task_values.remove(task)
+            postproc_assignment(assignment)
             remaining_t.remove(task)
             remaining_w.remove(worker)
-            context.idle_workers.remove(worker)
-            schedule.computable -= 1
-            component.weight -= 1
 
     end = perf_counter_ns()
     trace(Microtrace.ctrl_assign, end - start)
