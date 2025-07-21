@@ -75,12 +75,16 @@ def build_assignment(
             raise ValueError(f"double assignment to {head} in fusing opportunities!")
         core.fusing_opportunities[head] = tasks
 
-    # TODO trim for only the necessary ones. But when doing so, modify executor to publish some FakePublished message *anyway*, to ensure state update
+    # trim for only the necessary ones -- that is, having any edge outside of this current assignment
+    all_outputs = {ds for task in assigned for ds in context.task_o[task]}
+    assigned_tasks = set(assigned)
+    trimmed_outputs = {ds for ds in all_outputs if context.edge_o[ds] - assigned_tasks}
+
     return Assignment(
         worker=worker,
         tasks=assigned,
         prep=prep,
-        outputs={ds for task in assigned for ds in context.task_o[task]},
+        outputs=trimmed_outputs,
     )
 
 

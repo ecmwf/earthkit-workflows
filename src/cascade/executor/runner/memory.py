@@ -51,7 +51,6 @@ class Memory(AbstractContextManager):
             else:
                 outputValue = "ok"
 
-        # TODO how do we purge from here over time?
         self.local[outputId] = outputValue
 
         if isPublish:
@@ -64,6 +63,17 @@ class Memory(AbstractContextManager):
             rbuf = shm_client.allocate(shmid, l, deser_fun)
             rbuf.view()[:l] = result_ser
             rbuf.close()
+            callback(
+                self.callback,
+                DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
+            )
+        else:
+            # NOTE even if its not actually published, we send the message to allow for
+            # marking the task itself as completed -- its odd, but arguably better than
+            # introducing a TaskCompleted message. Alternatively, we fine-grain host-wide
+            # and worker-only publishes at the `controller.notify` level
+            logger.debug(f"fake publish of {outputId} for the sake of task completion")
+            shmid = ds2shmid(outputId)
             callback(
                 self.callback,
                 DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
