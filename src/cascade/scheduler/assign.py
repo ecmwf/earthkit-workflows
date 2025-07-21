@@ -39,7 +39,6 @@ def build_assignment(
     at_host = context.host2ds[worker.host]
     while tasks and not exhausted:
         task = tasks[0]
-        logger.debug(f"proceeding to {task}, with datasets {at_worker} and {at_host}")
         for dataset in context.edge_i[task]:
             if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
                 if at_host.get(dataset, DatasetStatus.missing) in eligible_load:
@@ -51,7 +50,7 @@ def build_assignment(
                         if status in eligible_transmit
                     ):
                         prep.append((dataset, candidate))
-                        context.dataset_preparing(worker, dataset)
+                        context.dataset_preparing(dataset, worker)
                     else:
                         # if we are dealing with the first task to assign, we don't expect to be here!
                         if not assigned:
@@ -75,7 +74,12 @@ def build_assignment(
     # trim for only the necessary ones -- that is, having any edge outside of this current assignment
     all_outputs = {ds for task in assigned for ds in context.task_o[task]}
     assigned_tasks = set(assigned)
-    trimmed_outputs = {ds for ds in all_outputs if context.edge_o[ds] - assigned_tasks}
+    trimmed_outputs = {
+        ds
+        for ds in all_outputs
+        if (context.edge_o[ds] - assigned_tasks)
+        or (ds in context.job_instance.ext_outputs)
+    }
 
     return Assignment(
         worker=worker,

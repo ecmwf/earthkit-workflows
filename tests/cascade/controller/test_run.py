@@ -48,6 +48,9 @@ def run_cluster(
     executors: int,
     preschedule: Preschedule | None = None,
 ):
+    # TODO rework the port assignemnt in this whole file -- we waste a lot. Note if there
+    # is a port overlap, it causes *very unpleasant* interference, even when the tests
+    # are executed sequentially
     if not preschedule:
         preschedule = precompute(job)
     c = f"tcp://localhost:{portBase}"
@@ -73,6 +76,7 @@ def run_cluster(
 
 # TODO there is some race condition, so far observed only on CI without any
 # clue what is exactly happening, freezing this test. Fix one day
+# NOTE additionally, this is not really compatible with xdist!!!
 run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
 
 
@@ -90,7 +94,7 @@ def test_simple():
         .build()
         .get_or_raise()
     )
-    run_cluster(job, 12335, 1)
+    run_cluster(job, 12000, 1)
 
 
 def get_job() -> JobInstance:
@@ -135,19 +139,19 @@ def test_para2():
     if not run_all_tests:
         return
     job = get_job()
-    run_cluster(job, 12445, 2)
+    run_cluster(job, 12200, 2)
 
 
 def test_para4():
     if not run_all_tests:
         return
     job = get_job()
-    run_cluster(job, 12365, 4)
+    run_cluster(job, 12400, 4)
 
 
 def test_fusing():
-    # if not run_all_tests:
-    #     return
+    if not run_all_tests:
+        return
 
     source = TaskBuilder.from_callable(_payload).with_values(a=1, b=2)
     middle = TaskBuilder.from_callable(_payload).with_values(b=1)
@@ -177,4 +181,5 @@ def test_fusing():
         "m4",
         "sink",
     ]
-    run_cluster(job, 12385, 2, preschedule)
+    # TODO we currently dont check that those actually *got fused* -- fix
+    run_cluster(job, 12600, 2, preschedule)

@@ -23,6 +23,8 @@ from .util import get_env, get_job0, get_job1
 def test_job0():
     job0, _ = get_job0()
     preschedule = precompute(job0)
+    # we disable fusing to test just the basics here
+    preschedule.components[0].fusing_opportunities = {}
 
     h1w1 = get_env(1, 1)
     h1w1_w = WorkerId("h0", "w0")
@@ -45,6 +47,8 @@ def test_job0():
 def test_job1():
     job1, _ = get_job1()
     preschedule = precompute(job1)
+    # we disable fusing to test just the basics here
+    preschedule.components[0].fusing_opportunities = {}
 
     h1w1 = get_env(1, 1)
     h1w1_w = WorkerId("h0", "w0")
