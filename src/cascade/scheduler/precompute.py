@@ -156,13 +156,41 @@ def _enrich(
     # calculate ncd
     ncd = _nearest_common_descendant(paths, nodes, L, edge_i, edge_o)
 
+    # fusing opportunities
+    # TODO we just arbitrarily crawl down from sinks, until everything is
+    # decomposed into paths. A smarter approach would utilize profiling
+    # information such as dataset size, trying to fuse the large datasets
+    # first so that they end up on the longest paths
+    fusing_opportunities = {}
+    fused = set()
+    while layers:
+        layer = layers.pop(0)
+        while layer:
+            head = layer.pop(0)
+            if head in fused:
+                continue
+            chain = []
+            fused.add(head)
+            found = True
+            while found:
+                found = False
+                for edge in edge_i[head]:
+                    if edge.task not in fused:
+                        chain.insert(0, head)
+                        head = edge.task
+                        fused.add(head)
+                        found = True
+                        break
+            if len(chain) > 0:
+                fusing_opportunities[head] = chain
+
     return ComponentCore(
         nodes=nodes,
         sources=sources,
         distance_matrix=ncd,
         value=value,
         depth=L,
-        fusing_opportunities={},
+        fusing_opportunities=fusing_opportunities,
     )
 
 
