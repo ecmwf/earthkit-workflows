@@ -35,9 +35,9 @@ def build_assignment(
         tasks = [task]
     assigned = []
     exhausted = False
+    at_worker = context.worker2ds[worker]
     while tasks and not exhausted:
         task = tasks[0]
-        at_worker = context.worker2ds[worker]
         for dataset in context.edge_i[task]:
             if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
                 if (
@@ -52,22 +52,22 @@ def build_assignment(
                         if status in eligible_transmit
                     ):
                         prep.append((dataset, candidate))
-                        # NOTE this is a slight hack, to prevent issuing further transmit commands of this ds to this host
-                        # in this phase. A proper state transition happens later in the `plan` phase. We may want to instead
-                        # create a new `transmit_queue` state field to capture this, and consume it later during plan
-                        context.host2ds[worker.host][dataset] = DatasetStatus.preparing
-                        context.ds2host[dataset][worker.host] = DatasetStatus.preparing
+                        context.dataset_preparing(worker, dataset)
                     else:
+                        # if we are dealing with the first task to assign, we don't expect to be here!
                         if not assigned:
                             raise ValueError(
                                 f"{dataset=} not found in any host, whoa whoa!"
                             )
+                        # if we are already trying some fusing opportunities, it is legit to not find the dataset anywhere
                         else:
                             # TODO rollback preps done for this one task
                             exhausted = True
                             break
         if not exhausted:
             assigned.append(tasks.pop(0))
+            for dataset in context.edge_o[task]:
+                context.dataset_preparing(dataset, worker)
 
     if len(tasks) > 1:
         head = tasks.pop(0)

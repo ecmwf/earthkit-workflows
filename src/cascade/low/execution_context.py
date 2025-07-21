@@ -108,6 +108,12 @@ class JobExecutionContext:
             self.idle_workers.add(worker)
 
     def dataset_preparing(self, dataset: DatasetId, worker: WorkerId) -> None:
+        # NOTE Currently this is invoked during `build_assignment`, as we need
+        # some state tranisition to allow fusing opportunities as well as
+        # preventing double transmits. This may not be the best idea, eg for long
+        # fusing chains -- instead, we may execute this transition at the time
+        # it actually happens, granularize the preparing state into
+        # (will_appear, is_appearing), etc
         # NOTE Currently, these `if`s are necessary because we issue transmit
         # command when host *has* DS but worker does *not*. This ends up no-op,
         # but we totally dont want host state to reset -- it wouldnt recover
