@@ -175,13 +175,14 @@ def _enrich(
             while found:
                 found = False
                 for edge in edge_i[head]:
-                    if edge.task not in fused:
+                    if edge not in fused:
                         chain.insert(0, head)
-                        head = edge.task
+                        head = edge
                         fused.add(head)
                         found = True
                         break
             if len(chain) > 0:
+                chain.insert(0, head)
                 fusing_opportunities[head] = chain
 
     return ComponentCore(

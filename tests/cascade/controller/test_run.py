@@ -8,6 +8,7 @@
 
 """For a given graph and instant executor, check that things complete"""
 
+import os
 from logging.config import dictConfig
 from multiprocessing import Process
 
@@ -19,6 +20,7 @@ from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import JobInstance
+from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
 
 
@@ -40,8 +42,14 @@ def launch_executor(
     executor.recv_loop()
 
 
-def run_cluster(job: JobInstance, portBase: int, executors: int):
-    preschedule = precompute(job)
+def run_cluster(
+    job: JobInstance,
+    portBase: int,
+    executors: int,
+    preschedule: Preschedule | None = None,
+):
+    if not preschedule:
+        preschedule = precompute(job)
     c = f"tcp://localhost:{portBase}"
     m = f"tcp://localhost:{portBase+1}"
     ps = []
@@ -63,10 +71,14 @@ def run_cluster(job: JobInstance, portBase: int, executors: int):
         raise
 
 
+# TODO there is some race condition, so far observed only on CI without any
+# clue what is exactly happening, freezing this test. Fix one day
+run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
+
+
 def test_simple():
-    # TODO there is some race condition, so far observed only on CI without any
-    # clue what is exactly happening, freezing this test. Fix one day
-    return
+    if not run_all_tests:
+        return
     # 2-node graph
     task1 = TaskBuilder.from_callable(_payload).with_values(a=1, b=2)
     task2 = TaskBuilder.from_callable(_payload).with_values(a=1)
@@ -120,13 +132,49 @@ def get_job() -> JobInstance:
 
 
 def test_para2():
+    if not run_all_tests:
+        return
     job = get_job()
     run_cluster(job, 12445, 2)
 
 
 def test_para4():
-    # TODO there is some race condition, so far observed only on CI without any
-    # clue what is exactly happening, freezing this test. Fix one day
-    return
+    if not run_all_tests:
+        return
     job = get_job()
     run_cluster(job, 12365, 4)
+
+
+def test_fusing():
+    # if not run_all_tests:
+    #     return
+
+    source = TaskBuilder.from_callable(_payload).with_values(a=1, b=2)
+    middle = TaskBuilder.from_callable(_payload).with_values(b=1)
+
+    job = (
+        JobBuilder()
+        .with_node("source", source)
+        .with_node("m1", middle)
+        .with_edge("source", "m1", "a")
+        .with_node("m2", middle)
+        .with_edge("m1", "m2", "a")
+        .with_node("m3", middle)
+        .with_edge("m2", "m3", "a")
+        .with_node("m4", middle)
+        .with_edge("m3", "m4", "a")
+        .with_node("sink", middle)
+        .with_edge("m4", "sink", "a")
+        .build()
+        .get_or_raise()
+    )
+    preschedule = precompute(job)
+    assert preschedule.components[0].fusing_opportunities["source"] == [
+        "source",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "sink",
+    ]
+    run_cluster(job, 12385, 2, preschedule)

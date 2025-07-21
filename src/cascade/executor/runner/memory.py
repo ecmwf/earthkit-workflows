@@ -70,8 +70,9 @@ class Memory(AbstractContextManager):
         else:
             # NOTE even if its not actually published, we send the message to allow for
             # marking the task itself as completed -- its odd, but arguably better than
-            # introducing a TaskCompleted message. Alternatively, we fine-grain host-wide
-            # and worker-only publishes at the `controller.notify` level
+            # introducing a TaskCompleted message. TODO we should fine-grain host-wide
+            # and worker-only publishes at the `controller.notify` level, to not cause
+            # incorrect shm.purge calls at worklow end, which log an annoying key error
             logger.debug(f"fake publish of {outputId} for the sake of task completion")
             shmid = ds2shmid(outputId)
             callback(

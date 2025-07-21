@@ -36,14 +36,13 @@ def build_assignment(
     assigned = []
     exhausted = False
     at_worker = context.worker2ds[worker]
+    at_host = context.host2ds[worker.host]
     while tasks and not exhausted:
         task = tasks[0]
+        logger.debug(f"proceeding to {task}, with datasets {at_worker} and {at_host}")
         for dataset in context.edge_i[task]:
             if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
-                if (
-                    context.host2ds[worker.host].get(dataset, DatasetStatus.missing)
-                    in eligible_load
-                ):
+                if at_host.get(dataset, DatasetStatus.missing) in eligible_load:
                     prep.append((dataset, worker.host))
                 else:
                     if any(
@@ -56,9 +55,7 @@ def build_assignment(
                     else:
                         # if we are dealing with the first task to assign, we don't expect to be here!
                         if not assigned:
-                            raise ValueError(
-                                f"{dataset=} not found in any host, whoa whoa!"
-                            )
+                            raise ValueError(f"{dataset=} not found anywhere!")
                         # if we are already trying some fusing opportunities, it is legit to not find the dataset anywhere
                         else:
                             # TODO rollback preps done for this one task
@@ -66,11 +63,11 @@ def build_assignment(
                             break
         if not exhausted:
             assigned.append(tasks.pop(0))
-            for dataset in context.edge_o[task]:
+            for dataset in context.task_o[task]:
                 context.dataset_preparing(dataset, worker)
 
     if len(tasks) > 1:
-        head = tasks.pop(0)
+        head = tasks[0]
         if head in core.fusing_opportunities:
             raise ValueError(f"double assignment to {head} in fusing opportunities!")
         core.fusing_opportunities[head] = tasks
