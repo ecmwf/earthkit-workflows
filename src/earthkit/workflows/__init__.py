@@ -6,7 +6,11 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import pkgutil
+
 import dill
+
+__path__ = pkgutil.extend_path(__path__, __name__)
 
 try:
     from ._version import __version__  # noqa: F401
