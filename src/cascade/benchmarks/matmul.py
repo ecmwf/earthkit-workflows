@@ -34,7 +34,7 @@ def get_job() -> JobInstance:
 
     source, powr = get_funcs()
     source_node = TaskBuilder.from_callable(source)
-    source_node.definition.needs_gpu = True
+    # source_node.definition.needs_gpu = True
     # currently no need to set True downstream since scheduler prefers no transfer
 
     job = JobBuilder().with_node("source", source_node)
@@ -45,7 +45,9 @@ def get_job() -> JobInstance:
         job = job.with_node(cur, node).with_edge(prv, cur, 0)
         prv = cur
 
-    return job.build().get_or_raise()
+    job = job.build().get_or_raise()
+    job.ext_outputs = list(job.outputs_of(cur))
+    return job
 
 
 def execute_locally():
@@ -53,11 +55,17 @@ def execute_locally():
 
     source, powr = get_funcs()
 
-    # or gpu
-    with jax.default_device(jax.devices("cpu")[0]):
+    with jax.default_device(
+        jax.devices("cpu")[0]
+    ):  # TODO change based on visible devices
         m0 = source()
         for _ in range(L):
             m0 = powr(m0)
+
+    from multiprocessing.shared_memory import SharedMemory
+
+    mem = SharedMemory("benchmark_tmp", create=True, size=m0.nbytes)
+    mem.buf[:] = m0.tobytes()
 
 
 if __name__ == "__main__":
