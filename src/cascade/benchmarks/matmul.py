@@ -34,7 +34,8 @@ def get_job() -> JobInstance:
 
     source, powr = get_funcs()
     source_node = TaskBuilder.from_callable(source)
-    # source_node.definition.needs_gpu = True
+    if os.environ.get("CUDA_VISIBLE_DEVICES", "") != "":
+        source_node.definition.needs_gpu = True
     # currently no need to set True downstream since scheduler prefers no transfer
 
     job = JobBuilder().with_node("source", source_node)
@@ -55,9 +56,9 @@ def execute_locally():
 
     source, powr = get_funcs()
 
-    with jax.default_device(
-        jax.devices("cpu")[0]
-    ):  # TODO change based on visible devices
+    device = "gpu" if os.environ.get("CUDA_VISIBLE_DEVICES", "") != "" else "cpu"
+    print(f"device is {device}")
+    with jax.default_device(jax.devices(device)[0]):
         m0 = source()
         for _ in range(L):
             m0 = powr(m0)

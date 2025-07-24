@@ -64,7 +64,7 @@ def test_enrich():
     edge_i = _oedge2iedge(edge_o)
     component = (list(set(edge_o.keys()).union(set(edge_i.keys()))), ["v0", "v3", "v4"])
 
-    res = _enrich(component, edge_i, edge_o)
+    res = _enrich(component, edge_i, edge_o, set())
 
     assert res.nodes == component[0]
     assert res.sources == component[1]

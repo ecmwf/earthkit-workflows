@@ -23,6 +23,9 @@ class ComponentCore:
     value: TaskValue  # closer to a sink -> higher value
     depth: int  # maximum value
     fusing_opportunities: dict[TaskId, list[TaskId]]
+    gpu_fused_distance: dict[
+        TaskId, int | None
+    ]  # closer to a gpu task -> lower value. Using fusing_opportunities paths only
 
     def weight(self) -> int:
         # TODO eventually replace with runtime sum or smth

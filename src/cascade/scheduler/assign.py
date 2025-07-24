@@ -37,8 +37,14 @@ def build_assignment(
     exhausted = False
     at_worker = context.worker2ds[worker]
     at_host = context.host2ds[worker.host]
+    worker_has_gpu = context.environment.workers[worker].gpu > 0
     while tasks and not exhausted:
         task = tasks[0]
+        if context.job_instance.tasks[task].definition.needs_gpu and not worker_has_gpu:
+            if not assigned:
+                raise ValueError(f"tried to assign gpu {task=} to non-gpu {worker=}")
+            else:
+                break
         for dataset in context.edge_i[task]:
             if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
                 if at_host.get(dataset, DatasetStatus.missing) in eligible_load:
@@ -96,7 +102,7 @@ def _assignment_heuristic(
     component_id: ComponentId,
     context: JobExecutionContext,
 ) -> Iterator[Assignment]:
-    """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component"""
+    """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component."""
     start = perf_counter_ns()
     component = schedule.components[component_id]
 
@@ -167,27 +173,29 @@ def assign_within_component(
     component_id: ComponentId,
     context: JobExecutionContext,
 ) -> Iterator[Assignment]:
-    """We first handle gpu things, second cpu things, using the same algorithm for either case"""
+    """We first handle tasks requiring a gpu, then tasks whose child requires a gpu, last cpu only tasks, using the same algorithm for either case"""
     # TODO employ a more systematic solution and handle all multicriterially at once -- ideally together with adding support for multi-gpu-groups
+    # NOTE this is getting even more important as we started considering gpu fused distance
+    # NOTE the concept of "strategic wait" is completely missing here (eg dont assign a gpu worker to a cpu task because there will come a gpu task in a few secs)
     cpu_t: list[TaskId] = []
     gpu_t: list[TaskId] = []
-    gpu_w: list[WorkerId] = []
-    cpu_w: list[WorkerId] = []
-    for task in schedule.components[component_id].computable.keys():
+    opu_t: list[TaskId] = []
+    component = schedule.components[component_id]
+    for task in component.computable.keys():
         if context.job_instance.tasks[task].definition.needs_gpu:
             gpu_t.append(task)
+        elif component.core.gpu_fused_distance[task] is not None:
+            opu_t.append(task)
         else:
             cpu_t.append(task)
-    for worker in workers:
-        if context.environment.workers[worker].gpu > 0:
-            gpu_w.append(worker)
-        else:
-            cpu_w.append(worker)
-    yield from _assignment_heuristic(schedule, gpu_t, gpu_w, component_id, context)
-    for worker in gpu_w:
-        if worker in context.idle_workers:
-            cpu_w.append(worker)
-    yield from _assignment_heuristic(schedule, cpu_t, cpu_w, component_id, context)
+    eligible_w = [
+        worker for worker in workers if context.environment.workers[worker].gpu > 0
+    ]
+    yield from _assignment_heuristic(schedule, gpu_t, eligible_w, component_id, context)
+    eligible_w = [worker for worker in eligible_w if worker in context.idle_workers]
+    yield from _assignment_heuristic(schedule, opu_t, eligible_w, component_id, context)
+    eligible_w = [worker for worker in workers if worker in context.idle_workers]
+    yield from _assignment_heuristic(schedule, cpu_t, eligible_w, component_id, context)
 
 
 def update_worker2task_distance(

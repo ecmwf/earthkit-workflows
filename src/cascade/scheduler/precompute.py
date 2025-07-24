@@ -111,6 +111,7 @@ def _enrich(
     plain_component: PlainComponent,
     edge_i: dict[TaskId, set[TaskId]],
     edge_o: dict[TaskId, set[TaskId]],
+    needs_gpu: set[TaskId],
 ) -> ComponentCore:
     nodes, sources = plain_component
     logger.debug(
@@ -162,10 +163,12 @@ def _enrich(
     # information such as dataset size, trying to fuse the large datasets
     # first so that they end up on the longest paths
     fusing_opportunities = {}
+    gpu_fused_distance = {}
     fused = set()
     while layers:
         layer = layers.pop(0)
         while layer:
+            gpu_distance = None
             head = layer.pop(0)
             if head in fused:
                 continue
@@ -173,6 +176,11 @@ def _enrich(
             fused.add(head)
             found = True
             while found:
+                if head in needs_gpu:
+                    gpu_distance = 0
+                elif gpu_distance is not None:
+                    gpu_distance += 1
+                gpu_fused_distance[head] = gpu_distance
                 found = False
                 for edge in edge_i[head]:
                     if edge not in fused:
@@ -192,6 +200,7 @@ def _enrich(
         value=value,
         depth=L,
         fusing_opportunities=fusing_opportunities,
+        gpu_fused_distance=gpu_fused_distance,
     )
 
 
@@ -208,10 +217,16 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     for vert, inps in edge_i.items():
         edge_i_proj[vert] = {dataset.task for dataset in inps}
 
+    needs_gpu = {
+        task_id
+        for task_id, task in job_instance.tasks.items()
+        if task.definition.needs_gpu
+    }
+
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
         f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(
-            plain_component, edge_i_proj, edge_o_proj
+            plain_component, edge_i_proj, edge_o_proj, needs_gpu
         )
         plain_components = (
             plain_component
