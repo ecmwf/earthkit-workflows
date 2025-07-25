@@ -45,8 +45,10 @@ def register_instance(type, backend):
 
 
 def array_module(*arrays):
-    # Only deduce type from first element to allow for mixed types
+    """Return the backend module for the given arrays."""
+    # First only deduce type from first element to allow for mixed types.
     # but this means the first argument needs to specify the correct module
+    # If not found, check for subclasses of known types.
     array_type = type(arrays[0])
     backend = BACKENDS.get(array_type, None)
     if backend is None:
