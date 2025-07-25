@@ -167,7 +167,11 @@ def test_runner(monkeypatch):
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
         entrypoint.execute_sequence(twoTaskTs, memoryInstance, pckg, twoTaskRc)
+    # NOTE we assert for both messages even though *only* t3o has been specified in `publish`
+    # this is because there is no fine-graining yet to distingiush between worker-mem-only
+    # and host-wide publishings
     assert msgs == [
+        DatasetPublished(origin=worker, ds=t3i, transmit_idx=None),
         DatasetPublished(origin=worker, ds=t3o, transmit_idx=None),
     ]
     msgs = []
@@ -227,7 +231,9 @@ def test_runner(monkeypatch):
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
         entrypoint.execute_sequence(t4TaskTs, memoryInstance, pckg, t4Rc)
-    assert msgs == [
+
+    # NOTE as above, we want to ignore the initial worker-mem-only publishes
+    assert msgs[-4:] == [
         DatasetPublished(origin=worker, ds=t4pOutputs[0], transmit_idx=None),
         DatasetPublished(origin=worker, ds=t4pOutputs[1], transmit_idx=None),
         DatasetPublished(origin=worker, ds=t4pOutputs[2], transmit_idx=None),

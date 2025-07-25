@@ -16,10 +16,10 @@ Controlled by env var params: JOB1_{DATA_ROOT, GRID, ...}, see below
 import os
 
 import earthkit.data
-from ppcascade.fluent import from_source
-from ppcascade.utils.window import Range
 
 from earthkit.workflows.fluent import Payload
+from earthkit.workflows.plugins.pproc.fluent import from_source
+from earthkit.workflows.plugins.pproc.utils.window import Range
 
 # *** PARAMS ***
 

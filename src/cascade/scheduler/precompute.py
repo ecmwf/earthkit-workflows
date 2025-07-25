@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 PlainComponent = tuple[list[TaskId], list[TaskId]]  # nodes, sources
 
 
-def nearest_common_descendant(
+def _nearest_common_descendant(
     paths: Task2TaskDistance,
     nodes: list[TaskId],
     L: int,
@@ -74,7 +74,7 @@ def nearest_common_descendant(
     return ncd
 
 
-def decompose(
+def _decompose(
     nodes: list[TaskId],
     edge_i: dict[TaskId, set[TaskId]],
     edge_o: dict[TaskId, set[TaskId]],
@@ -107,10 +107,11 @@ def decompose(
         )
 
 
-def enrich(
+def _enrich(
     plain_component: PlainComponent,
     edge_i: dict[TaskId, set[TaskId]],
     edge_o: dict[TaskId, set[TaskId]],
+    needs_gpu: set[TaskId],
 ) -> ComponentCore:
     nodes, sources = plain_component
     logger.debug(
@@ -154,7 +155,43 @@ def enrich(
                 value[v] = max(value[v], value[c] - 1)
 
     # calculate ncd
-    ncd = nearest_common_descendant(paths, nodes, L, edge_i, edge_o)
+    ncd = _nearest_common_descendant(paths, nodes, L, edge_i, edge_o)
+
+    # fusing opportunities
+    # TODO we just arbitrarily crawl down from sinks, until everything is
+    # decomposed into paths. A smarter approach would utilize profiling
+    # information such as dataset size, trying to fuse the large datasets
+    # first so that they end up on the longest paths
+    fusing_opportunities = {}
+    gpu_fused_distance = {}
+    fused = set()
+    while layers:
+        layer = layers.pop(0)
+        while layer:
+            gpu_distance = None
+            head = layer.pop(0)
+            if head in fused:
+                continue
+            chain = []
+            fused.add(head)
+            found = True
+            while found:
+                if head in needs_gpu:
+                    gpu_distance = 0
+                elif gpu_distance is not None:
+                    gpu_distance += 1
+                gpu_fused_distance[head] = gpu_distance
+                found = False
+                for edge in edge_i[head]:
+                    if edge not in fused:
+                        chain.insert(0, head)
+                        head = edge
+                        fused.add(head)
+                        found = True
+                        break
+            if len(chain) > 0:
+                chain.insert(0, head)
+                fusing_opportunities[head] = chain
 
     return ComponentCore(
         nodes=nodes,
@@ -162,6 +199,8 @@ def enrich(
         distance_matrix=ncd,
         value=value,
         depth=L,
+        fusing_opportunities=fusing_opportunities,
+        gpu_fused_distance=gpu_fused_distance,
     )
 
 
@@ -178,14 +217,20 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     for vert, inps in edge_i.items():
         edge_i_proj[vert] = {dataset.task for dataset in inps}
 
+    needs_gpu = {
+        task_id
+        for task_id, task in job_instance.tasks.items()
+        if task.definition.needs_gpu
+    }
+
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
-        f = lambda plain_component: timer(enrich, Microtrace.presched_enrich)(
-            plain_component, edge_i_proj, edge_o_proj
+        f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(
+            plain_component, edge_i_proj, edge_o_proj, needs_gpu
         )
         plain_components = (
             plain_component
-            for plain_component in timer(decompose, Microtrace.presched_decompose)(
+            for plain_component in timer(_decompose, Microtrace.presched_decompose)(
                 list(job_instance.tasks.keys()),
                 edge_i_proj,
                 edge_o_proj,

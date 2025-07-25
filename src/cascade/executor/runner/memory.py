@@ -51,7 +51,6 @@ class Memory(AbstractContextManager):
             else:
                 outputValue = "ok"
 
-        # TODO how do we purge from here over time?
         self.local[outputId] = outputValue
 
         if isPublish:
@@ -64,6 +63,18 @@ class Memory(AbstractContextManager):
             rbuf = shm_client.allocate(shmid, l, deser_fun)
             rbuf.view()[:l] = result_ser
             rbuf.close()
+            callback(
+                self.callback,
+                DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
+            )
+        else:
+            # NOTE even if its not actually published, we send the message to allow for
+            # marking the task itself as completed -- its odd, but arguably better than
+            # introducing a TaskCompleted message. TODO we should fine-grain host-wide
+            # and worker-only publishes at the `controller.notify` level, to not cause
+            # incorrect shm.purge calls at worklow end, which log an annoying key error
+            logger.debug(f"fake publish of {outputId} for the sake of task completion")
+            shmid = ds2shmid(outputId)
             callback(
                 self.callback,
                 DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
@@ -85,18 +96,24 @@ class Memory(AbstractContextManager):
 
     def pop(self, ds: DatasetId) -> None:
         if ds in self.local:
+            logger.debug(f"popping local {ds}")
             val = self.local.pop(ds)  # noqa: F841
             del val
         if ds in self.bufs:
+            logger.debug(f"popping buf {ds}")
             buf = self.bufs.pop(ds)
             buf.close()
 
-    def flush(self) -> None:
-        # NOTE poor man's memory management -- just drop those locals that weren't published. Called
+    def flush(self, datasets: set[DatasetId] = set()) -> None:
+        # NOTE poor man's memory management -- just drop those locals that didn't come from cashme. Called
         # after every taskSequence. In principle, we could purge some locals earlier, and ideally scheduler
         # would invoke some targeted purges to also remove some published ones earlier (eg, they are still
         # needed somewhere but not here)
-        purgeable = [inputId for inputId in self.local if inputId not in self.bufs]
+        purgeable = [
+            inputId
+            for inputId in self.local
+            if inputId not in self.bufs and (not datasets or inputId in datasets)
+        ]
         logger.debug(f"will flush {len(purgeable)} datasets")
         for inputId in purgeable:
             self.local.pop(inputId)
@@ -115,6 +132,8 @@ class Memory(AbstractContextManager):
                     free, total = torch.cuda.mem_get_info()
                     logger.debug(f"cuda mem avail post cache empty: {free/total:.2%}")
                     if free / total < 0.8:
+                        # NOTE this ofc makes low sense if there is any other application (like browser or ollama)
+                        # that the user may be running
                         logger.warning("cuda mem avail low despite cache empty!")
                         logger.debug(torch.cuda.memory_summary())
         except ImportError:

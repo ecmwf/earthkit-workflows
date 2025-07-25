@@ -18,50 +18,80 @@ from typing import Iterable, Iterator
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.tracing import Microtrace, trace
-from cascade.scheduler.core import Assignment, ComponentId, Schedule
+from cascade.scheduler.core import Assignment, ComponentCore, ComponentId, Schedule
 
 logger = logging.getLogger(__name__)
 
 
 def build_assignment(
-    worker: WorkerId, task: TaskId, context: JobExecutionContext
+    worker: WorkerId, task: TaskId, context: JobExecutionContext, core: ComponentCore
 ) -> Assignment:
     eligible_load = {DatasetStatus.preparing, DatasetStatus.available}
     eligible_transmit = {DatasetStatus.available}
     prep: list[tuple[DatasetId, HostId]] = []
-    for dataset in context.edge_i[task]:
-        at_worker = context.worker2ds[worker]
-        if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
-            if (
-                context.host2ds[worker.host].get(dataset, DatasetStatus.missing)
-                in eligible_load
-            ):
-                # NOTE this currently leads to no-op, but with persistent workers would possibly allow an early fetch
-                prep.append((dataset, worker.host))
+    if task in core.fusing_opportunities:
+        tasks = core.fusing_opportunities.pop(task)
+    else:
+        tasks = [task]
+    assigned = []
+    exhausted = False
+    at_worker = context.worker2ds[worker]
+    at_host = context.host2ds[worker.host]
+    worker_has_gpu = context.environment.workers[worker].gpu > 0
+    while tasks and not exhausted:
+        task = tasks[0]
+        if context.job_instance.tasks[task].definition.needs_gpu and not worker_has_gpu:
+            if not assigned:
+                raise ValueError(f"tried to assign gpu {task=} to non-gpu {worker=}")
             else:
-                if any(
-                    candidate := host
-                    for host, status in context.ds2host[dataset].items()
-                    if status in eligible_transmit
-                ):
-                    prep.append((dataset, candidate))
-                    # NOTE this is a slight hack, to prevent issuing further transmit commands of this ds to this host
-                    # in this phase. A proper state transition happens later in the `plan` phase. We may want to instead
-                    # create a new `transmit_queue` state field to capture this, and consume it later during plan
-                    context.host2ds[worker.host][dataset] = DatasetStatus.preparing
-                    context.ds2host[dataset][worker.host] = DatasetStatus.preparing
+                break
+        for dataset in context.edge_i[task]:
+            if at_worker.get(dataset, DatasetStatus.missing) not in eligible_load:
+                if at_host.get(dataset, DatasetStatus.missing) in eligible_load:
+                    prep.append((dataset, worker.host))
                 else:
-                    raise ValueError(f"{dataset=} not found in any host, whoa whoa!")
+                    if any(
+                        candidate := host
+                        for host, status in context.ds2host[dataset].items()
+                        if status in eligible_transmit
+                    ):
+                        prep.append((dataset, candidate))
+                        context.dataset_preparing(dataset, worker)
+                    else:
+                        # if we are dealing with the first task to assign, we don't expect to be here!
+                        if not assigned:
+                            raise ValueError(f"{dataset=} not found anywhere!")
+                        # if we are already trying some fusing opportunities, it is legit to not find the dataset anywhere
+                        else:
+                            # TODO rollback preps done for this one task
+                            exhausted = True
+                            break
+        if not exhausted:
+            assigned.append(tasks.pop(0))
+            for dataset in context.task_o[task]:
+                context.dataset_preparing(dataset, worker)
+
+    if len(tasks) > 1:
+        head = tasks[0]
+        if head in core.fusing_opportunities:
+            raise ValueError(f"double assignment to {head} in fusing opportunities!")
+        core.fusing_opportunities[head] = tasks
+
+    # trim for only the necessary ones -- that is, having any edge outside of this current assignment
+    all_outputs = {ds for task in assigned for ds in context.task_o[task]}
+    assigned_tasks = set(assigned)
+    trimmed_outputs = {
+        ds
+        for ds in all_outputs
+        if (context.edge_o[ds] - assigned_tasks)
+        or (ds in context.job_instance.ext_outputs)
+    }
 
     return Assignment(
         worker=worker,
-        tasks=[
-            task
-        ],  # TODO eager fusing for outdeg=1? Or heuristic via ratio of outdeg vs workers@component?
+        tasks=assigned,
         prep=prep,
-        outputs={  # TODO trim for only the necessary ones
-            ds for ds in context.task_o[task]
-        },
+        outputs=trimmed_outputs,
     )
 
 
@@ -72,27 +102,39 @@ def _assignment_heuristic(
     component_id: ComponentId,
     context: JobExecutionContext,
 ) -> Iterator[Assignment]:
-    """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component"""
+    """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component."""
     start = perf_counter_ns()
     component = schedule.components[component_id]
+
+    def postproc_assignment(assignment: Assignment) -> None:
+        for assigned in assignment.tasks:
+            if assigned in component.computable:
+                component.computable.pop(assigned)
+                component.worker2task_values.remove(assigned)
+                schedule.computable -= 1
+            else:
+                # shortcut for fused-in tasks
+                component.is_computable_tracker[assigned] = set()
+        context.idle_workers.remove(worker)
+        component.weight -= len(assignment.tasks)
 
     # first, attempt optimum-distance assignment
     unassigned: list[TaskId] = []
     for task in tasks:
+        if task not in component.computable:
+            # it may be that some fusing for previous task already assigned this
+            continue
         opt_dist = component.computable[task]
         was_assigned = False
         for idx, worker in enumerate(workers):
             if component.worker2task_distance[worker][task] == opt_dist:
                 end = perf_counter_ns()
                 trace(Microtrace.ctrl_assign, end - start)
-                yield build_assignment(worker, task, context)
+                assignment = build_assignment(worker, task, context, component.core)
+                yield assignment
                 start = perf_counter_ns()
+                postproc_assignment(assignment)
                 workers.pop(idx)
-                component.computable.pop(task)
-                component.worker2task_values.remove(task)
-                component.weight -= 1
-                schedule.computable -= 1
-                context.idle_workers.remove(worker)
                 was_assigned = True
                 break
         if not was_assigned:
@@ -109,17 +151,17 @@ def _assignment_heuristic(
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in remaining_t and worker in remaining_w:
+            if task not in component.computable:
+                # it may be that some fusing for previous task already assigned this
+                continue
             end = perf_counter_ns()
             trace(Microtrace.ctrl_assign, end - start)
-            yield build_assignment(worker, task, context)
+            assignment = build_assignment(worker, task, context, component.core)
+            yield assignment
             start = perf_counter_ns()
-            component.computable.pop(task)
-            component.worker2task_values.remove(task)
+            postproc_assignment(assignment)
             remaining_t.remove(task)
             remaining_w.remove(worker)
-            context.idle_workers.remove(worker)
-            schedule.computable -= 1
-            component.weight -= 1
 
     end = perf_counter_ns()
     trace(Microtrace.ctrl_assign, end - start)
@@ -131,27 +173,29 @@ def assign_within_component(
     component_id: ComponentId,
     context: JobExecutionContext,
 ) -> Iterator[Assignment]:
-    """We first handle gpu things, second cpu things, using the same algorithm for either case"""
+    """We first handle tasks requiring a gpu, then tasks whose child requires a gpu, last cpu only tasks, using the same algorithm for either case"""
     # TODO employ a more systematic solution and handle all multicriterially at once -- ideally together with adding support for multi-gpu-groups
+    # NOTE this is getting even more important as we started considering gpu fused distance
+    # NOTE the concept of "strategic wait" is completely missing here (eg dont assign a gpu worker to a cpu task because there will come a gpu task in a few secs)
     cpu_t: list[TaskId] = []
     gpu_t: list[TaskId] = []
-    gpu_w: list[WorkerId] = []
-    cpu_w: list[WorkerId] = []
-    for task in schedule.components[component_id].computable.keys():
+    opu_t: list[TaskId] = []
+    component = schedule.components[component_id]
+    for task in component.computable.keys():
         if context.job_instance.tasks[task].definition.needs_gpu:
             gpu_t.append(task)
+        elif component.core.gpu_fused_distance[task] is not None:
+            opu_t.append(task)
         else:
             cpu_t.append(task)
-    for worker in workers:
-        if context.environment.workers[worker].gpu > 0:
-            gpu_w.append(worker)
-        else:
-            cpu_w.append(worker)
-    yield from _assignment_heuristic(schedule, gpu_t, gpu_w, component_id, context)
-    for worker in gpu_w:
-        if worker in context.idle_workers:
-            cpu_w.append(worker)
-    yield from _assignment_heuristic(schedule, cpu_t, cpu_w, component_id, context)
+    eligible_w = [
+        worker for worker in workers if context.environment.workers[worker].gpu > 0
+    ]
+    yield from _assignment_heuristic(schedule, gpu_t, eligible_w, component_id, context)
+    eligible_w = [worker for worker in eligible_w if worker in context.idle_workers]
+    yield from _assignment_heuristic(schedule, opu_t, eligible_w, component_id, context)
+    eligible_w = [worker for worker in workers if worker in context.idle_workers]
+    yield from _assignment_heuristic(schedule, cpu_t, eligible_w, component_id, context)
 
 
 def update_worker2task_distance(

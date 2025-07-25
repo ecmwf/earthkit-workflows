@@ -125,7 +125,9 @@ def test_executor():
         callback(
             m1, TaskSequence(worker=w0, tasks=["source", "sink"], publish={sink_o})
         )
+        # NOTE we need to expect source_o dataset too, because of no finegraining for host-wide and worker-only
         expected = {
+            DatasetPublished(origin=w0, ds=source_o, transmit_idx=None),
             DatasetPublished(origin=w0, ds=sink_o, transmit_idx=None),
         }
         while expected:

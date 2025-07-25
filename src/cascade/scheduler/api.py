@@ -136,7 +136,7 @@ def plan(
         for task in assignment.tasks:
             for ds in assignment.outputs:
                 children = context.edge_o[ds]
-                context.dataset_preparing(ds, assignment.worker)
+                # context.dataset_preparing(ds, assignment.worker) # happends during build already
                 update_worker2task_distance(
                     children, assignment.worker, schedule, context
                 )
