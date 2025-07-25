@@ -7,6 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 import functools
+import logging
 import warnings
 from typing import Callable
 
@@ -15,11 +16,16 @@ import xarray as xr
 from .arrayapi import ArrayAPIBackend
 from .xarray import XArrayBackend
 
+logger = logging.getLogger("earthkit.workflows.backends")
+
+
 BACKENDS = {
     xr.DataArray: XArrayBackend,
     xr.Dataset: XArrayBackend,
     "default": ArrayAPIBackend,
 }
+
+INSTANCE_BACKENDS = {}
 
 
 def register(type, backend):
@@ -30,14 +36,28 @@ def register(type, backend):
     BACKENDS[type] = backend
 
 
+def register_instance(type, backend):
+    if type in INSTANCE_BACKENDS:
+        warnings.warn(
+            f"Overwriting instance backend for {type}. Existing backend {INSTANCE_BACKENDS[type]}."
+        )
+    INSTANCE_BACKENDS[type] = backend
+
+
 def array_module(*arrays):
     # Only deduce type from first element to allow for mixed types
     # but this means the first argument needs to specify the correct module
     array_type = type(arrays[0])
     backend = BACKENDS.get(array_type, None)
     if backend is None:
+        for k, v in INSTANCE_BACKENDS.items():
+            if issubclass(array_type, k):
+                backend = v
+                break
+    if backend is None:
         # Fall back on array API
         backend = BACKENDS["default"]
+    logger.debug(f"Using backend {backend} for {array_type}")
     return backend
 
 
@@ -200,6 +220,7 @@ try:
     from earthkit.workflows.backends.earthkit import FieldListBackend
 
     BACKENDS[SimpleFieldList] = FieldListBackend
-    BACKENDS[FieldList] = FieldListBackend
+    INSTANCE_BACKENDS[FieldList] = FieldListBackend
+
 except ImportError:
     warnings.warn("earthkit could not be imported, FieldList not supported.")
