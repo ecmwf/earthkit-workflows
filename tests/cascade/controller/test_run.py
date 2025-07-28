@@ -15,7 +15,6 @@
 # with xdist etc
 
 
-
 import os
 from logging.config import dictConfig
 from multiprocessing import Process
@@ -35,6 +34,7 @@ from cascade.scheduler.precompute import precompute
 # see the comment above
 run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
 
+
 def _payload(a: int, b: int) -> int:
     return a + b
 
@@ -47,7 +47,14 @@ def launch_executor(
 ):
     dictConfig(logging_config)
     executor = Executor(
-        job_instance, controller_address, 2, f"test_executor{i}", portBase
+        job_instance,
+        controller_address,
+        2,
+        f"test_executor{i}",
+        portBase,
+        None,
+        None,
+        "tcp://localhost",
     )
     executor.register()
     executor.recv_loop()
@@ -100,7 +107,7 @@ def test_simple():
         .get_or_raise()
     )
     run_cluster(job, 12000, 1)
-    sleep(1) # improves stability
+    sleep(1)  # improves stability
 
 
 def get_job() -> JobInstance:
@@ -146,7 +153,7 @@ def test_para2():
         return
     job = get_job()
     run_cluster(job, 12200, 2)
-    sleep(1) # improves stability
+    sleep(1)  # improves stability
 
 
 def test_para4():
@@ -154,7 +161,7 @@ def test_para4():
         return
     job = get_job()
     run_cluster(job, 12400, 4)
-    sleep(1) # improves stability
+    sleep(1)  # improves stability
 
 
 def test_fusing():
@@ -191,4 +198,4 @@ def test_fusing():
     ]
     # TODO we currently dont check that those actually *got fused* -- fix
     run_cluster(job, 12600, 2, preschedule)
-    sleep(1) # improves stability
+    sleep(1)  # improves stability

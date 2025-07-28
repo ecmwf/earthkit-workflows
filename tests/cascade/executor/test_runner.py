@@ -80,6 +80,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=[],
         publish=set(),
+        extra_env={},
     )
     emptyRc = entrypoint.RunnerContext(
         workerId=worker,
@@ -113,6 +114,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=["t2"],
         publish={t2ds},
+        extra_env={},
     )
     oneTaskJob = JobInstance(tasks={"t2": t2}, edges=[])
     oneTaskRc = entrypoint.RunnerContext(
@@ -148,6 +150,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=["t3a", "t3b"],
         publish={t3o},
+        extra_env={},
     )
     twoTaskJob = JobInstance(
         tasks={"t3a": t3a, "t3b": t3b},
@@ -208,6 +211,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=["t4g"] + [f"t4c{i}" for i in range(N)],
         publish=set(t4pOutputs),
+        extra_env={},
     )
     t4Job = JobInstance(
         tasks={**{"t4g": t4g}, **{f"t4c{i}": t4c for i in range(N)}},

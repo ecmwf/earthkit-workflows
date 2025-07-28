@@ -37,6 +37,7 @@ def test_job0():
             tasks=["source"],
             prep=[],
             outputs={DatasetId(task="source", output="0")},
+            extra_env={},
         )
     ]
 
@@ -61,6 +62,7 @@ def test_job1():
             tasks=["source"],
             prep=[],
             outputs={DatasetId(task="source", output="0")},
+            extra_env={},
         )
     ]
 

@@ -225,7 +225,7 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     }
     gangs = {
         task_id
-        for constraint in job_instance.scheduling_constraints
+        for constraint in job_instance.constraints
         for task_id in constraint.gang
     }
 

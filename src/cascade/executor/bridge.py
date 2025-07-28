@@ -46,7 +46,7 @@ class Bridge:
         self.transmit_idx_counter = 0
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         registered = 0
-        self.environment = Environment(workers={})
+        self.environment = Environment(workers={}, host_url_base={})
         logger.debug("about to start receiving registrations")
         registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
         while registered < expected_executors:
@@ -69,6 +69,7 @@ class Bridge:
                     self.environment.workers[worker.worker_id] = Worker(
                         cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb
                     )
+                self.environment.host_url_base[message.host] = message.url_base
                 registered += 1
                 self.heartbeat_checker[message.host] = GraceWatcher(
                     2 * executor_heartbeat_grace_ms

@@ -18,7 +18,13 @@ from typing import Iterable, Iterator
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.tracing import Microtrace, trace
-from cascade.scheduler.core import Assignment, ComponentCore, ComponentId, ComponentSchedule, Schedule
+from cascade.scheduler.core import (
+    Assignment,
+    ComponentCore,
+    ComponentId,
+    ComponentSchedule,
+    Schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +98,16 @@ def build_assignment(
         tasks=assigned,
         prep=prep,
         outputs=trimmed_outputs,
+        extra_env={},
     )
 
-def _postproc_assignment(assignment: Assignment, component: ComponentSchedule, schedule: Schedule, context: JobExecutionContext) -> None:
+
+def _postproc_assignment(
+    assignment: Assignment,
+    component: ComponentSchedule,
+    schedule: Schedule,
+    context: JobExecutionContext,
+) -> None:
     for assigned in assignment.tasks:
         if assigned in component.computable:
             component.computable.pop(assigned)
@@ -107,6 +120,14 @@ def _postproc_assignment(assignment: Assignment, component: ComponentSchedule, s
     component.weight -= len(assignment.tasks)
 
 
+# TODO this is not particularly systematic! We cant bind dynamically at the host as we send this
+# in advance, so we need to hardcode. Ideally we centrallize all port opening into a single module,
+# in particular unify this with the portBase from benchmarks/__main__ and then derived ports from
+# executor/executor.py etc. As is, we have a single global variable that we increment, to ensure
+# no port collision happens gang-wise -- we dont really expect many gangs per a workflow
+gang_port = 12355
+
+
 def _try_assign_gang(
     schedule: Schedule,
     gang: frozenset[TaskId],
@@ -115,6 +136,7 @@ def _try_assign_gang(
     context: JobExecutionContext,
 ) -> Iterator[Assignment]:
     """We greedily assign by descending worker-task distance"""
+    global gang_port
     if len(gang) > len(workers):
         return
     start = perf_counter_ns()
@@ -138,6 +160,10 @@ def _try_assign_gang(
         trace(Microtrace.ctrl_assign, end - start)
         return
 
+    world_size = len(gang)
+    rank = 0
+    coordinator = None
+
     # similarly to _assignment_heuristic, a greedy algorithm
     candidates = [
         (schedule.worker2task_overhead[w][t], component.core.value[t], w, t)
@@ -153,13 +179,23 @@ def _try_assign_gang(
             end = perf_counter_ns()
             trace(Microtrace.ctrl_assign, end - start)
             assignment = build_assignment(worker, task, context, component.core)
+            if not coordinator:
+                coordinator = (
+                    f"{context.environment.host_url_base[worker.host]}:{gang_port}"
+                )
+            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = world_size
+            assignment.extra_env["CASCADE_GANG_RANK"] = rank
+            assignment.extra_env["CASCADE_GANG_COORDINATOR"] = coordinator
+            rank += 1
             yield assignment
             start = perf_counter_ns()
             _postproc_assignment(assignment, component, schedule, context)
             gpu_tasks.remove(task)
             gpu_workers.remove(worker)
     if gpu_tasks:
-        raise ValueError(f"expected to assign all gang gpu tasks, yet {gpu_tasks} remain")
+        raise ValueError(
+            f"expected to assign all gang gpu tasks, yet {gpu_tasks} remain"
+        )
 
     all_workers = cpu_workers.union(gpu_workers)
     candidates = [
@@ -176,16 +212,27 @@ def _try_assign_gang(
             end = perf_counter_ns()
             trace(Microtrace.ctrl_assign, end - start)
             assignment = build_assignment(worker, task, context, component.core)
+            if not coordinator:
+                coordinator = (
+                    f"{context.environment.host_url_base[worker.host]}:{gang_port}"
+                )
+            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = world_size
+            assignment.extra_env["CASCADE_GANG_RANK"] = rank
+            assignment.extra_env["CASCADE_GANG_COORDINATOR"] = coordinator
+            rank += 1
             yield assignment
             start = perf_counter_ns()
             _postproc_assignment(assignment, component, schedule, context)
             cpu_tasks.remove(task)
             all_workers.remove(worker)
     if cpu_tasks:
-        raise ValueError(f"expected to assign all gang cpu tasks, yet {cpu_tasks} remain")
+        raise ValueError(
+            f"expected to assign all gang cpu tasks, yet {cpu_tasks} remain"
+        )
 
     end = perf_counter_ns()
     trace(Microtrace.ctrl_assign, end - start)
+    gang_port += 1
 
 
 def _assignment_heuristic(
@@ -269,7 +316,9 @@ def assign_within_component(
 
     # gangs
     for gang in component.gang_preparation.ready:
-        yield from _try_assign_gang(schedule, gang, list(context.idle_workers), component_id, context)
+        yield from _try_assign_gang(
+            schedule, gang, list(context.idle_workers), component_id, context
+        )
 
     # the other cases: build them first
     cpu_t: list[TaskId] = []
@@ -290,7 +339,8 @@ def assign_within_component(
     eligible_w = [
         worker
         for worker in workers
-        if context.environment.workers[worker].gpu > 0 and worker in context.idle_workers
+        if context.environment.workers[worker].gpu > 0
+        and worker in context.idle_workers
     ]
     yield from _assignment_heuristic(schedule, gpu_t, eligible_w, component_id, context)
     # tasks whose fusing opportunity needs a gpu

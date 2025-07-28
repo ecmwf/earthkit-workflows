@@ -71,6 +71,7 @@ class TaskSequence:
     worker: WorkerId  # worker for running those tasks
     tasks: list[TaskId]  # to be executed in the given order
     publish: set[DatasetId]  # set of outputs to be published
+    extra_env: list[tuple[str, str]]  # extra env var to set
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,7 @@ class ExecutorRegistration:
     host: HostId
     maddress: BackboneAddress
     daddress: BackboneAddress
+    url_base: str  # used for eg dist comms init
     workers: list[Worker]
 
 

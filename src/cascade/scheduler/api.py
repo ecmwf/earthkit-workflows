@@ -13,10 +13,22 @@ from typing import Iterator
 from cascade.low.core import TaskId, WorkerId
 from cascade.low.execution_context import JobExecutionContext, TaskStatus
 from cascade.low.tracing import Microtrace, timer
-from cascade.scheduler.assign import assign_within_component, migrate_to_component, update_worker2task_distance
-from cascade.scheduler.core import Assignment, ComponentId, ComponentSchedule, GangPreparation, Preschedule, Schedule
+from cascade.scheduler.assign import (
+    assign_within_component,
+    migrate_to_component,
+    update_worker2task_distance,
+)
+from cascade.scheduler.core import (
+    Assignment,
+    ComponentId,
+    ComponentSchedule,
+    GangPreparation,
+    Preschedule,
+    Schedule,
+)
 
 logger = logging.getLogger(__name__)
+
 
 def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
     """When a task becomes computable, mutate the gang_prep to possibly
@@ -24,10 +36,14 @@ def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
     """
     for gang in gang_prep.lookup[task]:
         if gang not in gang_prep.countdown:
-            raise ValueError(f"after {task=} marked computable, {gang=} not found -- double compuptable mark?")
+            raise ValueError(
+                f"after {task=} marked computable, {gang=} not found -- double compuptable mark?"
+            )
         remaining = gang_prep.countdown[gang]
         if task not in remaining:
-            raise ValueError(f"after {task=} marked computable, {gang=} does not have it in {remaining=}. Invalid gang?")
+            raise ValueError(
+                f"after {task=} marked computable, {gang=} does not have it in {remaining=}. Invalid gang?"
+            )
         remaining.remove(task)
         if not remaining:
             gang_prep.ready.append(gang)
@@ -38,7 +54,9 @@ def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Sch
     components: list[ComponentSchedule] = []
     ts2component: dict[TaskId, ComponentId] = {}
 
-    gangs = [frozenset(constraint.gang) for constraint in context.job_instance.constraints]
+    gangs = [
+        frozenset(constraint.gang) for constraint in context.job_instance.constraints
+    ]
 
     computable = 0
     for componentId, precomponent in enumerate(preschedule.components):

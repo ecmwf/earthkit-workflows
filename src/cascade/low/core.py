@@ -105,10 +105,12 @@ def type_dec(t: str) -> Type:
 def type_enc(t: Type) -> str:
     return b64encode(cloudpickle.dumps(t)).decode("ascii")
 
+
 class SchedulingConstraint(BaseModel):
     gang: list[TaskId] = Field(
         description="this set of TaskIds must be started at the same time, with ranks and address list as envvar",
     )
+
 
 class JobInstance(BaseModel):
     tasks: dict[TaskId, TaskInstance]
@@ -122,7 +124,7 @@ class JobInstance(BaseModel):
         description="ids to externally materialize",
     )
     constraints: list[SchedulingConstraint] = Field(
-        default_factory=lambda : [],
+        default_factory=lambda: [],
         description="constraints for the scheduler such as gangs",
     )
 
@@ -166,6 +168,7 @@ class Worker(BaseModel):
 
 class Environment(BaseModel):
     workers: dict[WorkerId, Worker]
+    host_url_base: dict[HostId, str]
 
 
 class TaskExecutionRecord(BaseModel):
