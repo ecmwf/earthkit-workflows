@@ -8,9 +8,18 @@
 
 """For a given graph and instant executor, check that things complete"""
 
+# NOTE this is a very bulky test, prone to flakyness, interference, incompatible
+# with xdist etc. Consider removing from pytest altogether, and reframing
+# as integration test script or smth. Until then, we execute it only manually
+# by setting RUN_ALL_TESTS=1, as on CI is particularly flaky and incompatible
+# with xdist etc
+
+
+
 import os
 from logging.config import dictConfig
 from multiprocessing import Process
+from time import sleep
 
 from cascade.controller.impl import run
 from cascade.executor.bridge import Bridge
@@ -23,6 +32,8 @@ from cascade.low.core import JobInstance
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
 
+# see the comment above
+run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
 
 def _payload(a: int, b: int) -> int:
     return a + b
@@ -74,12 +85,6 @@ def run_cluster(
         raise
 
 
-# TODO there is some race condition, so far observed only on CI without any
-# clue what is exactly happening, freezing this test. Fix one day
-# NOTE additionally, this is not really compatible with xdist!!!
-run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
-
-
 def test_simple():
     if not run_all_tests:
         return
@@ -95,6 +100,7 @@ def test_simple():
         .get_or_raise()
     )
     run_cluster(job, 12000, 1)
+    sleep(1) # improves stability
 
 
 def get_job() -> JobInstance:
@@ -140,6 +146,7 @@ def test_para2():
         return
     job = get_job()
     run_cluster(job, 12200, 2)
+    sleep(1) # improves stability
 
 
 def test_para4():
@@ -147,6 +154,7 @@ def test_para4():
         return
     job = get_job()
     run_cluster(job, 12400, 4)
+    sleep(1) # improves stability
 
 
 def test_fusing():
@@ -183,3 +191,4 @@ def test_fusing():
     ]
     # TODO we currently dont check that those actually *got fused* -- fix
     run_cluster(job, 12600, 2, preschedule)
+    sleep(1) # improves stability

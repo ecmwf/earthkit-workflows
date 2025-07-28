@@ -18,7 +18,7 @@ from typing import Iterable, Iterator
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.tracing import Microtrace, trace
-from cascade.scheduler.core import Assignment, ComponentCore, ComponentId, Schedule
+from cascade.scheduler.core import Assignment, ComponentCore, ComponentId, ComponentSchedule, Schedule
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,99 @@ def build_assignment(
         outputs=trimmed_outputs,
     )
 
+def _postproc_assignment(assignment: Assignment, component: ComponentSchedule, schedule: Schedule, context: JobExecutionContext) -> None:
+    for assigned in assignment.tasks:
+        if assigned in component.computable:
+            component.computable.pop(assigned)
+            component.worker2task_values.remove(assigned)
+            schedule.computable -= 1
+        else:
+            # shortcut for fused-in tasks
+            component.is_computable_tracker[assigned] = set()
+    context.idle_workers.remove(assignment.worker)
+    component.weight -= len(assignment.tasks)
+
+
+def _try_assign_gang(
+    schedule: Schedule,
+    gang: frozenset[TaskId],
+    workers: list[WorkerId],
+    component_id: ComponentId,
+    context: JobExecutionContext,
+) -> Iterator[Assignment]:
+    """We greedily assign by descending worker-task distance"""
+    if len(gang) > len(workers):
+        return
+    start = perf_counter_ns()
+    component = schedule.components[component_id]
+    gpu_tasks: set[TaskId] = set()
+    cpu_tasks: set[TaskId] = set()
+    gpu_workers: set[WorkerId] = set()
+    cpu_workers: set[WorkerId] = set()
+    for task in gang:
+        if context.job_instance.tasks[task].definition.needs_gpu:
+            gpu_tasks.add(task)
+        else:
+            cpu_tasks.add(task)
+    for worker in workers:
+        if context.environment.workers[worker].gpu > 0:
+            gpu_workers.add(worker)
+        else:
+            cpu_workers.add(worker)
+    if len(gpu_tasks) > len(gpu_workers):
+        end = perf_counter_ns()
+        trace(Microtrace.ctrl_assign, end - start)
+        return
+
+    # similarly to _assignment_heuristic, a greedy algorithm
+    candidates = [
+        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t)
+        for w in gpu_workers
+        for t in gpu_tasks
+    ]
+    candidates.sort(key=lambda e: (e[0], e[1]))
+    for _, _, worker, task in candidates:
+        if task in gpu_tasks and worker in gpu_workers:
+            if task not in component.computable:
+                # it may be that some fusing for previous task already assigned this
+                continue
+            end = perf_counter_ns()
+            trace(Microtrace.ctrl_assign, end - start)
+            assignment = build_assignment(worker, task, context, component.core)
+            yield assignment
+            start = perf_counter_ns()
+            _postproc_assignment(assignment, component, schedule, context)
+            gpu_tasks.remove(task)
+            gpu_workers.remove(worker)
+    if gpu_tasks:
+        raise ValueError(f"expected to assign all gang gpu tasks, yet {gpu_tasks} remain")
+
+    all_workers = cpu_workers.union(gpu_workers)
+    candidates = [
+        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t)
+        for w in all_workers
+        for t in cpu_tasks
+    ]
+    candidates.sort(key=lambda e: (e[0], e[1]))
+    for _, _, worker, task in candidates:
+        if task in cpu_tasks and worker in all_workers:
+            if task not in component.computable:
+                # it may be that some fusing for previous task already assigned this
+                continue
+            end = perf_counter_ns()
+            trace(Microtrace.ctrl_assign, end - start)
+            assignment = build_assignment(worker, task, context, component.core)
+            yield assignment
+            start = perf_counter_ns()
+            _postproc_assignment(assignment, component, schedule, context)
+            cpu_tasks.remove(task)
+            all_workers.remove(worker)
+    if cpu_tasks:
+        raise ValueError(f"expected to assign all gang cpu tasks, yet {cpu_tasks} remain")
+
+    end = perf_counter_ns()
+    trace(Microtrace.ctrl_assign, end - start)
+
 
 def _assignment_heuristic(
     schedule: Schedule,
@@ -105,18 +198,6 @@ def _assignment_heuristic(
     """Finds a reasonable assignment within a single component. Does not migrate hosts to a different component."""
     start = perf_counter_ns()
     component = schedule.components[component_id]
-
-    def postproc_assignment(assignment: Assignment) -> None:
-        for assigned in assignment.tasks:
-            if assigned in component.computable:
-                component.computable.pop(assigned)
-                component.worker2task_values.remove(assigned)
-                schedule.computable -= 1
-            else:
-                # shortcut for fused-in tasks
-                component.is_computable_tracker[assigned] = set()
-        context.idle_workers.remove(worker)
-        component.weight -= len(assignment.tasks)
 
     # first, attempt optimum-distance assignment
     unassigned: list[TaskId] = []
@@ -133,7 +214,7 @@ def _assignment_heuristic(
                 assignment = build_assignment(worker, task, context, component.core)
                 yield assignment
                 start = perf_counter_ns()
-                postproc_assignment(assignment)
+                _postproc_assignment(assignment, component, schedule, context)
                 workers.pop(idx)
                 was_assigned = True
                 break
@@ -159,7 +240,7 @@ def _assignment_heuristic(
             assignment = build_assignment(worker, task, context, component.core)
             yield assignment
             start = perf_counter_ns()
-            postproc_assignment(assignment)
+            _postproc_assignment(assignment, component, schedule, context)
             remaining_t.remove(task)
             remaining_w.remove(worker)
 
@@ -173,14 +254,27 @@ def assign_within_component(
     component_id: ComponentId,
     context: JobExecutionContext,
 ) -> Iterator[Assignment]:
-    """We first handle tasks requiring a gpu, then tasks whose child requires a gpu, last cpu only tasks, using the same algorithm for either case"""
-    # TODO employ a more systematic solution and handle all multicriterially at once -- ideally together with adding support for multi-gpu-groups
-    # NOTE this is getting even more important as we started considering gpu fused distance
-    # NOTE the concept of "strategic wait" is completely missing here (eg dont assign a gpu worker to a cpu task because there will come a gpu task in a few secs)
+    """We hardcode order of handling task groups:
+        1/ ready gangs,
+        2/ tasks requiring a gpu,
+        3/ tasks whose fusable child requires a gpu,
+        4/ all other tasks,
+    using the same algorithm for cases 2-4 and a naive for case 1
+    """
+    # TODO rework into a more systematic multicriterial opt solution that is able to consider all groups
+    # at once, using a generic value/cost framework and matching algorithm. It should additionally be able
+    # to issue a "strategic wait" command -- eg if we could assign a task to an idle worker with high cost,
+    # or wait until a better-equipped busy worker finished, etc.
+    component = schedule.components[component_id]
+
+    # gangs
+    for gang in component.gang_preparation.ready:
+        yield from _try_assign_gang(schedule, gang, list(context.idle_workers), component_id, context)
+
+    # the other cases: build them first
     cpu_t: list[TaskId] = []
     gpu_t: list[TaskId] = []
     opu_t: list[TaskId] = []
-    component = schedule.components[component_id]
     for task in component.computable.keys():
         if context.job_instance.tasks[task].definition.needs_gpu:
             gpu_t.append(task)
@@ -188,12 +282,18 @@ def assign_within_component(
             opu_t.append(task)
         else:
             cpu_t.append(task)
+
+    # tasks immediately needing a gpu
     eligible_w = [
-        worker for worker in workers if context.environment.workers[worker].gpu > 0
+        worker
+        for worker in workers
+        if context.environment.workers[worker].gpu > 0 and worker in context.idle_workers
     ]
     yield from _assignment_heuristic(schedule, gpu_t, eligible_w, component_id, context)
+    # tasks whose fusing opportunity needs a gpu
     eligible_w = [worker for worker in eligible_w if worker in context.idle_workers]
     yield from _assignment_heuristic(schedule, opu_t, eligible_w, component_id, context)
+    # remaining tasks
     eligible_w = [worker for worker in workers if worker in context.idle_workers]
     yield from _assignment_heuristic(schedule, cpu_t, eligible_w, component_id, context)
 

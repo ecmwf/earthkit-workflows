@@ -22,6 +22,7 @@ from cascade.low.core import DatasetId, HostId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
+from cascade.scheduler.api import gang_check_ready
 from cascade.scheduler.assign import set_worker2task_overhead
 from cascade.scheduler.core import Schedule
 
@@ -67,6 +68,7 @@ def consider_computable(
                     # NOTE this is a task newly made computable, so we need to calc
                     # `overhead` for all hosts/workers assigned to the component
                     set_worker2task_overhead(schedule, context, worker, child_task)
+                gang_check_ready(child_task, component.gang_preparation)
 
 
 # TODO refac less explicit mutation of context, use class methods

@@ -43,6 +43,12 @@ Worker2TaskDistance = dict[WorkerId, dict[TaskId, int]]
 
 ComponentId = int
 
+@dataclass
+class GangPreparation:
+    ready: list[frozenset[TaskId]] # used by scheduler to see if any gangs can be assigned/started
+    countdown: dict[frozenset[TaskId], set[TaskId]] # used to check after a task completion whether a gang can be moved to ready
+    lookup: dict[TaskId, list[frozenset[TaskId]]] # used to decrease countdown after a task completion
+
 
 @dataclass
 class ComponentSchedule:
@@ -58,6 +64,7 @@ class ComponentSchedule:
     worker2task_distance: Worker2TaskDistance
     # eligible values -- a cached value. Used when migrating new workers to the component, inserted whenever a parent of this task gets `preparing`, removed when this task is made computable
     worker2task_values: set[TaskId]
+    gang_preparation: GangPreparation
 
 
 @dataclass

@@ -105,16 +105,25 @@ def type_dec(t: str) -> Type:
 def type_enc(t: Type) -> str:
     return b64encode(cloudpickle.dumps(t)).decode("ascii")
 
+class SchedulingConstraint(BaseModel):
+    gang: list[TaskId] = Field(
+        description="this set of TaskIds must be started at the same time, with ranks and address list as envvar",
+    )
 
 class JobInstance(BaseModel):
     tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
     serdes: dict[str, tuple[str, str]] = Field(
-        {},
+        default_factory=lambda: {},
         description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
     )
     ext_outputs: list[DatasetId] = Field(
-        [], description="ids to externally materialize"
+        default_factory=lambda: [],
+        description="ids to externally materialize",
+    )
+    constraints: list[SchedulingConstraint] = Field(
+        default_factory=lambda : [],
+        description="constraints for the scheduler such as gangs",
     )
 
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
