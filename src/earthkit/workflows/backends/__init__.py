@@ -8,7 +8,7 @@
 
 import functools
 import logging
-from typing import Callable
+from typing import Callable, Union
 
 import xarray as xr
 
@@ -21,10 +21,8 @@ logger = logging.getLogger(__name__)
 BACKENDS = {
     xr.DataArray: XArrayBackend,
     xr.Dataset: XArrayBackend,
-    "default": ArrayAPIBackend,
+    object: ArrayAPIBackend,
 }
-
-INSTANCE_BACKENDS = {}
 
 
 def register(type, backend):
@@ -35,29 +33,25 @@ def register(type, backend):
     BACKENDS[type] = backend
 
 
-def register_instance(type, backend):
-    if type in INSTANCE_BACKENDS:
-        logger.warning(
-            f"Overwriting instance backend for {type}. Existing backend {INSTANCE_BACKENDS[type]}."
-        )
-    INSTANCE_BACKENDS[type] = backend
+def _get_backend(obj_type: type) -> Union[type, None]:
+    return BACKENDS.get(obj_type, None)
 
 
 def array_module(*arrays):
     """Return the backend module for the given arrays."""
-    # First only deduce type from first element to allow for mixed types.
-    # but this means the first argument needs to specify the correct module
-    # If not found, check for subclasses of known types.
+    # Checks all bases of the first array type for a registered backend.
+    # If no backend is found, it will traverse the hierarchy of types
+    # until it finds a registered backend or reaches the base object type.
+    if not arrays:
+        raise ValueError("No arrays provided to determine backend.")
     array_type = type(arrays[0])
-    backend = BACKENDS.get(array_type, None)
-    if backend is None:
-        for k, v in INSTANCE_BACKENDS.items():
-            if issubclass(array_type, k):
-                backend = v
-                break
-    if backend is None:
-        # Fall back on array API
-        backend = BACKENDS["default"]
+    while True:
+        backend = _get_backend(array_type)
+        if backend is not None:
+            break
+        # If no backend found, try the next type in the hierarchy
+        array_type = array_type.__bases__[0]
+
     logger.debug(f"Using backend {backend} for {array_type}")
     return backend
 
@@ -221,7 +215,7 @@ try:
     from earthkit.workflows.backends.earthkit import FieldListBackend
 
     BACKENDS[SimpleFieldList] = FieldListBackend
-    INSTANCE_BACKENDS[FieldList] = FieldListBackend
+    BACKENDS[FieldList] = FieldListBackend
 
 except ImportError:
     logger.warning("earthkit could not be imported, FieldList not supported.")
