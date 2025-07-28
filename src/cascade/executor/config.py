@@ -27,6 +27,7 @@ logging_config = {
         "cascade.executor": {"level": "DEBUG"},
         "cascade.scheduler": {"level": "DEBUG"},
         "cascade.gateway": {"level": "DEBUG"},
+        "earthkit.workflows": {"level": "DEBUG"},
         "httpcore": {"level": "ERROR"},
         "httpx": {"level": "ERROR"},
         "": {"level": "WARNING", "handlers": ["default"]},

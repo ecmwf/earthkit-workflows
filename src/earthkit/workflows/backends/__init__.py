@@ -7,37 +7,52 @@
 # nor does it submit to any jurisdiction.
 
 import functools
-import warnings
-from typing import Callable
+import logging
+from typing import Callable, Union
 
 import xarray as xr
 
 from .arrayapi import ArrayAPIBackend
 from .xarray import XArrayBackend
 
+logger = logging.getLogger(__name__)
+
+
 BACKENDS = {
     xr.DataArray: XArrayBackend,
     xr.Dataset: XArrayBackend,
-    "default": ArrayAPIBackend,
+    object: ArrayAPIBackend,
 }
 
 
 def register(type, backend):
     if type in BACKENDS:
-        warnings.warn(
+        logger.warning(
             f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}."
         )
     BACKENDS[type] = backend
 
 
+def _get_backend(obj_type: type) -> Union[type, None]:
+    return BACKENDS.get(obj_type, None)
+
+
 def array_module(*arrays):
-    # Only deduce type from first element to allow for mixed types
-    # but this means the first argument needs to specify the correct module
+    """Return the backend module for the given arrays."""
+    # Checks all bases of the first array type for a registered backend.
+    # If no backend is found, it will traverse the hierarchy of types
+    # until it finds a registered backend or reaches the base object type.
+    if not arrays:
+        raise ValueError("No arrays provided to determine backend.")
     array_type = type(arrays[0])
-    backend = BACKENDS.get(array_type, None)
-    if backend is None:
-        # Fall back on array API
-        backend = BACKENDS["default"]
+    while True:
+        backend = _get_backend(array_type)
+        if backend is not None:
+            break
+        # If no backend found, try the next type in the hierarchy
+        array_type = array_type.__bases__[0]
+
+    logger.debug(f"Using backend {backend} for {array_type}")
     return backend
 
 
@@ -201,5 +216,6 @@ try:
 
     BACKENDS[SimpleFieldList] = FieldListBackend
     BACKENDS[FieldList] = FieldListBackend
+
 except ImportError:
-    warnings.warn("earthkit could not be imported, FieldList not supported.")
+    logger.warning("earthkit could not be imported, FieldList not supported.")
