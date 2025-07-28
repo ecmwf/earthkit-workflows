@@ -8,7 +8,6 @@
 
 import functools
 import logging
-import warnings
 from typing import Callable
 
 import xarray as xr
@@ -16,7 +15,7 @@ import xarray as xr
 from .arrayapi import ArrayAPIBackend
 from .xarray import XArrayBackend
 
-logger = logging.getLogger("earthkit.workflows.backends")
+logger = logging.getLogger(__name__)
 
 
 BACKENDS = {
@@ -30,7 +29,7 @@ INSTANCE_BACKENDS = {}
 
 def register(type, backend):
     if type in BACKENDS:
-        warnings.warn(
+        logger.warning(
             f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}."
         )
     BACKENDS[type] = backend
@@ -38,7 +37,7 @@ def register(type, backend):
 
 def register_instance(type, backend):
     if type in INSTANCE_BACKENDS:
-        warnings.warn(
+        logger.warning(
             f"Overwriting instance backend for {type}. Existing backend {INSTANCE_BACKENDS[type]}."
         )
     INSTANCE_BACKENDS[type] = backend
@@ -225,4 +224,4 @@ try:
     INSTANCE_BACKENDS[FieldList] = FieldListBackend
 
 except ImportError:
-    warnings.warn("earthkit could not be imported, FieldList not supported.")
+    logger.warning("earthkit could not be imported, FieldList not supported.")
