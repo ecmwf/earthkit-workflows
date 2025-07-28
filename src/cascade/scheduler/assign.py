@@ -276,7 +276,10 @@ def assign_within_component(
     gpu_t: list[TaskId] = []
     opu_t: list[TaskId] = []
     for task in component.computable.keys():
-        if context.job_instance.tasks[task].definition.needs_gpu:
+        if component.gang_preparation.lookup[task]:
+            # no gang participation in a single-task scheduling
+            continue
+        elif context.job_instance.tasks[task].definition.needs_gpu:
             gpu_t.append(task)
         elif component.core.gpu_fused_distance[task] is not None:
             opu_t.append(task)
