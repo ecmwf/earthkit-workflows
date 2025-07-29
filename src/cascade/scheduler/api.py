@@ -22,6 +22,7 @@ from cascade.scheduler.core import (
     Assignment,
     ComponentId,
     ComponentSchedule,
+    GangPreparation,
     Preschedule,
     Schedule,
 )
@@ -29,12 +30,60 @@ from cascade.scheduler.core import (
 logger = logging.getLogger(__name__)
 
 
+def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
+    """When a task becomes computable, mutate the gang_prep to possibly
+    transition some gangs to `ready`
+    """
+    for gang in gang_prep.lookup[task]:
+        if gang not in gang_prep.countdown:
+            raise ValueError(
+                f"after {task=} marked computable, {gang=} not found -- double compuptable mark?"
+            )
+        remaining = gang_prep.countdown[gang]
+        if task not in remaining:
+            raise ValueError(
+                f"after {task=} marked computable, {gang=} does not have it in {remaining=}. Invalid gang?"
+            )
+        remaining.remove(task)
+        if not remaining:
+            logger.debug(f"gang just became ready {gang=}")
+            gang_prep.ready.append(gang)
+            gang_prep.countdown.pop(gang)
+
+
 def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Schedule:
     components: list[ComponentSchedule] = []
     ts2component: dict[TaskId, ComponentId] = {}
 
+    gangs = [
+        frozenset(constraint.gang) for constraint in context.job_instance.constraints
+    ]
+
     computable = 0
     for componentId, precomponent in enumerate(preschedule.components):
+        # gang preparation
+        tasks = set(precomponent.nodes)
+        lookup = defaultdict(list)
+        countdown = {}
+        i = 0
+        while i < len(gangs):
+            if not gangs[i].issubset(tasks):
+                i += 1
+                continue
+            gang = gangs.pop(i)
+            countdown[gang] = set(gang)
+            for e in gang:
+                lookup[e].append(gang)
+
+        gang_preparation = GangPreparation(
+            ready=[],
+            lookup=lookup,
+            countdown=countdown,
+        )
+        for source in precomponent.sources:
+            gang_check_ready(source, gang_preparation)
+
+        # component itself
         component = ComponentSchedule(
             core=precomponent,
             weight=precomponent.weight(),
@@ -45,11 +94,17 @@ def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Sch
                 task: {inp for inp in context.edge_i[task]}
                 for task in precomponent.nodes
             },
+            gang_preparation=gang_preparation,
         )
         components.append(component)
         computable += len(precomponent.sources)
         for task in precomponent.nodes:
             ts2component[task] = componentId
+
+    if gangs:
+        for gang in gangs:
+            logger.error(f"a gang not part of a component: {gang}")
+        raise ValueError(f"a total of {len(gangs)} were not a subcomponent")
 
     return Schedule(
         components=components,

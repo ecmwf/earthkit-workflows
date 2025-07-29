@@ -69,8 +69,9 @@ class Executor:
         workers: int,
         host: HostId,
         portBase: int,
-        shm_vol_gb: int | None = None,
-        log_base: str | None = None,
+        shm_vol_gb: int | None,
+        log_base: str | None,
+        url_base: str,
     ) -> None:
         self.job_instance = job_instance
         self.param_source = param_source(job_instance.edges)
@@ -138,6 +139,7 @@ class Executor:
                 )
                 for idx, worker_id in enumerate(self.workers.keys())
             ],
+            url_base=url_base,
         )
         logger.debug("constructed executor")
 

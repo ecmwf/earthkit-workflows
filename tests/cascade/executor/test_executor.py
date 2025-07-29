@@ -52,7 +52,16 @@ def launch_executor(
     job_instance: JobInstance, controller_address: BackboneAddress, portBase: int
 ):
     dictConfig(logging_config)
-    executor = Executor(job_instance, controller_address, 4, "test_executor", portBase)
+    executor = Executor(
+        job_instance,
+        controller_address,
+        4,
+        "test_executor",
+        portBase,
+        None,
+        None,
+        "tcp://localhost",
+    )
     executor.register()
     executor.recv_loop()
 
@@ -114,6 +123,7 @@ def test_executor():
                 )
                 for i in range(4)
             ],
+            url_base="tcp://localhost",
         )
         assert len(ms) >= 1
         for m in ms:
@@ -123,7 +133,10 @@ def test_executor():
         # submit graph
         w0 = WorkerId("test_executor", "w0")
         callback(
-            m1, TaskSequence(worker=w0, tasks=["source", "sink"], publish={sink_o})
+            m1,
+            TaskSequence(
+                worker=w0, tasks=["source", "sink"], publish={sink_o}, extra_env={}
+            ),
         )
         # NOTE we need to expect source_o dataset too, because of no finegraining for host-wide and worker-only
         expected = {
@@ -177,7 +190,9 @@ def test_executor():
             for m in ms:
                 logger.debug(f"about to remove received message {m}")
                 expected.remove(m)
-        callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}))
+        callback(
+            m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}, extra_env={})
+        )
         expected = [
             DatasetPublished(w0, ds=sink_o, transmit_idx=None),
         ]

@@ -27,6 +27,7 @@ import multiprocessing
 import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from socket import getfqdn
 from time import perf_counter_ns
 
 import fire
@@ -77,6 +78,10 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
             import cascade.benchmarks.matmul as matmul
 
             return matmul.get_job()
+        elif benchmark.startswith("dist"):
+            import cascade.benchmarks.dist as dist
+
+            return dist.get_job()
         else:
             raise NotImplementedError(benchmark)
     else:
@@ -116,6 +121,7 @@ def launch_executor(
     shm_vol_gb: int | None,
     gpu_count: int,
     log_base: str | None,
+    url_base: str,
 ):
     if log_base is not None:
         log_base = f"{log_base}.host{i}"
@@ -133,6 +139,7 @@ def launch_executor(
         portBase,
         shm_vol_gb,
         log_base,
+        url_base,
     )
     executor.register()
     executor.recv_loop()
@@ -164,7 +171,17 @@ def run_locally(
         # NOTE forkserver/spawn seem to forget venv, we need fork
         p = multiprocessing.get_context("fork").Process(
             target=launch_executor,
-            args=(job, c, workers, portBase + 1 + i * 10, i, None, gpu_count, log_base),
+            args=(
+                job,
+                c,
+                workers,
+                portBase + 1 + i * 10,
+                i,
+                None,
+                gpu_count,
+                log_base,
+                "tcp://localhost",
+            ),
         )
         p.start()
         ps.append(p)
@@ -247,6 +264,7 @@ def main_dist(
             idx,
             shm_vol_gb,
             gpu_count,
+            f"tcp://{getfqdn()}",
         )
 
 

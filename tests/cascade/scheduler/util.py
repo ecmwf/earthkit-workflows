@@ -159,5 +159,6 @@ def get_env(hosts: int, workers_per_host: int) -> Environment:
             WorkerId(f"h{h}", f"w{w}"): Worker(cpu=1, gpu=0, memory_mb=1000)
             for h in range(hosts)
             for w in range(workers_per_host)
-        }
+        },
+        host_url_base={f"h{h}": "tcp://localhost" for h in range(hosts)},
     )
