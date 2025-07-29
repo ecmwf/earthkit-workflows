@@ -46,6 +46,7 @@ def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
             )
         remaining.remove(task)
         if not remaining:
+            logger.debug(f"gang just became ready {gang=}")
             gang_prep.ready.append(gang)
             gang_prep.countdown.pop(gang)
 

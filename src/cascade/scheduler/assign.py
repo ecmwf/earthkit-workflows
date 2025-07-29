@@ -130,14 +130,17 @@ gang_port = 12355
 
 def _try_assign_gang(
     schedule: Schedule,
-    gang: frozenset[TaskId],
+    gang: list[frozenset[TaskId]],
     workers: list[WorkerId],
     component_id: ComponentId,
     context: JobExecutionContext,
+    fail_acc: list[frozenset[TaskId]],
 ) -> Iterator[Assignment]:
     """We greedily assign by descending worker-task distance"""
     global gang_port
     if len(gang) > len(workers):
+        logger.debug(f"not enough workers ({len(workers)}) for {gang=}")
+        fail_acc.append(gang)
         return
     start = perf_counter_ns()
     component = schedule.components[component_id]
@@ -156,6 +159,8 @@ def _try_assign_gang(
         else:
             cpu_workers.add(worker)
     if len(gpu_tasks) > len(gpu_workers):
+        logger.debug(f"not enough gpu workers ({len(workers)}) for {gang=}")
+        fail_acc.append(gang)
         end = perf_counter_ns()
         trace(Microtrace.ctrl_assign, end - start)
         return
@@ -183,8 +188,8 @@ def _try_assign_gang(
                 coordinator = (
                     f"{context.environment.host_url_base[worker.host]}:{gang_port}"
                 )
-            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = world_size
-            assignment.extra_env["CASCADE_GANG_RANK"] = rank
+            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = str(world_size)
+            assignment.extra_env["CASCADE_GANG_RANK"] = str(rank)
             assignment.extra_env["CASCADE_GANG_COORDINATOR"] = coordinator
             rank += 1
             yield assignment
@@ -216,8 +221,8 @@ def _try_assign_gang(
                 coordinator = (
                     f"{context.environment.host_url_base[worker.host]}:{gang_port}"
                 )
-            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = world_size
-            assignment.extra_env["CASCADE_GANG_RANK"] = rank
+            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = str(world_size)
+            assignment.extra_env["CASCADE_GANG_RANK"] = str(rank)
             assignment.extra_env["CASCADE_GANG_COORDINATOR"] = coordinator
             rank += 1
             yield assignment
@@ -315,10 +320,13 @@ def assign_within_component(
     component = schedule.components[component_id]
 
     # gangs
+    fail_acc: list[frozenset[TaskId]] = []
     for gang in component.gang_preparation.ready:
+        logger.debug(f"trying to assign a {gang=}")
         yield from _try_assign_gang(
-            schedule, gang, list(context.idle_workers), component_id, context
+            schedule, gang, list(context.idle_workers), component_id, context, fail_acc
         )
+    component.gang_preparation.ready = fail_acc
 
     # the other cases: build them first
     cpu_t: list[TaskId] = []

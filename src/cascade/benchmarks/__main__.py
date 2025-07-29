@@ -78,6 +78,10 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
             import cascade.benchmarks.matmul as matmul
 
             return matmul.get_job()
+        elif benchmark.startswith("dist"):
+            import cascade.benchmarks.dist as dist
+
+            return dist.get_job()
         else:
             raise NotImplementedError(benchmark)
     else:
