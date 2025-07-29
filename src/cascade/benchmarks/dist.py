@@ -9,6 +9,7 @@ The job is a source -> (dist group) -> sink, where:
 
 There are multiple implementations of that:
     torch
+    jax (actually does a mesh-shard global sum instead of broadcast -- the point is to showcase dist init)
 """
 
 import os
@@ -21,43 +22,73 @@ def source_func() -> int:
     return 42
 
 
-def build_coupled_func(impl: str):
+def dist_func_torch(a: int) -> int:
+    import datetime as dt
+
+    import numpy as np
+    import torch.distributed as dist
+
+    world_size = int(os.environ["CASCADE_GANG_WORLD_SIZE"])
+    rank = int(os.environ["CASCADE_GANG_RANK"])
+    coordinator = os.environ["CASCADE_GANG_COORDINATOR"]
+    print(f"starting with envvars: {rank=}/{world_size=}, {coordinator=}")
+    dist.init_process_group(
+        backend="gloo",
+        init_method=coordinator,
+        timeout=dt.timedelta(minutes=1),
+        world_size=world_size,
+        rank=rank,
+    )
+    group_ranks = np.arange(world_size, dtype=int)
+    group = dist.new_group(group_ranks)
+
+    if rank == 0:
+        buf = [a]
+        dist.broadcast_object_list(buf, src=0, group=group)
+        print("broadcast ok")
+    else:
+        buf = np.array([0], dtype=np.uint64)
+        dist.broadcast_object_list(buf, src=0, group=group)
+        print(f"broadcast recevied {buf}")
+
+    return a * buf[0]
+
+
+def dist_func_jax(a: int) -> int:
+    world_size = int(os.environ["CASCADE_GANG_WORLD_SIZE"])
+    rank = int(os.environ["CASCADE_GANG_RANK"])
+    coordinator = os.environ["CASCADE_GANG_COORDINATOR"]
+    os.environ["JAX_NUM_CPU_DEVICES"] = "1"
+    os.environ["JAX_PLATFORM_NAME"] = "cpu"
+    os.environ["JAX_PLATFORMS"] = "cpu"
+    import jax
+    import jax.numpy as jp
+
+    jax.config.update("jax_platforms", "cpu")
+    jax.config.update("jax_platform_name", "cpu")
+    # NOTE neither of the above seems to actually help with an init error message :(
+    print(f"starting with envvars: {rank=}/{world_size=}, {coordinator=}")
+    if coordinator.startswith("tcp://"):
+        coordinator = coordinator[len("tcp://") :]
+    jax.distributed.initialize(coordinator, num_processes=world_size, process_id=rank)
+    assert jax.device_count() == world_size
+
+    mesh = jax.make_mesh((world_size,), ("i",))
+    global_data = jp.arange(world_size)
+    sharding = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec("i"))
+    global_array = jax.device_put(global_data, sharding)
+    result = jp.sum(global_array)
+    print(f"worker {rank}# got result {result=}")
+    return a + result
+
+
+def build_dist_func(impl: str):
     if impl == "torch":
-
-        def coupled_func(a: int) -> int:
-            import datetime as dt
-
-            import numpy as np
-            import torch.distributed as dist
-
-            world_size = int(os.environ["CASCADE_GANG_WORLD_SIZE"])
-            rank = int(os.environ["CASCADE_GANG_RANK"])
-            coordinator = os.environ["CASCADE_GANG_COORDINATOR"]
-            print(f"starting with envvars: {rank=}/{world_size=}, {coordinator=}")
-            dist.init_process_group(
-                backend="gloo",
-                init_method=coordinator,
-                timeout=dt.timedelta(minutes=1),
-                world_size=world_size,
-                rank=rank,
-            )
-            group_ranks = np.arange(world_size, dtype=int)
-            group = dist.new_group(group_ranks)
-
-            if rank == 0:
-                buf = [a]
-                dist.broadcast_object_list(buf, src=0, group=group)
-                print("broadcast ok")
-            else:
-                buf = np.array([0], dtype=np.uint64)
-                dist.broadcast_object_list(buf, src=0, group=group)
-                print(f"broadcast recevied {buf}")
-
-            return a * buf[0]
-
+        return dist_func_torch
+    elif impl == "jax":
+        return dist_func_jax
     else:
         raise NotImplementedError(impl)
-    return coupled_func
 
 
 def sink_func(**kwargs) -> int:
@@ -74,7 +105,7 @@ def get_job() -> JobInstance:
     job = JobBuilder().with_node("source", source_node).with_node("sink", sink_node)
     L = int(os.environ["DIST_L"])
     IMPL = os.environ["DIST_IMPL"]
-    node = TaskBuilder.from_callable(build_coupled_func(IMPL))
+    node = TaskBuilder.from_callable(build_dist_func(IMPL))
 
     for i in range(L):
         job = (

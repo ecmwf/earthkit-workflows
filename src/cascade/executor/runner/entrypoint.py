@@ -99,7 +99,6 @@ def execute_sequence(
     taskId: TaskId | None = None
     try:
         for key, value in taskSequence.extra_env.items():
-            logger.error(f"extra env: {key=} => {value=}")
             os.environ[key] = value
         executionContext = runnerContext.project(taskSequence)
         for taskId in taskSequence.tasks:
