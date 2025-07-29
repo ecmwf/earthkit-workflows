@@ -71,6 +71,10 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
             import cascade.benchmarks.dist as dist
 
             return dist.get_job()
+        elif benchmark.startswith("dask"):
+            import cascade.benchmarks.dask as dask
+
+            return dask.get_job(benchmark[len("dask.") :])
         else:
             raise NotImplementedError(benchmark)
     else:
@@ -156,7 +160,7 @@ def run_locally(
     portBase: int = 12345,
     log_base: str | None = None,
     report_address: str | None = None,
-):
+) -> None:
     if log_base is not None:
         log_path = f"{log_base}.controller.txt"
         logging.config.dictConfig(logging_config_filehandler(log_path))
@@ -205,11 +209,14 @@ def run_locally(
         logger.debug("starting bridge")
         b = Bridge(c, hosts)
         start = perf_counter_ns()
-        run(job, b, preschedule, report_address=report_address)
+        result = run(job, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
         )
+        if os.environ.get("CASCADE_DEBUG_PRINT"):
+            for key, value in result.outputs.items():
+                print(f"{key} => {value}")
     except Exception:
         # NOTE we log this to get the stacktrace into the logfile
         logger.exception("controller failure, proceed with executor shutdown")
