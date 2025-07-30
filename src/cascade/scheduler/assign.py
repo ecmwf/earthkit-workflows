@@ -334,7 +334,7 @@ def assign_within_component(
     opu_t: list[TaskId] = []
     for task in component.computable.keys():
         if component.gang_preparation.lookup[task]:
-            # no gang participation in a single-task scheduling
+            # no gang participation in single-task scheduling
             continue
         elif context.job_instance.tasks[task].definition.needs_gpu:
             gpu_t.append(task)
@@ -350,13 +350,19 @@ def assign_within_component(
         if context.environment.workers[worker].gpu > 0
         and worker in context.idle_workers
     ]
+    logger.debug(
+        f"considering {len(gpu_t)}# gpu tasks, {len(opu_t)}# maybe-gpu tasks, {len(cpu_t)}# cpu tasks, with {len(workers)}# workers out of which {len(eligible_w)} have gpu"
+    )
     yield from _assignment_heuristic(schedule, gpu_t, eligible_w, component_id, context)
     # tasks whose fusing opportunity needs a gpu
     eligible_w = [worker for worker in eligible_w if worker in context.idle_workers]
     yield from _assignment_heuristic(schedule, opu_t, eligible_w, component_id, context)
     # remaining tasks
     eligible_w = [worker for worker in workers if worker in context.idle_workers]
-    yield from _assignment_heuristic(schedule, cpu_t, eligible_w, component_id, context)
+    u_opu_t = [task for task in opu_t if task in component.computable]
+    yield from _assignment_heuristic(
+        schedule, cpu_t + u_opu_t, eligible_w, component_id, context
+    )
 
 
 def update_worker2task_distance(

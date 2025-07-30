@@ -43,6 +43,11 @@ def run(
     reporter = Reporter(report_address)
 
     try:
+        total_gpus = sum(worker.gpu for worker in env.workers.values())
+        needs_gpus = any(task.definition.needs_gpu for task in job.tasks.values())
+        if needs_gpus and total_gpus == 0:
+            raise ValueError("environment contains no gpu yet job demands one")
+
         while (
             state.has_awaitable()
             or context.has_awaitable()
