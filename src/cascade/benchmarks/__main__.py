@@ -26,6 +26,7 @@ import logging.config
 import multiprocessing
 import os
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from socket import getfqdn
 from time import perf_counter_ns
@@ -88,7 +89,7 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
         raise TypeError("specified neither benchmark name nor job instance")
 
 
-def get_gpu_count() -> int:
+def get_cuda_count() -> int:
     try:
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             # TODO we dont want to just count, we want to actually use literally these ids
@@ -106,10 +107,20 @@ def get_gpu_count() -> int:
             if "GPU" in l
         )
     except:
-        # TODO support macos
         logger.exception("unable to determine available gpus")
         gpus = 0
     return gpus
+
+
+def get_gpu_count(host_idx: int, worker_count: int) -> int:
+    if sys.platform == "darwin":
+        # we should inspect some gpu capabilities details to prevent overcommit
+        return worker_count
+    else:
+        if host_idx == 0:
+            return get_cuda_count()
+        else:
+            return 0
 
 
 def launch_executor(
@@ -164,10 +175,7 @@ def run_locally(
     m = f"tcp://localhost:{portBase+1}"
     ps = []
     for i, executor in enumerate(range(hosts)):
-        if i == 0:
-            gpu_count = get_gpu_count()
-        else:
-            gpu_count = 0
+        gpu_count = get_gpu_count(i, workers)
         # NOTE forkserver/spawn seem to forget venv, we need fork
         p = multiprocessing.get_context("fork").Process(
             target=launch_executor,
@@ -255,7 +263,7 @@ def main_dist(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
         )
     else:
-        gpu_count = get_gpu_count()
+        gpu_count = get_gpu_count(0, workers_per_host)
         launch_executor(
             jobInstance,
             controller_url,
