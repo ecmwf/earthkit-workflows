@@ -20,6 +20,18 @@ CascadeGatewayAPI = BaseModel
 
 
 @dataclass
+class TroikaSpec:
+    """Requires the gateway to have been started with --troika_config pointing
+    to some config.yml troika file. The connection must work (passwordlessly),
+    and must allow for script being copied. The remote host must have a venv
+    already in place, and must be able to resolve gateway's fqdn
+    """
+
+    venv: str  # remote host path to venv -- *do* include the bin/activate
+    conn: str  # which connection from config.yml to pick
+
+
+@dataclass
 class JobSpec:
     # job benchmark + envvars -- set to None/{} if using custom jobs instead
     benchmark_name: str | None
@@ -33,6 +45,7 @@ class JobSpec:
     workers_per_host: int
     hosts: int
     use_slurm: bool
+    troika: TroikaSpec | None = None
 
 
 class SubmitJobRequest(CascadeGatewayAPI):

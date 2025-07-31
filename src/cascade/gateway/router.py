@@ -8,9 +8,11 @@
 
 """Represents information about submitted jobs. The main business logic of `cascade.gateway`"""
 
+import base64
 import itertools
 import logging
 import os
+import stat
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -22,7 +24,7 @@ import zmq
 import cascade.executor.platform as platform
 from cascade.controller.report import JobId, JobProgress, JobProgressStarted
 from cascade.executor.comms import get_context
-from cascade.gateway.api import JobSpec
+from cascade.gateway.api import JobSpec, TroikaSpec
 from cascade.low.core import DatasetId
 from cascade.low.func import next_uuid
 
@@ -41,6 +43,65 @@ class Job:
 # bind-to-random-port overall, but the current code often needs to use the port number
 # before the actual bind happens -- this should be inverted
 local_job_port = 12345
+
+
+def _spawn_troika_singlehost(
+    job_spec: JobSpec, addr: str, job_id: JobId, troika: TroikaSpec, troika_config: str
+) -> subprocess.Popen:
+    script = "#!/bin/bash\n"
+    script += f"source {troika.venv}\n"
+    for k, v in job_spec.envvars.items():
+        script += f"export {k}={v}\n"
+    if job_spec.benchmark_name is not None:
+        if job_spec.job_instance is not None:
+            raise TypeError("specified both benchmark name and job instance")
+        script += "python -m cascade.benchmarks local"
+        script += f" --job {job_spec.benchmark_name}"
+    else:
+        if job_spec.job_instance is None:
+            raise TypeError("specified neither benchmark name nor job instance")
+        job_desc_raw = orjson.dumps(job_spec.job_instance.dict())
+        job_desc_enc = base64.b64encode(job_desc_raw).decode("ascii")
+        script += f'JOB_ENC="{job_desc_enc}"'
+        job_json_path = f"/tmp/cascJob.{job_id}.json"
+        script += f'echo "$JOB_ENC" | base64 --decode > {job_json_path}'
+        script += "python -m cascade.benchmarks local"
+        script += f" --instance {job_json_path}"
+
+    script += (
+        f" --workers_per_host {job_spec.workers_per_host} --hosts {job_spec.hosts}"
+    )
+    script += f" --report_address {addr},{job_id}"
+    # NOTE technically not needed to be globally unique, but we cant rely on troika environment isolation...
+    global local_job_port
+    script += f" --port_base {local_job_port}"
+    local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
+    script += "\n"
+    script_path = f"/tmp/troikascade.{job_id}.sh"
+    with open(script_path, "w") as f:
+        f.write(script)
+    os.chmod(
+        script_path,
+        stat.S_IRUSR
+        | stat.S_IRGRP
+        | stat.S_IROTH
+        | stat.S_IWUSR
+        | stat.S_IXUSR
+        | stat.S_IXGRP
+        | stat.S_IXOTH,
+    )
+    return subprocess.Popen(
+        [
+            "troika",
+            "-c",
+            troika_config,
+            "submit",
+            "-o",
+            f"/tmp/output.{job_id}.txt",
+            troika.conn,
+            script_path,
+        ]
+    )
 
 
 def _spawn_local(
@@ -112,9 +173,26 @@ def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Pope
 
 
 def _spawn_subprocess(
-    job_spec: JobSpec, addr: str, job_id: JobId, log_base: str | None
+    job_spec: JobSpec,
+    addr: str,
+    job_id: JobId,
+    log_base: str | None,
+    troika_config: str | None,
 ) -> subprocess.Popen:
-    if job_spec.use_slurm:
+    if job_spec.troika is not None:
+        if log_base is not None:
+            raise ValueError(f"unexpected {log_base=}")
+        if troika_config is None:
+            raise ValueError("cant spawn troika job without troika config")
+        if not job_spec.use_slurm:
+            return _spawn_troika_singlehost(
+                job_spec, addr, job_id, job_spec.troika, troika_config
+            )
+        else:
+            # TODO create a slurm script like in spawn_slurm, but dont refer to any other file
+            raise NotImplementedError
+
+    elif job_spec.use_slurm:
         if log_base is not None:
             raise ValueError(f"unexpected {log_base=}")
         return _spawn_slurm(job_spec, addr, job_id)
@@ -123,11 +201,14 @@ def _spawn_subprocess(
 
 
 class JobRouter:
-    def __init__(self, poller: zmq.Poller, log_base: str | None):
+    def __init__(
+        self, poller: zmq.Poller, log_base: str | None, troika_config: str | None
+    ):
         self.poller = poller
         self.jobs: dict[str, Job] = {}
         self.procs: dict[str, subprocess.Popen] = {}
         self.log_base = log_base
+        self.troika_config = troika_config
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
@@ -139,7 +220,7 @@ class JobRouter:
         self.poller.register(socket, flags=zmq.POLLIN)
         self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
         self.procs[job_id] = _spawn_subprocess(
-            job_spec, full_addr, job_id, self.log_base
+            job_spec, full_addr, job_id, self.log_base, self.troika_config
         )
         return job_id
 

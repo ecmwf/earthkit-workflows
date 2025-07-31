@@ -14,13 +14,15 @@ from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.gateway.server import serve
 
 
-def main(url: str, log_base: str | None = None) -> None:
+def main(
+    url: str, log_base: str | None = None, troika_config: str | None = None
+) -> None:
     if log_base:
         log_path = f"{log_base}/gateway.txt"
         logging.config.dictConfig(logging_config_filehandler(log_path))
     else:
         logging.config.dictConfig(logging_config)
-    serve(url, log_base)
+    serve(url, log_base, troika_config)
 
 
 if __name__ == "__main__":
