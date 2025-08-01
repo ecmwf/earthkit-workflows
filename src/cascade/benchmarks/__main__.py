@@ -140,20 +140,25 @@ def launch_executor(
         logging.config.dictConfig(logging_config_filehandler(log_path))
     else:
         logging.config.dictConfig(logging_config)
-    logger.info(f"will set {gpu_count} gpus on host {i}")
-    os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
-    executor = Executor(
-        job_instance,
-        controller_address,
-        workers_per_host,
-        f"h{i}",
-        portBase,
-        shm_vol_gb,
-        log_base,
-        url_base,
-    )
-    executor.register()
-    executor.recv_loop()
+    try:
+        logger.info(f"will set {gpu_count} gpus on host {i}")
+        os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
+        executor = Executor(
+            job_instance,
+            controller_address,
+            workers_per_host,
+            f"h{i}",
+            portBase,
+            shm_vol_gb,
+            log_base,
+            url_base,
+        )
+        executor.register()
+        executor.recv_loop()
+    except Exception:
+        # NOTE we log this to get the stacktrace into the logfile
+        logger.exception("executor failure")
+        raise
 
 
 def run_locally(
@@ -169,31 +174,47 @@ def run_locally(
         logging.config.dictConfig(logging_config_filehandler(log_path))
     else:
         logging.config.dictConfig(logging_config)
+    logger.debug(f"local run starting with {hosts=} and {workers=} on {portBase=}")
     launch = perf_counter_ns()
-    preschedule = precompute(job)
     c = f"tcp://localhost:{portBase}"
     m = f"tcp://localhost:{portBase+1}"
     ps = []
-    for i, executor in enumerate(range(hosts)):
-        gpu_count = get_gpu_count(i, workers)
-        # NOTE forkserver/spawn seem to forget venv, we need fork
-        p = multiprocessing.get_context("fork").Process(
-            target=launch_executor,
-            args=(
-                job,
-                c,
-                workers,
-                portBase + 1 + i * 10,
-                i,
-                None,
-                gpu_count,
-                log_base,
-                "tcp://localhost",
-            ),
-        )
-        p.start()
-        ps.append(p)
     try:
+        # executors forking
+        for i, executor in enumerate(range(hosts)):
+            gpu_count = get_gpu_count(i, workers)
+            # NOTE forkserver/spawn seem to forget venv, we need fork
+            logger.debug(f"forking into executor on host {i}")
+            p = multiprocessing.get_context("fork").Process(
+                target=launch_executor,
+                args=(
+                    job,
+                    c,
+                    workers,
+                    portBase + 1 + i * 10,
+                    i,
+                    None,
+                    gpu_count,
+                    log_base,
+                    "tcp://localhost",
+                ),
+            )
+            p.start()
+            ps.append(p)
+
+        # compute preschedule
+        preschedule = precompute(job)
+
+        # check processes started healthy
+        for i, p in enumerate(ps):
+            if not p.is_alive():
+                # TODO ideally we would somehow connect this with the Register message
+                # consumption in the Controller -- but there we don't assume that
+                # executors are on the same physical host
+                raise ValueError(f"executor {i} failed to live due to {p.exitcode}")
+
+        # start bridge itself
+        logger.debug("starting bridge")
         b = Bridge(c, hosts)
         start = perf_counter_ns()
         run(job, b, preschedule, report_address=report_address)
@@ -201,7 +222,9 @@ def run_locally(
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
         )
-    except:
+    except Exception:
+        # NOTE we log this to get the stacktrace into the logfile
+        logger.exception("controller failure, proceed with executor shutdown")
         for p in ps:
             if p.is_alive():
                 callback(m, ExecutorShutdown())

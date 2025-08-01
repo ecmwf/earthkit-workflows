@@ -115,5 +115,5 @@ def entrypoint(
         server.start()
     except Exception as e:
         # we always get a Bad file descriptor due to sigterm handler calling sock close mid-read
-        logger.warning(f"shutdown issue: {e}")
+        logger.warning(f"shutdown issue: {repr(e)}")
     server.atexit(0, None)
