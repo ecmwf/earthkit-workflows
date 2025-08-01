@@ -86,6 +86,7 @@ class Executor:
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
 
         self.terminating = False
+        logger.debug("register terminate function")
         atexit.register(self.terminate)
         # NOTE following inits are with potential side effects
         self.mlistener = Listener(address_of(portBase))
@@ -99,6 +100,7 @@ class Executor:
             shm_logging = logging_config_filehandler(f"{log_base}.shm.txt")
         else:
             shm_logging = logging_config
+        logger.debug("about to fork into shm process")
         self.shm_process = ctx.Process(
             target=shm_server,
             args=(
@@ -114,6 +116,7 @@ class Executor:
             dsr_logging = logging_config_filehandler(f"{log_base}.dsr.txt")
         else:
             dsr_logging = logging_config
+        logger.debug("about to fork into data server")
         self.data_server = ctx.Process(
             target=start_data_server,
             args=(
