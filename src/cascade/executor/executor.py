@@ -18,11 +18,11 @@ the tasks themselves.
 import atexit
 import logging
 import os
-import socket
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from typing import Iterable
 
+import cascade.executor.platform as platform
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
@@ -58,7 +58,7 @@ heartbeat_grace_ms = 2 * comms_default_timeout_ms
 
 
 def address_of(port: int) -> BackboneAddress:
-    return f"tcp://{socket.gethostname()}:{port}"
+    return f"tcp://{platform.get_bindabble_self()}:{port}"
 
 
 class Executor:
