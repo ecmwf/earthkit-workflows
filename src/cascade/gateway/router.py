@@ -14,12 +14,12 @@ import os
 import subprocess
 import uuid
 from dataclasses import dataclass
-from socket import getfqdn
 from typing import Iterable
 
 import orjson
 import zmq
 
+import cascade.executor.platform as platform
 from cascade.controller.report import JobId, JobProgress, JobProgressStarted
 from cascade.executor.comms import get_context
 from cascade.gateway.api import JobSpec
@@ -131,11 +131,7 @@ class JobRouter:
 
     def spawn_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
-        if job_spec.use_slurm:
-            base_addr = f"tcp://{getfqdn()}"
-        else:
-            # NOTE on macos, it seems getfqdn does not give zmq-bindable addr
-            base_addr = "tcp://localhost"
+        base_addr = f"tcp://{platform.get_bindabble_self()}"
         socket = get_context().socket(zmq.PULL)
         port = socket.bind_to_random_port(base_addr)
         full_addr = f"{base_addr}:{port}"

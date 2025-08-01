@@ -28,12 +28,12 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from socket import getfqdn
 from time import perf_counter_ns
 
 import fire
 import orjson
 
+import cascade.executor.platform as platform
 import cascade.low.into
 from cascade.controller.impl import run
 from cascade.executor.bridge import Bridge
@@ -295,7 +295,7 @@ def main_dist(
             idx,
             shm_vol_gb,
             gpu_count,
-            f"tcp://{getfqdn()}",
+            f"tcp://{platform.get_bindabble_self()}",
         )
 
 

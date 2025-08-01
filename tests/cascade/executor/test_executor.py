@@ -11,12 +11,12 @@ get sent out. In essence, we build a pseudo-controller in this test.
 """
 
 import logging
-import socket
 from logging.config import dictConfig
 from multiprocessing import Process
 
 import numpy as np
 
+import cascade.executor.platform as platform
 import cascade.executor.serde as serde
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.config import logging_config
@@ -100,8 +100,8 @@ def test_executor():
 
     # cluster setup
     c1 = "tcp://localhost:12545"
-    m1 = f"tcp://{socket.gethostname()}:12546"
-    d1 = f"tcp://{socket.gethostname()}:12547"
+    m1 = f"tcp://{platform.get_bindabble_self()}:12546"
+    d1 = f"tcp://{platform.get_bindabble_self()}:12547"
     l = Listener(c1)  # controller
     p = Process(target=launch_executor, args=(job, c1, 12546))
 
