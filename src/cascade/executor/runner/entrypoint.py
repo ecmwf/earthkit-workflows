@@ -11,11 +11,11 @@
 import logging
 import logging.config
 import os
-import sys
 from dataclasses import dataclass
 
 import zmq
 
+import cascade.executor.platform as platform
 import cascade.executor.serde as serde
 from cascade.executor.comms import callback
 from cascade.executor.config import logging_config, logging_config_filehandler
@@ -134,16 +134,8 @@ def entrypoint(runnerContext: RunnerContext):
     ):
         label("worker", repr(runnerContext.workerId))
         worker_num = runnerContext.workerId.worker_num()
-        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
-        if sys.platform != "darwin":
-            os.environ["CUDA_VISIBLE_DEVICES"] = (
-                str(worker_num) if worker_num < gpus else ""
-            )
-            # NOTE check any(task.definition.needs_gpu) anywhere?
-            # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
-        else:
-            if gpus != 1:
-                logger.warning("unexpected absence of gpu on darwin")
+        platform.gpu_init(worker_num)
+        # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
         for serdeTypeEnc, (serdeSer, serdeDes) in runnerContext.job.serdes.items():
             serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
