@@ -8,6 +8,7 @@
 
 """Macos-vs-Linux specific code"""
 
+import os
 import socket
 import sys
 
@@ -22,3 +23,14 @@ def get_bindabble_self():
     else:
         # NOTE not sure if fqdn or hostname is better -- all we need is for it to be resolvable within cluster
         return socket.gethostname()  # socket.getfqdn()
+
+
+def gpu_init(worker_num: int):
+    if sys.platform != "darwin":
+        # TODO there is implicit coupling with executor.executor and benchmarks.main -- make it cleaner!
+        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
+        os.environ["CUDA_VISIBLE_DEVICES"] = (
+            str(worker_num) if worker_num < gpus else ""
+        )
+    else:
+        pass  # no macos specific gpu init due to unified mem model
