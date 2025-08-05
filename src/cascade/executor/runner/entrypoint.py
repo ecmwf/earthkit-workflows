@@ -12,7 +12,9 @@ import logging
 import logging.config
 import os
 from dataclasses import dataclass
+from typing import Any
 
+import cloudpickle
 import zmq
 
 import cascade.executor.platform as platform
@@ -118,7 +120,9 @@ def execute_sequence(
         )
 
 
-def entrypoint(runnerContext: RunnerContext):
+def entrypoint(runnerContext: Any):
+    """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
+    runnerContext = cloudpickle.loads(runnerContext)
     if runnerContext.log_base:
         log_path = f"{runnerContext.log_base}.{runnerContext.workerId.worker}"
         logging.config.dictConfig(logging_config_filehandler(log_path))

@@ -22,6 +22,8 @@ from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from typing import Iterable
 
+import cloudpickle
+
 import cascade.executor.platform as platform
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
@@ -187,9 +189,8 @@ class Executor:
 
     def start_workers(self, workers: Iterable[WorkerId]) -> None:
         # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
-        # NOTE a bit risky, but forkserver is too slow. Has unhealthy side effects, like preserving imports caused
-        # by JobInstance deser
-        ctx = get_context("fork")
+        # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
+        ctx = get_context("forkserver")
         for worker in workers:
             runnerContext = RunnerContext(
                 workerId=worker,
@@ -198,7 +199,11 @@ class Executor:
                 callback=self.mlistener.address,
                 log_base=self.log_base,
             )
-            p = ctx.Process(target=entrypoint, kwargs={"runnerContext": runnerContext})
+            # NOTE we need to cloudpickle because runnerContext contains some lambdas
+            p = ctx.Process(
+                target=entrypoint,
+                kwargs={"runnerContext": cloudpickle.dumps(runnerContext)},
+            )
             p.start()
             self.workers[worker] = p
             logger.debug(f"started process {p.pid} for worker {worker}")
