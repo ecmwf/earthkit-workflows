@@ -1,0 +1,28 @@
+name: macos-test
+
+on:
+  # Trigger the workflow manually
+  workflow_dispatch: ~
+
+  # Call from other workflows
+  workflow_call: ~
+
+jobs:
+  macos-pytest:
+    strategy:
+      fail-fast: true
+      matrix:
+        arch_type: [ARM64] # [ARM64, X64]
+        python_version: ["3.11"] # ["3.10", "3.11", "3.12", "3.13"]
+    runs-on: [self-hosted, macOS, "${{ matrix.arch_type }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.7.19
+      - run: |
+          uv pip install '.[tests]'
+          pytest

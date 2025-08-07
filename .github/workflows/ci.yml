@@ -74,3 +74,8 @@ jobs:
           repository: private-downstream-ci
           event_type: downstream-ci-hpc
           payload: '{"earthkit-workflows": "ecmwf/earthkit-workflows@${{ github.event.pull_request.head.sha || github.sha }}"}'
+
+# TODO enable once tested
+#  macos-pytest:
+#    uses: ./.github/workflows/macos-test.yml
+#    secrets: inherit
