@@ -18,7 +18,6 @@ the tasks themselves.
 import atexit
 import logging
 import os
-from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from typing import Iterable
 
@@ -97,12 +96,12 @@ class Executor:
         # TODO make the shm server params configurable
         shm_port = portBase + 2
         shm_api.publish_client_port(shm_port)
-        ctx = get_context("fork")
+        ctx = platform.get_mp_ctx("executor-aux")
         if log_base:
             shm_logging = logging_config_filehandler(f"{log_base}.shm.txt")
         else:
             shm_logging = logging_config
-        logger.debug("about to fork into shm process")
+        logger.debug("about to start an shm process")
         self.shm_process = ctx.Process(
             target=shm_server,
             args=(
@@ -118,7 +117,7 @@ class Executor:
             dsr_logging = logging_config_filehandler(f"{log_base}.dsr.txt")
         else:
             dsr_logging = logging_config
-        logger.debug("about to fork into data server")
+        logger.debug("about to start a data server process")
         self.data_server = ctx.Process(
             target=start_data_server,
             args=(
@@ -190,7 +189,7 @@ class Executor:
     def start_workers(self, workers: Iterable[WorkerId]) -> None:
         # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
         # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
-        ctx = get_context("forkserver")
+        ctx = platform.get_mp_ctx("worker")
         for worker in workers:
             runnerContext = RunnerContext(
                 workerId=worker,

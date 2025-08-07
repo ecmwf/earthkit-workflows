@@ -12,7 +12,6 @@
 
 import logging
 import logging.config
-import multiprocessing
 import os
 import subprocess
 import sys
@@ -177,7 +176,7 @@ def run_locally(
             gpu_count = get_gpu_count(i, workers)
             # NOTE forkserver/spawn seem to forget venv, we need fork
             logger.debug(f"forking into executor on host {i}")
-            p = multiprocessing.get_context("fork").Process(
+            p = platform.get_mp_ctx("executor-loc").Process(
                 target=launch_executor,
                 args=(
                     job,

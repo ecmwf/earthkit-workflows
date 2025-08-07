@@ -8,9 +8,11 @@
 
 """Macos-vs-Linux specific code"""
 
+import multiprocessing as mp
 import os
 import socket
 import sys
+import typing
 
 
 def get_bindabble_self():
@@ -34,3 +36,28 @@ def gpu_init(worker_num: int):
         )
     else:
         pass  # no macos specific gpu init due to unified mem model
+
+
+MpSituation = typing.Literal[
+    "worker", "executor-loc", "executor-aux", "gateway", "other"
+]
+_MpSituation = typing.get_args(MpSituation)
+
+
+def get_mp_ctx(situation: MpSituation) -> mp.context.BaseContext:
+    """Generally, forking is safe everywhere as we try to be careful not to
+    initialize non-safe objects prior to forking. However, combination of
+    mac + mps + anemoi + pickled callables causes xpc_error_connection_invalid,
+    thus we stick to spawn on darwin platforms. Setting
+    OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES helps some but not fully.
+
+    We distinguish in which situation is this method called, as fine graining
+    may be (eventually) possible
+    """
+
+    if situation not in _MpSituation:
+        raise TypeError(f"{situation=} is not in {_MpSituation}")
+    if sys.platform == "darwin":
+        return mp.get_context("spawn")
+    else:
+        return mp.get_context("fork")
