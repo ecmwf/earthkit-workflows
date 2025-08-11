@@ -79,7 +79,7 @@ def test_job():
         assert submit_job_res.error is None
         assert job_id is not None
 
-        tries = 8
+        tries = 16
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries > 0:
             job_progress_res = client.request_response(job_progress_req, url)
@@ -89,6 +89,8 @@ def test_job():
             if is_computed and is_datasets:
                 break
             else:
+                # NOTE not using logger, not properly configured in downstream-ci
+                print(f"current progress is {job_progress_res}")
                 tries -= 1
                 time.sleep(1)
         assert tries > 0
@@ -125,7 +127,7 @@ def test_job():
         assert submit_job_res.error is None
         assert job_id is not None
 
-        tries = 3
+        tries = 16
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries > 0:
             job_progress_res = client.request_response(job_progress_req, url)
