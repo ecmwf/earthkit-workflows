@@ -42,7 +42,15 @@ class PackagesEnv(AbstractContextManager):
         logger.debug(
             f"installing {len(packages)} packages: {','.join(packages[:3])}{',...' if len(packages) > 3 else ''}"
         )
-        install_command = ["uv", "pip", "install", "--prefix", self.td.name]
+        install_command = [
+            "uv",
+            "pip",
+            "install",
+            "--prefix",
+            self.td.name,
+            "--prerelease",
+            "allow",
+        ]
         if os.environ.get("VENV_OFFLINE", "") == "YES":
             install_command += ["--offline"]
         if cache_dir := os.environ.get("VENV_CACHE", ""):
