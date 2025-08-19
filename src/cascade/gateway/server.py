@@ -31,16 +31,19 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
     rv: api.CascadeGatewayAPI
     if isinstance(m, api.SubmitJobRequest):
         try:
-            job_id = jobs.spawn_job(m.job)
+            job_id = jobs.enqueue_job(m.job)
             rv = api.SubmitJobResponse(job_id=job_id, error=None)
         except Exception as e:
             logger.exception(f"failed to spawn a job: {m}")
             rv = api.SubmitJobResponse(job_id=None, error=repr(e))
     elif isinstance(m, api.JobProgressRequest):
         try:
-            progresses, datasets = jobs.progress_of(m.job_ids)
+            progresses, datasets, queue_length = jobs.progress_of(m.job_ids)
             rv = api.JobProgressResponse(
-                progresses=progresses, datasets=datasets, error=None
+                progresses=progresses,
+                datasets=datasets,
+                error=None,
+                queue_length=queue_length,
             )
         except Exception as e:
             logger.exception(f"failed to get progress of: {m}")
@@ -80,7 +83,10 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
 
 
 def serve(
-    url: str, log_base: str | None = None, troika_config: str | None = None
+    url: str,
+    log_base: str | None = None,
+    troika_config: str | None = None,
+    max_jobs: int | None = None,
 ) -> None:
     ctx = get_context()
     poller = zmq.Poller()
@@ -88,7 +94,7 @@ def serve(
     fe = ctx.socket(zmq.REP)
     fe.bind(url)
     poller.register(fe, flags=zmq.POLLIN)
-    jobs = JobRouter(poller, log_base, troika_config)
+    jobs = JobRouter(poller, log_base, troika_config, max_jobs)
 
     logger.debug("entering recv loop")
     is_break = False

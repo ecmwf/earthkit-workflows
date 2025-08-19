@@ -27,6 +27,7 @@ JobId = str
 
 @dataclass
 class JobProgress:
+    started: bool
     completed: bool
     pct: (
         str | None
@@ -35,19 +36,20 @@ class JobProgress:
 
     @classmethod
     def failed(cls, failure: str) -> Self:
-        return cls(True, None, failure)
+        return cls(True, True, None, failure)
 
     @classmethod
     def progressed(cls, pct: float) -> Self:
         progress = "{:.2%}".format(pct)[:-1]
-        return cls(False, progress, None)
+        return cls(True, False, progress, None)
 
     @classmethod
     def succeeded(cls) -> Self:
-        return cls(True, None, None)
+        return cls(True, True, None, None)
 
 
-JobProgressStarted = JobProgress(False, "0.00", None)
+JobProgressStarted = JobProgress(True, False, "0.00", None)
+JobProgressEnqueued = JobProgress(False, False, None, None)
 
 
 @dataclass

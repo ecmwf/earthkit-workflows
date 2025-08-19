@@ -9,6 +9,7 @@ from cascade.low.core import DatasetId, JobInstance, TaskDefinition, TaskInstanc
 
 init_value = 10
 job_func = lambda i: i * 2
+slow_func = lambda a: time.sleep(0.5) or a**2
 
 
 def get_job_succ() -> JobInstance:
@@ -52,15 +53,26 @@ def get_job_fail() -> JobInstance:
     return ji
 
 
-def spawn_gateway() -> tuple[str, Process]:
+def get_job_slow() -> JobInstance:
+    td = TaskDefinition(
+        func=TaskDefinition.func_enc(slow_func),
+        environment=[],
+        input_schema={"a": "int"},
+        output_schema=[("o", "int")],
+    )
+    ti = TaskInstance(definition=td, static_input_kw={"a": 4}, static_input_ps={})
+    return JobBuilder().with_node("t", ti).build().get_or_raise()
+
+
+def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=main, args=(url,))
+    p = Process(target=main, args=(url,), kwargs={"max_jobs": max_jobs})
     p.start()
     return url, p
 
 
 def test_job():
-    url, gw = spawn_gateway()
+    url, gw = spawn_gateway(1)
     try:
         # succ job
         ji = get_job_succ()
@@ -136,6 +148,45 @@ def test_job():
             if job_progress_res.progresses[job_id].failure is not None:
                 break
             else:
+                tries -= 1
+                time.sleep(1)
+        assert tries > 0
+
+        # two jobs at once
+        # TODO this is for manual test only, I dont have a good idea how to test, in a reliable & timely fashion,
+        # that the execution has in effect been serial. But just running it and checking for success is still worth
+        ji = get_job_slow()
+        js = api.JobSpec(
+            benchmark_name=None,
+            envvars={},
+            job_instance=ji,
+            workers_per_host=1,
+            hosts=1,
+            use_slurm=False,
+        )
+
+        req = api.SubmitJobRequest(job=js)
+        res1 = client.request_response(req, url)
+        res2 = client.request_response(req, url)
+        assert res1.error is None
+        assert res2.error is None
+        assert res1.job_id is not None
+        assert res2.job_id is not None
+
+        tries = 16
+        job_ids = [res1.job_id, res2.job_id]
+        job_progress_req = api.JobProgressRequest(job_ids=job_ids)
+        while tries > 0:
+            job_progress_res = client.request_response(job_progress_req, url)
+            assert job_progress_res.error is None
+            is_computed = (
+                lambda job_id: job_progress_res.progresses[job_id].pct == "100.00"
+            )
+            if all(is_computed(job_id) for job_id in job_ids):
+                break
+            else:
+                # NOTE not using logger, not properly configured in downstream-ci
+                print(f"current progress is {job_progress_res}")
                 tries -= 1
                 time.sleep(1)
         assert tries > 0
