@@ -62,8 +62,9 @@ class JobProgressRequest(CascadeGatewayAPI):
 
 
 class JobProgressResponse(CascadeGatewayAPI):
-    progresses: dict[JobId, JobProgress]
+    progresses: dict[JobId, JobProgress | None]
     datasets: dict[JobId, list[DatasetId]]
+    queue_length: int
     error: str | None  # top level error
 
 

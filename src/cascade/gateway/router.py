@@ -15,6 +15,7 @@ import os
 import stat
 import subprocess
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -22,7 +23,12 @@ import orjson
 import zmq
 
 import cascade.executor.platform as platform
-from cascade.controller.report import JobId, JobProgress, JobProgressStarted
+from cascade.controller.report import (
+    JobId,
+    JobProgress,
+    JobProgressEnqueued,
+    JobProgressStarted,
+)
 from cascade.executor.comms import get_context
 from cascade.gateway.api import JobSpec, TroikaSpec
 from cascade.low.core import DatasetId
@@ -202,16 +208,29 @@ def _spawn_subprocess(
 
 class JobRouter:
     def __init__(
-        self, poller: zmq.Poller, log_base: str | None, troika_config: str | None
+        self,
+        poller: zmq.Poller,
+        log_base: str | None,
+        troika_config: str | None,
+        max_jobs: int | None,
     ):
         self.poller = poller
         self.jobs: dict[str, Job] = {}
+        self.active_jobs = 0
+        self.max_jobs = max_jobs
+        self.jobs_queue: OrderedDict[JobId, JobSpec] = OrderedDict()
         self.procs: dict[str, subprocess.Popen] = {}
         self.log_base = log_base
         self.troika_config = troika_config
 
-    def spawn_job(self, job_spec: JobSpec) -> JobId:
-        job_id = next_uuid(self.jobs.keys(), lambda: str(uuid.uuid4()))
+    def maybe_spawn(self) -> None:
+        if not self.jobs_queue:
+            return
+        if self.max_jobs is not None and self.active_jobs >= self.max_jobs:
+            logger.debug(f"already running {self.active_jobs}, no spawn")
+            return
+
+        job_id, job_spec = self.jobs_queue.popitem(False)
         base_addr = f"tcp://{platform.get_bindabble_self()}"
         socket = get_context().socket(zmq.PULL)
         port = socket.bind_to_random_port(base_addr)
@@ -222,18 +241,37 @@ class JobRouter:
         self.procs[job_id] = _spawn_subprocess(
             job_spec, full_addr, job_id, self.log_base, self.troika_config
         )
+        self.active_jobs += 1
+        return job_id
+
+    def enqueue_job(self, job_spec: JobSpec) -> JobId:
+        job_id = next_uuid(
+            set(self.jobs.keys()).union(self.jobs_queue.keys()),
+            lambda: str(uuid.uuid4()),
+        )
+        self.jobs_queue[job_id] = job_spec
+        self.maybe_spawn()
         return job_id
 
     def progress_of(
         self, job_ids: Iterable[JobId]
-    ) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]]]:
+    ) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]], int]:
         if not job_ids:
-            job_ids = self.jobs.keys()
-        progresses = {job_id: self.jobs[job_id].progress for job_id in job_ids}
+            job_ids = set(self.jobs.keys()).union(self.jobs_queue.keys())
+        progresses = {}
+        for job_id in job_ids:
+            if job_id in self.jobs:
+                progresses[job_id] = self.jobs[job_id].progress
+            elif job_id in self.jobs_queue:
+                progresses[job_id] = JobProgressEnqueued
+            else:
+                progresses[job_id] = None
         datasets = {
-            job_id: list(self.jobs[job_id].results.keys()) for job_id in job_ids
+            job_id: list(self.jobs[job_id].results.keys())
+            for job_id in job_ids
+            if job_id in self.jobs
         }
-        return progresses, datasets
+        return progresses, datasets, len(self.jobs_queue)
 
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
         return self.jobs[job_id].results[dataset_id]
@@ -246,6 +284,8 @@ class JobRouter:
         job = self.jobs[job_id]
         if progress.completed:
             self.poller.unregister(job.socket)
+            self.active_jobs -= 1
+            self.maybe_spawn()
         if progress.failure is not None and job.progress.failure is None:
             job.progress = progress
         elif job.last_seen >= timestamp or job.progress.failure is not None:
