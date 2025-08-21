@@ -10,7 +10,7 @@ import logging
 import logging.config
 import signal
 import socket
-from typing import Any
+from typing import Any, cast
 
 import cascade.shm.api as api
 import cascade.shm.dataset as dataset
@@ -21,20 +21,35 @@ logger = logging.getLogger(__name__)
 class LocalServer:
     """Handles the socket communication, and the invocation of dataset.Manager which has the business logic"""
 
-    def __init__(self, port: int, shm_pref: str, capacity: int | None = None):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server = ("0.0.0.0", port)
-        self.sock.bind(server)
+    def __init__(self, shm_pref: str, capacity: int | None = None):
+        self.sock = api.get_server_socket()
+        logger.info(
+            f"shm server starting with {self.sock=} with {capacity=} and prefix {shm_pref}"
+        )
         self.manager = dataset.Manager(shm_pref, capacity)
         signal.signal(signal.SIGINT, self.atexit)
         signal.signal(signal.SIGTERM, self.atexit)
 
-    def receive(self) -> tuple[api.Comm, str]:
-        b, addr = self.sock.recvfrom(1024)  # TODO or recv(4) + recv(int.from_bytes)?
-        return api.deser(b), addr
+    def receive(self) -> tuple[api.Comm, str | socket.socket]:
+        # TODO recv(1024) or recv(4) + recv(int.from_bytes)?
+        if self.sock.type == socket.SOCK_DGRAM:
+            b, resp = self.sock.recvfrom(1024)
+        elif self.sock.type == socket.SOCK_STREAM:
+            resp, _addr = self.sock.accept()
+            b = resp.recv(1024)
+        else:
+            raise NotImplementedError(self.sock.type)
+        return api.deser(b), resp
 
-    def respond(self, comm: api.Comm, address: str) -> None:
-        self.sock.sendto(api.ser(comm), address)
+    def respond(self, comm: api.Comm, address: str | socket.socket) -> None:
+        m = api.ser(comm)
+        if self.sock.type == socket.SOCK_DGRAM:
+            self.sock.sendto(m, address)
+        elif self.sock.type == socket.SOCK_STREAM:
+            logger.debug(f"will send to {address} message {m}")
+            cast(socket.socket, address).send(m)
+        else:
+            raise NotImplementedError(self.sock.type)
 
     def atexit(self, signum: int, frame: Any) -> None:
         self.manager.atexit()
@@ -43,6 +58,7 @@ class LocalServer:
     def start(self):
         while True:
             payload, client = self.receive()
+            logger.debug(f"gotten {payload=}")
             try:
                 if isinstance(payload, api.AllocateRequest):
                     shmid, error = self.manager.add(
@@ -96,21 +112,18 @@ class LocalServer:
             except Exception as e:
                 logger.exception(f"failure during handling of {payload}")
                 response = api.OkResponse(error=repr(e))
+            logger.debug(f"sending {response=} to {client}")
             self.respond(response, client)
 
 
 def entrypoint(
-    port: int,
     capacity: int | None = None,
     logging_config: dict | None = None,
     shm_pref: str = "shm",
 ):
     if logging_config:
         logging.config.dictConfig(logging_config)
-    server = LocalServer(port, shm_pref, capacity)
-    logger.info(
-        f"shm server starting on {port=} with {capacity=} and prefix {shm_pref}"
-    )
+    server = LocalServer(shm_pref, capacity)
     try:
         server.start()
     except Exception as e:

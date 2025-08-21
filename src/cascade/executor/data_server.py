@@ -20,7 +20,6 @@ from concurrent.futures import Executor as PythonExecutor
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from time import time_ns
 
-import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.msg import (
@@ -48,7 +47,6 @@ class DataServer:
         maddress: BackboneAddress,
         daddress: BackboneAddress,
         host: str,
-        shm_port: int,
         logging_config: dict,
     ):
         logging.config.dictConfig(logging_config)
@@ -58,7 +56,6 @@ class DataServer:
         self.daddress = daddress
         self.dlistener = Listener(daddress)
         self.terminating = False
-        shm_api.publish_client_port(shm_port)
         self.cap = 2
         self.ds_proc_tp: PythonExecutor = ThreadPoolExecutor(max_workers=self.cap)
         self.futs_in_progress: dict[
@@ -305,8 +302,7 @@ def start_data_server(
     maddress: BackboneAddress,
     daddress: BackboneAddress,
     host: str,
-    shm_port: int,
     logging_config: dict,
 ):
-    server = DataServer(maddress, daddress, host, shm_port, logging_config)
+    server = DataServer(maddress, daddress, host, logging_config)
     server.recv_loop()
