@@ -18,6 +18,7 @@ the tasks themselves.
 import atexit
 import logging
 import os
+import uuid
 from multiprocessing.process import BaseProcess
 from typing import Iterable
 
@@ -94,8 +95,8 @@ class Executor:
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         self.sender.add_host("controller", controller_address)
         # TODO make the shm server params configurable
-        shm_port = portBase + 2
-        shm_api.publish_client_port(shm_port)
+        shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
+        shm_api.publish_socket_addr(shm_port)
         ctx = platform.get_mp_ctx("executor-aux")
         if log_base:
             shm_logging = logging_config_filehandler(f"{log_base}.shm.txt")
@@ -104,12 +105,11 @@ class Executor:
         logger.debug("about to start an shm process")
         self.shm_process = ctx.Process(
             target=shm_server,
-            args=(
-                shm_port,
-                shm_vol_gb * (1024**3) if shm_vol_gb else None,
-                shm_logging,
-                f"sCasc{host}",
-            ),
+            kwargs={
+                "capacity": shm_vol_gb * (1024**3) if shm_vol_gb else None,
+                "logging_config": shm_logging,
+                "shm_pref": f"sCasc{host}",
+            },
         )
         self.shm_process.start()
         self.daddress = address_of(portBase + 1)
@@ -124,7 +124,6 @@ class Executor:
                 self.mlistener.address,
                 self.daddress,
                 self.host,
-                shm_port,
                 dsr_logging,
             ),
         )

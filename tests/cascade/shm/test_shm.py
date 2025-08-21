@@ -14,12 +14,17 @@ import pytest
 import cascade.shm.api as api
 import cascade.shm.client as client
 import cascade.shm.server as server
+from cascade.executor.config import logging_config
 
 
-def test_shm_simple():
-    port = 12345
-    api.publish_client_port(port)
-    serverP = Process(target=server.entrypoint, args=(port,))
+@pytest.mark.parametrize("shm_addr", [12345, "/tmp/shmport12345"])
+def test_shm_simple(shm_addr):
+    api.publish_socket_addr(shm_addr)
+    pref = f"cTi{shm_addr%10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
+    serverP = Process(
+        target=server.entrypoint,
+        kwargs={"logging_config": logging_config, "shm_pref": pref},
+    )
     serverP.start()
     try:
         client.ensure()
@@ -46,11 +51,19 @@ def test_shm_simple():
         serverP.terminate()
 
 
-def test_shm_disk():
-    port = 12346
+@pytest.mark.parametrize("shm_addr", [12346, "/tmp/shmport12346"])
+def test_shm_disk(shm_addr):
     capacity = 4
-    api.publish_client_port(port)
-    serverP = Process(target=server.entrypoint, args=(port, capacity))
+    pref = f"cTi{shm_addr%10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
+    api.publish_socket_addr(shm_addr)
+    serverP = Process(
+        target=server.entrypoint,
+        kwargs={
+            "capacity": capacity,
+            "logging_config": logging_config,
+            "shm_pref": pref,
+        },
+    )
     serverP.start()
     try:
         client.ensure()

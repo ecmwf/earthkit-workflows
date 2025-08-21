@@ -8,7 +8,6 @@
 
 import logging
 import multiprocessing.resource_tracker
-import socket
 import time
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Type, TypeVar
@@ -80,9 +79,7 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
     # timeout_i and coeff determine rate of busy-waits: coeff=1 is additive, =2 is exponential
     # eventually this busy-waits will go away as we switch to event driven behaviour
     while timeout_sec > 0:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_port = api.get_client_port()
-        sock.connect(("localhost", client_port))
+        sock = api.get_client_socket()
         logger.debug(f"sending message {comm}")
         sock.send(api.ser(comm))
         response_raw = sock.recv(1024)  # TODO or recv(4) + recv(int.from_bytes)?
@@ -161,7 +158,7 @@ def ensure() -> None:
         try:
             _send_command(comm, api.OkResponse)
             logger.debug("shm server responds ok, leaving ensure loop")
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError, FileNotFoundError):
             time.sleep(0.1)
             continue
         break

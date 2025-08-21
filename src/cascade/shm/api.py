@@ -6,12 +6,16 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import logging
 import os
+import socket
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Protocol, Type, runtime_checkable
 
 from typing_extensions import Self
+
+logger = logging.getLogger(__name__)
 
 # TODO too much manual serde... either automate it based on dataclass field inspection, or just pickle it
 # (mind the server.recv/client.recv comment tho)
@@ -244,15 +248,52 @@ def deser(data: bytes) -> Comm:
     return b2c[data[:1]].deser(data[1:])
 
 
-client_port_envvar = "CASCADE_SHM_PORT"
+client_socket_envvar = "CASCADE_SHM_SOCKET"
 
 
-def publish_client_port(port: int) -> None:
-    os.environ[client_port_envvar] = str(port)
+def publish_socket_addr(sock: int | str) -> None:
+    if isinstance(sock, int):
+        ssock = f"port:{sock}"
+    else:
+        ssock = f"file:{sock}"
+    os.environ[client_socket_envvar] = ssock
 
 
-def get_client_port() -> int:
-    port = os.getenv(client_port_envvar)
-    if not port:
-        raise ValueError("missing port")
-    return int(port)
+def get_socket_addr() -> tuple[socket.socket, int | str]:
+    ssock = os.getenv(client_socket_envvar)
+    if not ssock:
+        raise ValueError(f"missing sock addr in {client_socket_envvar}")
+    kind, addr = ssock.split(":", 1)
+    if kind == "port":
+        addr = int(addr)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    elif kind == "file":
+        # TODO can we support SOCK_DGRAM too? Problem with response address
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    else:
+        raise NotImplementedError(kind)
+    return sock, addr
+
+
+def get_client_socket():
+    sock, addr = get_socket_addr()
+    if isinstance(addr, int):
+        sock.connect(("localhost", addr))
+    else:
+        sock.connect(addr)
+    return sock
+
+
+def get_server_socket():
+    sock, addr = get_socket_addr()
+    if isinstance(addr, int):
+        sock.bind(("0.0.0.0", addr))
+    else:
+        try:
+            os.unlink(addr)
+            logger.warning(f"unlinking at {addr}")
+        except FileNotFoundError:
+            pass
+        sock.bind(addr)
+        sock.listen(32)
+    return sock
