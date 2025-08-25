@@ -82,6 +82,7 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
         sock = api.get_client_socket()
         logger.debug(f"sending message {comm}")
         sock.send(api.ser(comm))
+        # TODO rewrite to poller with timeout
         response_raw = sock.recv(1024)  # TODO or recv(4) + recv(int.from_bytes)?
         sock.close()
         response_com = api.deser(response_raw)
@@ -145,9 +146,9 @@ def status(key: str) -> api.DatasetStatus:
     return response.status
 
 
-def shutdown() -> None:
+def shutdown(timeout_sec: float = 2.0) -> None:
     comm = api.ShutdownCommand()
-    _send_command(comm, api.OkResponse)
+    _send_command(comm, api.OkResponse, timeout_sec)
 
 
 def ensure() -> None:
