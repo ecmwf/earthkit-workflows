@@ -15,8 +15,8 @@
   <a href="https://opensource.org/licenses/apache-2-0">
     <img src="https://img.shields.io/badge/Licence-Apache 2.0-blue.svg" alt="Licence">
   </a>
-  <a href="https://github.com/ecmwf/earthkit-workflows/releases">
-    <img src="https://img.shields.io/github/v/release/ecmwf/earthkit-workflows?color=purple&label=Release" alt="Latest Release">
+  <a href="https://github.com/ecmwf/earthkit-workflows/tags">
+    <img src="https://img.shields.io/github/v/tag/ecmwf/earthkit-workflows?color=purple&label=Release" alt="Latest Release">
   </a>
 </p>
 
@@ -31,7 +31,7 @@
 > \[!IMPORTANT\]
 > This software is **Emerging** and subject to ECMWF's guidelines on [Software Maturity](https://github.com/ecmwf/codex/raw/refs/heads/main/Project%20Maturity).
 
-Earthkit Workflows is a Python library for declaring earthkit task as DAGs.
+**earthkit-workflows** is a Python library for declaring earthkit task as DAGs.
 It contains an internal `cascade` engine for scheduling and executing task graphs almost optimally across heterogeneous platforms with complex network technologies and topologies.
 It effectively performs task-based parallelism across CPUs, GPUs, distributed systems (HPC), and any combination thereof.
 It is designed for a no-IO approach, where expensive storage of intermediate data is minimised whilst maximising all available transport technologies between different hardware.
@@ -42,7 +42,7 @@ Cascade is designed to work on well-profiled task graphs, where:
 * the DAG edges are defined by data dependencies with well-known data sizes,
 * the characteristics of the hardware (processors, network connections) are known.
 
-Earthkit Workflows allows for declaring such task graphs using a neat fluent API, and interoperates pleasantly with the rest of the Earthkit ecosystem.
+earthkit-workflows allows for declaring such task graphs using a neat fluent API, and interoperates pleasantly with the rest of the [earthkit](https://github.com/ecmwf/earthkit) ecosystem.
 
 ## Installation
 
