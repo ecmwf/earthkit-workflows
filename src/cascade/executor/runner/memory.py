@@ -12,6 +12,7 @@ Interaction with shm
 
 import hashlib
 import logging
+import sys
 from contextlib import AbstractContextManager
 from typing import Any, Literal
 
@@ -119,27 +120,29 @@ class Memory(AbstractContextManager):
             self.local.pop(inputId)
 
         # NOTE poor man's gpu mem management -- currently torch only. Given the task sequence limitation,
-        # this may not be the best place to invoke. Additionally, we may want to check first whether
-        # the worker is gpu aware, etc
-        try:
-            import torch
+        # this may not be the best place to invoke.
+        if (
+            "torch" in sys.modules
+        ):  # if no task on this worker imported torch, no need to flush
+            try:
+                import torch
 
-            if torch.cuda.is_available():
-                free, total = torch.cuda.mem_get_info()
-                logger.debug(f"cuda mem avail: {free/total:.2%}")
-                if free / total < 0.8:
-                    torch.cuda.empty_cache()
+                if torch.cuda.is_available():
                     free, total = torch.cuda.mem_get_info()
-                    logger.debug(f"cuda mem avail post cache empty: {free/total:.2%}")
+                    logger.debug(f"cuda mem avail: {free/total:.2%}")
                     if free / total < 0.8:
-                        # NOTE this ofc makes low sense if there is any other application (like browser or ollama)
-                        # that the user may be running
-                        logger.warning("cuda mem avail low despite cache empty!")
-                        logger.debug(torch.cuda.memory_summary())
-        except ImportError:
-            return
-        except Exception:
-            logger.exception("failed to free cuda cache")
+                        torch.cuda.empty_cache()
+                        free, total = torch.cuda.mem_get_info()
+                        logger.debug(
+                            f"cuda mem avail post cache empty: {free/total:.2%}"
+                        )
+                        if free / total < 0.8:
+                            # NOTE this ofc makes low sense if there is any other application (like browser or ollama)
+                            # that the user may be running
+                            logger.warning("cuda mem avail low despite cache empty!")
+                            logger.debug(torch.cuda.memory_summary())
+            except Exception:
+                logger.exception("failed to free cuda cache")
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         # this is required so that the Shm can be properly freed, otherwise you get 'pointers cannot be closed'
