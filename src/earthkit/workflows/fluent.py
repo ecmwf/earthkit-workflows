@@ -10,7 +10,16 @@ from __future__ import annotations
 
 import functools
 import hashlib
-from typing import Any, Callable, Hashable, Iterable, Optional, Sequence, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    Iterable,
+    Optional,
+    ParamSpec,
+    Sequence,
+    TypeVar,
+)
 
 import numpy as np
 import xarray as xr
@@ -19,8 +28,6 @@ from . import backends
 from .graph import Graph
 from .graph import Node as BaseNode
 from .graph import Output
-
-ActionType = TypeVar("ActionType", bound="Action")
 
 
 class Payload:
@@ -68,7 +75,7 @@ class Payload:
     def __str__(self) -> str:
         return f"{self.name()}{self.args}{self.kwargs}:{self.metadata}"
 
-    def __eq__(self, other: Payload) -> bool:
+    def __eq__(self, other) -> bool:
         if not isinstance(other, Payload):
             return False
         return str(self) == str(other)
@@ -86,15 +93,16 @@ def custom_hash(string: str) -> str:
 Coord = tuple[str, list[Any]]
 Input = BaseNode | Output
 
-F = TypeVar("F", bound=Callable[..., Any])
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
-def capture_payload_metadata(func: F) -> F:
+def capture_payload_metadata(func: Callable[P, R]) -> Callable[P, R]:
     """Wrap a function which returns a new action and insert
     given `payload_metadata`
     """
 
-    @functools.wraps(func)
+    # @functools.wraps(func)
     def decorator(*args, **kwargs):
         metadata = kwargs.pop("payload_metadata", {})
         result = func(*args, **kwargs)
@@ -162,7 +170,7 @@ class Node(BaseNode):
 
 class Action:
 
-    REGISTRY: dict[str, Action] = {}
+    REGISTRY: dict[str, type[Action]] = {}
 
     def __init__(self, nodes: xr.DataArray, yields: Optional[Coord] = None):
         if yields:
@@ -224,23 +232,16 @@ class Action:
                 f"Action class {obj} already has an attribute {name}, will not override"
             )
 
-        cls.REGISTRY[name] = obj  # type: ignore
+        cls.REGISTRY[name] = obj
 
     @classmethod
     def flush_registry(cls):
         """Flush the registry of all registered actions"""
         cls.REGISTRY = {}
 
-    def as_action(self, other: ActionType) -> ActionType:
+    def as_action(self, other) -> Action:
         """Parse action into another action class"""
         return other(self.nodes)
-
-    def __getattr__(self, attr):
-        if attr in Action.REGISTRY:
-            return RegisteredAction(
-                attr, Action.REGISTRY[attr], self
-            )  # When the attr is a registered action class
-        raise AttributeError(f"{self.__class__.__name__} has no attribute {attr!r}")
 
     def join(
         self,
@@ -802,6 +803,13 @@ class Action:
     def _squeeze_dimension(self, dim_name: str, drop: bool = False):
         if dim_name in self.nodes.coords and len(self.nodes.coords[dim_name]) == 1:
             self.nodes = self.nodes.squeeze(dim_name, drop=drop)
+
+    def __getattr__(self, attr):
+        if attr in Action.REGISTRY:
+            return RegisteredAction(
+                attr, Action.REGISTRY[attr], self
+            )  # When the attr is a registered action class
+        raise AttributeError(f"{self.__class__.__name__} has no attribute {attr!r}")
 
 
 class RegisteredAction:
