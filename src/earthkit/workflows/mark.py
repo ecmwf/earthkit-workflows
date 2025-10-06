@@ -15,10 +15,9 @@ def add_execution_metadata(**kwargs) -> Callable[[F], F]:
     """Add execution metadata to a function."""
 
     def decorator(func: F) -> F:
-        if not hasattr(func, "_cascade"):
-            func._cascade = {}
-
-        func._cascade.update(kwargs)
+        kw = getattr(func, "_cascade", {}).copy()
+        kw.update(kwargs)
+        setattr(func, "_cascade", kw)
         return func
 
     return decorator
