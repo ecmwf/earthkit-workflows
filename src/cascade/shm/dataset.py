@@ -278,6 +278,11 @@ class Manager:
 
     def purge(self, key: str, is_exit: bool = False) -> None:
         # TODO the is_exit invocation is causing mess in logs, consider removal
+        if key not in self.datasets:
+            logger.warning(
+                f"key unknown to this shm instance: {key}, ignoring purge request"
+            )
+            return
         try:
             logger.debug(f"attempting purge-inquire of {key}")
             try:
