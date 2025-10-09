@@ -75,6 +75,13 @@ class AllocatedBuffer:
                 self.close_callback()
             self.shm = None
 
+    def __del__(self) -> None:
+        if self.shm is not None:
+            try:
+                logger.error(f"missed close() call on {self.shm._name}")  # type: ignore # _name
+            except Exception as e:
+                logger.exception(f"failed to log due to {repr(e)}")
+
     # TODO context manager
 
 
