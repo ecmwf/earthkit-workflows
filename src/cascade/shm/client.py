@@ -24,7 +24,7 @@ class ConflictError(Exception):
 
 if (sys.version_info.major, sys.version_info.minor) >= (3, 13):
     is_unregister = False
-    shm_kwargs = {"Track": False}
+    shm_kwargs = {"track": False}
 else:
     is_unregister = True
     shm_kwargs = {}
@@ -69,14 +69,14 @@ class AllocatedBuffer:
         return mv
 
     def close(self) -> None:
-        if self.shm is not None:
+        if hasattr(self, "shm") and self.shm is not None:
             self.shm.close()
             if self.close_callback:
                 self.close_callback()
             self.shm = None
 
     def __del__(self) -> None:
-        if self.shm is not None:
+        if hasattr(self, "shm") and self.shm is not None:
             try:
                 logger.error(f"missed close() call on {self.shm._name}")  # type: ignore # _name
             except Exception as e:
