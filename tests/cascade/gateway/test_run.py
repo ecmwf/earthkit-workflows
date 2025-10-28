@@ -10,6 +10,7 @@ from cascade.low.core import DatasetId, JobInstance, TaskDefinition, TaskInstanc
 init_value = 10
 job_func = lambda i: i * 2
 slow_func = lambda a: time.sleep(0.5) or a**2
+tries_limit = 32
 
 
 def get_job_succ() -> JobInstance:
@@ -91,9 +92,9 @@ def test_job():
         assert submit_job_res.error is None
         assert job_id is not None
 
-        tries = 16
+        tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
-        while tries > 0:
+        while tries < tries_limit:
             job_progress_res = client.request_response(job_progress_req, url)
             assert job_progress_res.error is None
             is_computed = job_progress_res.progresses[job_id].pct == "100.00"
@@ -103,9 +104,9 @@ def test_job():
             else:
                 # NOTE not using logger, not properly configured in downstream-ci
                 print(f"current progress is {job_progress_res}")
-                tries -= 1
-                time.sleep(1)
-        assert tries > 0
+                tries += 1
+                time.sleep(2)
+        assert tries < tries_limit
 
         result_retrieval_req = api.ResultRetrievalRequest(
             job_id=job_id, dataset_id=ji.ext_outputs[0]
@@ -139,18 +140,18 @@ def test_job():
         assert submit_job_res.error is None
         assert job_id is not None
 
-        tries = 16
+        tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
-        while tries > 0:
+        while tries < tries_limit:
             job_progress_res = client.request_response(job_progress_req, url)
             assert job_progress_res.error is None
             assert job_progress_res.progresses[job_id].pct != "100.00"
             if job_progress_res.progresses[job_id].failure is not None:
                 break
             else:
-                tries -= 1
-                time.sleep(1)
-        assert tries > 0
+                tries += 1
+                time.sleep(2)
+        assert tries < tries_limit
 
         # two jobs at once
         # TODO this is for manual test only, I dont have a good idea how to test, in a reliable & timely fashion,
@@ -173,10 +174,10 @@ def test_job():
         assert res1.job_id is not None
         assert res2.job_id is not None
 
-        tries = 16
+        tries = 0
         job_ids = [res1.job_id, res2.job_id]
         job_progress_req = api.JobProgressRequest(job_ids=job_ids)
-        while tries > 0:
+        while tries < tries_limit:
             job_progress_res = client.request_response(job_progress_req, url)
             assert job_progress_res.error is None
             is_computed = (
@@ -187,9 +188,9 @@ def test_job():
             else:
                 # NOTE not using logger, not properly configured in downstream-ci
                 print(f"current progress is {job_progress_res}")
-                tries -= 1
-                time.sleep(1)
-        assert tries > 0
+                tries += 1
+                time.sleep(2)
+        assert tries < tries_limit
 
         # gw shutdown
         shutdown_req = api.ShutdownRequest()

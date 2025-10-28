@@ -277,7 +277,21 @@ class Manager:
         return ds.shmid, ds.size, rdid, ds.deser_fun, ""
 
     def purge(self, key: str, is_exit: bool = False) -> None:
-        # TODO the is_exit invocation is causing mess in logs, consider removal
+        if key not in self.datasets:
+            # NOTE known cases for this appearing:
+            # - a1/ a TaskSequence([t1, t2], publish={t2}) is sent by controller
+            # - a2/ t2 is computed and published by worker
+            # - a3/ controller sees t1 not required anymore => sends purge
+            # - a4/ as t1 was never materialized in shm => keyerror here
+            # - a/ this would be fixed by expaned dataset2host/worker model at the controller
+            # - b1/ purge request is sent by the data server
+            # - b2/ it is received by shm and purged, but ack fails on zmq
+            # - b3/ data server retries, but now the key is unknown
+            # - b/ this would be fixed by keeping track of tombstones
+            logger.warning(
+                f"key unknown to this shm instance: {key}, ignoring purge request"
+            )
+            return
         try:
             logger.debug(f"attempting purge-inquire of {key}")
             try:

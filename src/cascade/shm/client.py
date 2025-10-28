@@ -8,6 +8,7 @@
 
 import logging
 import multiprocessing.resource_tracker
+import sys
 import time
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Type, TypeVar
@@ -16,12 +17,17 @@ import cascade.shm.api as api
 
 logger = logging.getLogger(__name__)
 
-# TODO eleminate in favour of track=False, once we are on python 3.13+
-is_unregister = True  # NOTE exposed for pytest control
-
 
 class ConflictError(Exception):
     pass
+
+
+if (sys.version_info.major, sys.version_info.minor) >= (3, 13):
+    is_unregister = False
+    shm_kwargs = {"track": False}
+else:
+    is_unregister = True
+    shm_kwargs = {}
 
 
 class AllocatedBuffer:
@@ -33,8 +39,9 @@ class AllocatedBuffer:
         close_callback: Callable[[], None] | None,
         deser_fun: str,
     ):
+        self.shm: SharedMemory | None
         try:
-            self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
+            self.shm = SharedMemory(shmid, create=create, size=l, **shm_kwargs)
         except FileExistsError:
             # NOTE this is quite wrong as instead of crashing, it would lead to undefined behaviour
             # However, as the systems we operate on don't seem to be reliable wrt cleanup/isolation,
@@ -42,13 +49,16 @@ class AllocatedBuffer:
             logger.error(
                 f"attempted opening {shmid=} but gotten FileExists. Will delete and retry"
             )
-            _shm = SharedMemory(shmid, create=False)
+            _shm = SharedMemory(shmid, create=False, **shm_kwargs)
+            _shm.close()
             _shm.unlink()
-            self.shm: SharedMemory | None = SharedMemory(shmid, create=create, size=l)
+            self.shm = SharedMemory(shmid, create=create, size=l, **shm_kwargs)
         self.l = l
         self.readonly = not create
         self.close_callback = close_callback
         self.deser_fun = deser_fun
+        if is_unregister:
+            multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
 
     def view(self) -> memoryview:
         if not self.shm:
@@ -59,13 +69,18 @@ class AllocatedBuffer:
         return mv
 
     def close(self) -> None:
-        if self.shm is not None:
+        if hasattr(self, "shm") and self.shm is not None:
             self.shm.close()
-            if is_unregister:
-                multiprocessing.resource_tracker.unregister(self.shm._name, "shared_memory")  # type: ignore # _name
             if self.close_callback:
                 self.close_callback()
             self.shm = None
+
+    def __del__(self) -> None:
+        if hasattr(self, "shm") and self.shm is not None:
+            try:
+                logger.error(f"missed close() call on {self.shm._name}")  # type: ignore # _name
+            except Exception as e:
+                logger.exception(f"failed to log due to {repr(e)}")
 
     # TODO context manager
 

@@ -9,10 +9,12 @@
 """Tests running a Callable in the same process"""
 
 from multiprocessing.shared_memory import SharedMemory
+from typing import Any
 
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
 import cascade.executor.serde as serde
+import cascade.shm.api as shm_api
 import cascade.shm.client as shm_cli
 from cascade.executor.msg import DatasetPublished, TaskSequence
 from cascade.executor.runner.packages import PackagesEnv
@@ -31,7 +33,6 @@ def test_runner(monkeypatch):
     worker = WorkerId("h0", "w0")
 
     # monkeypatching
-    monkeypatch.setattr(shm_cli, "is_unregister", False)
     test_address = "zmq:test"
     msgs = []
 
@@ -42,38 +43,36 @@ def test_runner(monkeypatch):
     monkeypatch.setattr(memory, "callback", verify_msg)
     monkeypatch.setattr(entrypoint, "callback", verify_msg)
 
-    def allocate(
-        key: str, l: int, timeout_sec: float = 60.0
-    ) -> shm_cli.AllocatedBuffer:
-        shmid = f"test_{key}"
-        _allocate = lambda: shm_cli.AllocatedBuffer(
-            shmid=shmid,
-            l=l,
-            create=True,
-            close_callback=lambda: None,
-            deser_fun="cloudpickle.loads",
-        )
-        try:
-            return _allocate()
-        except FileExistsError:
-            # for some reason, the is_unregister doesnt seem to cover all cases
-            shm = SharedMemory(shmid, create=False)
-            shm.unlink()
-            shm.close()
-            return _allocate()
+    opened_buffers = set()
+    purging_tracker = set()
+    key2shmid = lambda key: f"test_{key}"
 
-    monkeypatch.setattr(shm_cli, "allocate", allocate)
+    def _send_command(
+        comm: shm_api.Comm, resp_class: Any, timeout_sec: float = 60.0
+    ) -> Any:
+        if isinstance(comm, shm_api.AllocateRequest):
+            key = key2shmid(comm.key)
+            if key in opened_buffers or key in purging_tracker:
+                raise ValueError(f"double allocate on {key}")
+            opened_buffers.add(key)
+            purging_tracker.add(key)
+            return shm_api.AllocateResponse(shmid=key, error=None)
+        elif isinstance(comm, shm_api.CloseCallback):
+            opened_buffers.remove(key2shmid(comm.key))
+        else:
+            raise ValueError(comm)
 
-    def get(key: str, timeout_sec: float = 60.0) -> shm_cli.AllocatedBuffer:
-        return shm_cli.AllocatedBuffer(
-            shmid=f"test_{key}",
-            l=1024,
-            create=False,
-            close_callback=lambda: None,
-            deser_fun="cloudpickle.loads",
-        )
+    monkeypatch.setattr(shm_cli, "_send_command", _send_command)
 
-    monkeypatch.setattr(shm_cli, "get", get)
+    inspect_buffer = lambda key: shm_cli.AllocatedBuffer(
+        shmid=key2shmid(key),
+        l=1024,
+        create=False,
+        close_callback=lambda: None,
+        deser_fun="cloudpickle.loads",
+    )
+
+    # monkeypatch.setattr(shm_cli, "get", get)
 
     # test 1: no tasks
     emptyTs = TaskSequence(
@@ -96,6 +95,8 @@ def test_runner(monkeypatch):
 
     def test_func(x):
         return x + 1
+
+    assert not opened_buffers
 
     # test 2: one task with a single static input and a published output
     task_definition = TaskDefinition(
@@ -129,9 +130,11 @@ def test_runner(monkeypatch):
         entrypoint.execute_sequence(oneTaskTs, memoryInstance, pckg, oneTaskRc)
     assert msgs == [DatasetPublished(origin=worker, ds=t2ds, transmit_idx=None)]
     msgs = []
-    so = get(memory.ds2shmid(t2ds))
+    so = inspect_buffer(memory.ds2shmid(t2ds))
     assert serde.des_output(so.view(), "int", so.deser_fun) == 2
     so.close()
+
+    assert not opened_buffers
 
     # test 3: two task pipeline
     t3a = TaskInstance(
@@ -178,9 +181,11 @@ def test_runner(monkeypatch):
         DatasetPublished(origin=worker, ds=t3o, transmit_idx=None),
     ]
     msgs = []
-    so = get(memory.ds2shmid(t3o))
+    so = inspect_buffer(memory.ds2shmid(t3o))
     assert serde.des_output(so.view(), "int", so.deser_fun) == 4
     so.close()
+
+    assert not opened_buffers
 
     # test 4: generator
     N = 4
@@ -244,6 +249,13 @@ def test_runner(monkeypatch):
         DatasetPublished(origin=worker, ds=t4pOutputs[3], transmit_idx=None),
     ]
     for i, o in enumerate(t4pOutputs):
-        so = get(memory.ds2shmid(o))
+        so = inspect_buffer(memory.ds2shmid(o))
         assert serde.des_output(so.view(), "int", so.deser_fun) == i + 1
         so.close()
+
+    assert not opened_buffers
+
+    for e in purging_tracker:
+        m = SharedMemory(e, create=False)
+        m.close()
+        m.unlink()
