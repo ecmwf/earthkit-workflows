@@ -6,10 +6,11 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import importlib
 import inspect
 import itertools
 from dataclasses import dataclass, field, replace
-from typing import Callable, Iterable, Iterator, Type, cast
+from typing import Any, Callable, Iterable, Iterator, Type, cast
 
 import pyrsistent
 from typing_extensions import Self
@@ -29,7 +30,16 @@ class TaskBuilder(TaskInstance):
     @classmethod
     def from_callable(cls, f: Callable, environment: list[str] | None = None) -> Self:
         def type2str(t: str | Type) -> str:
-            type_name: str = t if isinstance(t, str) else t.__name__
+            type_name: str
+            if isinstance(t, str):
+                type_name = t
+            elif isinstance(t, tuple):
+                # TODO properly break down etc
+                type_name = "tuple"
+            elif t.__module__ == "builtins":
+                type_name = t.__name__
+            else:
+                type_name = f"{t.__module__}.{t.__name__}"
             return "Any" if type_name == "_empty" else type_name
 
         sig = inspect.signature(f)
@@ -91,9 +101,13 @@ class TaskBuilder(TaskInstance):
 class JobBuilder:
     nodes: pyrsistent.PMap = field(default_factory=lambda: pyrsistent.m())
     edges: pyrsistent.PVector = field(default_factory=lambda: pyrsistent.v())
+    outputs: pyrsistent.PVector = field(default_factory=lambda: pyrsistent.v())
 
     def with_node(self, name: str, task: TaskInstance) -> Self:
         return replace(self, nodes=self.nodes.set(name, task))
+
+    def with_output(self, task: str, output: str = Node.DEFAULT_OUTPUT) -> Self:
+        return replace(self, outputs=self.outputs.append(DatasetId(task, output)))
 
     def with_edge(
         self, source: str, sink: str, into: str | int, frum: str = Node.DEFAULT_OUTPUT
@@ -116,7 +130,24 @@ class JobBuilder:
             "marsParamList",
             "grib",
         }
-        _isinstance = lambda v, t: t == "Any" or t in skipped or isinstance(v, eval(t))
+
+        def getType(
+            fqn: str,
+        ) -> (
+            Any
+        ):  # NOTE: typing.Type return type is tempting but not true for builtin aliases
+            if fqn.startswith("tuple"):
+                # TODO recursive parsing of tuples etc!
+                return tuple
+            if "." in fqn:
+                mpath, name = fqn.rsplit(".", 1)
+                return getattr(importlib.import_module(mpath), name)
+            else:
+                return eval(fqn)
+
+        _isinstance = (
+            lambda v, t: t == "Any" or t in skipped or isinstance(v, getType(t))
+        )
 
         # static input types
         static_kw_errors: Iterable[str] = (
@@ -157,7 +188,9 @@ class JobBuilder:
                 lambda t1, t2: t2 == "Any"
                 or t1 == t2
                 or (t1, t2) in legits
-                or issubclass(eval(t1), eval(t2))
+                or t1
+                == "typing.Iterator"  # TODO replace with type extraction *and* check that this is multi-output
+                or issubclass(getType(t1), getType(t2))
             )
             if not _issubclass(output_param, input_param):
                 yield f"edge connects two incompatible nodes: {edge}"
@@ -169,6 +202,9 @@ class JobBuilder:
         # all inputs present
         # TODO
 
+        # all outputs created
+        # TODO
+
         errors = list(itertools.chain(static_kw_errors, edge_errors))
         if errors:
             return Either.error(errors)
@@ -177,5 +213,6 @@ class JobBuilder:
                 JobInstance(
                     tasks=cast(dict[str, TaskInstance], pyrsistent.thaw(self.nodes)),
                     edges=pyrsistent.thaw(self.edges),
+                    ext_outputs=pyrsistent.thaw(self.outputs),
                 )
             )
