@@ -17,6 +17,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter_ns
+from typing import Any
 
 import orjson
 
@@ -28,7 +29,7 @@ from cascade.executor.comms import callback
 from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import JobInstance
+from cascade.low.core import DatasetId, JobInstance
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 from earthkit.workflows.graph import Graph, deduplicate_nodes
@@ -159,7 +160,7 @@ def run_locally(
     portBase: int = 12345,
     log_base: str | None = None,
     report_address: str | None = None,
-) -> None:
+) -> dict[DatasetId, Any]:
     if log_base is not None:
         log_path = f"{log_base}.controller.txt"
         logging.config.dictConfig(logging_config_filehandler(log_path))
@@ -216,6 +217,7 @@ def run_locally(
         if os.environ.get("CASCADE_DEBUG_PRINT"):
             for key, value in result.outputs.items():
                 print(f"{key} => {value}")
+        return result.outputs
     except Exception:
         # NOTE we log this to get the stacktrace into the logfile
         logger.exception("controller failure, proceed with executor shutdown")
