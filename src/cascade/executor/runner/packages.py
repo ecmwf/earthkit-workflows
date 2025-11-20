@@ -54,7 +54,7 @@ class PackagesEnv(AbstractContextManager):
 
     def __enter__(self) -> "PackagesEnv":
         logger.debug("creating a new venv")
-        self.td = tempfile.TemporaryDirectory(prefix="cascade_runner_venv_", delete = False)
+        self.td = tempfile.TemporaryDirectory(prefix="cascade_runner_venv_")
         # NOTE we create a venv instead of just plain directory, because some of the packages create files
         # outside of site-packages. Thus we then install with --prefix, not with --target
         run_command(Commands.venv_command(self.td.name))
