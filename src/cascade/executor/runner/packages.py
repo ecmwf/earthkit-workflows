@@ -52,15 +52,27 @@ class PackagesEnv(AbstractContextManager):
     def __init__(self) -> None:
         self.td: tempfile.TemporaryDirectory | None = None
 
+    def __enter__(self) -> "PackagesEnv":
+        logger.debug("creating a new venv")
+        self.td = tempfile.TemporaryDirectory(prefix="cascade_runner_venv_", delete = False)
+        # NOTE we create a venv instead of just plain directory, because some of the packages create files
+        # outside of site-packages. Thus we then install with --prefix, not with --target
+        run_command(Commands.venv_command(self.td.name))
+
+        # NOTE not sure if getsitepackages was intended for this -- if issues, attempt replacing
+        # with something like f"{self.td.name}/lib/python*/site-packages" + globbing
+        extra_sp = site.getsitepackages(prefixes=[self.td.name])
+        # NOTE this makes the explicit packages go first, in case of a different version
+        logger.debug(f"extending sys.path with {extra_sp}")
+        sys.path = extra_sp + sys.path
+        logger.debug(f"new sys.path: {sys.path}")
+
+        return self
+    
     def extend(self, packages: list[str]) -> None:
         if not packages:
             return
-        if self.td is None:
-            self.td = tempfile.TemporaryDirectory()
-            logger.debug(f"creating a new venv at {self.td.name}")
-            run_command(Commands.venv_command(self.td.name))
-            # NOTE we create a venv instead of just plain directory, because some of the packages create files
-            # outside of site-packages. Thus we then install with --prefix, not with --target
+        assert self.td is not None         
 
         logger.debug(
             f"installing {len(packages)} packages: {','.join(packages[:3])}{',...' if len(packages) > 3 else ''}"
@@ -72,13 +84,16 @@ class PackagesEnv(AbstractContextManager):
             install_command += ["--cache-dir", cache_dir]
         install_command.extend(set(packages))
         run_command(install_command)
-        # NOTE not sure if getsitepackages was intended for this -- if issues, attempt replacing
-        # with something like f"{self.td.name}/lib/python*/site-packages" + globbing
-        extra_sp = site.getsitepackages(prefixes=[self.td.name])
-        # NOTE this makes the explicit packages go first, in case of a different version
-        sys.path = extra_sp + sys.path
+
+        self._prepare_env()
+
+    def _prepare_env(self) -> None:
+        """Prepare the environment after installing packages"""
+        import importlib
+        importlib.invalidate_caches()
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
+        sys.path = [p for p in sys.path if self.td is None or not p.startswith(self.td.name)]
         if self.td is not None:
             self.td.cleanup()
         return False
