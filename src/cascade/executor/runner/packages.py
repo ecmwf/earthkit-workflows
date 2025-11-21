@@ -89,6 +89,7 @@ class PackagesEnv(AbstractContextManager):
         if cache_dir := os.environ.get("VENV_CACHE", ""):
             install_command += ["--cache-dir", cache_dir]
         install_command.extend(set(packages))
+        logger.debug(f"running install command: {' '.join(install_command)}")
         run_command(install_command)
 
         # NOTE we need this due to namespace packages:
