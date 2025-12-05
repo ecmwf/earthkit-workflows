@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import os
 from typing import (
     Any,
     Callable,
@@ -332,7 +333,7 @@ class Action:
             return res
         # Modify node array path to contain new nodes
         current_nodes = self.nodes.to_dict()
-        current_nodes[path] = res.nodes[path]
+        current_nodes.update(res.nodes.to_dict())
         return type(self)(nodetree_from_dict(current_nodes))
 
     def broadcast(
@@ -632,19 +633,13 @@ class Action:
         Action
         """
         node_arrays = self.nodes.to_dict()
-        parent = ""
-        for path, func in expansion.items():
-            root_path = "/".join(path.split("/")[:-1])
-            if not parent:
-                parent = root_path
-            if root_path != parent:
-                raise ValueError(
-                    "All paths in expansion must extend from the same existing path"
-                )
-            node_arrays[path] = (
-                self.create_nodearrays(parent).map(func).nodes[path].dataset
-            )
+        parent = os.path.commonpath(expansion.keys())
+        if parent not in node_arrays:
+            raise ValueError(f"Parent path {parent} not found in node tree")
         node_arrays.pop(parent)
+        action = self.select(path=parent)
+        for path, func in expansion.items():
+            node_arrays[path] = action.map(func).nodes[parent].dataset
         return type(self)(nodetree_from_dict(node_arrays))
 
     def _validate_criteria(self, criteria: dict):

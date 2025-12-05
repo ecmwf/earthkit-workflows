@@ -300,3 +300,33 @@ def test_generators():
     graph = cas.graph()
     assert len(graph.sinks) == 5
     serialise(graph)
+
+
+def test_nodetree():
+    input_action = mock_action((3, 4))
+    branches = input_action.split_nodearray(
+        {
+            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
+            "/branch2": lambda data: np.where(data > 0, data, np.nan),
+        }
+    )
+    for npath, narray in nodetree_arrays(branches.nodes):
+        assert narray.shape == (3, 4)
+        assert "branch" in npath
+
+    subbranches = branches.split_nodearray(
+        {
+            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+        }
+    )
+    assert [x[0] for x in nodetree_arrays(subbranches.nodes)] == [
+        "/branch2",
+        "/branch1/subbranch1",
+        "/branch1/subbranch2",
+    ]
+
+    expand = subbranches.expand(
+        "levels", ("levels", [0, 1, 2, 3, 4]), path="/branch1/subbranch2"
+    )
+    assert nodetree_array(expand.nodes, "/branch1/subbranch2").shape == (5, 3, 4)
