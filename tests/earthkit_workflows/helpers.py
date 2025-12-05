@@ -9,8 +9,8 @@
 import numpy as np
 import xarray as xr
 
-from earthkit.workflows.nodetree import nodetree_from_dict
 from earthkit.workflows.fluent import Action, Node, Payload
+from earthkit.workflows.nodetree import nodetree_from_dict
 
 
 class MockNode(Node):

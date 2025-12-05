@@ -6,13 +6,14 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import Optional, Iterable, Tuple
+from typing import Iterable, Optional, Tuple
+
 import numpy as np
 import xarray as xr
 
 
 def nodetree_from_dict(
-    data: dict[str, xr.DataArray | xr.Dataset], *args, **kwargs
+    data: dict[str, xr.DataArray] | dict[str, xr.Dataset], *args, **kwargs
 ) -> xr.DataTree:
     new_data = {}
     for nindex, (k, v) in enumerate(data.items()):

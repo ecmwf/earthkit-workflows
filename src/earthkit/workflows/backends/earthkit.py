@@ -9,9 +9,9 @@
 from typing import TypeAlias
 
 import array_api_compat
-
 from earthkit.data import FieldList
 from earthkit.data.core.metadata import Metadata as ekdMetadata
+
 from earthkit.workflows.backends import num_args
 
 

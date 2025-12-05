@@ -12,12 +12,12 @@ import dill
 import numpy as np
 import pytest
 
+from earthkit.workflows.fluent import Action, Payload, custom_hash, from_source
+from earthkit.workflows.graph import deserialise, serialise
 from earthkit.workflows.nodetree import (
     nodetree_array,
     nodetree_arrays,
 )
-from earthkit.workflows.fluent import Payload, Action, custom_hash, from_source
-from earthkit.workflows.graph import deserialise, serialise
 
 from .helpers import mock_action
 

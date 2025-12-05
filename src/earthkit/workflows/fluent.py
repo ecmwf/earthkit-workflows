@@ -25,9 +25,10 @@ import numpy as np
 import xarray as xr
 
 from . import backends
-from .graph import Graph, Output
+from .graph import Graph
 from .graph import Node as BaseNode
-from .nodetree import nodetree_from_dict, nodetree_array, nodetree_arrays
+from .graph import Output
+from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict
 
 PayloadFunc = Callable | str
 
@@ -298,6 +299,7 @@ class Action:
         dim: str or `Coord`, name of dimension to join actions or `Coord` specifying new dimension name and
         coordinate values
         axis: int, position to insert new dimension
+        path: str, path to select subset of nodes to operate on, if provided
 
         Return
         ------
@@ -312,7 +314,7 @@ class Action:
             dim_name = dim[0]
             dim_values = dim[1]
 
-        action = self if path is None else self.select_nodearray(path)
+        action = self if path is None else self.select(path=path)
         for index, param in enumerate(params):
             new_res = func(action, *param)
             if dim_name not in new_res.nodes.coords:
@@ -334,7 +336,10 @@ class Action:
         return type(self)(nodetree_from_dict(current_nodes))
 
     def broadcast(
-        self, other_action: "Action", exclude: list[str] | None = None
+        self,
+        other_action: "Action",
+        exclude: list[str] | None = None,
+        path: Optional[str] = None,
     ) -> "Action":
         """Broadcast nodes against nodes in other_action
 
@@ -342,6 +347,7 @@ class Action:
         ----------
         other_action: Action containing nodes to broadcast against
         exclude: List of str, dimension names to exclude from broadcasting
+        path: Optional[str], path to select subset of nodes to operate on, if provided
 
         Return
         ------
@@ -349,6 +355,9 @@ class Action:
         """
         node_arrays = {}
         for npath, narray in nodetree_arrays(other_action.nodes):
+            if path is not None and npath != path:
+                node_arrays[npath] = narray
+                continue
             array = nodetree_array(self.nodes, npath)
             # Ensure coordinates in existing dimensions match, otherwise obtain NaNs
             for key, values in narray.coords.items():
@@ -395,6 +404,7 @@ class Action:
         `Coord` specifying dimension name and list of selection criteria
         dim_size: int | None, size of new dimension. If not given `internal_dim` must be `Coord`
         axis: int, position to insert new dimension
+        path: Optional[str], path to select subset of nodes to operate on, if provided
         backend_kwargs: dict, kwargs for the underlying backend take method
 
         Return
@@ -430,6 +440,7 @@ class Action:
         ----------
         payload: function or array of functions
         yields: Coord | None, name and coords of dimension yielded by payload, if generator
+        path: str, path to select subset of nodes to operate on, if provided
 
         Return
         ------
@@ -500,6 +511,7 @@ class Action:
         computation is not batched
         keep_dim: bool, whether to keep the reduced dimension in the result. Dimension
         is kept in the original axis position
+        path: str, path to select subset of nodes to operate on, if provided
 
         Return
         ------
@@ -517,7 +529,7 @@ class Action:
             if len(dim) == 0:
                 dim = str(narray.dims[0])
 
-            batched = self.select_nodearray(npath)
+            batched = self.select(path=npath)
             level = 0
             if not isinstance(payload, Payload):
                 payload = Payload(payload)
@@ -591,7 +603,9 @@ class Action:
         ----------
         dim: str, name of dimension to flatten along
         axis: int, axis of new dimension in internal data
-        kwargs: kwargs for the underlying array module stack method
+        path: str, path to select subset of nodes to operate on, if provided
+        backend_kwargs: dict, kwargs for the underlying array module stack method
+
         Return
         ------
         Action
@@ -602,59 +616,35 @@ class Action:
             path=path,
         )
 
-    def select_nodearray(self, path: str) -> "Action":
-        """Create an action containing only the single selected nodeset
-        Parameters
-        ----------
-        path: str, path of nodeset to select
-        Return
-        ------
-        Action
-        """
-        return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes[path])}))
+    def split_nodearray(self, expansion: dict[str, Callable | Payload]) -> "Action":
+        """Create action containing new node arrays by splitting an existing node array
+        by the specified functions in expansion
 
-    def split_nodearray(self, expansion: dict[str, Callables | Payload]) -> "Action":
-        """Create action containing new nodesets by splitting an existing nodeset
-        along the specified dimension
         Parameters
         ----------
-        dim: str, name of dimension to split along to create new nodesets
-        origin: str or None, name of existing nodeset to split. If not provided, the action
-        must contain only a single nodeset, which is split
+        expansion: dict[str, Callable | Payload], dictionary of paths and functions to create
+        new node arrays. All paths must be branches extending from an existing path, and the functions
+        will be applied to the node array at the existing path to create the new node arrays at the
+        branched paths
+
         Return
         ------
         Action
         """
         node_arrays = self.nodes.to_dict()
-        pop = set()
+        parent = ""
         for path, func in expansion.items():
-            parent = "/".join(path.split("/")[:-1])
-            pop.add(parent)
+            root_path = "/".join(path.split("/")[:-1])
+            if not parent:
+                parent = root_path
+            if root_path != parent:
+                raise ValueError(
+                    "All paths in expansion must extend from the same existing path"
+                )
             node_arrays[path] = (
                 self.create_nodearrays(parent).map(func).nodes[path].dataset
             )
-        for pnode in pop:
-            node_arrays.pop(pnode)
-        return type(self)(nodetree_from_dict(node_arrays))
-
-    def join_nodetrees(self, other: "Action") -> "Action":
-        """Join nodetree from another action into this action
-
-        Parameters
-        ----------
-        other: Action, action containing nodesets to join
-
-        Return
-        ------
-        Action
-        """
-        node_arrays = self.nodes.to_dict()
-        for npath, narray in nodetree_arrays(other.nodes):
-            if npath in node_arrays:
-                raise ValueError(
-                    f"Can not join node arrays in actions, node array {npath} already exists in current action"
-                )
-            node_arrays[npath] = narray
+        node_arrays.pop(parent)
         return type(self)(nodetree_from_dict(node_arrays))
 
     def _validate_criteria(self, criteria: dict):
@@ -670,7 +660,6 @@ class Action:
                     )
         return criteria
 
-    @capture_payload_metadata
     def select(
         self,
         criteria: dict | None = None,
@@ -684,6 +673,7 @@ class Action:
         ----------
         criteria: dict, key-value pairs specifying selection criteria
         drop: bool, drop coord variables in criteria if True
+        path: str, path to select subset of nodes to operate on, if provided
 
         Return
         ------
@@ -692,9 +682,17 @@ class Action:
         crit: dict = criteria or {}
         crit.update(kwargs)
 
-        action = self if path is None else self.select_nodeset(path)
-        crit = action._validate_criteria(crit)
+        if path is None:
+            action = self
+        else:
+            subtree = self.nodes[path]
+            if not isinstance(subtree, xr.DataTree):
+                raise TypeError(
+                    f"Expected DataTree at path {path}, got {type(subtree)}"
+                )
+            action = type(self)(nodetree_from_dict({path: nodetree_array(subtree)}))
 
+        crit = action._validate_criteria(crit)
         if len(crit) == 0:
             return action
         selected_nodes = action.nodes.sel(**crit, drop=drop)
@@ -702,7 +700,6 @@ class Action:
 
     sel = select
 
-    @capture_payload_metadata
     def iselect(
         self,
         criteria: dict | None = None,
@@ -716,6 +713,7 @@ class Action:
         ----------
         criteria: dict, key-value pairs specifying selection criteria
         drop: bool, drop coord variables in criteria if True
+        path: str, path to select subset of nodes to operate on, if provided
 
         Return
         ------
@@ -724,7 +722,15 @@ class Action:
         crit: dict = criteria or {}
         crit.update(kwargs)
 
-        action = self if path is None else self.select_nodeset(path)
+        if path is None:
+            action = self
+        else:
+            subtree = self.nodes[path]
+            if not isinstance(subtree, xr.DataTree):
+                raise TypeError(
+                    f"Expected DataTree at path {path}, got {type(subtree)}"
+                )
+            action = type(self)(nodetree_from_dict({path: nodetree_array(subtree)}))
 
         crit = action._validate_criteria(crit)
 
@@ -971,18 +977,22 @@ class Action:
         self.nodes.attrs.update(attrs)
 
     def _add_dimension(self, name: str, value: Any, axis: int = 0):
-        self.nodes = self.nodes.map_over_datasets(
+        new_tree = self.nodes.map_over_datasets(
             lambda ds: ds.expand_dims({name: [value]}, axis)
         )
+        assert isinstance(new_tree, xr.DataTree)
+        self.nodes = new_tree
 
     def _squeeze_dimension(self, dim_name: str, drop: bool = False):
-        self.nodes = self.nodes.map_over_datasets(
+        new_tree = self.nodes.map_over_datasets(
             lambda ds: (
                 ds.squeeze(dim_name, drop=drop)
                 if dim_name in ds.dims and len(ds.coords[dim_name]) == 1
                 else ds
             )
         )
+        assert isinstance(new_tree, xr.DataTree)
+        self.nodes = new_tree
 
     def __getattr__(self, attr):
         if attr in Action.REGISTRY:
