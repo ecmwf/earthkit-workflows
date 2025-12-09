@@ -332,8 +332,10 @@ class Action:
         if path is None:
             return res
         # Modify node array path to contain new nodes
-        current_nodes = self.nodes.to_dict()
-        current_nodes.update(res.nodes.to_dict())
+        current_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        current_nodes.update(
+            {npath: narray for npath, narray in nodetree_arrays(res.nodes)}
+        )
         return type(self)(nodetree_from_dict(current_nodes))
 
     def broadcast(
@@ -617,7 +619,7 @@ class Action:
             path=path,
         )
 
-    def split_nodearray(self, expansion: dict[str, Callable | Payload]) -> "Action":
+    def split(self, expansion: dict[str, Callable | Payload]) -> "Action":
         """Create action containing new node arrays by splitting an existing node array
         by the specified functions in expansion
 
@@ -632,14 +634,36 @@ class Action:
         ------
         Action
         """
-        node_arrays = self.nodes.to_dict()
+        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
         parent = os.path.commonpath(expansion.keys())
         if parent not in node_arrays:
             raise ValueError(f"Parent path {parent} not found in node tree")
         node_arrays.pop(parent)
         action = self.select(path=parent)
         for path, func in expansion.items():
-            node_arrays[path] = action.map(func).nodes[parent].dataset
+            node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
+        return type(self)(nodetree_from_dict(node_arrays))
+
+    def merge(self, other: Action) -> "Action":
+        """Merge nodes from another action into this action
+
+        Parameters
+        ----------
+        other: Action, action containing nodes to merge into this action
+
+        Return
+        ------
+        Action
+        """
+        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        onode_arrays = {npath: narray for npath, narray in nodetree_arrays(other.nodes)}
+        if intersection := set(node_arrays.keys()).intersection(
+            set(onode_arrays.keys())
+        ):
+            raise ValueError(
+                f"Cannot merge actions with overlapping node paths {intersection}"
+            )
+        node_arrays.update(onode_arrays)
         return type(self)(nodetree_from_dict(node_arrays))
 
     def _validate_criteria(self, criteria: dict):

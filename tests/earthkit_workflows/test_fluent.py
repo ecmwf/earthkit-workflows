@@ -304,7 +304,7 @@ def test_generators():
 
 def test_nodetree():
     input_action = mock_action((3, 4))
-    branches = input_action.split_nodearray(
+    branches = input_action.split(
         {
             "/branch1": lambda data: np.where(data <= 0, data, np.nan),
             "/branch2": lambda data: np.where(data > 0, data, np.nan),
@@ -314,7 +314,7 @@ def test_nodetree():
         assert narray.shape == (3, 4)
         assert "branch" in npath
 
-    subbranches = branches.split_nodearray(
+    subbranches = branches.split(
         {
             "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
             "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
@@ -330,3 +330,11 @@ def test_nodetree():
         "levels", ("levels", [0, 1, 2, 3, 4]), path="/branch1/subbranch2"
     )
     assert nodetree_array(expand.nodes, "/branch1/subbranch2").shape == (5, 3, 4)
+
+    branch1 = branches.sel(path="/branch1")
+    branch2 = branches.sel(path="/branch2")
+    merged = branch1.merge(branch2)
+    assert [x[0] for x in nodetree_arrays(merged.nodes)] == [
+        "/branch1",
+        "/branch2",
+    ]

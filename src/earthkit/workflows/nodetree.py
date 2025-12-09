@@ -57,3 +57,10 @@ def nodetree_array(nodetree: xr.DataTree, path: Optional[str] = None) -> xr.Data
         leaf = nodetree[path]
     var = list(leaf.dataset.data_vars.keys())[0]
     return leaf[var]
+
+
+def nodetree_size(nodetree: xr.DataTree) -> int:
+    size = 0
+    for _, array in nodetree_arrays(nodetree):
+        size += array.size
+    return size
