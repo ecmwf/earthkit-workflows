@@ -40,7 +40,7 @@ class TaskBuilder(TaskInstance):
                 type_name = t.__name__
             else:
                 type_name = f"{t.__module__}.{t.__name__}"
-            return "Any" if type_name == "_empty" else type_name
+            return "Any" if type_name in ("_empty", "inspect._empty") else type_name
 
         sig = inspect.signature(f)
         input_schema = {
