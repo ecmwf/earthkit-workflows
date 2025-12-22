@@ -31,7 +31,7 @@ dependencies = [
     "dill",
     "pyrsistent",
     "pydantic",
-    "zmq",
+    "pyzmq",
     "fire",
     "orjson",
 ]
