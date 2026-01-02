@@ -5,7 +5,7 @@ import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.gateway.__main__ import main
 from cascade.low.builders import JobBuilder
-from cascade.low.core import DatasetId, JobInstance, TaskDefinition, TaskInstance
+from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskInstance
 
 init_value = 10
 job_func = lambda i: i * 2
@@ -13,7 +13,7 @@ slow_func = lambda a: time.sleep(0.5) or a**2
 tries_limit = 32
 
 
-def get_job_succ() -> JobInstance:
+def get_job_succ() -> JobInstanceRich:
     sod = TaskDefinition(
         func=TaskDefinition.func_enc(lambda: init_value),
         environment=[],
@@ -38,10 +38,10 @@ def get_job_succ() -> JobInstance:
         .get_or_raise()
     )
     ji.ext_outputs = [DatasetId("si", "o")]
-    return ji
+    return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 
-def get_job_fail() -> JobInstance:
+def get_job_fail() -> JobInstanceRich:
     td = TaskDefinition(
         func=TaskDefinition.func_enc(job_func),
         environment=[],
@@ -51,10 +51,10 @@ def get_job_fail() -> JobInstance:
     ti = TaskInstance(definition=td, static_input_kw={}, static_input_ps={"0": None})
 
     ji = JobBuilder().with_node("t", ti).build().get_or_raise()
-    return ji
+    return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 
-def get_job_slow() -> JobInstance:
+def get_job_slow() -> JobInstanceRich:
     td = TaskDefinition(
         func=TaskDefinition.func_enc(slow_func),
         environment=[],
@@ -62,7 +62,8 @@ def get_job_slow() -> JobInstance:
         output_schema=[("o", "int")],
     )
     ti = TaskInstance(definition=td, static_input_kw={"a": 4}, static_input_ps={})
-    return JobBuilder().with_node("t", ti).build().get_or_raise()
+    ji = JobBuilder().with_node("t", ti).build().get_or_raise()
+    return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 
 def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
@@ -78,7 +79,6 @@ def test_job():
         # succ job
         ji = get_job_succ()
         js = api.JobSpec(
-            benchmark_name=None,
             envvars={},
             job_instance=ji,
             workers_per_host=1,
@@ -98,7 +98,9 @@ def test_job():
             job_progress_res = client.request_response(job_progress_req, url)
             assert job_progress_res.error is None
             is_computed = job_progress_res.progresses[job_id].pct == "100.00"
-            is_datasets = ji.ext_outputs[0] in job_progress_res.datasets[job_id]
+            is_datasets = (
+                ji.jobInstance.ext_outputs[0] in job_progress_res.datasets[job_id]
+            )
             if is_computed and is_datasets:
                 break
             else:
@@ -109,7 +111,7 @@ def test_job():
         assert tries < tries_limit
 
         result_retrieval_req = api.ResultRetrievalRequest(
-            job_id=job_id, dataset_id=ji.ext_outputs[0]
+            job_id=job_id, dataset_id=ji.jobInstance.ext_outputs[0]
         )
         result_retrieval_res = client.request_response(result_retrieval_req, url)
         assert result_retrieval_res.error is None
@@ -118,7 +120,7 @@ def test_job():
         assert deser == job_func(init_value)
 
         result_deletion_req = api.ResultDeletionRequest(
-            datasets={job_id: [ji.ext_outputs[0]]}
+            datasets={job_id: [ji.jobInstance.ext_outputs[0]]}
         )
         result_deletion_res = client.request_response(result_deletion_req, url)
         assert result_deletion_res.error is None
@@ -126,7 +128,6 @@ def test_job():
         # fail job
         ji = get_job_fail()
         js = api.JobSpec(
-            benchmark_name=None,
             envvars={},
             job_instance=ji,
             workers_per_host=1,
@@ -158,7 +159,6 @@ def test_job():
         # that the execution has in effect been serial. But just running it and checking for success is still worth
         ji = get_job_slow()
         js = api.JobSpec(
-            benchmark_name=None,
             envvars={},
             job_instance=ji,
             workers_per_host=1,
