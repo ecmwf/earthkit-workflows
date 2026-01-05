@@ -211,7 +211,6 @@ class Backend:
 
 try:
     from earthkit.data import FieldList, SimpleFieldList
-
     from earthkit.workflows.backends.earthkit import FieldListBackend
 
     BACKENDS[SimpleFieldList] = FieldListBackend

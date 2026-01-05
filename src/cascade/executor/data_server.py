@@ -15,9 +15,8 @@ large data object.
 
 import logging
 import logging.config
-from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED
+from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from concurrent.futures import Executor as PythonExecutor
-from concurrent.futures import Future, ThreadPoolExecutor, wait
 from time import time_ns
 
 import cascade.shm.client as shm_client

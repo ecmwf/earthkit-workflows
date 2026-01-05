@@ -25,9 +25,8 @@ import numpy as np
 import xarray as xr
 
 from . import backends
-from .graph import Graph
+from .graph import Graph, Output
 from .graph import Node as BaseNode
-from .graph import Output
 
 
 class Payload:
