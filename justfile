@@ -10,12 +10,9 @@
 set dotenv-path := ".env"
 
 val:
-	mypy src/cascade --ignore-missing-imports
-	mypy tests --ignore-missing-imports
-	pytest -n 8 tests
-
+    uv run ty check src/cascade
+    uv run ty check tests/cascade
+    # TODO eventually broaden type coverage to ekw as well
+    uv run pytest -n8 tests
 fmt:
-    # TODO replace with pre-commit
-    isort --profile black .
-    black .
-    flake8 .
+    uv run prek --all-files
