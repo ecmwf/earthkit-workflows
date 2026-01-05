@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 [build-system]
-requires = ["setuptools>=65", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=80", "setuptools_scm[toml]>=6.2", "packaging>=25"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -39,20 +39,12 @@ dependencies = [
 dynamic = ["version"]
 readme = "README.md"
 
-[project.optional-dependencies]
-tests = ["pytest", "pytest-xdist", "earthkit-data"]
-lint = ["black", "isort", "flake8"]
-gpu = ["jax[cpu]", "jax[cuda11_pip]", "cupy-cuda11x", "numba"]
-examples = ["cftime", "bokeh"]
-earthkit = ["earthkit-data"]
-all = ["cascade[tests,kubernetes,lint,gpu,examples,earthkit]"]
+[dependency-groups]
+dev = ["pytest", "pytest-xdist>=3.8", "prek", "ty==0.0.2", "build"]
 
 [tool.setuptools]
 include-package-data = true
 zip-safe = false
-
-[tool.setuptools.dynamic]
-readme = {file = ["readme.md"], content-type = "text/markdown"}
 
 [tool.setuptools_scm]
 write_to = "src/earthkit/workflows/_version.py"
@@ -65,17 +57,12 @@ local_scheme = "no-local-version"
 include = ["earthkit.workflows*", "cascade*"]
 where = ["src"]
 
-[tool.isort]
-profile = "black"
-
-[tool.mypy]
-plugins = "pydantic.mypy"
-
 [tool.pytest.ini_options]
 log_cli = true
 log_cli_level = "DEBUG"
 testpaths = ["tests/"]
 addopts = "-n8"
 
-[tool.ruff.lint]
-ignore = ["E722", "E731", "E741"]
+[tool.ruff]
+line-length = 140
+lint.ignore = [ "E722", "E731", "E741" ]
