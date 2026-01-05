@@ -88,6 +88,7 @@ def test_job():
 
         submit_job_req = api.SubmitJobRequest(job=js)
         submit_job_res = client.request_response(submit_job_req, url)
+        assert isinstance(submit_job_res, api.SubmitJobResponse)
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
@@ -96,11 +97,10 @@ def test_job():
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries < tries_limit:
             job_progress_res = client.request_response(job_progress_req, url)
+            assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
-            is_computed = job_progress_res.progresses[job_id].pct == "100.00"
-            is_datasets = (
-                ji.jobInstance.ext_outputs[0] in job_progress_res.datasets[job_id]
-            )
+            is_computed = job_progress_res.progresses[job_id].pct == "100.00" # ty: ignore[possibly-missing-attribute]
+            is_datasets = ji.jobInstance.ext_outputs[0] in job_progress_res.datasets[job_id]
             if is_computed and is_datasets:
                 break
             else:
@@ -114,15 +114,17 @@ def test_job():
             job_id=job_id, dataset_id=ji.jobInstance.ext_outputs[0]
         )
         result_retrieval_res = client.request_response(result_retrieval_req, url)
+        assert isinstance(result_retrieval_res, api.ResultRetrievalResponse)
         assert result_retrieval_res.error is None
         assert result_retrieval_res.result is not None
-        deser = api.decoded_result(result_retrieval_res, ji)
+        deser = api.decoded_result(result_retrieval_res, ji.jobInstance)
         assert deser == job_func(init_value)
 
         result_deletion_req = api.ResultDeletionRequest(
             datasets={job_id: [ji.jobInstance.ext_outputs[0]]}
         )
         result_deletion_res = client.request_response(result_deletion_req, url)
+        assert isinstance(result_deletion_res, api.ResultDeletionResponse)
         assert result_deletion_res.error is None
 
         # fail job
@@ -137,6 +139,7 @@ def test_job():
 
         submit_job_req = api.SubmitJobRequest(job=js)
         submit_job_res = client.request_response(submit_job_req, url)
+        assert isinstance(submit_job_res, api.SubmitJobResponse)
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
@@ -145,9 +148,10 @@ def test_job():
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries < tries_limit:
             job_progress_res = client.request_response(job_progress_req, url)
+            assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
-            assert job_progress_res.progresses[job_id].pct != "100.00"
-            if job_progress_res.progresses[job_id].failure is not None:
+            assert job_progress_res.progresses[job_id].pct != "100.00" # ty: ignore[possibly-missing-attribute]
+            if job_progress_res.progresses[job_id].failure is not None: # ty: ignore[possibly-missing-attribute]
                 break
             else:
                 tries += 1
@@ -169,6 +173,8 @@ def test_job():
         req = api.SubmitJobRequest(job=js)
         res1 = client.request_response(req, url)
         res2 = client.request_response(req, url)
+        assert isinstance(res1, api.SubmitJobResponse)
+        assert isinstance(res2, api.SubmitJobResponse)
         assert res1.error is None
         assert res2.error is None
         assert res1.job_id is not None
@@ -179,9 +185,10 @@ def test_job():
         job_progress_req = api.JobProgressRequest(job_ids=job_ids)
         while tries < tries_limit:
             job_progress_res = client.request_response(job_progress_req, url)
+            assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
             is_computed = (
-                lambda job_id: job_progress_res.progresses[job_id].pct == "100.00"
+                    lambda job_id: job_progress_res.progresses[job_id].pct == "100.00" # ty: ignore[possibly-missing-attribute]
             )
             if all(is_computed(job_id) for job_id in job_ids):
                 break
@@ -195,7 +202,7 @@ def test_job():
         # gw shutdown
         shutdown_req = api.ShutdownRequest()
         shutdown_res = client.request_response(shutdown_req, url, 3000)
-        assert shutdown_res.error is None
+        assert hasattr(shutdown_res, 'error') and shutdown_res.error is None
         gw.join(5)
         assert gw.exitcode == 0
 

@@ -19,7 +19,7 @@ def test_validation():
         "invalid static input for task: x needs int, got <class 'str'>",
         "invalid static input for task: y needs str, got <class 'int'>",
     ]
-    assert sorted(job.e) == sorted(expected)
+    assert sorted(job.e) == sorted(expected) # ty: ignore[invalid-argument-type]
 
     task_good = TaskBuilder.from_callable(test_func).with_values(x=1, y="yes")
     _ = JobBuilder().with_node("task", task_good).build().get_or_raise()
@@ -35,7 +35,7 @@ def test_validation():
     expected = [
         "edge connects two incompatible nodes: source=source.0 sink_task='sink' sink_input_kw='y' sink_input_ps=None",  # noqa: E501
     ]
-    assert sorted(job.e) == sorted(expected)
+    assert sorted(job.e) == sorted(expected) # ty: ignore[invalid-argument-type]
 
     sink_good = TaskBuilder.from_callable(test_func).with_values(y="yes")
     _ = (

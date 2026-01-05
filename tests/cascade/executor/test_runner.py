@@ -56,7 +56,7 @@ def test_runner(monkeypatch):
                 raise ValueError(f"double allocate on {key}")
             opened_buffers.add(key)
             purging_tracker.add(key)
-            return shm_api.AllocateResponse(shmid=key, error=None)
+            return shm_api.AllocateResponse(shmid=key, error="")
         elif isinstance(comm, shm_api.CloseCallback):
             opened_buffers.remove(key2shmid(comm.key))
         else:
@@ -79,7 +79,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=[],
         publish=set(),
-        extra_env={},
+        extra_env=[],
     )
     emptyRc = entrypoint.RunnerContext(
         workerId=worker,
@@ -115,7 +115,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=["t2"],
         publish={t2ds},
-        extra_env={},
+        extra_env=[],
     )
     oneTaskJob = JobInstance(tasks={"t2": t2}, edges=[])
     oneTaskRc = entrypoint.RunnerContext(
@@ -153,7 +153,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=["t3a", "t3b"],
         publish={t3o},
-        extra_env={},
+        extra_env=[],
     )
     twoTaskJob = JobInstance(
         tasks={"t3a": t3a, "t3b": t3b},
@@ -216,7 +216,7 @@ def test_runner(monkeypatch):
         worker=worker,
         tasks=["t4g"] + [f"t4c{i}" for i in range(N)],
         publish=set(t4pOutputs),
-        extra_env={},
+        extra_env=[],
     )
     t4Job = JobInstance(
         tasks={**{"t4g": t4g}, **{f"t4c{i}": t4c for i in range(N)}},
