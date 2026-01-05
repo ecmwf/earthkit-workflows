@@ -63,6 +63,7 @@ class AllocatedBuffer:
     def view(self) -> memoryview:
         if not self.shm:
             raise ValueError("shm already closed!")
+        assert self.shm.buf is not None
         mv = self.shm.buf[: self.l]
         if self.readonly:
             mv = mv.toreadonly()

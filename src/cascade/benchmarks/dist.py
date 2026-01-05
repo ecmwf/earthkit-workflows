@@ -26,7 +26,7 @@ def dist_func_torch(a: int) -> int:
     import datetime as dt
 
     import numpy as np
-    import torch.distributed as dist
+    import torch.distributed as dist  # ty: ignore[unresolved-import]
 
     world_size = int(os.environ["CASCADE_GANG_WORLD_SIZE"])
     rank = int(os.environ["CASCADE_GANG_RANK"])
@@ -61,8 +61,8 @@ def dist_func_jax(a: int) -> int:
     os.environ["JAX_NUM_CPU_DEVICES"] = "1"
     os.environ["JAX_PLATFORM_NAME"] = "cpu"
     os.environ["JAX_PLATFORMS"] = "cpu"
-    import jax
-    import jax.numpy as jp
+    import jax  # ty: ignore[unresolved-import]
+    import jax.numpy as jp  # ty: ignore[unresolved-import]
 
     jax.config.update("jax_platforms", "cpu")
     jax.config.update("jax_platform_name", "cpu")

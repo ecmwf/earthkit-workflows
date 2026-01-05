@@ -93,7 +93,7 @@ def parse_request(rr: bytes) -> api.CascadeGatewayAPI:
 
 def serialize_response(m: api.CascadeGatewayAPI) -> bytes:
     try:
-        d = m.dict()
+        d = m.model_dump()
         if "clazz" in d:
             raise ValueError("field `clazz` must not be present in the message")
         d["clazz"] = type(m).__name__

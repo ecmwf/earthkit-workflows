@@ -5,9 +5,9 @@ from cascade.low.core import JobInstance
 from cascade.low.dask import graph2job
 
 
-def get_job(job: str) -> JobInstance:
+def get_job(job_name: str) -> JobInstance:
 
-    if job == "add":
+    if job_name == "add":
 
         def add(x, y):
             result = x + y
@@ -21,7 +21,7 @@ def get_job(job: str) -> JobInstance:
             dataset for task in job.tasks for dataset in job.outputs_of(task)
         ]
         return job
-    elif job == "groupby":
+    elif job_name == "groupby":
         df = dd.DataFrame.from_dict({"x": [0, 0, 1, 1], "y": [1, 2, 3, 4]})
         df = df.groupby("x").sum()
         job = graph2job(df.__dask_graph__())
@@ -30,4 +30,4 @@ def get_job(job: str) -> JobInstance:
         ]
         return job
     else:
-        raise NotImplementedError(job)
+        raise NotImplementedError(job_name)

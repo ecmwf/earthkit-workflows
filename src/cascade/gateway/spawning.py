@@ -36,7 +36,7 @@ def _spawn_troika_singlehost(
     for k, v in job_spec.envvars.items():
         script += f"export {k}={v}\n"
 
-    job_desc_raw = orjson.dumps(job_spec.job_instance.dict())
+    job_desc_raw = orjson.dumps(job_spec.job_instance.model_dump())
     job_desc_enc = base64.b64encode(job_desc_raw).decode("ascii")
     script += f'JOB_ENC="{job_desc_enc}"'
     job_json_path = f"/tmp/cascJob.{job_id}.json"
@@ -91,7 +91,7 @@ def _spawn_local(
     ]
 
     with open(f"/tmp/{job_id}.json", "wb") as f:
-        f.write(orjson.dumps(job_spec.job_instance.dict()))
+        f.write(orjson.dumps(job_spec.job_instance.model_dump()))
     base += ["--instance", f"/tmp/{job_id}.json"]
 
     infra = [
@@ -122,7 +122,7 @@ def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Pope
         "REPORT_ADDRESS": f"{addr},{job_id}",
     }
     with open(f"./localConfigs/_tmp/{job_id}.json", "wb") as f:
-        f.write(orjson.dumps(job_spec.job_instance.dict()))
+        f.write(orjson.dumps(job_spec.job_instance.model_dump()))
     extra_vars["INSTANCE"] = f"./localConfigs/_tmp/{job_id}.json"
     subprocess.run(
         ["cp", "localConfigs/gateway.sh", f"localConfigs/_tmp/{job_id}"], check=True

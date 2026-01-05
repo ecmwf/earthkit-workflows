@@ -1,9 +1,9 @@
 import os
 from typing import Any
 
-import jax
-import jax.numpy as jp
-import jax.random as jr
+import jax  # ty: ignore[unresolved-import]
+import jax.numpy as jp  # ty: ignore[unresolved-import]
+import jax.random as jr  # ty: ignore[unresolved-import]
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import JobInstance
@@ -65,7 +65,7 @@ def execute_locally():
 
     from multiprocessing.shared_memory import SharedMemory
 
-    mem = SharedMemory("benchmark_tmp", create=True, size=m0.nbytes)
+    mem = SharedMemory("benchmark_tmp", create=True, size=m0.nbytes); assert mem.buf is not None
     mem.buf[:] = m0.tobytes()
 
 

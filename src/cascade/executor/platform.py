@@ -44,7 +44,7 @@ MpSituation = typing.Literal[
 _MpSituation = typing.get_args(MpSituation)
 
 
-def get_mp_ctx(situation: MpSituation) -> mp.context.BaseContext:
+def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.SpawnContext:
     """Generally, forking is safe everywhere as we try to be careful not to
     initialize non-safe objects prior to forking. However, combination of
     mac + mps + anemoi + pickled callables causes xpc_error_connection_invalid,

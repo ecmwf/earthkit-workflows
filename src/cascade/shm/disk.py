@@ -27,7 +27,7 @@ class Disk:
     def _page_in(self, shmid: str, size: int, callback: Callable[[bool], None]) -> None:
         try:
             chunk_size = 4096
-            shm = SharedMemory(shmid, create=True, size=size)
+            shm = SharedMemory(shmid, create=True, size=size); assert shm.buf is not None
             with open(f"{self.root.name}/{shmid}", "rb") as f:
                 i = 0
                 while True:
@@ -51,7 +51,7 @@ class Disk:
 
     def _page_out(self, shmid: str, callback: Callable[[bool], None]) -> None:
         try:
-            shm = SharedMemory(shmid, create=False)
+            shm = SharedMemory(shmid, create=False); assert shm.buf is not None
             with open(f"{self.root.name}/{shmid}", "wb") as f:
                 f.write(shm.buf[:])
             shm.unlink()

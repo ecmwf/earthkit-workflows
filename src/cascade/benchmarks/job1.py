@@ -17,8 +17,8 @@ import os
 
 import earthkit.data
 from earthkit.workflows.fluent import Payload
-from earthkit.workflows.plugins.pproc.fluent import from_source
-from earthkit.workflows.plugins.pproc.utils.window import Range
+from earthkit.workflows.plugins.pproc.fluent import from_source  # ty: ignore
+from earthkit.workflows.plugins.pproc.utils.window import Range  # ty: ignore
 
 # *** PARAMS ***
 
@@ -136,7 +136,7 @@ def download_inputs():
             }
             data = earthkit.data.from_source("mars", **ekp)
             with open(f"{data_root}/data_{number}_{step}.grib", "wb") as f:
-                data.write(f)
+                data.write(f) # ty: ignore
 
 
 def download_climatology():
@@ -156,7 +156,7 @@ def download_climatology():
         }
         data = earthkit.data.from_source("mars", **ekp)
         with open(f"{data_root}/data_clim_{step}.grib", "wb") as f:
-            data.write(f)
+            data.write(f) # ty: ignore
 
 
 if __name__ == "__main__":

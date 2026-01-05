@@ -61,7 +61,7 @@ def build_assignment(
                         for host, status in context.ds2host[dataset].items()
                         if status in eligible_transmit
                     ):
-                        prep.append((dataset, candidate))
+                        prep.append((dataset, candidate)) # ty: ignore[unresolved-reference] # candidate walrus
                         context.dataset_preparing(dataset, worker)
                     else:
                         # if we are dealing with the first task to assign, we don't expect to be here!
@@ -98,7 +98,7 @@ def build_assignment(
         tasks=assigned,
         prep=prep,
         outputs=trimmed_outputs,
-        extra_env={},
+        extra_env=[],
     )
 
 
@@ -130,7 +130,7 @@ gang_port = 12355
 
 def _try_assign_gang(
     schedule: Schedule,
-    gang: list[frozenset[TaskId]],
+    gang: frozenset[TaskId],
     workers: list[WorkerId],
     component_id: ComponentId,
     context: JobExecutionContext,
@@ -188,9 +188,9 @@ def _try_assign_gang(
                 coordinator = (
                     f"{context.environment.host_url_base[worker.host]}:{gang_port}"
                 )
-            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = str(world_size)
-            assignment.extra_env["CASCADE_GANG_RANK"] = str(rank)
-            assignment.extra_env["CASCADE_GANG_COORDINATOR"] = coordinator
+            assignment.extra_env.append(("CASCADE_GANG_WORLD_SIZE", str(world_size)))
+            assignment.extra_env.append(("CASCADE_GANG_RANK", str(rank)))
+            assignment.extra_env.append(("CASCADE_GANG_COORDINATOR", coordinator))
             rank += 1
             yield assignment
             start = perf_counter_ns()
@@ -221,9 +221,9 @@ def _try_assign_gang(
                 coordinator = (
                     f"{context.environment.host_url_base[worker.host]}:{gang_port}"
                 )
-            assignment.extra_env["CASCADE_GANG_WORLD_SIZE"] = str(world_size)
-            assignment.extra_env["CASCADE_GANG_RANK"] = str(rank)
-            assignment.extra_env["CASCADE_GANG_COORDINATOR"] = coordinator
+            assignment.extra_env.append(("CASCADE_GANG_WORLD_SIZE", str(world_size)))
+            assignment.extra_env.append(("CASCADE_GANG_RANK", str(rank)))
+            assignment.extra_env.append(("CASCADE_GANG_COORDINATOR", coordinator))
             rank += 1
             yield assignment
             start = perf_counter_ns()

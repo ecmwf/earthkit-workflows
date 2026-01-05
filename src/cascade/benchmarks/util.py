@@ -299,5 +299,6 @@ def main_dist(
             idx,
             shm_vol_gb,
             gpu_count,
-            f"tcp://{platform.get_bindabble_self()}",
+            log_base = None, # TODO handle log collection for dist scenario
+            url_base = f"tcp://{platform.get_bindabble_self()}",
         )

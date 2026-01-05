@@ -120,7 +120,7 @@ class JobBuilder:
         )
         return replace(self, edges=self.edges.append(new_edge))
 
-    def build(self) -> Either[JobInstance, list[str]]:
+    def build(self) -> Either[JobInstance, list[str]]: # ty: ignore[invalid-type-arguments]
         # TODO replace `_isinstance` with a smarter check for self-reg types, reuse fiab/type_system
         skipped = {
             "latitude",
