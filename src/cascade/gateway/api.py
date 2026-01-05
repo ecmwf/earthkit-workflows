@@ -14,7 +14,7 @@ import cloudpickle
 from pydantic import BaseModel
 
 from cascade.controller.report import JobId, JobProgress
-from cascade.low.core import DatasetId, JobInstance
+from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
 
 CascadeGatewayAPI = BaseModel
 
@@ -33,13 +33,8 @@ class TroikaSpec:
 
 @dataclass
 class JobSpec:
-    # job benchmark + envvars -- set to None/{} if using custom jobs instead
-    benchmark_name: str | None
+    job_instance: JobInstanceRich
     envvars: dict[str, str]
-    # example values:
-    # benchmark_name="generators"
-    # envvars={"GENERATORS_N": "8", "GENERATORS_K": "10", "GENERATORS_L": "4"}
-    job_instance: JobInstance | None
 
     # infra
     workers_per_host: int

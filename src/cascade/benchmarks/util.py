@@ -29,7 +29,7 @@ from cascade.executor.comms import callback
 from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import DatasetId, JobInstance
+from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 from earthkit.workflows.graph import Graph, deduplicate_nodes
@@ -37,15 +37,16 @@ from earthkit.workflows.graph import Graph, deduplicate_nodes
 logger = logging.getLogger("cascade.benchmarks")
 
 
-def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
+def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich:
     # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
     if benchmark is not None and instance_path is not None:
         raise TypeError("specified both benchmark name and job instance")
     elif instance_path is not None:
         with open(instance_path, "rb") as f:
             d = orjson.loads(f.read())
-            return JobInstance(**d)
+            return JobInstanceRich(**d)
     elif benchmark is not None:
+        instance: JobInstance
         if benchmark.startswith("j1"):
             import cascade.benchmarks.job1 as job1
 
@@ -58,25 +59,26 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstance:
                 msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph)
             )
             graphs["j1.all"] = union("j1.")
-            return cascade.low.into.graph2job(graphs[benchmark])
+            instance = cascade.low.into.graph2job(graphs[benchmark])
         elif benchmark.startswith("generators"):
             import cascade.benchmarks.generators as generators
 
-            return generators.get_job()
+            instance = generators.get_job()
         elif benchmark.startswith("matmul"):
             import cascade.benchmarks.matmul as matmul
 
-            return matmul.get_job()
+            instance = matmul.get_job()
         elif benchmark.startswith("dist"):
             import cascade.benchmarks.dist as dist
 
-            return dist.get_job()
+            instance = dist.get_job()
         elif benchmark.startswith("dask"):
             import cascade.benchmarks.dask as dask
 
-            return dask.get_job(benchmark[len("dask.") :])
+            instance = dask.get_job(benchmark[len("dask.") :])
         else:
             raise NotImplementedError(benchmark)
+        return JobInstanceRich(jobInstance=instance, checkpointSpec=None)
     else:
         raise TypeError("specified neither benchmark name nor job instance")
 
@@ -240,7 +242,10 @@ def main_local(
     port_base: int = 12345,
     log_base: str | None = None,
 ) -> None:
-    jobInstance = get_job(job, instance)
+    jobInstanceRich = get_job(job, instance)
+    if jobInstanceRich.checkpointSpec is not None:
+        raise NotImplementedError
+    jobInstance = jobInstanceRich.jobInstance
     run_locally(
         jobInstance,
         hosts,
@@ -266,7 +271,10 @@ def main_dist(
     """
     launch = perf_counter_ns()
 
-    jobInstance = get_job(job, instance)
+    jobInstanceRich = get_job(job, instance)
+    if jobInstanceRich.checkpointSpec is not None:
+        raise NotImplementedError
+    jobInstance = jobInstanceRich.jobInstance
 
     if idx == 0:
         logging.config.dictConfig(logging_config)

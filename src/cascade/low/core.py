@@ -12,7 +12,7 @@ import re
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Type, cast
+from typing import Any, Callable, Literal, Optional, Type, cast
 
 import cloudpickle
 from pydantic import BaseModel, Field
@@ -195,3 +195,32 @@ class JobExecutionRecord(BaseModel):
     )  # keyed by (task, output)
 
     # TODO extend this with some approximation/default from TaskInstance only
+
+
+CheckpointStorageType = Literal["fs"]
+StorageId = str
+
+
+class CheckpointSpec(BaseModel):
+    """For configuring storage/retrieval of checkpoints, to allow job restarts
+    with some datasets already computed
+    """
+
+    storage_type: CheckpointStorageType
+    storage_params: Any
+    # NOTE you can configure "start from previous checkpoint" and "save to a new
+    # checkpoint" both at the same time!
+    retrieve_id: StorageId | None  # empty if not retrieving
+    store_id: StorageId | None  # empty if not storing. Existing data replaced
+    to_store: list[DatasetId]  # ignored if store_id is None
+
+
+class JobInstanceRich(BaseModel):
+    """Whereas JobInstance is the plain "compute these tasks", this class
+    additionally holds execution-related data of more ephemeral nature,
+    like CheckpointConfig, ProfilingInformation, etc
+    """
+
+    jobInstance: JobInstance
+    checkpointSpec: CheckpointSpec | None
+    # JobExecutionRecord # NOTE we dont have any partiular use for it now, but once we will, it goes here
