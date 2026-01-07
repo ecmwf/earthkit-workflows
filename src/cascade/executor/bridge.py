@@ -16,6 +16,9 @@ from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
 from cascade.executor.msg import (
     Ack,
+    DatasetPersistCommand,
+    DatasetPersistFailure,
+    DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
     DatasetTransmitCommand,
@@ -29,14 +32,15 @@ from cascade.executor.msg import (
     TaskFailure,
     TaskSequence,
 )
-from cascade.low.core import DatasetId, Environment, HostId, Worker, WorkerId
+from cascade.low.core import CheckpointStorageType, DatasetId, Environment, HostId, Worker, WorkerId
 from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
-Event = DatasetPublished | DatasetTransmitPayload
-ToShutdown = TaskFailure | ExecutorFailure | DatasetTransmitFailure | ExecutorExit
-Unsupported = TaskSequence | DatasetPurge | DatasetTransmitCommand | ExecutorShutdown
+Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess
+# TODO consider retries here, esp on the PersistFailure
+ToShutdown = TaskFailure | ExecutorFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
+Unsupported = TaskSequence | DatasetPurge | DatasetTransmitCommand | DatasetPersistCommand | ExecutorShutdown
 
 
 class Bridge:
@@ -156,6 +160,15 @@ class Bridge:
             idx=self.transmit_idx_counter,
         )
         self.transmit_idx_counter += 1
+        self.sender.send("data." + source, m)
+
+    def persist(self, ds: DatasetId, source: HostId, storage_type: CheckpointStorageType, persist_params: str) -> None:
+        m = DatasetPersistCommand(
+            source=source,
+            ds=ds,
+            storage_type=storage_type,
+            persist_params=persist_params,
+        )
         self.sender.send("data." + source, m)
 
     def fetch(self, ds: DatasetId, source: HostId) -> None:

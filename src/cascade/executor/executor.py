@@ -35,6 +35,8 @@ from cascade.executor.data_server import start_data_server
 from cascade.executor.msg import (
     Ack,
     BackboneAddress,
+    DatasetPersistFailure,
+    DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
     DatasetTransmitFailure,
@@ -306,7 +308,7 @@ class Executor:
                             callback(worker_address(worker), m)
                         self.datasets.add(m.ds)
                         self.to_controller(m)
-                    elif isinstance(m, DatasetTransmitFailure):
+                    elif isinstance(m, DatasetTransmitFailure|DatasetPersistSuccess|DatasetPersistFailure):
                         self.to_controller(m)
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)

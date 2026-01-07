@@ -19,6 +19,9 @@ import os
 from logging.config import dictConfig
 from multiprocessing import Process
 from time import sleep
+import tempfile
+import pathlib
+import pickle
 
 from cascade.controller.impl import run
 from cascade.executor.bridge import Bridge
@@ -27,7 +30,7 @@ from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance
+from cascade.low.core import JobInstance, JobInstanceRich, CheckpointSpec, DatasetId
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
 
@@ -61,7 +64,7 @@ def launch_executor(
 
 
 def run_cluster(
-    job: JobInstance,
+    job: JobInstanceRich,
     portBase: int,
     executors: int,
     preschedule: Preschedule | None = None,
@@ -70,12 +73,12 @@ def run_cluster(
     # is a port overlap, it causes *very unpleasant* interference, even when the tests
     # are executed sequentially
     if not preschedule:
-        preschedule = precompute(job)
+        preschedule = precompute(job.jobInstance)
     c = f"tcp://localhost:{portBase}"
     m = f"tcp://localhost:{portBase+1}"
     ps = []
     for i, executor in enumerate(range(executors)):
-        p = Process(target=launch_executor, args=(job, c, portBase + 1 + i * 10, i))
+        p = Process(target=launch_executor, args=(job.jobInstance, c, portBase + 1 + i * 10, i))
         p.start()
         ps.append(p)
     try:
@@ -106,11 +109,11 @@ def test_simple():
         .build()
         .get_or_raise()
     )
-    run_cluster(job, 12000, 1)
+    run_cluster(JobInstanceRich(jobInstance=job, checkpointSpec=None), 12000, 1)
     sleep(1)  # improves stability
 
 
-def get_job() -> JobInstance:
+def get_job() -> JobInstanceRich:
     # 3-component graph:
     # c1: 2 sources, 4 sinks
     # c2: 2 sources, 1 sink
@@ -145,7 +148,7 @@ def get_job() -> JobInstance:
         .build()
         .get_or_raise()
     )
-    return job
+    return JobInstanceRich(jobInstance=job, checkpointSpec=None)
 
 
 def test_para2():
@@ -162,6 +165,31 @@ def test_para4():
     job = get_job()
     run_cluster(job, 12400, 4)
     sleep(1)  # improves stability
+
+def test_para1_persist():
+    if not run_all_tests:
+        return
+    job = get_job()
+    with tempfile.TemporaryDirectory() as td:
+        spec = CheckpointSpec(
+           storage_type="fs",
+           storage_params=td,
+           retrieve_id=None,
+           persist_id="run1",
+           to_persist=[DatasetId(task="c2i1", output="0")],
+        )
+        job.checkpointSpec = spec
+        run_cluster(job, 12600, 1)
+
+        root = pathlib.Path(td)
+        run1 = root / 'run1'
+        dts1 = run1 / 'c2i1.0'
+        assert [str(e) for e in root.iterdir()] == [str(run1)]
+        assert [str(e) for e in run1.iterdir()] == [str(dts1)]
+        content = dts1.read_bytes()
+        content_des = pickle.loads(content)
+        assert isinstance(content_des, int)
+        assert content_des == 3
 
 
 def test_fusing():
@@ -197,5 +225,6 @@ def test_fusing():
         "sink",
     ]
     # TODO we currently dont check that those actually *got fused* -- fix
-    run_cluster(job, 12600, 2, preschedule)
+    jobInstanceRich = JobInstanceRich(jobInstance=job, checkpointSpec=None)
+    run_cluster(jobInstanceRich, 12800, 2, preschedule)
     sleep(1)  # improves stability

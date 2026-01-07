@@ -211,8 +211,8 @@ class CheckpointSpec(BaseModel):
     # NOTE you can configure "start from previous checkpoint" and "save to a new
     # checkpoint" both at the same time!
     retrieve_id: StorageId | None  # empty if not retrieving
-    store_id: StorageId | None  # empty if not storing. Existing data replaced
-    to_store: list[DatasetId]  # ignored if store_id is None
+    persist_id: StorageId | None  # empty if not persisting. Existing data replaced
+    to_persist: list[DatasetId]  # ignored if persist_id is None
 
 
 class JobInstanceRich(BaseModel):

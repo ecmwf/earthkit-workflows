@@ -10,6 +10,7 @@
 
 import logging
 
+import cascade.executor.checkpoints as checkpoints
 from cascade.controller.core import State
 from cascade.executor.bridge import Bridge
 from cascade.executor.msg import TaskSequence
@@ -75,6 +76,12 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
 
     for dataset, host in state.drain_fetching_queue():
         bridge.fetch(dataset, host)
+
+    for dataset, host in state.drain_persist_queue():
+        if context.checkpoint_spec is None:
+            raise TypeError(f"unexpected persist need when checkpoint storage not configured")
+        persist_params = checkpoints.serialize_persist_params(context.checkpoint_spec)
+        bridge.persist(dataset, host, context.checkpoint_spec.storage_type, persist_params)
 
     for ds in state.drain_purging_queue():
         for host in context.purge_dataset(ds):

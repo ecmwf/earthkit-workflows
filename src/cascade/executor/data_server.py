@@ -21,10 +21,14 @@ from time import time_ns
 from typing import cast
 
 import cascade.shm.client as shm_client
+from cascade.executor.checkpoints import persist_dataset
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.msg import (
     Ack,
     BackboneAddress,
+    DatasetPersistCommand,
+    DatasetPersistFailure,
+    DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
     DatasetTransmitCommand,
@@ -59,7 +63,7 @@ class DataServer:
         self.cap = 2
         self.ds_proc_tp: PythonExecutor = ThreadPoolExecutor(max_workers=self.cap)
         self.futs_in_progress: dict[
-            DatasetTransmitCommand | DatasetTransmitPayload, Future
+            DatasetTransmitCommand | DatasetTransmitPayload | DatasetPersistCommand, Future
         ] = {}
         self.awaiting_confirmation: dict[int, tuple[DatasetTransmitCommand, int]] = {}
         self.invalid: set[DatasetId] = (
@@ -149,6 +153,26 @@ class DataServer:
             time_ns()
         )  # not actually consumed but uniform signature with send_payload simplifies typing
 
+    def persist_payload(self, command: DatasetPersistCommand) -> int:
+        buf: None | shm_client.AllocatedBuffer = None
+        try:
+            if command.source != self.host:
+                raise ValueError(f"invalid {command=}")
+            buf = shm_client.get(key=ds2shmid(command.ds))
+            persist_dataset(command, buf)
+            logger.debug(f"dataset for {command} persisted")
+            callback(self.maddress, DatasetPersistSuccess(host=self.host, ds=command.ds))
+        except Exception as e:
+            logger.exception(f"failed to persist dataset for {command}, reporting up")
+            callback(
+                self.maddress,
+                DatasetPersistFailure(host=self.host, detail=f"{repr(command)} -> {repr(e)}"),
+            )
+        finally:
+            if buf is not None:
+                buf.close()
+        return time_ns()
+
     def send_payload(self, command: DatasetTransmitCommand) -> int:
         buf: None | shm_client.AllocatedBuffer = None
         payload: None | DatasetTransmitPayload = None
@@ -218,6 +242,14 @@ class DataServer:
                         self.awaiting_confirmation[m.idx] = (m, -1)
                         fut = self.ds_proc_tp.submit(self.send_payload, m)
                         self.futs_in_progress[m] = fut
+                    elif isinstance(m, DatasetPersistCommand):
+                        if m.ds in self.invalid:
+                            raise ValueError(
+                                f"unexpected persist command {m} as the dataset was already purged"
+                            )
+                        # TODO mark?
+                        fut = self.ds_proc_tp.submit(self.persist_payload, m)
+                        self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetTransmitPayload):
                         if m.header.ds in self.invalid:
                             logger.warning(
@@ -238,9 +270,10 @@ class DataServer:
                         self.acks.add(m.idx)
                     elif isinstance(m, DatasetPurge):
                         # we need to handle potential commands transmitting this dataset, as otherwise they'd fail
+                        # TODO submit this as a future? This actively blocks the whole server
                         to_wait = []
                         for commandProg, fut in self.futs_in_progress.items():
-                            if isinstance(commandProg, DatasetTransmitCommand):
+                            if isinstance(commandProg, DatasetTransmitCommand|DatasetPersistCommand):
                                 val = commandProg.ds
                             elif isinstance(commandProg, DatasetTransmitPayload):
                                 val = commandProg.header.ds

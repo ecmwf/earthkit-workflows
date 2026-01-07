@@ -14,7 +14,7 @@ from cascade.controller.core import State, init_state
 from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
-from cascade.low.core import JobInstance, type_dec
+from cascade.low.core import JobInstance, JobInstanceRich, type_dec
 from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, init_schedule, plan
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def run(
-    job: JobInstance,
+    job: JobInstanceRich,
     bridge: Bridge,
     preschedule: Preschedule,
     report_address: str | None = None,
@@ -34,7 +34,8 @@ def run(
     outputs = set(context.job_instance.ext_outputs)
     logger.debug(f"starting with {env=} and {report_address=}")
     schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
-    state = init_state(outputs, context.edge_o)
+    to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
+    state = init_state(outputs, to_persist, context.edge_o)
 
     label("host", "controller")
     events: list[Event] = []
@@ -44,7 +45,7 @@ def run(
 
     try:
         total_gpus = sum(worker.gpu for worker in env.workers.values())
-        needs_gpus = any(task.definition.needs_gpu for task in job.tasks.values())
+        needs_gpus = any(task.definition.needs_gpu for task in job.jobInstance.tasks.values())
         if needs_gpus and total_gpus == 0:
             raise ValueError("environment contains no gpu yet job demands one")
 

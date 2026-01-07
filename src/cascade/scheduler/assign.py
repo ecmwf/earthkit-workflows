@@ -83,14 +83,14 @@ def build_assignment(
             raise ValueError(f"double assignment to {head} in fusing opportunities!")
         core.fusing_opportunities[head] = tasks
 
-    # trim for only the necessary ones -- that is, having any edge outside of this current assignment
+    # trim for only the necessary ones: 1/ having any edge outside of this assignment 2/ global output 3/ persistable
     all_outputs = {ds for task in assigned for ds in context.task_o[task]}
     assigned_tasks = set(assigned)
     trimmed_outputs = {
         ds
         for ds in all_outputs
         if (context.edge_o[ds] - assigned_tasks)
-        or (ds in context.job_instance.ext_outputs)
+        or context.publication_mandatory(ds)
     }
 
     return Assignment(
