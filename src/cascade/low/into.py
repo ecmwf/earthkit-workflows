@@ -32,9 +32,12 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         payload_tuple = node["payload"]
 
     func_def = (
-        {"entrypoint": payload_tuple[0]}
+        {"entrypoint": payload_tuple[0], "func": None}
         if isinstance(payload_tuple[0], str)
-        else {"func": TaskDefinition.func_enc(cast(Callable, payload_tuple[0]))}
+        else {
+            "func": TaskDefinition.func_enc(cast(Callable, payload_tuple[0])),
+            "entrypoint": "",
+        }
     )
     args = cast(list[Any], payload_tuple[1])
     kwargs = cast(dict[str, Any], payload_tuple[2])
@@ -78,7 +81,6 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     definition = TaskDefinition(
         **func_def,
         environment=cast(list[str], metadata.get("environment", [])),
-        entrypoint="",
         input_schema=input_schema,
         output_schema=[(e, "Any") for e in outputs],
         needs_gpu=cast(bool, metadata.get("needs_gpu", False)),
