@@ -29,13 +29,15 @@ from .graph import Graph
 from .graph import Node as BaseNode
 from .graph import Output
 
+PayloadFunc = Callable | str
+
 
 class Payload:
     """Class for detailing function, args and kwargs to be computing in a graph node"""
 
     def __init__(
         self,
-        func: Callable,
+        func: PayloadFunc,
         args: Iterable | None = None,
         kwargs: dict | None = None,
         metadata: dict[str, Any] | None = None,
@@ -68,6 +70,8 @@ class Payload:
         str, name of function, or if a partial function, the function name and partial
         arguments
         """
+        if isinstance(self.func, str):
+            return self.func
         if hasattr(self.func, "__name__"):
             return self.func.__name__
         return ""
@@ -122,7 +126,7 @@ def capture_payload_metadata(func: Callable[P, R]) -> Callable[P, R]:
 class Node(BaseNode):
     def __init__(
         self,
-        payload: Callable | Payload,
+        payload: PayloadFunc | Payload,
         inputs: Input | Sequence[Input] = [],
         num_outputs: int = 1,
         name: str | None = None,
@@ -393,7 +397,7 @@ class Action:
 
     def map(
         self,
-        payload: Callable | Payload | np.ndarray[Any, Any],
+        payload: PayloadFunc | Payload | np.ndarray[Any, Any],
         yields: Coord | None = None,
     ) -> "Action":
         """Apply specified payload on all nodes. If argument is an array of payloads,
@@ -417,7 +421,7 @@ class Action:
         array of nodes
         """
         # NOTE this method is really not mypy friendly, just ignore everything
-        if not isinstance(payload, Callable | Payload):  # type: ignore
+        if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
             payload = np.asarray(payload)
             assert payload.shape == self.nodes.shape, (
                 f"For unique payloads for each node, payload shape {payload.shape}"
@@ -430,7 +434,7 @@ class Action:
         it = np.nditer(self.nodes, flags=["multi_index", "refs_ok"])
         node_payload = payload
         for node in it:
-            if not isinstance(payload, Callable | Payload):  # type: ignore
+            if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
                 node_payload = payload[it.multi_index]  # type: ignore
             new_nodes[it.multi_index] = Node(
                 node_payload,  # type: ignore
@@ -449,7 +453,7 @@ class Action:
 
     def reduce(
         self,
-        payload: Callable | Payload,
+        payload: PayloadFunc | Payload,
         yields: Coord | None = None,
         dim: str = "",
         batch_size: int = 0,
@@ -491,7 +495,7 @@ class Action:
         if batch_size > 1 and batch_size < batched.nodes.sizes[dim]:
             if not getattr(payload.func, "batchable", False):
                 raise ValueError(
-                    f"Function {payload.func.__name__} is not batchable, but batch_size {batch_size} is specified"
+                    f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified"
                 )
 
             while batch_size < batched.nodes.sizes[dim]:
@@ -839,7 +843,7 @@ class RegisteredAction:
 
 
 def _batch_transform(
-    action: Action, selection: dict, payload: Callable | Payload
+    action: Action, selection: dict, payload: PayloadFunc | Payload
 ) -> Action:
     selected = action.select(selection, drop=True)
     dim = list(selection.keys())[0]
@@ -886,7 +890,7 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads_list: np.ndarray[Any, Any],  # values are Callables
+    payloads_list: np.ndarray[Any, Any],  # values are PayloadFunc
     yields: Coord | None = None,
     dims: list | None = None,
     coords: dict | None = None,
