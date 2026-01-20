@@ -10,7 +10,6 @@
 Primarily manifesting in the JobExecutionContext class -- a proto-scheduler of sorts
 """
 
-
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
