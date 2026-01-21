@@ -11,7 +11,7 @@ import os
 import socket
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Protocol, Type, runtime_checkable
+from typing import Protocol, Type, cast, runtime_checkable
 
 from typing_extensions import Self
 
@@ -28,7 +28,7 @@ def ser_str(s: str) -> bytes:
 
 def deser_str(b: memoryview) -> tuple[str, memoryview]:
     l = int.from_bytes(b[:4], "big")
-    return str(b[4 : 4 + l], "ascii"), b[4 + l :]
+    return str(cast(bytes, b[4 : 4 + l]), "ascii"), b[4 + l :]
 
 
 @runtime_checkable
@@ -244,8 +244,8 @@ def ser(comm: Comm) -> bytes:
 
 
 def deser(data: bytes) -> Comm:
-    data = memoryview(data)
-    return b2c[data[:1]].deser(data[1:])
+    mv_data = memoryview(data)
+    return b2c[cast(bytes, mv_data[:1])].deser(mv_data[1:])
 
 
 client_socket_envvar = "CASCADE_SHM_SOCKET"

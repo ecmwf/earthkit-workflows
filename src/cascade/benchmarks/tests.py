@@ -32,7 +32,7 @@ from cascade.executor.runner.memory import Memory, ds2shmid
 from cascade.executor.runner.packages import PackagesEnv
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.builders import TaskBuilder
-from cascade.low.core import DatasetId
+from cascade.low.core import DatasetId, WorkerId
 from cascade.shm.server import entrypoint as shm_server
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
         raise ValueError(f"expected 1 task, gotten {len(tasks)}")
     taskId = tasks[0]
     taskInstance = executionContext.tasks[taskId]
-    with Memory(callback, "testWorker") as memory, PackagesEnv() as pckg:
+    with Memory(callback, WorkerId(host="testHost", worker="testWorker")) as memory, PackagesEnv() as pckg:
         # for key, value in taskSequence.extra_env.items():
         #    os.environ[key] = value
 
@@ -142,7 +142,7 @@ def run_test(
         while perf_counter_ns() < end:
             mess = listener.recv_messages()
             if mess == [
-                DatasetPublished(origin="testWorker", ds=output, transmit_idx=None)
+                DatasetPublished(origin=WorkerId(host="testHost", worker="testWorker"), ds=output, transmit_idx=None)
             ]:
                 break
             elif not mess:

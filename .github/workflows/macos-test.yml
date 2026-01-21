@@ -1,20 +1,25 @@
-name: macos-test
+name: CI # TODO rename the file in a standalone PR
 
 on:
   # Trigger the workflow manually
   workflow_dispatch: ~
 
-  # Call from other workflows
-  workflow_call: ~
+  push:
+    branches:
+      - 'main'
+      - 'develop'
+
+  pull_request: ~
 
 jobs:
-  macos-pytest:
+  ci:
     strategy:
       fail-fast: true
       matrix:
-        arch_type: [ARM64] # [ARM64, X64]
-        python_version: ["3.11"] # ["3.10", "3.11", "3.12", "3.13"]
-    runs-on: [self-hosted, macOS, "${{ matrix.arch_type }}"]
+        arch_type: ["macos-ARM64", "linux-x86"]
+        python_version: ["3.10", "3.11", "3.12", "3.13"]
+    runs-on: "${{ fromJSON('{\"linux-x86\": [\"self-hosted\", \"Linux\", \"platform-builder-Rocky-8.6\"], \"macos-ARM64\": [\"self-hosted\", \"macOS\", \"ARM64\"]}')[matrix.arch_type] }}"
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,7 +28,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: 0.7.19
+      - uses: extractions/setup-just@v3
       - run: |
-          uv venv venv && source venv/bin/activate
-          uv pip install '.[tests]'
-          pytest
+          uv sync --python "${{ matrix.python_version }}"
+          just fmt
+          just val

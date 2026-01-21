@@ -12,11 +12,12 @@ here we just match the right method of `gateway.router` based on what message we
 
 import base64
 import logging
+from typing import cast
 
 import zmq
 
 import cascade.gateway.api as api
-from cascade.controller.report import deserialize
+from cascade.controller.report import JobProgress, deserialize
 from cascade.executor.comms import get_context
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
@@ -40,18 +41,18 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
         try:
             progresses, datasets, queue_length = jobs.progress_of(m.job_ids)
             rv = api.JobProgressResponse(
-                progresses=progresses,
+                progresses=cast(dict[str, JobProgress|None], progresses),
                 datasets=datasets,
                 error=None,
                 queue_length=queue_length,
             )
         except Exception as e:
             logger.exception(f"failed to get progress of: {m}")
-            rv = api.JobProgressResponse(progresses={}, datasets={}, error=repr(e))
+            rv = api.JobProgressResponse(progresses={}, datasets={}, error=repr(e), queue_length=-1)
     elif isinstance(m, api.ResultRetrievalRequest):
         try:
             result = jobs.get_result(m.job_id, m.dataset_id)
-            encoded = base64.b64encode(result)
+            encoded = base64.b64encode(result).decode('ascii')
             rv = api.ResultRetrievalResponse(result=encoded, error=None)
         except Exception as e:
             logger.exception(f"failed to get result: {m}")

@@ -10,7 +10,7 @@ from earthkit.workflows import Cascade
 
 
 def get_graph(lead_time, ensemble_members, CKPT=None, date="2024-12-02T00:00"):
-    import anemoicascade as ac
+    import anemoicascade as ac  # ty: ignore[unresolved-import]
 
     CKPT = (
         CKPT

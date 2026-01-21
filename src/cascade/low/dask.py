@@ -40,7 +40,7 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
             edge = Task2TaskEdge(
                 source=DatasetId(task=daskKeyRepr(v.key), output=Node.DEFAULT_OUTPUT),
                 sink_task=key,
-                sink_input_ps=str(i),
+                sink_input_ps=i,
                 sink_input_kw=None,
             )
             edges.append(edge)

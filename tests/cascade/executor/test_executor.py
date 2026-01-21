@@ -135,7 +135,7 @@ def test_executor():
         callback(
             m1,
             TaskSequence(
-                worker=w0, tasks=["source", "sink"], publish={sink_o}, extra_env={}
+                worker=w0, tasks=["source", "sink"], publish={sink_o}, extra_env=[]
             ),
         )
         # NOTE we need to expect source_o dataset too, because of no finegraining for host-wide and worker-only
@@ -191,7 +191,7 @@ def test_executor():
                 logger.debug(f"about to remove received message {m}")
                 expected.remove(m)
         callback(
-            m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}, extra_env={})
+            m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}, extra_env=[])
         )
         expected = [
             DatasetPublished(w0, ds=sink_o, transmit_idx=None),

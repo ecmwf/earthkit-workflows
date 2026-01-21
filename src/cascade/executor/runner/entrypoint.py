@@ -101,7 +101,7 @@ def execute_sequence(
 ) -> None:
     taskId: TaskId | None = None
     try:
-        for key, value in taskSequence.extra_env.items():
+        for key, value in taskSequence.extra_env:
             os.environ[key] = value
         executionContext = runnerContext.project(taskSequence)
         for taskId in taskSequence.tasks:
@@ -109,7 +109,7 @@ def execute_sequence(
             run(taskId, executionContext, memory)
         if Config.posttask_flush:
             memory.flush()
-        for key in taskSequence.extra_env.keys():
+        for key, _ in taskSequence.extra_env:
             # NOTE we should in principle restore the previous value, but we dont expect collisions
             del os.environ[key]
     except Exception as e:

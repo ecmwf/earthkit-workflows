@@ -125,7 +125,7 @@ class Memory(AbstractContextManager):
             "torch" in sys.modules
         ):  # if no task on this worker imported torch, no need to flush
             try:
-                import torch
+                import torch  # ty: ignore[unresolved-import]
 
                 if torch.cuda.is_available():
                     free, total = torch.cuda.mem_get_info()

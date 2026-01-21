@@ -15,10 +15,10 @@ large data object.
 
 import logging
 import logging.config
-from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED
+from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from concurrent.futures import Executor as PythonExecutor
-from concurrent.futures import Future, ThreadPoolExecutor, wait
 from time import time_ns
+from typing import cast
 
 import cascade.shm.client as shm_client
 from cascade.executor.comms import Listener, callback, send_data
@@ -171,7 +171,7 @@ class DataServer:
                 ds=command.ds,
                 deser_fun=buf.deser_fun,
             )
-            payload = DatasetTransmitPayload(header, value=buf.view())
+            payload = DatasetTransmitPayload(header, value=cast(bytes, buf.view()))
             syn = Syn(command.idx, self.dlistener.address)
             send_data(command.daddress, payload, syn)
             logger.debug(f"payload for {command} sent")

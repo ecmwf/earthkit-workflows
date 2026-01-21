@@ -170,7 +170,7 @@ def pydantic_recursive_collect(
 
     # NOTE a bit ugly, instead of attr it would be better to accept a signature/protocol type
 
-    results: list[str] = []
+    results: list[tuple[str, Any]] = []
     if hasattr(base, attr):
         results.extend((prefix, e) for e in getattr(base, attr)())
     generator: Iterable[tuple[Any, Any]]
