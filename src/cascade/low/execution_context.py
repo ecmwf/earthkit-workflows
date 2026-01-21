@@ -17,10 +17,12 @@ from enum import Enum
 from typing import Iterator
 
 from cascade.low.core import (
+    CheckpointSpec,
     DatasetId,
     Environment,
     HostId,
     JobInstance,
+    JobInstanceRich,
     TaskId,
     WorkerId,
 )
@@ -52,6 +54,7 @@ class JobExecutionContext:
     edge_i: dict[TaskId, set[DatasetId]]
     task_o: dict[TaskId, set[DatasetId]]
     environment: Environment
+    checkpoint_spec: CheckpointSpec|None
 
     # dynamic
     worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]]
@@ -79,6 +82,12 @@ class JobExecutionContext:
         definition = self.job_instance.tasks[dataset.task].definition
         last = definition.output_schema[-1][0]
         return last == dataset.output
+
+    def publication_mandatory(self, ds: DatasetId) -> bool:
+        # TODO this would better be handled by scheduler state!
+        to_output = ds in self.job_instance.ext_outputs 
+        to_persist = False if self.checkpoint_spec is None else (ds in self.checkpoint_spec.to_persist)
+        return to_output or to_persist
 
     def purge_dataset(self, ds: DatasetId) -> Iterator[HostId]:
         """Drop dataset from all tracking structures, yields hosts that should be sent purge command"""
@@ -133,17 +142,19 @@ class JobExecutionContext:
 
 def init_context(
     environment: Environment,
-    job_instance: JobInstance,
+    job: JobInstanceRich,
     edge_o: dict[DatasetId, set[TaskId]],
     edge_i: dict[TaskId, set[DatasetId]],
 ) -> JobExecutionContext:
     host2workers: dict[HostId, list[WorkerId]] = defaultdict(list)
     for worker in environment.workers:
         host2workers[worker.host].append(worker)
-    task_o = {task: job_instance.outputs_of(task) for task in job_instance.tasks.keys()}
-    total = len(job_instance.tasks.keys())
+    task_o = {task: job.jobInstance.outputs_of(task) for task in job.jobInstance.tasks.keys()}
+    total = len(job.jobInstance.tasks.keys())
+
     return JobExecutionContext(
-        job_instance=job_instance,
+        job_instance=job.jobInstance,
+        checkpoint_spec=job.checkpointSpec,
         edge_o=edge_o,
         edge_i=edge_i,
         task_o=task_o,

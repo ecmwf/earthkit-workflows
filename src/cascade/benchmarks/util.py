@@ -118,7 +118,7 @@ def get_gpu_count(host_idx: int, worker_count: int) -> int:
 
 
 def launch_executor(
-    job_instance: JobInstance,
+    job: JobInstanceRich,
     controller_address: BackboneAddress,
     workers_per_host: int,
     portBase: int,
@@ -138,7 +138,7 @@ def launch_executor(
         logger.info(f"will set {gpu_count} gpus on host {i}")
         os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
         executor = Executor(
-            job_instance,
+            job.jobInstance,
             controller_address,
             workers_per_host,
             f"h{i}",
@@ -156,7 +156,7 @@ def launch_executor(
 
 
 def run_locally(
-    job: JobInstance,
+    job: JobInstanceRich,
     hosts: int,
     workers: int,
     portBase: int = 12345,
@@ -197,7 +197,7 @@ def run_locally(
             ps.append(p)
 
         # compute preschedule
-        preschedule = precompute(job)
+        preschedule = precompute(job.jobInstance)
 
         # check processes started healthy
         for i, p in enumerate(ps):
@@ -243,11 +243,8 @@ def main_local(
     log_base: str | None = None,
 ) -> None:
     jobInstanceRich = get_job(job, instance)
-    if jobInstanceRich.checkpointSpec is not None:
-        raise NotImplementedError
-    jobInstance = jobInstanceRich.jobInstance
     run_locally(
-        jobInstance,
+        jobInstanceRich,
         hosts,
         workers_per_host,
         report_address=report_address,
@@ -272,19 +269,16 @@ def main_dist(
     launch = perf_counter_ns()
 
     jobInstanceRich = get_job(job, instance)
-    if jobInstanceRich.checkpointSpec is not None:
-        raise NotImplementedError
-    jobInstance = jobInstanceRich.jobInstance
 
     if idx == 0:
         logging.config.dictConfig(logging_config)
         tp = ThreadPoolExecutor(max_workers=1)
-        preschedule_fut = tp.submit(precompute, jobInstance)
+        preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
         b = Bridge(controller_url, hosts)
         preschedule = preschedule_fut.result()
         tp.shutdown()
         start = perf_counter_ns()
-        run(jobInstance, b, preschedule, report_address=report_address)
+        run(jobInstanceRich, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
         print(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
@@ -292,7 +286,7 @@ def main_dist(
     else:
         gpu_count = get_gpu_count(0, workers_per_host)
         launch_executor(
-            jobInstance,
+            jobInstanceRich,
             controller_url,
             workers_per_host,
             12345,

@@ -17,7 +17,7 @@ from typing import Iterable
 from cascade.controller.core import State
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
-from cascade.executor.msg import DatasetPublished, DatasetTransmitPayload
+from cascade.executor.msg import DatasetPersistSuccess, DatasetPublished, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext
 from cascade.low.func import assert_never
@@ -89,6 +89,7 @@ def notify(
             context.host2ds[host][event.ds] = DatasetStatus.available
             context.ds2host[event.ds][host] = DatasetStatus.available
             state.consider_fetch(event.ds, host)
+            state.consider_persist(event.ds, host)
             consider_computable(schedule, state, context, event.ds, host)
             if event.transmit_idx is not None:
                 mark(
@@ -121,5 +122,7 @@ def notify(
         elif isinstance(event, DatasetTransmitPayload):
             state.receive_payload(event)
             reporter.send_result(event.header.ds, event.value)
+        elif isinstance(event, DatasetPersistSuccess):
+            state.acknowledge_persist(event)
         else:
             assert_never(event)

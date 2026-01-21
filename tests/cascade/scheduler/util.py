@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import (
+        JobInstanceRich,
     DatasetId,
     Environment,
     JobExecutionRecord,
@@ -119,17 +120,23 @@ def add_sink(
         cpuseconds=runtime, memory_mb=runmem
     )
 
+def enrich_instance(job: JobInstance) -> JobInstanceRich:
+    return JobInstanceRich(
+        jobInstance=job,
+        checkpointSpec=None,
+    )
 
-def get_job0() -> tuple[JobInstance, JobExecutionRecord]:
+
+def get_job0() -> tuple[JobInstanceRich, JobExecutionRecord]:
     """One source, one pproc, one sink"""
     builder = BuilderGroup()
     add_large_source(builder, 10, 6, 4)
     add_postproc(builder, 0, 1, 1, 1, 1)
     add_sink(builder, 1, 1, 10, 10, 1)
-    return builder.job.build().get_or_raise(), builder.record
+    return enrich_instance(builder.job.build().get_or_raise()), builder.record
 
 
-def get_job1() -> tuple[JobInstance, JobExecutionRecord]:
+def get_job1() -> tuple[JobInstanceRich, JobExecutionRecord]:
     """One large source branching out into two sets of sinks"""
     builder = BuilderGroup()
     # data source: 10 minutes consuming 6G mem and producing 4G output
@@ -149,7 +156,7 @@ def get_job1() -> tuple[JobInstance, JobExecutionRecord]:
     # sink for this branch, no big overhead/runtime
     # 16G output == prev layer has 8 nodes with 2G output each
     add_sink(builder, 4, 1, 1, 1, 16)
-    return builder.job.build().get_or_raise(), builder.record
+    return enrich_instance(builder.job.build().get_or_raise()), builder.record
 
 
 ## *** environment builders ***
