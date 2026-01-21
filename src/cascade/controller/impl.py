@@ -14,10 +14,12 @@ from cascade.controller.core import State, init_state
 from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
+from cascade.executor.checkpoints import list_persisted_datasets
 from cascade.low.core import JobInstance, JobInstanceRich, type_dec
 from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, init_schedule, plan
+from cascade.scheduler.checkpoints import trim_with_persisted
 from cascade.scheduler.core import Preschedule
 
 logger = logging.getLogger(__name__)
@@ -30,12 +32,17 @@ def run(
     report_address: str | None = None,
 ) -> State:
     env = bridge.get_environment()
+    persisted = list_persisted_datasets(job.checkpointSpec) if job.checkpointSpec is not None else []
+    jobInstance, preschedule, persisted_valid = trim_with_persisted(job, preschedule, set(persisted))
+    job.jobInstance = jobInstance
     context = init_context(env, job, preschedule.edge_o, preschedule.edge_i)
     outputs = set(context.job_instance.ext_outputs)
     logger.debug(f"starting with {env=} and {report_address=}")
     schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
     to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
     state = init_state(outputs, to_persist, context.edge_o)
+
+    # TODO now fake-finish every dataset in persisted_valid
 
     label("host", "controller")
     events: list[Event] = []

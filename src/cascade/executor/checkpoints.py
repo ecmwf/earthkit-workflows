@@ -11,7 +11,7 @@
 import pathlib
 
 from cascade.executor.msg import DatasetPersistCommand
-from cascade.low.core import CheckpointSpec
+from cascade.low.core import CheckpointSpec, DatasetId
 from cascade.low.func import assert_never
 from cascade.shm.client import AllocatedBuffer
 
@@ -21,7 +21,7 @@ def persist_dataset(command: DatasetPersistCommand, buf: AllocatedBuffer) -> Non
         case "fs":
             root = pathlib.Path(command.persist_params)
             root.mkdir(parents=True, exist_ok=True)
-            file = root / repr(command.ds)
+            file = root / command.ds.ser()
             # TODO what about overwrites / concurrent writes? Append uuid?
             file.write_bytes(buf.view())
         case s:
@@ -40,3 +40,11 @@ def serialize_persist_params(spec: CheckpointSpec) -> str:
         case s:
             assert_never(s)
 
+def list_persisted_datasets(spec: CheckpointSpec) -> list[DatasetId]:
+    match spec.storage_type:
+        case "fs":
+            root = pathlib.Path(spec.storage_params)
+            files = (x for x in root.iterdir() if x.is_file())
+            return [DatasetId.des(file.parts[-1]) for file in files]
+        case s:
+            assert_never(s)
