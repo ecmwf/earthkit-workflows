@@ -31,7 +31,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     elif isinstance(node["payload"], tuple):
         payload_tuple = node["payload"]
 
-    func_def = (
+    func_def: dict[str, Any] = (
         {"entrypoint": payload_tuple[0], "func": None}
         if isinstance(payload_tuple[0], str)
         else {
