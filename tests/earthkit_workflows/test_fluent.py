@@ -12,7 +12,11 @@ import dill
 import numpy as np
 import pytest
 
-from earthkit.workflows.fluent import Action, Payload, custom_hash, from_source
+from earthkit.workflows.nodetree import (
+    nodetree_array,
+    nodetree_arrays,
+)
+from earthkit.workflows.fluent import Payload, Action, custom_hash, from_source
 from earthkit.workflows.graph import deserialise, serialise
 
 from .helpers import mock_action
@@ -54,7 +58,9 @@ def test_payload():
 )
 def test_source(payloads, dims, coords, shape):
     action = from_source(payloads, dims=dims, coords=coords)
-    assert action.nodes.shape == shape
+    narrays = list(nodetree_arrays(action.nodes))
+    assert len(narrays) == 1
+    assert narrays[0][1].shape == shape
 
 
 @pytest.mark.parametrize(
@@ -111,14 +117,15 @@ def test_broadcast():
         input_action.broadcast(mock_action((3, 3)))
 
     output_action = input_action.broadcast(mock_action((2, 3, 3)))
-    assert output_action.nodes.shape == (2, 3, 3)
-    assert len(output_action.nodes.data.item(0).inputs) == 1
-    it = np.nditer(output_action.nodes, flags=["multi_index", "refs_ok"])
+    out_array = nodetree_array(output_action.nodes)
+    assert out_array.shape == (2, 3, 3)
+    assert len(out_array.data.item(0).inputs) == 1
+    it = np.nditer(out_array, flags=["multi_index", "refs_ok"])
     for _ in it:
         print(it.multi_index)
-        assert output_action.nodes[it.multi_index].item(0).inputs[
+        assert out_array[it.multi_index].item(0).inputs[
             "input0"
-        ].parent == input_action.nodes[it.multi_index[:2]].item(0)
+        ].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
 
 
 def test_flatten_expand():
@@ -128,22 +135,25 @@ def test_flatten_expand():
         input_action.flatten(dim="dim_2")
 
     action1 = input_action.flatten(dim="dim_1")
-    assert action1.nodes.shape == (2,)
-    assert len(action1.nodes.data.item(0).inputs) == 3
+    action1_array = nodetree_array(action1.nodes)
+    assert action1_array.shape == (2,)
+    assert len(action1_array.data.item(0).inputs) == 3
 
     action2 = action1.flatten(dim="dim_0")
-    assert len(action2.nodes.data.item(0).inputs) == 2
+    assert len(nodetree_array(action2.nodes).data.item(0).inputs) == 2
 
     with pytest.raises(Exception):
         action2.flatten()
 
     action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
-    assert action3.nodes.shape == (2,)
-    assert len(action3.nodes.data.item(0).inputs) == 1
+    action3_array = nodetree_array(action3.nodes)
+    assert action3_array.shape == (2,)
+    assert len(action3_array.data.item(0).inputs) == 1
 
     action4 = action3.expand("dim_1", internal_dim=0, dim_size=3, axis=1)
-    assert action4.nodes.shape == (2, 3)
-    assert len(action4.nodes.data.item(0).inputs) == 1
+    action4_array = nodetree_array(action4.nodes)
+    assert action4_array.shape == (2, 3)
+    assert len(action4_array.data.item(0).inputs) == 1
 
 
 @pytest.mark.parametrize(
@@ -204,8 +214,8 @@ def test_multi_action(
     input_action = mock_action(input_nodes_shape)
 
     output_action = getattr(input_action, func)(*inputs)
-    assert output_action.nodes.shape == output_nodes_shape
-    assert len(output_action.nodes.data.item(0).inputs) == node_inputs
+    assert nodetree_array(output_action.nodes).shape == output_nodes_shape
+    assert len(nodetree_array(output_action.nodes).data.item(0).inputs) == node_inputs
 
 
 def test_join_fail():
@@ -275,16 +285,18 @@ def test_generators():
     action = from_source(
         functools.partial(test_func, 10), ("val", list(range(0, 100, 10)))
     )
-    assert action.nodes.shape == (10,)
-    assert action.nodes.dims == ("val",)
+    narray = nodetree_array(action.nodes)
+    assert narray.shape == (10,)
+    assert narray.dims == ("val",)
     cas = action.map(
         functools.partial(test_func, length=5), ("map", list(range(5)))
     ).reduce(functools.partial(test_func, length=2), ("reduce", ["a", "b"]))
-    assert cas.nodes.dims == ("map", "reduce")
+    new_narray = nodetree_array(cas.nodes)
+    assert new_narray.dims == ("map", "reduce")
     expected_coords = {"map": list(range(5)), "reduce": ["a", "b"]}
     for dim, vals in expected_coords.items():
-        assert np.all(cas.nodes.coords[dim] == vals)
-    assert cas.nodes.shape == (5, 2)
+        assert np.all(new_narray.coords[dim] == vals)
+    assert new_narray.shape == (5, 2)
     graph = cas.graph()
     assert len(graph.sinks) == 5
     serialise(graph)

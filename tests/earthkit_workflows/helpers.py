@@ -9,6 +9,7 @@
 import numpy as np
 import xarray as xr
 
+from earthkit.workflows.nodetree import nodetree_from_dict
 from earthkit.workflows.fluent import Action, Node, Payload
 
 
@@ -25,4 +26,4 @@ def mock_action(shape: tuple) -> Action:
     nodes_xr = xr.DataArray(
         nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
     )
-    return Action(nodes_xr)
+    return Action(nodetree_from_dict({"/": nodes_xr}))

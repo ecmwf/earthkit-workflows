@@ -11,6 +11,7 @@ import numpy as np
 
 from earthkit.workflows import mark as ekw_mark
 from earthkit.workflows.fluent import Payload
+from earthkit.workflows.nodetree import nodetree_array
 
 from .helpers import mock_action
 
@@ -26,7 +27,7 @@ def test_payload_metadata():
     assert all(
         map(
             lambda x: x.payload.metadata["test_metadata"],
-            np.atleast_1d(mapped_action.nodes.values).flatten(),
+            np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
         )
     )
 
@@ -40,7 +41,7 @@ def test_payload_metadata_with_function():
     assert all(
         map(
             lambda x: x.payload.metadata["test_metadata"],
-            np.atleast_1d(mult_action.nodes.values).flatten(),
+            np.atleast_1d(nodetree_array(mult_action.nodes).values).flatten(),
         )
     )
 
@@ -58,7 +59,7 @@ def test_payload_metadata_from_marks_generic():
     assert all(
         map(
             lambda x: x.payload.metadata["test_metadata"],
-            np.atleast_1d(mapped_action.nodes.values).flatten(),
+            np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
         )
     )
 
@@ -75,6 +76,6 @@ def test_payload_metadata_from_marks_explicit():
     assert all(
         map(
             lambda x: x.payload.metadata["needs_gpu"],
-            np.atleast_1d(mapped_action.nodes.values).flatten(),
+            np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
         )
     )
