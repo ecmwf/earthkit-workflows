@@ -56,6 +56,8 @@ def build_assignment(
                 if at_host.get(dataset, DatasetStatus.missing) in eligible_load:
                     prep.append((dataset, worker.host))
                 else:
+                    # TODO instead of any, pick the best host -- business, distance, etc
+                    # Note also that one of the hosts may be the VirtualCheckpointHost
                     if any(
                         candidate := host
                         for host, status in context.ds2host[dataset].items()

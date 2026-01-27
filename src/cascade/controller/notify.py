@@ -12,14 +12,14 @@
 # Thus the caller always *must* use the return value and cease using the input.
 
 import logging
-from typing import Iterable
+from typing import Iterable, cast
 
 from cascade.controller.core import State
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
-from cascade.executor.msg import DatasetPersistSuccess, DatasetPublished, DatasetTransmitPayload
+from cascade.executor.msg import DatasetPersistSuccess, DatasetPublished, DatasetRetrieveSuccess, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, WorkerId
-from cascade.low.execution_context import DatasetStatus, JobExecutionContext
+from cascade.low.execution_context import DatasetStatus, JobExecutionContext, VirtualCheckpointHost
 from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.api import gang_check_ready
@@ -103,26 +103,34 @@ def notify(
             elif context.is_last_output_of(event.ds):
                 worker = event.origin
                 task = event.ds.task
-                if not isinstance(worker, WorkerId):
+                isWorker = isinstance(worker, WorkerId)
+                isVirtual = worker == VirtualCheckpointHost
+                if not isWorker and not isVirtual:
                     raise ValueError(
                         f"malformed event, expected origin to be WorkerId: {event}"
                     )
                 logger.debug(f"last output of {task}, assuming completion")
-                mark(
-                    {
-                        "task": task,
-                        "action": TaskLifecycle.completed,
-                        "worker": repr(worker),
-                        "host": "controller",
-                    }
-                )
                 state.task_done(task, context.edge_i.get(event.ds.task, set()))
-                context.task_done(task, worker)
+                if isWorker: 
+                    mark(
+                        {
+                            "task": task,
+                            "action": TaskLifecycle.completed,
+                            "worker": repr(worker),
+                            "host": "controller",
+                        }
+                    )
+                    worker = cast(WorkerId, worker) # ty cant yet derive this to be true
+                    context.task_done_at(task, worker)
+                else:
+                    context.task_done(task)
                 reporter.send_progress(context)
         elif isinstance(event, DatasetTransmitPayload):
             state.receive_payload(event)
             reporter.send_result(event.header.ds, event.value)
         elif isinstance(event, DatasetPersistSuccess):
             state.acknowledge_persist(event)
+        elif isinstance(event, DatasetRetrieveSuccess):
+            pass
         else:
             assert_never(event)

@@ -8,6 +8,7 @@
 
 """Macos-vs-Linux specific code"""
 
+import fcntl
 import multiprocessing as mp
 import os
 import socket
@@ -61,3 +62,21 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.Spaw
         return mp.get_context("spawn")
     else:
         return mp.get_context("fork")
+
+# NOTE not really perftested, more like for fun
+if sys.platform == "darwin":
+    def advise_seqread(fd: int) -> None:
+        # after https://github.com/python/cpython/issues/113092 merged, use that instead
+        F_RDADVISE=44
+        # taken from https://github.com/phracker/MacOSX-SDKs/blob/master/MacOSX10.8.sdk/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/sys/fcntl.h#L235
+        try:
+            fcntl.fcntl(fd, F_RDADVISE, 1)
+        except OSError:
+            pass
+else:
+    def advise_seqread(fd: int) -> None:
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_SEQUENTIAL)
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_WILLNEED)
+        except OSError:
+            pass

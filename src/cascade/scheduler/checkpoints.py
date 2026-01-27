@@ -1,3 +1,16 @@
+# ) (C) Copyright 2025- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+"""Scheduling-related checkpoint utilities, namely:
+    - trim_with_persisted -- given a graph and a set of nodes which are persisted,
+      discard everything that doesnt need to be computed
+"""
+
 import logging
 from collections import defaultdict
 

@@ -9,7 +9,7 @@
 import logging
 
 import cascade.executor.serde as serde
-from cascade.controller.act import act, flush_queues
+from cascade.controller.act import act, flush_queues, virtual_checkpoint_publish
 from cascade.controller.core import State, init_state
 from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
@@ -42,19 +42,21 @@ def run(
     to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
     state = init_state(outputs, to_persist, context.edge_o)
 
-    # TODO now fake-finish every dataset in persisted_valid
-
     label("host", "controller")
     events: list[Event] = []
     for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
         serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
     reporter = Reporter(report_address)
+    notify_wrapper = lambda events: notify(state, schedule, context, events, reporter)
 
     try:
         total_gpus = sum(worker.gpu for worker in env.workers.values())
         needs_gpus = any(task.definition.needs_gpu for task in job.jobInstance.tasks.values())
         if needs_gpus and total_gpus == 0:
             raise ValueError("environment contains no gpu yet job demands one")
+
+        virtual_events = virtual_checkpoint_publish(persisted_valid)
+        timer(notify_wrapper, Microtrace.ctrl_notify)(virtual_events)
 
         while (
             state.has_awaitable()
@@ -77,9 +79,7 @@ def run(
             if state.has_awaitable() or context.has_awaitable():
                 logger.debug(f"about to await bridge with {context.ongoing_total=}")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
-                timer(notify, Microtrace.ctrl_notify)(
-                    state, schedule, context, events, reporter
-                )
+                timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")
     except Exception as ex:
         logger.error("crash in controller, shuting down")

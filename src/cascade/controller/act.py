@@ -9,12 +9,13 @@
 """Implements the invocation of Bridge/Executor methods given a sequence of Actions"""
 
 import logging
+from typing import Iterable, Iterator
 
-import cascade.executor.checkpoints as checkpoints
 from cascade.controller.core import State
 from cascade.executor.bridge import Bridge
-from cascade.executor.msg import TaskSequence
-from cascade.low.execution_context import JobExecutionContext
+from cascade.executor.msg import DatasetPublished, TaskSequence
+from cascade.low.core import DatasetId
+from cascade.low.execution_context import JobExecutionContext, VirtualCheckpointHost
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.core import Assignment
 
@@ -78,10 +79,7 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
         bridge.fetch(dataset, host)
 
     for dataset, host in state.drain_persist_queue():
-        if context.checkpoint_spec is None:
-            raise TypeError(f"unexpected persist need when checkpoint storage not configured")
-        persist_params = checkpoints.serialize_persist_params(context.checkpoint_spec)
-        bridge.persist(dataset, host, context.checkpoint_spec.storage_type, persist_params)
+        bridge.persist(dataset, host)
 
     for ds in state.drain_purging_queue():
         for host in context.purge_dataset(ds):
@@ -89,3 +87,16 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
             bridge.purge(host, ds)
 
     return state
+
+def virtual_checkpoint_publish(datasets: Iterable[DatasetId]) -> Iterator[DatasetPublished]:
+    """Virtual in the sense of not actually sending any message, but instead simulating
+    a response so that controller.notify can bring the contexts into the right state.
+    Invoked once, at the job start, after the checkpoint has been listed"""
+    return (
+        DatasetPublished(
+            origin=VirtualCheckpointHost,
+            ds=dataset,
+            transmit_idx=None,
+        )
+        for dataset in datasets
+    )
