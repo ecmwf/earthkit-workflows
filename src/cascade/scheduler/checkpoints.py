@@ -62,18 +62,18 @@ def _discover_component(component: ComponentCore, parents: dict[TaskId, set[Task
         for d in job.outputs_of(node):
             visitable[d.task].update(preschedule.edge_o[d])
     sinks = [v for v, e in visitable.items() if not e]
-    is_valid = {v: True for v in sinks}
+    is_valid = {v for v in sinks}
     queue = [v for v in sinks if v not in persisted_tasks]
     while queue:
         head = queue.pop(0)
-        are_parents_validable = (head not in persisted_tasks) and (is_valid[head])
+        are_parents_validable = (head not in persisted_tasks) and (head in is_valid)
         for parent in parents[head]:
             visitable[parent].remove(head)
             if are_parents_validable:
-                is_valid[parent] = True
+                is_valid.add(parent)
             if not visitable[parent]:
                 queue.append(parent)
-    return {v for v, b in is_valid.items() if b}
+    return is_valid
 
 def _trim_component(component: ComponentCore, parents: dict[TaskId, set[TaskId]], preserved_tasks: set[TaskId]) -> ComponentCore:
     """Restricts the component only to preserved tasks"""
