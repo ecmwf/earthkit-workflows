@@ -126,10 +126,10 @@ def notify(
                     context.task_done(task)
                 reporter.send_progress(context)
         elif isinstance(event, DatasetTransmitPayload):
-            state.receive_payload(event)
+            state.receive_payload(event.header.ds, event.value, event.header.deser_fun)
             reporter.send_result(event.header.ds, event.value)
         elif isinstance(event, DatasetPersistSuccess):
-            state.acknowledge_persist(event)
+            state.acknowledge_persist(event.ds)
         elif isinstance(event, DatasetRetrieveSuccess):
             pass
         else:

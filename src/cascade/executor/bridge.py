@@ -11,7 +11,7 @@
 import logging
 import time
 
-from cascade.executor.checkpoints import serialize_params
+from cascade.executor.checkpoints import build_persist_command, build_retrieve_command, serialize_params
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
@@ -159,19 +159,8 @@ class Bridge:
 
     def transmit(self, ds: DatasetId, source: HostId, target: HostId) -> None:
         if source == VirtualCheckpointHost:
-            if self.checkpoint_spec is None:
-                raise ValueError(f"unexpected retrieve need when checkpoint storage not configured")
-            id_ = self.checkpoint_spec.retrieve_id
-            if not id_:
-                raise ValueError(f"unexpected retrieve when there is no retrive id")
-            retrieve_params = serialize_params(self.checkpoint_spec, id_)
-            m = DatasetRetrieveCommand(
-                target=target,
-                ds=ds,
-                storage_type=self.checkpoint_spec.storage_type,
-                retrieve_params=retrieve_params,
-            )
-            self.sender.send("data." + target, m)
+            command = build_retrieve_command(self.checkpoint_spec, ds, source)
+            self.sender.send("data." + target, command)
         else:
             m = DatasetTransmitCommand(
                 source=source,
@@ -184,19 +173,8 @@ class Bridge:
             self.sender.send("data." + source, m)
 
     def persist(self, ds: DatasetId, source: HostId) -> None:
-        if self.checkpoint_spec is None:
-            raise ValueError(f"unexpected persist need when checkpoint storage not configured")
-        id_ = self.checkpoint_spec.persist_id
-        if not id_:
-            raise ValueError(f"unexpected persist need when there is no persist id")
-        persist_params = serialize_params(self.checkpoint_spec, id_)
-        m = DatasetPersistCommand(
-            source=source,
-            ds=ds,
-            storage_type=self.checkpoint_spec.storage_type,
-            persist_params=persist_params,
-        )
-        self.sender.send("data." + source, m)
+        command = build_persist_command(self.checkpoint_spec, ds, source)
+        self.sender.send("data." + source, command)
 
     def fetch(self, ds: DatasetId, source: HostId) -> None:
         m = DatasetTransmitCommand(

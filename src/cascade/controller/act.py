@@ -9,10 +9,11 @@
 """Implements the invocation of Bridge/Executor methods given a sequence of Actions"""
 
 import logging
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, cast
 
 from cascade.controller.core import State
 from cascade.executor.bridge import Bridge
+from cascade.executor.checkpoints import build_retrieve_command, possible_repersist, retrieve_dataset
 from cascade.executor.msg import DatasetPublished, TaskSequence
 from cascade.low.core import DatasetId
 from cascade.low.execution_context import JobExecutionContext, VirtualCheckpointHost
@@ -76,15 +77,33 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
     """
 
     for dataset, host in state.drain_fetching_queue():
-        bridge.fetch(dataset, host)
+        if host != VirtualCheckpointHost:
+            bridge.fetch(dataset, host)
+        else:
+            # NOTE we would rather not be here, but we dont generally expect
+            # checkpointed datasets to be outputs. If needbe, send a command
+            # to any worker, or spawn a thread with this
+            logger.warning(f"execute checkpoint retrieve on controller")
+            virtual_command = build_retrieve_command(bridge.checkpoint_spec, dataset, host)
+            buffer = retrieve_dataset(virtual_command)
+            try:
+                # the cast is wrong but ty is bit confused about memoryview anyway
+                state.receive_payload(dataset, cast(bytes, buffer.view()), buffer.deser_fun)
+            finally:
+                buffer.close()
 
     for dataset, host in state.drain_persist_queue():
-        bridge.persist(dataset, host)
+        if host != VirtualCheckpointHost:
+            bridge.persist(dataset, host)
+        else:
+            possible_repersist(dataset, bridge.checkpoint_spec)
+            state.acknowledge_persist(dataset)
 
     for ds in state.drain_purging_queue():
         for host in context.purge_dataset(ds):
-            logger.debug(f"issuing purge of {ds=} to {host=}")
-            bridge.purge(host, ds)
+            if host != VirtualCheckpointHost:
+                logger.debug(f"issuing purge of {ds=} to {host=}")
+                bridge.purge(host, ds)
 
     return state
 

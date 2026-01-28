@@ -9,6 +9,7 @@
 """Handles the checkpoint management: storage, retrieval"""
 
 import io
+import logging
 import os
 import pathlib
 
@@ -16,21 +17,12 @@ from cascade.executor.msg import DatasetPersistCommand, DatasetRetrieveCommand
 from cascade.executor.platform import advise_seqread
 from cascade.executor.runner.memory import ds2shmid
 from cascade.executor.serde import DefaultSerde
-from cascade.low.core import CheckpointSpec, DatasetId
+from cascade.low.core import CheckpointSpec, DatasetId, HostId
+from cascade.low.execution_context import VirtualCheckpointHost
 from cascade.low.func import assert_never
 from cascade.shm.client import AllocatedBuffer, allocate
 
-
-def persist_dataset(command: DatasetPersistCommand, buf: AllocatedBuffer) -> None:
-    match command.storage_type:
-        case "fs":
-            root = pathlib.Path(command.persist_params)
-            root.mkdir(parents=True, exist_ok=True)
-            file = root / command.ds.ser()
-            # TODO what about overwrites / concurrent writes? Append uuid?
-            file.write_bytes(buf.view())
-        case s:
-            assert_never(s)
+logger = logging.getLogger(__name__)
 
 def serialize_params(spec: CheckpointSpec, id_: str) -> str:
     """id_ is either the persist id or retrieve id from the spec"""
@@ -44,6 +36,31 @@ def serialize_params(spec: CheckpointSpec, id_: str) -> str:
         case s:
             assert_never(s)
 
+def build_persist_command(checkpoint_spec: CheckpointSpec|None, ds: DatasetId, hostId: HostId) -> DatasetPersistCommand:
+    if checkpoint_spec is None:
+        raise ValueError(f"unexpected persist need when checkpoint storage not configured")
+    id_ = checkpoint_spec.persist_id
+    if not id_:
+        raise ValueError(f"unexpected persist need when there is no persist id")
+    persist_params = serialize_params(checkpoint_spec, id_)
+    return DatasetPersistCommand(
+        source=hostId,
+        ds=ds,
+        storage_type=checkpoint_spec.storage_type,
+        persist_params=persist_params,
+    )
+
+def persist_dataset(command: DatasetPersistCommand, buf: AllocatedBuffer) -> None:
+    match command.storage_type:
+        case "fs":
+            root = pathlib.Path(command.persist_params)
+            root.mkdir(parents=True, exist_ok=True)
+            file = root / command.ds.ser()
+            # TODO what about overwrites / concurrent writes? Append uuid?
+            file.write_bytes(buf.view())
+        case s:
+            assert_never(s)
+
 def list_persisted_datasets(spec: CheckpointSpec) -> list[DatasetId]:
     match spec.storage_type:
         case "fs":
@@ -52,6 +69,20 @@ def list_persisted_datasets(spec: CheckpointSpec) -> list[DatasetId]:
             return [DatasetId.des(file.parts[-1]) for file in files]
         case s:
             assert_never(s)
+
+def build_retrieve_command(checkpoint_spec: CheckpointSpec|None, ds: DatasetId, hostId: HostId) -> DatasetRetrieveCommand:
+    if checkpoint_spec is None:
+        raise ValueError(f"unexpected retrieve need when checkpoint storage not configured")
+    id_ = checkpoint_spec.retrieve_id
+    if not id_:
+        raise ValueError(f"unexpected retrieve when there is no retrive id")
+    retrieve_params = serialize_params(checkpoint_spec, id_)
+    return DatasetRetrieveCommand(
+        target=hostId,
+        ds=ds,
+        storage_type=checkpoint_spec.storage_type,
+        retrieve_params=retrieve_params,
+    )
 
 def retrieve_dataset(command: DatasetRetrieveCommand) -> AllocatedBuffer:
     match command.storage_type:
@@ -73,3 +104,26 @@ def retrieve_dataset(command: DatasetRetrieveCommand) -> AllocatedBuffer:
             return buf
         case s:
             assert_never(s)
+
+def possible_repersist(dataset: DatasetId, checkpointSpec: CheckpointSpec|None) -> None:
+    # NOTE blocking -> unfortunate for controller, but we dont expect this to be frequent/hot.
+    # If needbe, spawn a thread or something. In that case needs a completion callback
+    if not checkpointSpec:
+        raise ValueError(f"unexpected repersist when checkpoint storage not configured")
+    if not checkpointSpec.retrieve_id:
+        raise ValueError(f"unexpected repersist when no retrieve id")
+    if not checkpointSpec.persist_id:
+        raise ValueError(f"unexpected repersist when no persist id")
+
+    if checkpointSpec.retrieve_id == checkpointSpec.persist_id:
+        # we assume reproducibility---bold!---so we better warn about it
+        logger.warning(f"no-op for persist of {dataset} as was already persisted under the same id {checkpointSpec.retrieve_id}")
+        return
+
+    retrieve_command = build_retrieve_command(checkpointSpec, dataset, VirtualCheckpointHost)
+    persist_command = build_persist_command(checkpointSpec, dataset, VirtualCheckpointHost)
+    buffer = retrieve_dataset(retrieve_command)
+    try:
+        persist_dataset(persist_command, buffer)
+    finally:
+        buffer.close()
