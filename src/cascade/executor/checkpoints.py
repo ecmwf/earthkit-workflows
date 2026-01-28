@@ -64,7 +64,9 @@ def persist_dataset(command: DatasetPersistCommand, buf: AllocatedBuffer) -> Non
 def list_persisted_datasets(spec: CheckpointSpec) -> list[DatasetId]:
     match spec.storage_type:
         case "fs":
-            root = pathlib.Path(spec.storage_params)
+            if not spec.persist_id:
+                raise ValueError("unexpected list persisted when there is no persist id")
+            root = pathlib.Path(spec.storage_params) / spec.persist_id
             files = (x for x in root.iterdir() if x.is_file())
             return [DatasetId.des(file.parts[-1]) for file in files]
         case s:
