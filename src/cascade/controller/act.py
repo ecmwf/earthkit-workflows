@@ -84,6 +84,7 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
             # checkpointed datasets to be outputs. If needbe, send a command
             # to any worker, or spawn a thread with this
             logger.warning(f"execute checkpoint retrieve on controller")
+            # NOTE the host is the virtual one so the message is not really valid, but no big deal
             virtual_command = build_retrieve_command(bridge.checkpoint_spec, dataset, host)
             buffer = retrieve_dataset(virtual_command)
             try:

@@ -159,7 +159,7 @@ class Bridge:
 
     def transmit(self, ds: DatasetId, source: HostId, target: HostId) -> None:
         if source == VirtualCheckpointHost:
-            command = build_retrieve_command(self.checkpoint_spec, ds, source)
+            command = build_retrieve_command(self.checkpoint_spec, ds, target)
             self.sender.send("data." + target, command)
         else:
             m = DatasetTransmitCommand(

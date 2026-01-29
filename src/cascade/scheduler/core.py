@@ -69,7 +69,7 @@ class ComponentSchedule:
     # tasks that are either computable or that are among outputs of currently prepared tasks (as those
     # could become computable without any further planning)
     worker2task_distance: Worker2TaskDistance
-    # eligible values -- a cached value. Used when migrating new workers to the component, inserted whenever a parent of this task gets `preparing`, removed when this task is made computable
+    # eligible values -- a cached value. Used when migrating new workers to the component, inserted whenever a parent of this task gets `preparing`, removed when this task is assigned
     worker2task_values: set[TaskId]
     gang_preparation: GangPreparation
 

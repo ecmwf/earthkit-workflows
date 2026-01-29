@@ -9,13 +9,17 @@
 """Scheduling-related checkpoint utilities, namely:
     - trim_with_persisted -- given a graph and a set of nodes which are persisted,
       discard everything that doesnt need to be computed
+    - virtual_update_schedule -- as we start executing, we virtually publish all
+      checkpointed datasets. That on its own would break some invariants in
+      the schedule, so we do all the corrections in this function
 """
 
 import logging
 from collections import defaultdict
 
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich, TaskId
-from cascade.scheduler.core import ComponentCore, Preschedule
+from cascade.low.execution_context import JobExecutionContext
+from cascade.scheduler.core import ComponentCore, Preschedule, Schedule
 
 logger = logging.getLogger(__name__)
 
@@ -139,3 +143,22 @@ def trim_with_persisted(jobRich: JobInstanceRich, preschedule: Preschedule, pers
         constraints=[constraint for constraint in job.constraints if set(constraint) <= preserved_tasks_all],
     )
     return job_mod, preschedule_mod, persisted_datasets
+
+def virtual_update_schedule(datasets: set[DatasetId], schedule: Schedule, context: JobExecutionContext) -> None:
+    """Include all tasks that are children of these datasets in the worker2task_values
+    of the component, and remove the tasks corresponding to these datasets from there and from computable."""
+
+    # TODO order by component and make this more efficient
+
+    finished_tasks = set(ds.task for ds in datasets)
+    for task in finished_tasks:
+        # TODO unify this with scheduler/assignment/_postproc as a schedule's 'mark_assigned' method
+        component = schedule.components[schedule.ts2component[task]]
+        component.worker2task_values.remove(task)
+        component.computable.pop(task)
+        schedule.computable -= 1
+
+    for ds in datasets:
+        component = schedule.components[schedule.ts2component[ds.task]]
+        for task in context.edge_o[ds]:
+            component.worker2task_values.add(task)

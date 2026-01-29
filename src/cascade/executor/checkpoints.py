@@ -67,6 +67,8 @@ def list_persisted_datasets(spec: CheckpointSpec) -> list[DatasetId]:
             if not spec.persist_id:
                 raise ValueError("unexpected list persisted when there is no persist id")
             root = pathlib.Path(spec.storage_params) / spec.persist_id
+            if not root.exists():
+                return [] # we mkdir only at a first persist, so absence of folder is valid emptiness
             files = (x for x in root.iterdir() if x.is_file())
             return [DatasetId.des(file.parts[-1]) for file in files]
         case s:
@@ -122,6 +124,7 @@ def possible_repersist(dataset: DatasetId, checkpointSpec: CheckpointSpec|None) 
         logger.warning(f"no-op for persist of {dataset} as was already persisted under the same id {checkpointSpec.retrieve_id}")
         return
 
+    # NOTE the host is the virtual one so the message is not really valid, but no big deal
     retrieve_command = build_retrieve_command(checkpointSpec, dataset, VirtualCheckpointHost)
     persist_command = build_persist_command(checkpointSpec, dataset, VirtualCheckpointHost)
     buffer = retrieve_dataset(retrieve_command)

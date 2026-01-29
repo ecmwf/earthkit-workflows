@@ -19,7 +19,7 @@ from cascade.low.core import JobInstance, JobInstanceRich, type_dec
 from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, init_schedule, plan
-from cascade.scheduler.checkpoints import trim_with_persisted
+from cascade.scheduler.checkpoints import trim_with_persisted, virtual_update_schedule
 from cascade.scheduler.core import Preschedule
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ def run(
         if needs_gpus and total_gpus == 0:
             raise ValueError("environment contains no gpu yet job demands one")
 
+        virtual_update_schedule(persisted_valid, schedule, context)
         virtual_events = virtual_checkpoint_publish(persisted_valid)
         timer(notify_wrapper, Microtrace.ctrl_notify)(virtual_events)
 
@@ -77,7 +78,7 @@ def run(
 
             mark({"action": ControllerPhases.wait})
             if state.has_awaitable() or context.has_awaitable():
-                logger.debug(f"about to await bridge with {context.ongoing_total=}")
+                logger.debug(f"about to await bridge with {context.ongoing_total=}, {context.remaining=} and {state.has_awaitable()=}")
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")

@@ -16,7 +16,7 @@ from time import perf_counter_ns
 from typing import Iterable, Iterator
 
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
-from cascade.low.execution_context import DatasetStatus, JobExecutionContext
+from cascade.low.execution_context import DatasetStatus, JobExecutionContext, VirtualCheckpointHost
 from cascade.low.tracing import Microtrace, trace
 from cascade.scheduler.core import (
     Assignment,
@@ -118,8 +118,9 @@ def _postproc_assignment(
         else:
             # shortcut for fused-in tasks
             component.is_computable_tracker[assigned] = set()
-    context.idle_workers.remove(assignment.worker)
     component.weight -= len(assignment.tasks)
+    if assignment.worker.host != VirtualCheckpointHost:
+        context.idle_workers.remove(assignment.worker)
 
 
 # TODO this is not particularly systematic! We cant bind dynamically at the host as we send this

@@ -209,7 +209,7 @@ def run_locally(
 
         # start bridge itself
         logger.debug("starting bridge")
-        b = Bridge(c, hosts)
+        b = Bridge(c, hosts, job.checkpointSpec)
         start = perf_counter_ns()
         result = run(job, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
@@ -274,7 +274,7 @@ def main_dist(
         logging.config.dictConfig(logging_config)
         tp = ThreadPoolExecutor(max_workers=1)
         preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
-        b = Bridge(controller_url, hosts)
+        b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
         preschedule = preschedule_fut.result()
         tp.shutdown()
         start = perf_counter_ns()
