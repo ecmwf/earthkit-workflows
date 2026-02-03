@@ -18,7 +18,7 @@ authors = [
 ]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "earthkit-data",
     "cloudpickle",
@@ -40,7 +40,11 @@ dynamic = ["version"]
 readme = "README.md"
 
 [dependency-groups]
-dev = ["pytest", "pytest-xdist>=3.8", "prek", "ty==0.0.2", "build", "bokeh"]
+dev = ["prek", "ty==0.0.2", "build", "bokeh"]
+test = ["pytest", "pytest-xdist>=3.8", "earthkit-workflows[qubed]"]
+qubed = [
+    "qubed>=0.3.0",
+]
 
 [tool.setuptools]
 include-package-data = true

@@ -26,6 +26,7 @@ import numpy as np
 import xarray as xr
 
 from . import backends
+from ._qubed import expand_as_qube
 from .graph import Graph, Output
 from .graph import Node as BaseNode
 from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict
@@ -425,6 +426,8 @@ class Action:
                 "Length of values in `dim` must match `dim_size` or length of values in `internal_dim`"
             )
         return self.transform(_expand_transform, params, dim, axis=axis, path=path)
+    
+    expand_as_qube = expand_as_qube
 
     def map(
         self,
