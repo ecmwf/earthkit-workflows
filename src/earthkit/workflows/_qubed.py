@@ -102,6 +102,15 @@ def expand_as_qube(action: "Action", qube: "Qube") -> "Action":
     >>> expanded_action = expand_as_qube(action, qube_without_step)
     # Action expanded over param dimension only
     """
+
+    try:
+        from qubed import Qube
+    except ImportError:
+        raise ImportError("The 'qubed' package is required for this function. Please install it.")
+    
+    if not isinstance(qube, Qube):
+        raise TypeError(f"'qube' must be an instance of Qube, got {type(qube)}")
+    
     from earthkit.workflows.fluent import Payload
 
     def expand_fn(action: "Action", qube: "Qube", path: str) -> "Action":
