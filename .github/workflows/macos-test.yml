@@ -30,6 +30,6 @@ jobs:
           version: 0.7.19
       - uses: extractions/setup-just@v3
       - run: |
-          uv sync --python "${{ matrix.python_version }}" --extra tests
+          uv sync --python "${{ matrix.python_version }}"
           just fmt
           just val
