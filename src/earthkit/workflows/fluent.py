@@ -78,7 +78,7 @@ class Payload:
         return ""
 
     def __str__(self) -> str:
-        return f"{self.name()}{self.args}{self.kwargs}:{self.metadata}"
+        return f"{self.name()}{self.args}{self.kwargs}:{self.metadata}:{repr(self.func)}"
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Payload):
@@ -1135,6 +1135,9 @@ def from_source(
         nodetree_from_dict(node_arrays),
         yields,
     )
+
+def merge(*actions: Action) -> Action:
+    return actions[0].merge(actions[1:])
 
 
 Action.register("default", Action)
