@@ -12,7 +12,7 @@ import dill
 import numpy as np
 import pytest
 
-from earthkit.workflows.fluent import Action, Payload, custom_hash, from_source
+from earthkit.workflows.fluent import Action, Payload, custom_hash, from_source, merge
 from earthkit.workflows.graph import deserialise, serialise
 from earthkit.workflows.nodetree import (
     nodetree_array,
@@ -302,7 +302,7 @@ def test_generators():
     serialise(graph)
 
 
-def test_nodetree():
+def test_split():
     input_action = mock_action((3, 4))
     branches = input_action.split(
         {
@@ -326,15 +326,55 @@ def test_nodetree():
         "/branch1/subbranch2",
     ]
 
-    expand = subbranches.expand(
-        "levels", ("levels", [0, 1, 2, 3, 4]), path="/branch1/subbranch2"
-    )
-    assert nodetree_array(expand.nodes, "/branch1/subbranch2").shape == (5, 3, 4)
+    with pytest.raises(NotImplementedError):
+        branches.set_path("/new_root")
 
-    branch1 = branches.sel(path="/branch1")
-    branch2 = branches.sel(path="/branch2")
-    merged = branch1.merge(branch2)
+    with_root = input_action.set_path("/root")
+    with pytest.raises(ValueError):
+        with_root.split(
+            {
+                "/branch1": lambda data: np.where(data <= 0, data, np.nan),
+                "/branch2": lambda data: np.where(data > 0, data, np.nan),
+            }
+        )
+
+
+
+@pytest.mark.parametrize(
+    "selection, num_arrays, shapes", [
+        ({"dim_0": 1}, 3, [(4,), (4,), (4,)]),
+        ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]), 
+        ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]), 
+        ({"type": "A"}, 1, [(3, 4)]),
+    ]
+)
+def test_select(selection, num_arrays, shapes):
+    input_action = mock_action((3, 4))
+    branches = input_action.split(
+        {
+            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
+            "/branch2": lambda data: np.where(data > 0, data, np.nan),
+        }
+    )
+    subbranches = branches.split(
+        {
+            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+        }
+    )
+    subbranches.nodes["/branch2"].coords["type"] = "A"
+    select_dim = subbranches.sel(**selection)
+    assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
+    for index, (_, narray) in enumerate(nodetree_arrays(select_dim.nodes)):
+        assert narray.shape == shapes[index]
+
+def test_merge():
+    input_action = mock_action((3, 4))
+    merged = merge(branch1=input_action, branch2=input_action)
     assert [x[0] for x in nodetree_arrays(merged.nodes)] == [
         "/branch1",
         "/branch2",
     ]
+
+    merged2 = merge(input_action.set_path("/branch1"), input_action.set_path("/branch2"))
+    assert merged.nodes == merged2.nodes

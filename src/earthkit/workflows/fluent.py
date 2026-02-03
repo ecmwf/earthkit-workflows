@@ -265,9 +265,10 @@ class Action:
             if match_coord_values:
                 for coord, values in narray.coords.items():
                     if coord in oarray.coords:
-                        other_action.nodes[npath] = oarray.assign_coords(
+                        assigned = oarray.assign_coords(
                             **{str(coord): values}
                         )
+                        other_action.nodes[npath] = assigned.to_dataset()
             node_arrays[npath] = xr.concat(
                 [narray, oarray],
                 dim=(
@@ -314,11 +315,10 @@ class Action:
             dim_name = dim[0]
             dim_values = dim[1]
 
-        action = self if path is None else self.select(path=path)
         for index, param in enumerate(params):
-            new_res = func(action, *param)
+            new_res = func(self.select(path=path), *param)
             if dim_name not in new_res.nodes.coords:
-                new_res._add_dimension(dim_name, dim_values[index], axis)
+                new_res._add_dimension(dim_name, dim_values[index], axis, path=path)
             if res is None:
                 res = new_res
             else:
@@ -327,15 +327,13 @@ class Action:
         if not res:
             raise ValueError("No new actions generated from transform")
         # Remove expanded dimension if only a single element
-        res._squeeze_dimension(dim_name)
-        if path is None:
-            return res
+        res._squeeze_dimension(dim_name, path=path)
         # Modify node array path to contain new nodes
-        current_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        current_nodes.update(
+        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        new_nodes.update(
             {npath: narray for npath, narray in nodetree_arrays(res.nodes)}
         )
-        return type(self)(nodetree_from_dict(current_nodes))
+        return type(self)(nodetree_from_dict(new_nodes))
 
     def broadcast(
         self,
@@ -356,10 +354,7 @@ class Action:
         Action
         """
         node_arrays = {}
-        for npath, narray in nodetree_arrays(other_action.nodes):
-            if path is not None and npath != path:
-                node_arrays[npath] = narray
-                continue
+        for npath, narray in nodetree_arrays(other_action.select(path=path).nodes):
             array = nodetree_array(self.nodes, npath)
             # Ensure coordinates in existing dimensions match, otherwise obtain NaNs
             for key, values in narray.coords.items():
@@ -382,7 +377,10 @@ class Action:
                 dims=broadcasted_nodes.dims,
                 attrs=array.attrs,
             )
-        return type(self)(nodetree_from_dict(node_arrays))
+        
+        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        new_nodes.update(node_arrays)
+        return type(self)(nodetree_from_dict(new_nodes))
 
     def expand(
         self,
@@ -457,10 +455,7 @@ class Action:
         """
         # NOTE this method is really not mypy friendly, just ignore everything
         node_arrays = {}
-        for npath, narray in nodetree_arrays(self.nodes):
-            if path is not None and npath != path:
-                node_arrays[npath] = narray
-                continue
+        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
             if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
                 payload = np.asarray(payload)
                 assert payload.shape == narray.shape, (
@@ -488,7 +483,9 @@ class Action:
                 attrs=narray.attrs,
             )
 
-        return type(self)(nodetree_from_dict(node_arrays), yields)
+        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        new_nodes.update(node_arrays)
+        return type(self)(nodetree_from_dict(new_nodes), yields)
 
     def reduce(
         self,
@@ -524,10 +521,7 @@ class Action:
         ValueError if payload function is not batchable and batch_size is not 0
         """
         node_arrays = {}
-        for npath, narray in nodetree_arrays(self.nodes):
-            if path is not None and npath != path:
-                node_arrays[npath] = narray
-                continue
+        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
             if len(dim) == 0:
                 dim = str(narray.dims[0])
 
@@ -537,7 +531,7 @@ class Action:
                 payload = Payload(payload)
             if yields and batch_size != 0:
                 raise ValueError("Can not batch the execution of a generator")
-            if batch_size > 1 and batch_size < batched.nodes.sizes[dim]:
+            if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
                 if not getattr(payload.func, "batchable", False):
                     raise ValueError(
                         f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified"
@@ -552,6 +546,7 @@ class Action:
                             for i in range(0, len(lst), batch_size)
                         ],
                         f"batch.{level}.{dim}",
+                        path=npath,
                     )
                     dim = f"batch.{level}.{dim}"
                     level += 1
@@ -588,7 +583,10 @@ class Action:
                     nodes.dims.index(dim),
                 )
             node_arrays[npath] = nodes
-        return type(batched)(nodetree_from_dict(node_arrays), yields)
+        
+        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        new_nodes.update(node_arrays)
+        return type(batched)(nodetree_from_dict(new_nodes), yields)
 
     @capture_payload_metadata
     def flatten(
@@ -618,13 +616,31 @@ class Action:
             path=path,
         )
 
-    def split(self, expansion: dict[str, Callable | Payload]) -> "Action":
+    def set_path(self, path: str) -> "Action":
+        """Create path for current node array
+
+        Parameters
+        ----------
+        path: str, new path for node array
+
+        Raises
+        ------
+        NotImplementedError if multiple node arrays are present
+        """
+        if len(self.nodes.leaves) > 1:
+            raise NotImplementedError(
+                "Multiple node arrays present, can not set single path"
+            )
+        return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes)}))
+
+
+    def split(self, expansion: Optional[dict[str, PayloadFunc | Payload]] = None) -> "Action":
         """Create action containing new node arrays by splitting an existing node array
         by the specified functions in expansion
 
         Parameters
         ----------
-        expansion: dict[str, Callable | Payload], dictionary of paths and functions to create
+        expansion: dict[str, PayloadFunc | Payload], dictionary of paths and functions to create
         new node arrays. All paths must be branches extending from an existing path, and the functions
         will be applied to the node array at the existing path to create the new node arrays at the
         branched paths
@@ -643,40 +659,17 @@ class Action:
             node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
         return type(self)(nodetree_from_dict(node_arrays))
 
-    def merge(self, other: Action) -> "Action":
-        """Merge nodes from another action into this action
 
-        Parameters
-        ----------
-        other: Action, action containing nodes to merge into this action
-
-        Return
-        ------
-        Action
-        """
-        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        onode_arrays = {npath: narray for npath, narray in nodetree_arrays(other.nodes)}
-        if intersection := set(node_arrays.keys()).intersection(
-            set(onode_arrays.keys())
-        ):
-            raise ValueError(
-                f"Cannot merge actions with overlapping node paths {intersection}"
-            )
-        node_arrays.update(onode_arrays)
-        return type(self)(nodetree_from_dict(node_arrays))
-
-    def _validate_criteria(self, criteria: dict):
+    def _validate_criteria(cls, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
         keys = list(criteria.keys())
+        new_criteria = criteria.copy()
         for key in keys:
-            if key not in self.nodes.dims:
-                if self.nodes.coords.get(key, None) == criteria[key]:
-                    criteria.pop(key)
+            if key not in array.dims:
+                if array.coords.get(key, None) == criteria[key]:
+                    new_criteria.pop(key)
                 else:
-                    raise NotImplementedError(
-                        f"Unknown dim in criteria {criteria}. Existing dimensions {self.nodes.dims}"
-                        + f"and coords {self.nodes.coords}"
-                    )
-        return criteria
+                    return False, {}
+        return True, new_criteria
 
     def select(
         self,
@@ -700,21 +693,16 @@ class Action:
         crit: dict = criteria or {}
         crit.update(kwargs)
 
-        if path is None:
-            action = self
-        else:
-            subtree = self.nodes[path]
-            if not isinstance(subtree, xr.DataTree):
-                raise TypeError(
-                    f"Expected DataTree at path {path}, got {type(subtree)}"
-                )
-            action = type(self)(nodetree_from_dict({path: nodetree_array(subtree)}))
+        nodes = self.nodes if path is None else self.nodes[path]
+        new_nodes = {}
+        for npath, narray in nodetree_arrays(nodes):     
+            valid, new_criteria = self._validate_criteria(narray, crit)
+            if valid:
+                new_nodes[npath] = narray.sel(**new_criteria, drop=drop)
 
-        crit = action._validate_criteria(crit)
-        if len(crit) == 0:
-            return action
-        selected_nodes = action.nodes.sel(**crit, drop=drop)
-        return type(self)(selected_nodes)
+        if len(new_nodes) == 0:
+            raise ValueError(f"No nodes match selection criteria {criteria}")
+        return type(self)(nodetree_from_dict(new_nodes))
 
     sel = select
 
@@ -740,22 +728,16 @@ class Action:
         crit: dict = criteria or {}
         crit.update(kwargs)
 
-        if path is None:
-            action = self
-        else:
-            subtree = self.nodes[path]
-            if not isinstance(subtree, xr.DataTree):
-                raise TypeError(
-                    f"Expected DataTree at path {path}, got {type(subtree)}"
-                )
-            action = type(self)(nodetree_from_dict({path: nodetree_array(subtree)}))
+        nodes = self.nodes if path is None else self.nodes[path]
+        new_nodes = {}
+        for npath, narray in nodetree_arrays(nodes):     
+            valid, new_criteria = self._validate_criteria(narray, crit)
+            if valid:
+                new_nodes[npath] = narray.isel(**new_criteria, drop=drop)
 
-        crit = action._validate_criteria(crit)
-
-        if len(crit) == 0:
-            return action
-        selected_nodes = action.nodes.isel(**crit, drop=drop)
-        return type(self)(selected_nodes)
+        if len(new_nodes) == 0:
+            raise ValueError(f"No nodes match selection criteria {criteria}")
+        return type(self)(nodetree_from_dict(new_nodes))
 
     isel = iselect
 
@@ -818,24 +800,30 @@ class Action:
         path: Optional[str] = None,
         backend_kwargs: dict = {},
     ) -> "Action":
-        if len(dim) == 0:
-            dim = str(self.nodes.dims[0])
 
-        if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(
-                Payload(backends.mean, kwargs=backend_kwargs),
-                dim=dim,
-                path=path,
-                keep_dim=keep_dim,
-            )
+        action = self
+        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
 
-        return self.sum(
-            dim=dim,
-            path=path,
-            batch_size=batch_size,
-            keep_dim=keep_dim,
-            **backend_kwargs,
-        ).divide(self.nodes.sizes[dim])
+            if len(dim) == 0:
+                dim = str(narray.dims[0])
+            size = narray.sizes[dim]
+
+            if batch_size <= 1 or batch_size >= size:
+                action = action.reduce(
+                    Payload(backends.mean, kwargs=backend_kwargs),
+                    dim=dim,
+                    path=npath,
+                    keep_dim=keep_dim,
+                )
+            else:
+                action = action.sum(
+                    dim=dim,
+                    path=npath,
+                    batch_size=batch_size,
+                    keep_dim=keep_dim,
+                    **backend_kwargs,
+                ).divide(size, path=npath)
+        return action
 
     @capture_payload_metadata
     def std(
@@ -846,33 +834,39 @@ class Action:
         path: Optional[str] = None,
         backend_kwargs: dict = {},
     ) -> "Action":
-        if len(dim) == 0:
-            dim = str(self.nodes.dims[0])
+        action = self
+        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
 
-        if batch_size <= 1 or batch_size >= self.nodes.sizes[dim]:
-            return self.reduce(
-                Payload(backends.std, kwargs=backend_kwargs), dim=dim, path=path
-            )
+            if len(dim) == 0:
+                dim = str(narray.dims[0])
+            size = narray.sizes[dim]
 
-        mean_sq = self.mean(
-            dim=dim,
-            path=path,
-            batch_size=batch_size,
-            keep_dim=keep_dim,
-            **backend_kwargs,
-        ).power(2)
-        norm = (
-            self.power(2)
-            .sum(
-                dim=dim,
-                path=path,
-                batch_size=batch_size,
-                keep_dim=keep_dim,
-                **backend_kwargs,
-            )
-            .divide(self.nodes.sizes[dim])
-        )
-        return norm.subtract(mean_sq).power(0.5)
+            if batch_size <= 1 or batch_size >= size:
+                action = action.reduce(
+                    Payload(backends.std, kwargs=backend_kwargs), dim=dim, path=npath
+                )
+
+            else:
+                mean_sq = action.mean(
+                    dim=dim,
+                    path=npath,
+                    batch_size=batch_size,
+                    keep_dim=keep_dim,
+                    **backend_kwargs,
+                ).power(2, path=npath)
+                norm = (
+                    action.power(2, path=npath)
+                    .sum(
+                        dim=dim,
+                        path=npath,
+                        batch_size=batch_size,
+                        keep_dim=keep_dim,
+                        **backend_kwargs,
+                    )
+                    .divide(size, path=npath)
+                )
+                action = norm.subtract(mean_sq, path=npath).power(0.5, path=npath)
+        return action
 
     @capture_payload_metadata
     def max(
@@ -994,14 +988,17 @@ class Action:
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
-    def _add_dimension(self, name: str, value: Any, axis: int = 0):
+    def _add_dimension(self, name: str, value: Any, axis: int = 0, path: Optional[str] = None):
         new_tree = self.nodes.map_over_datasets(
             lambda ds: ds.expand_dims({name: [value]}, axis)
         )
         assert isinstance(new_tree, xr.DataTree)
-        self.nodes = new_tree
+        if path is not None:
+            self.nodes[path] = new_tree[path]
+        else:
+            self.nodes = new_tree
 
-    def _squeeze_dimension(self, dim_name: str, drop: bool = False):
+    def _squeeze_dimension(self, dim_name: str, drop: bool = False, path: Optional[str] = None):
         new_tree = self.nodes.map_over_datasets(
             lambda ds: (
                 ds.squeeze(dim_name, drop=drop)
@@ -1010,7 +1007,10 @@ class Action:
             )
         )
         assert isinstance(new_tree, xr.DataTree)
-        self.nodes = new_tree
+        if path is not None:
+            self.nodes[path] = new_tree[path]
+        else:
+            self.nodes = new_tree
 
     def __getattr__(self, attr):
         if attr in Action.REGISTRY:
@@ -1051,14 +1051,14 @@ def _batch_transform(
 ) -> Action:
     selected = action.select(selection, drop=True)
     dim = list(selection.keys())[0]
-    if dim not in selected.nodes.dims:
-        return selected
-    if selected.nodes.sizes[dim] == 1:
-        selected._squeeze_dimension(dim, drop=True)
-        return selected
-
-    reduced = selected.reduce(payload, dim=dim)
-    return reduced
+    for npath, narray in nodetree_arrays(selected.nodes):
+        if dim not in narray.dims:
+            continue
+        if narray.sizes[dim] == 1:
+            selected._squeeze_dimension(dim, drop=True, path=npath)
+        else:
+            selected = selected.reduce(payload, dim=dim, path=npath)
+    return selected
 
 
 def _expand_transform(
@@ -1084,7 +1084,7 @@ def _combine_nodes(
     if action.nodes.sizes[dim] == 1:
         # no-op
         if not keep_dim:
-            action._squeeze_dimension(dim)
+            action._squeeze_dimension(dim, path=path)
         return action
     return action.reduce(
         Payload(getattr(backends, backend_method), kwargs=backend_kwargs),
@@ -1140,6 +1140,35 @@ def merge(*actions: Action) -> Action:
     return actions[0].merge(actions[1:])
 
 
+def merge(*args, **kwargs) -> Action:
+    """Merge node arrays in actions. If provided as keyword arguments, the key
+    is used as the root path for the action's node arrays
+
+
+    Return
+    ------
+    Action
+
+    Raises
+    ------
+    ValueError if node paths overlap between actions
+    """
+    new_nodes = {}
+    for action in args:
+        for npath, narray in nodetree_arrays(action.nodes):
+            if npath in new_nodes:
+                raise ValueError(f"Cannot merge actions with overlapping node paths {npath}")
+            new_nodes[npath] = narray
+
+    for path, action in kwargs.items():
+        for npath, narray in nodetree_arrays(xr.DataTree.from_dict({path: action.nodes})):
+            if npath in new_nodes:
+                raise ValueError(f"Cannot merge actions with overlapping node paths {npath}")
+            new_nodes[npath] = narray
+
+    action_type = args[0].__class__ if len(args) > 0 else list(kwargs.values())[0].__class__
+    return action_type(nodetree_from_dict(new_nodes))
+
 Action.register("default", Action)
 
 __all__ = [
@@ -1147,4 +1176,5 @@ __all__ = [
     "Payload",
     "Node",
     "from_source",
+    "merge",
 ]
