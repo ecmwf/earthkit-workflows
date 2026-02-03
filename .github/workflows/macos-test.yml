@@ -17,7 +17,7 @@ jobs:
       fail-fast: true
       matrix:
         arch_type: ["macos-ARM64", "linux-x86"]
-        python_version: ["3.10", "3.11", "3.12", "3.13"]
+        python_version: ["3.11", "3.12", "3.13"]
     runs-on: "${{ fromJSON('{\"linux-x86\": [\"self-hosted\", \"Linux\", \"platform-builder-Rocky-8.6\"], \"macos-ARM64\": [\"self-hosted\", \"macOS\", \"ARM64\"]}')[matrix.arch_type] }}"
     timeout-minutes: 20
     steps:
@@ -30,6 +30,6 @@ jobs:
           version: 0.7.19
       - uses: extractions/setup-just@v3
       - run: |
-          uv sync --python "${{ matrix.python_version }}"
+          uv sync --python "${{ matrix.python_version }}" --extra tests
           just fmt
           just val

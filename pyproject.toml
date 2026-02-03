@@ -39,12 +39,13 @@ dependencies = [
 dynamic = ["version"]
 readme = "README.md"
 
+[project.optional-dependencies]
+tests = ["pytest", "pytest-xdist>=3.8", "earthkit-workflows[qubed]"]
+qubed = ["qubed>=0.3.0"]
+
 [dependency-groups]
 dev = ["prek", "ty==0.0.2", "build", "bokeh"]
-test = ["pytest", "pytest-xdist>=3.8", "earthkit-workflows[qubed]"]
-qubed = [
-    "qubed>=0.3.0",
-]
+
 
 [tool.setuptools]
 include-package-data = true
