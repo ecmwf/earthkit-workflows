@@ -492,3 +492,20 @@ def test_expand_as_qube_with_real_action():
 
     # Verify that the action has been expanded with the step dimension
     assert "step" in result.nodes.to_dataset().dims
+
+
+@pytest.mark.parametrize("qube_fixture", [
+    "single_child_qube",
+    "pressure_level_qube",
+    "hierarchical_qube",
+])
+def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
+    qube = request.getfixturevalue(qube_fixture)
+    action = mock_action(shape=(2, 2))
+    
+    result = expand_as_qube(action, qube)
+    subset = result.select(param='t')
+    
+    assert "step" in subset.nodes.to_dataset().dims
+    assert "param" not in subset.nodes.to_dataset().dims
+    assert subset.nodes.to_dataset().param == 't'
