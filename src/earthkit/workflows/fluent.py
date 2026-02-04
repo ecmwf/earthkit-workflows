@@ -1136,9 +1136,6 @@ def from_source(
         yields,
     )
 
-def merge(*actions: Action) -> Action:
-    return actions[0].merge(actions[1:])
-
 
 def merge(*args, **kwargs) -> Action:
     """Merge node arrays in actions. If provided as keyword arguments, the key
