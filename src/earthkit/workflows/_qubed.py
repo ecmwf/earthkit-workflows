@@ -119,14 +119,13 @@ def expand_as_qube(action: "Action", qube: "Qube") -> "Action":
 
         match len(qube.children):
             case 0:
+                assert path not in leaves, f"Duplicate path detected: {path}"
                 leaves[path] = action
-                return action
             case 1:  # In the case of one child, no need to split, just continue expanding
-                return expand_fn(action, qube.children[0], path)
+                expand_fn(action, qube.children[0], path)
             case _:  # Multiple children, need to split into branches
                 for i, child in enumerate(qube.children):
-                    sub_path = f"{path}/{get_name(child, i)}"
-                    expand_fn(action, child, sub_path)
+                    expand_fn(action, child, f"{path}/{get_name(child, i)}")
                 
         return fluent.merge(**leaves)
     
