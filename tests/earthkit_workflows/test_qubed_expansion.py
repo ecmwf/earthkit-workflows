@@ -54,8 +54,8 @@ def hierarchical_qube():
 
     Structure:
     root, step=6/12
-    ├── name=surface, param=100u/100v/10u/10v/2d/2t
-    └── name=pressure, param=q/t/u/v, level=50/100/150/200/250
+    ├── param=100u/100v/10u/10v/2d/2t
+    └── param=q/t/u/v, level=50/100/150/200/250
 
     Both children have step dimension in the qube, which creates step dimension on parent.
     After expansion, children should have BOTH step AND their own dims.
@@ -193,8 +193,8 @@ class TestExpandAsQube:
 
         The qube structure is:
         root, step=6/12
-        ├── name=surface, param=100u/100v/10u/10v/2d/2t
-        └── name=pressure, param=q/t/u/v, level=50/100/150/200/250
+        ├── param=100u/100v/10u/10v/2d/2t
+        └── param=q/t/u/v, level=50/100/150/200/250
 
         Expected expanded action structure:
         /surface: DataArray with dims (step, param)
@@ -488,14 +488,14 @@ def test_expand_as_qube_with_real_action():
 def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
     action = mock_action(shape=(2, 2))
-    
+
     result = expand_as_qube(action, qube)
     subset = result.select(param='t')
-    
+
     assert "step" in subset.nodes.to_dataset().dims
     assert "param" not in subset.nodes.to_dataset().dims
     assert "param" in subset.nodes.to_dataset().coords
-    
+
     assert subset.nodes.to_dataset().param == 't'
 
     with pytest.raises(KeyError):
