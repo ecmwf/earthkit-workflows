@@ -125,19 +125,6 @@ def multi_level_qube():
 
     return qube
 
-
-@pytest.fixture
-def single_child_qube():
-    """Create a qube with truly a single child by having one branch."""
-    qube = Qube.from_datacube(
-        {
-            "step": [6, 12],
-            "param": ["t", "q"],
-        }
-    )
-    return qube
-
-
 @pytest.fixture
 def empty_qube():
     """Create an empty qube."""
@@ -189,17 +176,17 @@ class TestExpandAsQube:
         assert len(ds.step) == 2
         assert list(ds.step.values) == [6, 12]
 
-    def test_expand_multi_dimensional_no_split(self, single_child_qube):
+    def test_expand_multi_dimensional_no_split(self, pressure_level_qube):
         """Test expanding with a multi-dimensional qube (no hierarchy)."""
         action = mock_action((1,))
-        result = expand_as_qube(action, single_child_qube)
+        result = expand_as_qube(action, pressure_level_qube)
 
         # Verify the result has both dimensions
         ds = result.nodes.to_dataset()
         assert "step" in ds.dims
         assert "param" in ds.dims
         assert len(ds.step) == 2
-        assert len(ds.param) == 2
+        assert len(ds.param) == 4
 
     def test_expand_hierarchical_creates_branches(self, hierarchical_qube):
         """Test that hierarchical expansion creates separate branches.
@@ -495,7 +482,6 @@ def test_expand_as_qube_with_real_action():
 
 
 @pytest.mark.parametrize("qube_fixture", [
-    "single_child_qube",
     "pressure_level_qube",
     "hierarchical_qube",
 ])
