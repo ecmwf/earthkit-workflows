@@ -494,4 +494,9 @@ def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
     
     assert "step" in subset.nodes.to_dataset().dims
     assert "param" not in subset.nodes.to_dataset().dims
+    assert "param" in subset.nodes.to_dataset().coords
+    
     assert subset.nodes.to_dataset().param == 't'
+
+    with pytest.raises(KeyError):
+        subset = result.select(param='nonexistent_param')
