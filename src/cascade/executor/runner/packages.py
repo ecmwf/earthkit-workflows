@@ -18,14 +18,16 @@ already with a different version
 import importlib.metadata
 import logging
 import os
+import re
 import site
 import subprocess
 import sys
 import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Literal
+from typing import Iterator, Literal
 
+from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ class Commands:
         "--prerelease",
         "explicit",
     ]
+    freeze_command = ["uv", "pip", "freeze"]
 
 
 def run_command(command: list[str]) -> tuple[str, str]:
@@ -145,6 +148,45 @@ def _postinstall_verify(pip_output) -> list[InstallIssue]:
 
     return rv
 
+def _prefer_installed(packages: list[str]) -> Iterator[str]:
+    """If a package is desired to be installed but is not exactly pinned,
+    we will inspect pip freeze to see if it is already installed, and inject
+    the pin otherwise. This is default `uv` behaviour, but remember we
+    override --prefix, thus uv has no way of knowing. We thus have to explicate.
+    """
+
+    installed_raw, _ = run_command(Commands.freeze_command)
+    print(f"whaaat {installed_raw}")
+    to_kv = lambda kv: kv.split('==', 1) if not kv.startswith('-e') else (kv.rsplit('/', 1)[1], '--editable')
+    installed = dict(to_kv(kv) for kv in installed_raw.splitlines() if kv)
+    for package_spec in packages:
+        try:
+            parts = re.split(r'([<>=!~].*)', package_spec)
+            package = parts[0]
+            if package not in installed:
+                yield package
+            elif len(parts) == 1:
+                if installed[package] == '--editable':
+                    continue
+                yield f"{package}=={installed[package]}"
+            else:
+                specifier = SpecifierSet(parts[1].strip())
+                # NOTE in case of mismatch we just warn because we dont know if the module was imported already
+                # NOTE we dont check for import because we need to after install *anyway*
+                # NOTE for editable + explicit constraint, we leave it to uv -- imo unclear
+                if installed[package] == '--editable':
+                    logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
+                    yield package_spec
+                elif Version(installed[package]) in specifier:
+                    yield f"{package}=={installed[package]}"
+                else:
+                    logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
+                    yield package_spec
+        except Exception as e:
+            logger.warning(f"failed to discern preference for package {package} -- continuing")
+            yield package
+
+
 class PackagesEnv(AbstractContextManager):
     def __init__(self) -> None:
         self.td: tempfile.TemporaryDirectory | None = None
@@ -154,6 +196,7 @@ class PackagesEnv(AbstractContextManager):
             return
         if self.td is None:
             self.td = new_venv()
+        packages = list(_prefer_installed(packages))
 
         logger.debug(
             f"installing {len(packages)} packages: {','.join(packages[:10])}{',...' if len(packages) > 10 else ''}"

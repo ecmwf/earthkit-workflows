@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from cascade.executor.runner.packages import run_command, _parse_pip_install, _get_dist_modules, _maybe_module_version, _postinstall_verify, InstallIssue
+from cascade.executor.runner.packages import run_command, _parse_pip_install, _get_dist_modules, _maybe_module_version, _postinstall_verify, InstallIssue, _prefer_installed
 from packaging.version import Version
 
 
@@ -58,3 +58,9 @@ def test_postinstall_verify() -> None:
     assert issues == [
         InstallIssue(dist_name='numpy', desired_version=Version('1.0.0'), mod_issues=[('numpy', Version(numpy.__version__))])
     ]
+
+def test_prefer_installed() -> None:
+    import numpy
+    assert list(_prefer_installed(["numpy"])) == [f"numpy=={numpy.__version__}"]
+    assert list(_prefer_installed(["numpy==1.0.0"])) == ["numpy==1.0.0"]
+    assert list(_prefer_installed([f"numpy>={numpy.__version__}"])) == [f"numpy=={numpy.__version__}"]
