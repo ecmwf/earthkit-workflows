@@ -25,13 +25,14 @@ from cascade.executor.msg import (
     BackboneAddress,
     DatasetPublished,
     DatasetPurge,
+    RunnerRestartRequest,
     TaskFailure,
     TaskSequence,
     WorkerReady,
     WorkerShutdown,
 )
 from cascade.executor.runner.memory import Memory
-from cascade.executor.runner.packages import PackagesEnv
+from cascade.executor.runner.packages import PackagesEnv, PostinstallException
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
 from cascade.low.tracing import label
@@ -44,6 +45,7 @@ class RunnerContext:
     """The static runner configuration"""
 
     workerId: WorkerId
+    workerAttemptCnt: int
     job: JobInstance
     callback: BackboneAddress
     param_source: dict[TaskId, dict[int | str, DatasetId]]
@@ -89,8 +91,8 @@ class Config:
     )
 
 
-def worker_address(workerId: WorkerId) -> BackboneAddress:
-    return f"ipc:///tmp/{repr(workerId)}.socket"
+def worker_address(workerId: WorkerId, workerAttemptCnt: int) -> BackboneAddress:
+    return f"ipc:///tmp/{repr(workerId)}.{workerAttemptCnt}.socket"
 
 
 def execute_sequence(
@@ -98,7 +100,9 @@ def execute_sequence(
     memory: Memory,
     pckg: PackagesEnv,
     runnerContext: RunnerContext,
-) -> None:
+) -> bool:
+    """Returns whether ended successfully. If not, it means a failure callback
+    was issued, and the outer loop should only wait for WorkerShutdown message."""
     taskId: TaskId | None = None
     try:
         for key, value in taskSequence.extra_env:
@@ -112,13 +116,24 @@ def execute_sequence(
         for key, _ in taskSequence.extra_env:
             # NOTE we should in principle restore the previous value, but we dont expect collisions
             del os.environ[key]
+        return True
+    except PostinstallException as e:
+        logger.error(f"postinstall validation failed, will send RunnerRestartRequest: {repr(e)}")
+        if not taskId:
+            raise TypeError("Postinstall should not have been raised in the absence of active task")
+        raise NotImplementedError("make sure all memory up until now is correctly flushed")
+        callback(
+            runnerContext.callback,
+            RunnerRestartRequest(worker=taskSequence.worker, task=taskId),
+        )
+        return False
     except Exception as e:
         logger.exception("runner failure, about to report")
         callback(
             runnerContext.callback,
             TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)),
         )
-
+        return False
 
 def entrypoint(runnerContext: Any):
     """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
@@ -130,7 +145,7 @@ def entrypoint(runnerContext: Any):
         logging.config.dictConfig(logging_config)
     ctx = zmq.Context()
     socket = ctx.socket(zmq.PULL)
-    socket.bind(worker_address(runnerContext.workerId))
+    socket.bind(worker_address(runnerContext.workerId, runnerContext.workerAttemptCnt))
     callback(runnerContext.callback, WorkerReady(runnerContext.workerId))
     with (
         Memory(runnerContext.callback, runnerContext.workerId) as memory,
@@ -147,6 +162,7 @@ def entrypoint(runnerContext: Any):
         availab_ds: set[DatasetId] = set()
         waiting_ts: TaskSequence | None = None
         missing_ds: set[DatasetId] = set()
+        isTerminating = False
 
         while True:
             mRaw = socket.recv()
@@ -154,13 +170,16 @@ def entrypoint(runnerContext: Any):
             if isinstance(mDes, WorkerShutdown):
                 logger.debug(f"worker {runnerContext.workerId} shutting down")
                 break
+            elif isTerminating:
+                logger.warning(f"ignoring message {mDes} because terminating")
+                continue
             elif isinstance(mDes, DatasetPublished):
                 availab_ds.add(mDes.ds)
                 if mDes.ds in missing_ds:
                     missing_ds.remove(mDes.ds)
                     memory.provide(mDes.ds, "Any")
                     if waiting_ts is not None and (not missing_ds):
-                        execute_sequence(waiting_ts, memory, pckg, runnerContext)
+                        isTerminating = not execute_sequence(waiting_ts, memory, pckg, runnerContext)
                         waiting_ts = None
             elif isinstance(mDes, DatasetPurge):
                 memory.pop(mDes.ds)
@@ -188,6 +207,6 @@ def entrypoint(runnerContext: Any):
                     for ds in availab_ds.intersection(required):
                         memory.provide(ds, "Any")
                 else:
-                    execute_sequence(mDes, memory, pckg, runnerContext)
+                    isTerminating = not execute_sequence(mDes, memory, pckg, runnerContext)
             else:
                 raise ValueError(f"unexpected message received: {type(mDes)}")

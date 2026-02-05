@@ -83,6 +83,7 @@ def test_runner(monkeypatch):
     )
     emptyRc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=JobInstance(tasks={}, edges=[]),
         param_source={},
@@ -120,6 +121,7 @@ def test_runner(monkeypatch):
     oneTaskJob = JobInstance(tasks={"t2": t2}, edges=[])
     oneTaskRc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=oneTaskJob,
         param_source=param_source(oneTaskJob.edges),
@@ -165,6 +167,7 @@ def test_runner(monkeypatch):
     )
     twoTaskRc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=twoTaskJob,
         param_source=param_source(twoTaskJob.edges),
@@ -232,6 +235,7 @@ def test_runner(monkeypatch):
     )
     t4Rc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=t4Job,
         param_source=param_source(t4Job.edges),

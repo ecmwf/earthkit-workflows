@@ -19,6 +19,7 @@ import atexit
 import logging
 import os
 import uuid
+from dataclasses import dataclass
 from multiprocessing.process import BaseProcess
 from typing import Iterable
 
@@ -47,6 +48,7 @@ from cascade.executor.msg import (
     ExecutorRegistration,
     ExecutorShutdown,
     Message,
+    RunnerRestartRequest,
     TaskFailure,
     TaskSequence,
     Worker,
@@ -69,6 +71,11 @@ def address_of(port: int) -> BackboneAddress:
     return f"tcp://{platform.get_bindabble_self()}:{port}"
 
 
+@dataclass
+class WorkerHandle:
+    process: BaseProcess
+    cnt: int
+
 class Executor:
     def __init__(
         self,
@@ -85,7 +92,7 @@ class Executor:
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
         self.host = host
-        self.workers: dict[WorkerId, BaseProcess | None] = {
+        self.workers: dict[WorkerId, WorkerHandle | None] = {
             WorkerId(host, f"w{i}"): None for i in range(workers)
         }
         self.log_base = log_base
@@ -165,9 +172,9 @@ class Executor:
         for worker in self.workers.keys():
             logger.debug(f"cleanup worker {worker}")
             try:
-                if (proc := self.workers[worker]) is not None:
-                    callback(worker_address(worker), WorkerShutdown())
-                    proc.join()
+                if (handle := self.workers[worker]) is not None:
+                    callback(worker_address(worker, handle.cnt), WorkerShutdown())
+                    handle.process.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {worker}")
         if (
@@ -195,9 +202,11 @@ class Executor:
         # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
         # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
         ctx = platform.get_mp_ctx("worker")
+        initialCnt = 0
         for worker in workers:
             runnerContext = RunnerContext(
                 workerId=worker,
+                workerAttemptCnt=initialCnt,
                 job=self.job_instance,
                 param_source=self.param_source,
                 callback=self.mlistener.address,
@@ -209,7 +218,7 @@ class Executor:
                 kwargs={"runnerContext": cloudpickle.dumps(runnerContext)},
             )
             p.start()
-            self.workers[worker] = p
+            self.workers[worker] = WorkerHandle(process=p, cnt=initialCnt)
             logger.debug(f"started process {p.pid} for worker {worker}")
 
         remaining = set(workers)
@@ -248,9 +257,9 @@ class Executor:
         for k, e in self.workers.items():
             if e is None:
                 raise ValueError(f"process on {k} is not alive")
-            elif procFail(e.exitcode):
+            elif procFail(e.process.exitcode):
                 raise ValueError(
-                    f"process on {k} failed to terminate correctly: {e.pid} -> {e.exitcode}"
+                    f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}"
                 )
         if procFail(self.shm_process.exitcode):
             raise ValueError(
@@ -284,11 +293,10 @@ class Executor:
                                     "action": TaskLifecycle.enqueued,
                                 }
                             )
-                        if (
-                            proc := self.workers[m.worker]
-                        ) is None or proc.exitcode is not None:
+                        handle = self.workers[m.worker]
+                        if handle is None or handle.process.exitcode is not None:
                             raise ValueError(f"worker process {m.worker} is not alive")
-                        callback(worker_address(m.worker), m)
+                        callback(worker_address(m.worker, handle.cnt), m)
                     elif isinstance(m, Ack):
                         self.sender.ack(m.idx)
                     elif isinstance(m, DatasetPurge):
@@ -296,7 +304,9 @@ class Executor:
                             logger.warning(f"unexpected purge of {m.ds}")
                         else:
                             for worker in self.workers:
-                                callback(worker_address(worker), m)
+                                handle = self.workers[worker]
+                                if handle is not None:
+                                    callback(worker_address(worker, handle.cnt), m)
                             self.datasets.remove(m.ds)
                             callback(self.daddress, m)
                     elif isinstance(m, ExecutorShutdown):
@@ -304,12 +314,16 @@ class Executor:
                         self.terminate()
                         break
                     # from entrypoint
+                    elif isinstance(m, RunnerRestartRequest):
+                        raise NotImplementedError("send terminate to current handle, create a new handle, derive the task subsequence and send it, notify controller")
                     elif isinstance(m, TaskFailure):
                         self.to_controller(m)
                     elif isinstance(m, DatasetPublished):
                         for worker in self.workers:
                             # NOTE if we knew the origin worker, we would exclude it here... but doesn't really matter
-                            callback(worker_address(worker), m)
+                            handle = self.workers[worker]
+                            if handle is not None:
+                                callback(worker_address(worker, handle.cnt), m)
                         self.datasets.add(m.ds)
                         self.to_controller(m)
                     elif isinstance(m, DatasetRetrieveSuccess):
