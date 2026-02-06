@@ -126,6 +126,7 @@ class Memory(AbstractContextManager):
         ):  # if no task on this worker imported torch, no need to flush
             try:
                 import torch  # ty: ignore[unresolved-import]
+                logger.debug(f"imported torch version {torch.__version__} to clean cuda memory")
 
                 if torch.cuda.is_available():
                     free, total = torch.cuda.mem_get_info()
@@ -141,8 +142,18 @@ class Memory(AbstractContextManager):
                             # that the user may be running
                             logger.warning("cuda mem avail low despite cache empty!")
                             logger.debug(torch.cuda.memory_summary())
+                elif torch.mps.is_available():
+                    allocated = torch.mps.driver_allocated_memory()
+                    recommended_max = torch.mps.recommended_max_memory()
+                    logger.debug(f"mps driver {allocated=}, recommended max {recommended_max}")
+                    if allocated / recommended_max < 0.8:
+                        torch.mps.empty_cache()
+                        allocated = torch.mps.driver_allocated_memory()
+                        logger.debug(f"mps driver {allocated=} post clean")
+                else:
+                    logger.debug("no torch backend with free_cache capacity understood => noop")
             except Exception:
-                logger.exception("failed to free cuda cache")
+                logger.exception("failed to free torch backend mem cache")
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         # this is required so that the Shm can be properly freed, otherwise you get 'pointers cannot be closed'
