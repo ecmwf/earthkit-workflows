@@ -21,7 +21,7 @@ from time import time_ns
 from typing import cast
 
 import cascade.shm.client as shm_client
-from cascade.executor.checkpoints import persist_dataset
+from cascade.executor.checkpoints import persist_dataset, retrieve_dataset
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.msg import (
     Ack,
@@ -31,6 +31,9 @@ from cascade.executor.msg import (
     DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
+    DatasetRetrieveCommand,
+    DatasetRetrieveFailure,
+    DatasetRetrieveSuccess,
     DatasetTransmitCommand,
     DatasetTransmitFailure,
     DatasetTransmitPayload,
@@ -63,7 +66,7 @@ class DataServer:
         self.cap = 2
         self.ds_proc_tp: PythonExecutor = ThreadPoolExecutor(max_workers=self.cap)
         self.futs_in_progress: dict[
-            DatasetTransmitCommand | DatasetTransmitPayload | DatasetPersistCommand, Future
+            DatasetTransmitCommand | DatasetTransmitPayload | DatasetPersistCommand | DatasetRetrieveCommand, Future
         ] = {}
         self.awaiting_confirmation: dict[int, tuple[DatasetTransmitCommand, int]] = {}
         self.invalid: set[DatasetId] = (
@@ -97,7 +100,7 @@ class DataServer:
                 return
             wait(self.futs_in_progress.values(), return_when=FIRST_COMPLETED)
 
-    def store_payload(self, payload: DatasetTransmitPayload) -> int:
+    def _store_payload(self, payload: DatasetTransmitPayload) -> int:
         try:
             l = len(payload.value)
             try:
@@ -153,11 +156,30 @@ class DataServer:
             time_ns()
         )  # not actually consumed but uniform signature with send_payload simplifies typing
 
-    def persist_payload(self, command: DatasetPersistCommand) -> int:
+    def _retrieve_dataset(self, command: DatasetRetrieveCommand) -> int:
+        buf: None | shm_client.AllocatedBuffer = None
+        try:
+            if command.target != self.host:
+                raise ValueError(f"invalid host in {command=}")
+            buf = retrieve_dataset(command)
+            logger.debug(f"dataset for {command} retrieved")
+            callback(self.maddress, DatasetRetrieveSuccess(host=self.host, ds=command.ds))
+        except Exception as e:
+            logger.exception(f"failed to retrieve dataset for {command}, reporting up")
+            callback(
+                self.maddress,
+                DatasetRetrieveFailure(host=self.host, detail=f"{repr(command)} -> {repr(e)}"),
+            )
+        finally:
+            if buf is not None:
+                buf.close()
+        return time_ns()
+
+    def _persist_dataset(self, command: DatasetPersistCommand) -> int:
         buf: None | shm_client.AllocatedBuffer = None
         try:
             if command.source != self.host:
-                raise ValueError(f"invalid {command=}")
+                raise ValueError(f"invalid host in {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
             persist_dataset(command, buf)
             logger.debug(f"dataset for {command} persisted")
@@ -173,7 +195,7 @@ class DataServer:
                 buf.close()
         return time_ns()
 
-    def send_payload(self, command: DatasetTransmitCommand) -> int:
+    def _send_payload(self, command: DatasetTransmitCommand) -> int:
         buf: None | shm_client.AllocatedBuffer = None
         payload: None | DatasetTransmitPayload = None
         try:
@@ -240,7 +262,7 @@ class DataServer:
                             }
                         )
                         self.awaiting_confirmation[m.idx] = (m, -1)
-                        fut = self.ds_proc_tp.submit(self.send_payload, m)
+                        fut = self.ds_proc_tp.submit(self._send_payload, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetPersistCommand):
                         if m.ds in self.invalid:
@@ -248,7 +270,11 @@ class DataServer:
                                 f"unexpected persist command {m} as the dataset was already purged"
                             )
                         # TODO mark?
-                        fut = self.ds_proc_tp.submit(self.persist_payload, m)
+                        fut = self.ds_proc_tp.submit(self._persist_dataset, m)
+                        self.futs_in_progress[m] = fut
+                    elif isinstance(m, DatasetRetrieveCommand):
+                        # TODO mark?
+                        fut = self.ds_proc_tp.submit(self._retrieve_dataset, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetTransmitPayload):
                         if m.header.ds in self.invalid:
@@ -263,7 +289,7 @@ class DataServer:
                                 "target": self.host,
                             }
                         )
-                        fut = self.ds_proc_tp.submit(self.store_payload, m)
+                        fut = self.ds_proc_tp.submit(self._store_payload, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, Ack):
                         logger.debug(f"confirmed transmit {m.idx}")
@@ -273,7 +299,7 @@ class DataServer:
                         # TODO submit this as a future? This actively blocks the whole server
                         to_wait = []
                         for commandProg, fut in self.futs_in_progress.items():
-                            if isinstance(commandProg, DatasetTransmitCommand|DatasetPersistCommand):
+                            if isinstance(commandProg, DatasetTransmitCommand|DatasetPersistCommand|DatasetRetrieveCommand):
                                 val = commandProg.ds
                             elif isinstance(commandProg, DatasetTransmitPayload):
                                 val = commandProg.header.ds
@@ -323,7 +349,7 @@ class DataServer:
                         self.awaiting_confirmation.pop(e)
                     else:
                         logger.warning(f"submitting a retry of {command}")
-                        fut = self.ds_proc_tp.submit(self.send_payload, command)
+                        fut = self.ds_proc_tp.submit(self._send_payload, command)
                         self.futs_in_progress[command] = fut
                         self.awaiting_confirmation[e] = (command, -1)
             except:

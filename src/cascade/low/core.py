@@ -72,6 +72,19 @@ class DatasetId:
     def __repr__(self) -> str:
         return f"{self.task}.{self.output}"
 
+    def ser(self) -> str:
+        pref = len(self.task).to_bytes(length=1, byteorder='big').hex()
+        # NOTE this raises if the task id is too long, but we dont want to have that long fnames anyway
+        # if that poses a problem, we need to switch into short hashes and a lookup file persisted separately
+        # NOTE we cant pick any safe separator between task and output, because either can contain any char
+        return f"{pref}.{self.task}{self.output}"
+
+    @classmethod
+    def des(cls, value: str) -> Self:
+        pref, suf = value.split('.', 1)
+        task_len = int.from_bytes(bytes.fromhex(pref), byteorder='big')
+        return cls(task=suf[:task_len], output=suf[task_len:])
+
 
 class Task2TaskEdge(BaseModel):
     source: DatasetId

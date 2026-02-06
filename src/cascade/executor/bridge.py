@@ -11,6 +11,7 @@
 import logging
 import time
 
+from cascade.executor.checkpoints import build_persist_command, build_retrieve_command, serialize_params
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
@@ -21,6 +22,9 @@ from cascade.executor.msg import (
     DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
+    DatasetRetrieveCommand,
+    DatasetRetrieveFailure,
+    DatasetRetrieveSuccess,
     DatasetTransmitCommand,
     DatasetTransmitFailure,
     DatasetTransmitPayload,
@@ -32,19 +36,21 @@ from cascade.executor.msg import (
     TaskFailure,
     TaskSequence,
 )
-from cascade.low.core import CheckpointStorageType, DatasetId, Environment, HostId, Worker, WorkerId
+from cascade.low.core import CheckpointSpec, DatasetId, Environment, HostId, Worker, WorkerId
+from cascade.low.execution_context import VirtualCheckpointHost
 from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
-Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess
-# TODO consider retries here, esp on the PersistFailure
-ToShutdown = TaskFailure | ExecutorFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
+Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess
+# TODO consider retries here, esp on the Persist/Retrieve Failures
+ToShutdown = TaskFailure | ExecutorFailure | DatasetRetrieveFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
 Unsupported = TaskSequence | DatasetPurge | DatasetTransmitCommand | DatasetPersistCommand | ExecutorShutdown
 
 
 class Bridge:
-    def __init__(self, controller_url: str, expected_executors: int) -> None:
+    def __init__(self, controller_url: str, expected_executors: int, checkpoint_spec: CheckpointSpec|None=None) -> None:
+        self.checkpoint_spec = checkpoint_spec
         self.mlistener = Listener(controller_url)
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
         self.transmit_idx_counter = 0
@@ -152,24 +158,23 @@ class Bridge:
         self._send(host, m)
 
     def transmit(self, ds: DatasetId, source: HostId, target: HostId) -> None:
-        m = DatasetTransmitCommand(
-            source=source,
-            target=target,
-            daddress=self.sender.hosts["data." + target][1],
-            ds=ds,
-            idx=self.transmit_idx_counter,
-        )
-        self.transmit_idx_counter += 1
-        self.sender.send("data." + source, m)
+        if source == VirtualCheckpointHost:
+            command = build_retrieve_command(self.checkpoint_spec, ds, target)
+            self.sender.send("data." + target, command)
+        else:
+            m = DatasetTransmitCommand(
+                source=source,
+                target=target,
+                daddress=self.sender.hosts["data." + target][1],
+                ds=ds,
+                idx=self.transmit_idx_counter,
+            )
+            self.transmit_idx_counter += 1
+            self.sender.send("data." + source, m)
 
-    def persist(self, ds: DatasetId, source: HostId, storage_type: CheckpointStorageType, persist_params: str) -> None:
-        m = DatasetPersistCommand(
-            source=source,
-            ds=ds,
-            storage_type=storage_type,
-            persist_params=persist_params,
-        )
-        self.sender.send("data." + source, m)
+    def persist(self, ds: DatasetId, source: HostId) -> None:
+        command = build_persist_command(self.checkpoint_spec, ds, source)
+        self.sender.send("data." + source, command)
 
     def fetch(self, ds: DatasetId, source: HostId) -> None:
         m = DatasetTransmitCommand(

@@ -138,6 +138,22 @@ class DatasetPersistSuccess:
     host: HostId
     ds: DatasetId
 
+@dataclass(frozen=True)
+class DatasetRetrieveCommand:
+    target: HostId
+    ds: DatasetId
+    storage_type: CheckpointStorageType
+    retrieve_params: str # storage-type-specific serialization of params
+
+@dataclass(frozen=True)
+class DatasetRetrieveFailure:
+    host: HostId
+    detail: str
+
+@dataclass(frozen=True)
+class DatasetRetrieveSuccess:
+    host: HostId
+    ds: DatasetId
 
 @dataclass(frozen=True)
 class ExecutorFailure:
@@ -197,6 +213,9 @@ Message = (
     | DatasetPersistCommand
     | DatasetPersistFailure
     | DatasetPersistSuccess
+    | DatasetRetrieveCommand
+    | DatasetRetrieveFailure
+    | DatasetRetrieveSuccess
     | ExecutorFailure
     | ExecutorExit
     | ExecutorRegistration

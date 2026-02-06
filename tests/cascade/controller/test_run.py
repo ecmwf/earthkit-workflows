@@ -82,7 +82,7 @@ def run_cluster(
         p.start()
         ps.append(p)
     try:
-        b = Bridge(c, executors)
+        b = Bridge(c, executors, job.checkpointSpec)
         run(job, b, preschedule)
     except:
         for p in ps:
@@ -228,3 +228,42 @@ def test_fusing():
     jobInstanceRich = JobInstanceRich(jobInstance=job, checkpointSpec=None)
     run_cluster(jobInstanceRich, 12800, 2, preschedule)
     sleep(1)  # improves stability
+
+def test_checkpoints():
+    """This takes a job with a checkpoint config, and runs it twice,
+    in a way that recognizes whether it checkpointed or not"""
+
+    with tempfile.TemporaryDirectory() as tmp_root, tempfile.TemporaryDirectory() as ckpt_root:
+        sourcetask_code = f"import pathlib; f = pathlib.Path('{tmp_root}') / 'file.txt'; f.write_text('ok') if not f.exists() else 1/0;"
+        jobInstance = (
+            JobBuilder()
+                .with_node(
+                    "source",
+                    TaskBuilder.from_callable(exec).with_values(sourcetask_code),
+                )
+                .with_node(
+                    "product",
+                    TaskBuilder.from_callable(lambda e: e)
+                )
+                .with_edge("source", "product", 0)
+        ).build().get_or_raise()
+
+        preschedule = precompute(jobInstance)
+
+        checkpointSpec = CheckpointSpec(
+            storage_type="fs",
+            storage_params=ckpt_root,
+            retrieve_id="f1",
+            persist_id="f1",
+            to_persist=[DatasetId(task="source", output="0")],
+        )
+
+        jobInstanceRich = JobInstanceRich(
+            jobInstance=jobInstance,
+            checkpointSpec=checkpointSpec,
+        )
+
+        run_cluster(jobInstanceRich, 13200, 2, preschedule)
+        sleep(1)  # improves stability
+        run_cluster(jobInstanceRich, 13300, 2, preschedule)
+        sleep(1)  # improves stability

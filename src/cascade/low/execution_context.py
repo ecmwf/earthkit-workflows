@@ -40,6 +40,8 @@ class TaskStatus(int, Enum):
     succeeded = 2  # set by executor
     failed = 3  # set by executor
 
+VirtualCheckpointHost: HostId = "virtualCheckpointHost"
+
 
 @dataclass
 class JobExecutionContext:
@@ -103,13 +105,18 @@ class JobExecutionContext:
     def assign_task(self) -> None:
         raise NotImplementedError
 
-    def task_done(self, task: TaskId, worker: WorkerId) -> None:
+    def task_done(self, taskId: TaskId) -> None:
+        # TODO this is also called upon virtual dataset published. A bit risky as
+        # we dont utilize the taskId anyhow here!
+        self.ongoing_total -= 1
+        self.remaining -= 1
+
+    def task_done_at(self, task: TaskId, worker: WorkerId) -> None:
         self.worker2ts[worker][task] = TaskStatus.succeeded
         self.ts2worker[task][worker] = TaskStatus.succeeded
         if task in self.ongoing[worker]:
             self.ongoing[worker].remove(task)
-            self.ongoing_total -= 1
-            self.remaining -= 1
+            self.task_done(task)
         else:
             raise ValueError(f"{task} success but cant remove from `ongoing`")
         if not self.ongoing[worker]:
@@ -150,6 +157,9 @@ def init_context(
         host2workers[worker.host].append(worker)
     task_o = {task: job.jobInstance.outputs_of(task) for task in job.jobInstance.tasks.keys()}
     total = len(job.jobInstance.tasks.keys())
+
+    if VirtualCheckpointHost in host2workers:
+        raise ValueError(f"the value {VirtualCheckpointHost} is invalid for environment hosts")
 
     return JobExecutionContext(
         job_instance=job.jobInstance,

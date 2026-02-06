@@ -52,6 +52,7 @@ class SerdeRegistry:
             des,
         )
 
+DefaultSerde = "cloudpickle.loads"
 
 def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     """Utilizes `custom_ser` attr if present, otherwise defaults to cloudpickle as the most
@@ -60,12 +61,12 @@ def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     if (serde := SerdeRegistry.serde.get(type(v), None)) is not None:
         value, deser_fun = serde[0](v), serde[1]
     else:
-        value, deser_fun = cloudpickle.dumps(v), "cloudpickle.loads"
+        value, deser_fun = cloudpickle.dumps(v), DefaultSerde
     return value, deser_fun
 
 
 def des_output(v: bytes, annotation: str, deser_fun: str) -> Any:
-    if deser_fun == "cloudpickle.loads":
+    if deser_fun == DefaultSerde:
         return cloudpickle.loads(v)
     else:
         return resolve_callable(deser_fun)(v)

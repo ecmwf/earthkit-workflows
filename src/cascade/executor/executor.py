@@ -39,6 +39,8 @@ from cascade.executor.msg import (
     DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
+    DatasetRetrieveFailure,
+    DatasetRetrieveSuccess,
     DatasetTransmitFailure,
     ExecutorExit,
     ExecutorFailure,
@@ -60,6 +62,8 @@ from cascade.shm.server import entrypoint as shm_server
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms
 
+# messages from the data server which need to go to controller, but have no additional logic here
+JustForwardToController = DatasetTransmitFailure|DatasetPersistSuccess|DatasetPersistFailure|DatasetRetrieveFailure
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{platform.get_bindabble_self()}:{port}"
@@ -308,7 +312,12 @@ class Executor:
                             callback(worker_address(worker), m)
                         self.datasets.add(m.ds)
                         self.to_controller(m)
-                    elif isinstance(m, DatasetTransmitFailure|DatasetPersistSuccess|DatasetPersistFailure):
+                    elif isinstance(m, DatasetRetrieveSuccess):
+                        availability_notification = DatasetPublished(ds=m.ds, origin=self.host, transmit_idx=None)
+                        for worker in self.workers:
+                            callback(worker_address(worker), availability_notification)
+                        self.to_controller(m)
+                    elif isinstance(m, JustForwardToController):
                         self.to_controller(m)
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)

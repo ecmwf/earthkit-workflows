@@ -10,6 +10,7 @@ from typing import Any, Iterator
 import cascade.executor.serde as serde
 from cascade.executor.msg import DatasetPersistSuccess, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, TaskId
+from cascade.low.execution_context import VirtualCheckpointHost
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +68,16 @@ class State:
         ):
             self.persist_queue[dataset] = at
 
-    def receive_payload(self, payload: DatasetTransmitPayload) -> None:
+    def receive_payload(self, ds: DatasetId, payload: bytes, deser_fun: str) -> None:
         """Stores deserialized value into outputs, considers purge"""
         # NOTE ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
-        self.outputs[payload.header.ds] = serde.des_output(
-            payload.value, "Any", payload.header.deser_fun
-        )
-        self._consider_purge(payload.header.ds)
+        self.outputs[ds] = serde.des_output(payload, "Any", deser_fun)
+        self._consider_purge(ds)
 
-    def acknowledge_persist(self, payload: DatasetPersistSuccess) -> None:
+    def acknowledge_persist(self, ds: DatasetId) -> None:
         """Marks acknowledged, considers purge"""
-        self.to_persist.discard(payload.ds)
-        self._consider_purge(payload.ds)
+        self.to_persist.discard(ds)
+        self._consider_purge(ds)
 
     def task_done(self, task: TaskId, inputs: set[DatasetId]) -> None:
         """Marks that the inputs are not needed for this task anymore, considers purge of each"""

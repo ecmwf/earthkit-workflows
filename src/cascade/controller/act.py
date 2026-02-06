@@ -9,12 +9,14 @@
 """Implements the invocation of Bridge/Executor methods given a sequence of Actions"""
 
 import logging
+from typing import Iterable, Iterator, cast
 
-import cascade.executor.checkpoints as checkpoints
 from cascade.controller.core import State
 from cascade.executor.bridge import Bridge
-from cascade.executor.msg import TaskSequence
-from cascade.low.execution_context import JobExecutionContext
+from cascade.executor.checkpoints import build_retrieve_command, possible_repersist, retrieve_dataset
+from cascade.executor.msg import DatasetPublished, TaskSequence
+from cascade.low.core import DatasetId
+from cascade.low.execution_context import JobExecutionContext, VirtualCheckpointHost
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
 from cascade.scheduler.core import Assignment
 
@@ -75,17 +77,46 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
     """
 
     for dataset, host in state.drain_fetching_queue():
-        bridge.fetch(dataset, host)
+        if host != VirtualCheckpointHost:
+            bridge.fetch(dataset, host)
+        else:
+            # NOTE we would rather not be here, but we dont generally expect
+            # checkpointed datasets to be outputs. If needbe, send a command
+            # to any worker, or spawn a thread with this
+            logger.warning(f"execute checkpoint retrieve on controller")
+            # NOTE the host is the virtual one so the message is not really valid, but no big deal
+            virtual_command = build_retrieve_command(bridge.checkpoint_spec, dataset, host)
+            buffer = retrieve_dataset(virtual_command)
+            try:
+                # the cast is wrong but ty is bit confused about memoryview anyway
+                state.receive_payload(dataset, cast(bytes, buffer.view()), buffer.deser_fun)
+            finally:
+                buffer.close()
 
     for dataset, host in state.drain_persist_queue():
-        if context.checkpoint_spec is None:
-            raise TypeError(f"unexpected persist need when checkpoint storage not configured")
-        persist_params = checkpoints.serialize_persist_params(context.checkpoint_spec)
-        bridge.persist(dataset, host, context.checkpoint_spec.storage_type, persist_params)
+        if host != VirtualCheckpointHost:
+            bridge.persist(dataset, host)
+        else:
+            possible_repersist(dataset, bridge.checkpoint_spec)
+            state.acknowledge_persist(dataset)
 
     for ds in state.drain_purging_queue():
         for host in context.purge_dataset(ds):
-            logger.debug(f"issuing purge of {ds=} to {host=}")
-            bridge.purge(host, ds)
+            if host != VirtualCheckpointHost:
+                logger.debug(f"issuing purge of {ds=} to {host=}")
+                bridge.purge(host, ds)
 
     return state
+
+def virtual_checkpoint_publish(datasets: Iterable[DatasetId]) -> Iterator[DatasetPublished]:
+    """Virtual in the sense of not actually sending any message, but instead simulating
+    a response so that controller.notify can bring the contexts into the right state.
+    Invoked once, at the job start, after the checkpoint has been listed"""
+    return (
+        DatasetPublished(
+            origin=VirtualCheckpointHost,
+            ds=dataset,
+            transmit_idx=None,
+        )
+        for dataset in datasets
+    )
