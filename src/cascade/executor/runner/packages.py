@@ -156,7 +156,6 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
     """
 
     installed_raw, _ = run_command(Commands.freeze_command)
-    print(f"whaaat {installed_raw}")
     to_kv = lambda kv: kv.split('==', 1) if not kv.startswith('-e') else (kv.rsplit('/', 1)[1], '--editable')
     installed = dict(to_kv(kv) for kv in installed_raw.splitlines() if kv)
     for package_spec in packages:
@@ -198,9 +197,8 @@ class PackagesEnv(AbstractContextManager):
             self.td = new_venv()
         packages = list(_prefer_installed(packages))
 
-        logger.debug(
-            f"installing {len(packages)} packages: {','.join(packages[:10])}{',...' if len(packages) > 10 else ''}"
-        )
+        logger.debug(f"installing {len(packages)} packages")
+        logger.debug(f"installing packages: {','.join(packages)}")
         install_command = Commands.install_command(self.td.name)
         if os.environ.get("VENV_OFFLINE", "") == "YES":
             install_command += ["--offline"]
@@ -209,6 +207,7 @@ class PackagesEnv(AbstractContextManager):
         install_command.extend(set(packages))
         logger.debug(f"running install command: {' '.join(install_command)}")
         _, install_output = run_command(install_command)
+        logger.debug(f"install result: {install_output}")
 
         # NOTE this is wrong because we would need to reliably unload modules, but that apparently aint possible in python
         # importlib.invalidate_caches()
@@ -216,7 +215,7 @@ class PackagesEnv(AbstractContextManager):
         if install_issues:
             msg = repr(install_issues)
             # TODO raise an error that would be converted to a message which then makes executor re-run the whole task sequence
-            raise ValueError(f"failed to install correctly: {msg[:1024]}{'...' if len(msg) > 1024 else ''}")
+            raise ValueError(f"failed to install correctly: {msg}")
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         sys.path = [
