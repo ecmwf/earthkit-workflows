@@ -25,7 +25,7 @@ import sys
 import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Iterator, Literal
+from typing import Iterator, Literal, cast
 
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -156,8 +156,18 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
     """
 
     installed_raw, _ = run_command(Commands.freeze_command)
-    to_kv = lambda kv: kv.split('==', 1) if not kv.startswith('-e') else (kv.rsplit('/', 1)[1], '--editable')
-    installed = dict(to_kv(kv) for kv in installed_raw.splitlines() if kv)
+    def maybe_tuple(kv: str) -> None|tuple[str, str]:
+        if kv.startswith('-e'):
+            return kv.rsplit('/', 1)[1], '--editable'
+        elif '@ git' in kv:
+            return kv.split('@', 1)[0], '--git'
+        elif '==' in kv:
+            return cast(tuple[str, str], kv.split('==', 1))
+        else:
+            logger.warning(f"unable to discern package install {kv}")
+            return None
+    _installed = (maybe_tuple(kv) for kv in installed_raw.splitlines() if kv)
+    installed = dict(tup_or_none for tup_or_none in _installed if tup_or_none)
     for package_spec in packages:
         try:
             parts = re.split(r'([<>=!~].*)', package_spec)
@@ -165,7 +175,7 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
             if package not in installed:
                 yield package
             elif len(parts) == 1:
-                if installed[package] == '--editable':
+                if installed[package] == '--editable' or installed[package] == '--git':
                     continue
                 yield f"{package}=={installed[package]}"
             else:
@@ -173,7 +183,7 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
                 # NOTE in case of mismatch we just warn because we dont know if the module was imported already
                 # NOTE we dont check for import because we need to after install *anyway*
                 # NOTE for editable + explicit constraint, we leave it to uv -- imo unclear
-                if installed[package] == '--editable':
+                if installed[package] == '--editable' or installed[package] == '--git':
                     logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
                     yield package_spec
                 elif Version(installed[package]) in specifier:
