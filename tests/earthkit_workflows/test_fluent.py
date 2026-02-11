@@ -339,22 +339,22 @@ def test_split():
         )
 
 
-
 @pytest.mark.parametrize(
-    "selection, num_arrays, shapes", [
-        ({"dim_0": 1}, 3, [(4,), (4,), (4,)]),
-        ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]), 
-        ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]), 
-        ({"type": "A"}, 1, [(3, 4)]),
-    ]
+    "selection, num_arrays, shapes_or_error",
+    [
+        ({"dim_0": 1}, 3, [(5,), (4,), (4,)]),
+        ({"dim_1": 4}, 1, [(3,)]),
+        ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]),
+        ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]),
+        ({"type": "A"}, 1, [(3, 5)]),
+        ({"dim_1": 10}, 0, KeyError),
+    ],
+    ids=["in-all", "in-one", "by-path", "by-path-and-dim", "by-coord", "nonexistent"],
 )
-def test_select(selection, num_arrays, shapes):
-    input_action = mock_action((3, 4))
-    branches = input_action.split(
-        {
-            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
-            "/branch2": lambda data: np.where(data > 0, data, np.nan),
-        }
+def test_select(selection, num_arrays, shapes_or_error):
+    branches = merge(
+        branch1=mock_action((3, 4)),
+        branch2=mock_action((3, 5)),
     )
     subbranches = branches.split(
         {
@@ -363,10 +363,47 @@ def test_select(selection, num_arrays, shapes):
         }
     )
     subbranches.nodes["/branch2"].coords["type"] = "A"
-    select_dim = subbranches.sel(**selection)
-    assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
-    for index, (_, narray) in enumerate(nodetree_arrays(select_dim.nodes)):
-        assert narray.shape == shapes[index]
+    if num_arrays > 0:
+        select_dim = subbranches.sel(**selection)
+        assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
+        for index, (_, narray) in enumerate(nodetree_arrays(select_dim.nodes)):
+            assert narray.shape == shapes_or_error[index]
+    else:
+        with pytest.raises(shapes_or_error):
+            subbranches.sel(**selection)
+
+
+@pytest.mark.parametrize(
+    "selection, num_arrays, shapes_or_error",
+    [
+        ({"dim_0": 1}, 3, [(5,), (4,), (4,)]),
+        ({"dim_1": 4}, 1, [(3,)]),
+        ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]),
+        ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]),
+        ({"dim_1": 10}, 0, IndexError),
+    ],
+    ids=["in-all", "in-one", "by-path", "by-path-and-dim", "nonexistent"],
+)
+def test_iselect(selection, num_arrays, shapes_or_error):
+    branches = merge(
+        branch1=mock_action((3, 4)),
+        branch2=mock_action((3, 5)),
+    )
+    subbranches = branches.split(
+        {
+            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+        }
+    )
+    if num_arrays > 0:
+        select_dim = subbranches.isel(**selection)
+        assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
+        for index, (_, narray) in enumerate(nodetree_arrays(select_dim.nodes)):
+            assert narray.shape == shapes_or_error[index]
+    else:
+        with pytest.raises(shapes_or_error):
+            subbranches.isel(**selection)
+
 
 def test_merge():
     input_action = mock_action((3, 4))
