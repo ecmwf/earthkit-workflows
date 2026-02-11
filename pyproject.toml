@@ -18,7 +18,7 @@ authors = [
 ]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "earthkit-data",
     "cloudpickle",
@@ -34,6 +34,7 @@ dependencies = [
     "pyzmq",
     "fire",
     "orjson",
+    "qubed>=0.3.0",
 ]
 # version provided via setuptools_scm module, which derives it from git tag
 dynamic = ["version"]
@@ -41,6 +42,7 @@ readme = "README.md"
 
 [dependency-groups]
 dev = ["pytest", "pytest-xdist>=3.8", "prek", "ty==0.0.2", "build", "bokeh"]
+
 
 [tool.setuptools]
 include-package-data = true
