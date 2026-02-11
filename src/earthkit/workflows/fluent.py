@@ -698,10 +698,13 @@ class Action:
         for npath, narray in nodetree_arrays(nodes):     
             valid, new_criteria = self._validate_criteria(narray, crit)
             if valid:
-                new_nodes[npath] = narray.sel(**new_criteria, drop=drop)
+                try:
+                    new_nodes[npath] = narray.sel(**new_criteria, drop=drop)
+                except KeyError:
+                    pass
 
         if len(new_nodes) == 0:
-            raise ValueError(f"No nodes match selection criteria {criteria}")
+            raise KeyError(f"No nodes match select criteria {criteria}")
         return type(self)(nodetree_from_dict(new_nodes))
 
     sel = select
@@ -733,10 +736,13 @@ class Action:
         for npath, narray in nodetree_arrays(nodes):     
             valid, new_criteria = self._validate_criteria(narray, crit)
             if valid:
-                new_nodes[npath] = narray.isel(**new_criteria, drop=drop)
+                try:
+                    new_nodes[npath] = narray.isel(**new_criteria, drop=drop)
+                except IndexError:
+                    pass
 
         if len(new_nodes) == 0:
-            raise ValueError(f"No nodes match selection criteria {criteria}")
+            raise IndexError(f"No nodes match iselect criteria {criteria}")
         return type(self)(nodetree_from_dict(new_nodes))
 
     isel = iselect
