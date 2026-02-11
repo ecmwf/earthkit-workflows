@@ -11,6 +11,7 @@
 import pytest
 from qubed import Qube
 
+from earthkit.workflows.nodetree import nodetree_array
 from earthkit.workflows._qubed import _convert_num_to_abc, expand_as_qube
 from .helpers import mock_action
 
@@ -491,12 +492,13 @@ def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
 
     result = expand_as_qube(action, qube)
     subset = result.select(param='t')
-
-    assert "step" in subset.nodes.to_dataset().dims
-    assert "param" not in subset.nodes.to_dataset().dims
-    assert "param" in subset.nodes.to_dataset().coords
-
-    assert subset.nodes.to_dataset().param == 't'
+    
+    da = nodetree_array(subset.nodes)
+    assert "step" in da.dims
+    assert "param" not in da.dims
+    assert "param" in da.coords
+    
+    assert da.param == 't'
 
     with pytest.raises(KeyError):
         subset = result.select(param='nonexistent_param')
