@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 

@@ -283,7 +283,7 @@ class Action:
 
     def transform(
         self,
-        func: Callable,
+        func: Callable[["Action", Any], "Action"],
         params: list,
         dim: str | Coord,
         axis: int = 0,
