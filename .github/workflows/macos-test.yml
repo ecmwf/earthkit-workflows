@@ -25,9 +25,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
-      - uses: astral-sh/setup-uv@v6
-        with:
-          version: 0.7.19
+      # - uses: astral-sh/setup-uv@v6
+      #   with:
+      #     version: 0.7.19
       - uses: extractions/setup-just@v3
       - run: |
           uv sync --python "${{ matrix.python_version }}"
