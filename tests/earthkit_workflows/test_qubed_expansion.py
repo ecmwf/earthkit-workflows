@@ -514,11 +514,12 @@ def test_expand_as_qube_with_real_action_post_select_level(qube_fixture, request
     result = expand_as_qube(action, qube)
     subset = result.select(level=50)
 
-    assert "step" in subset.nodes.to_dataset().dims
-    assert "level" not in subset.nodes.to_dataset().dims
-    assert "level" in subset.nodes.to_dataset().coords
+    da = nodetree_array(subset.nodes)
+    assert "step" in da.dims
+    assert "level" not in da.dims
+    assert "level" in da.coords
 
-    assert subset.nodes.to_dataset().level == 50
+    assert da.level == 50
 
     with pytest.raises(KeyError):
         subset = result.select(param='nonexistent_param')
