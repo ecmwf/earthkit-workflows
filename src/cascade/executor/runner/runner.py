@@ -12,6 +12,7 @@ Just io handling (ie, using Memory api), tracing and callable invocation
 """
 
 import logging
+from collections.abc import Generator
 from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Any, Callable
@@ -83,16 +84,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     result = func(*args, **kwargs)
 
     # store outputs
-    if outputsN == 1:
-        run_end = perf_counter_ns()
-        mark({"task": taskId, "action": TaskLifecycle.computed})
-        outputKey, outputSchema = outputs[0]
-        outputId = DatasetId(taskId, outputKey)
-        memory.handle(
-            outputId, outputSchema, result, outputId in executionContext.publish
-        )
-        mark({"task": taskId, "action": TaskLifecycle.published})
-    else:
+    if isinstance(result, Generator):
         outputsI = iter(outputs)
         for (outputKey, outputSchema), outputValue in zip(outputsI, result):
             outputId = DatasetId(taskId, outputKey)
@@ -111,6 +103,19 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
         mark({"task": taskId, "action": TaskLifecycle.computed})
         run_end = perf_counter_ns()
+        mark({"task": taskId, "action": TaskLifecycle.published})
+    else:
+        run_end = perf_counter_ns()
+        mark({"task": taskId, "action": TaskLifecycle.computed})
+        if outputsN != 1:
+            raise ValueError(
+                f"task {taskId} returned non-generator result but has {outputsN} outputs declared"
+            )
+        outputKey, outputSchema = outputs[0]
+        outputId = DatasetId(taskId, outputKey)
+        memory.handle(
+            outputId, outputSchema, result, outputId in executionContext.publish
+        )
         mark({"task": taskId, "action": TaskLifecycle.published})
     end = perf_counter_ns()
 
