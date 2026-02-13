@@ -1,4 +1,4 @@
-name: CI # TODO rename the file in a standalone PR
+name: CI # TODO rename the file in a standalone PR, its not macos-test, but ci
 
 on:
   # Trigger the workflow manually
@@ -17,7 +17,7 @@ jobs:
       fail-fast: true
       matrix:
         arch_type: ["macos-ARM64", "linux-x86"]
-        python_version: ["3.11", "3.12", "3.13"]
+        python_version: ["3.11", "3.12", "3.13", "3.14"]
     runs-on: "${{ fromJSON('{\"linux-x86\": [\"self-hosted\", \"Linux\", \"platform-builder-Rocky-8.6\"], \"macos-ARM64\": [\"self-hosted\", \"macOS\", \"ARM64\"]}')[matrix.arch_type] }}"
     timeout-minutes: 20
     steps:
@@ -25,9 +25,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
-      # - uses: astral-sh/setup-uv@v6
-      #   with:
-      #     version: 0.7.19
+      # NOTE if setup uv used, make sure to configure uv cache correctly, to not fill home. But should be already installed and configured
+      # - uses: astral-sh/setup-uv@v7
       - uses: extractions/setup-just@v3
       - run: |
           uv sync --python "${{ matrix.python_version }}"
