@@ -29,7 +29,9 @@ jobs:
       # - uses: astral-sh/setup-uv@v7
       - uses: extractions/setup-just@v3
       - run: |
-          uv python upgrade "${{ matrix.python_version }}" # TODO remove after we are safely past 3.14.3+ on all agents
+          if [ "${{ matrix.python_version }}" = "3.14" ] ; then
+            uv python install 3.14.3 # TODO remove after we are safely past 3.14.3+ on all agents
+          fi
           uv sync --python "${{ matrix.python_version }}"
           just fmt
           just val
