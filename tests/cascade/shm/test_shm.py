@@ -15,13 +15,19 @@ import cascade.shm.api as api
 import cascade.shm.client as client
 import cascade.shm.server as server
 from cascade.executor.config import logging_config
+from cascade.executor.platform import get_mp_ctx
 
+# NOTE we are doing get_mp_ctx, which leads to fork on linux. While that is safe
+# in our cascade code as we take care about the parent state at the forking time,
+# it may not be so when forking a pytest-process. However, we should not use
+# forkserver right away, because the os.environ changes are not reflected after
+# the mp manager gets launched.
 
 @pytest.mark.parametrize("shm_addr", [12345, "/tmp/shmport12345"])
 def test_shm_simple(shm_addr):
     api.publish_socket_addr(shm_addr)
     pref = f"cTi{shm_addr%10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
-    serverP = Process(
+    serverP = get_mp_ctx("executor-aux").Process(
         target=server.entrypoint,
         kwargs={"logging_config": logging_config, "shm_pref": pref},
     )
@@ -56,7 +62,8 @@ def test_shm_disk(shm_addr):
     capacity = 4
     pref = f"cTi{shm_addr%10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
     api.publish_socket_addr(shm_addr)
-    serverP = Process(
+
+    serverP = get_mp_ctx("executor-aux").Process(
         target=server.entrypoint,
         kwargs={
             "capacity": capacity,
