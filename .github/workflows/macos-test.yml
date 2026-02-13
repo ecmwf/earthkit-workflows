@@ -22,13 +22,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
       # NOTE if setup uv used, make sure to configure uv cache correctly, to not fill home. But should be already installed and configured
       # - uses: astral-sh/setup-uv@v7
       - uses: extractions/setup-just@v3
       - run: |
+          echo "uv version is $(uv --version)"
           if [ "${{ matrix.python_version }}" = "3.14" ] ; then
             uv python install 3.14.3 # TODO remove after we are safely past 3.14.3+ on all agents
           fi
