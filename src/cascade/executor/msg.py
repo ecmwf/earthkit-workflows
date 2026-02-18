@@ -229,4 +229,5 @@ Message = (
     | ExecutorShutdown
     | WorkerReady
     | WorkerShutdown
+    | RunnerRestartRequest
 )

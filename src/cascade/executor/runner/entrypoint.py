@@ -16,6 +16,7 @@ from typing import Any
 
 import cloudpickle
 import zmq
+from typing_extensions import Self
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
@@ -50,16 +51,20 @@ class RunnerContext:
     callback: BackboneAddress
     param_source: dict[TaskId, dict[int | str, DatasetId]]
     log_base: str | None
+    schema_lookup: dict[DatasetId, str]
+
+    @staticmethod
+    def build_schema_lookup(job: JobInstance) -> dict[DatasetId, str]:
+        return {
+            DatasetId(task_id, output): fqn
+            for task_id, task_instance in job.tasks.items()
+            for output, fqn in task_instance.definition.output_schema
+        }
 
     def project(self, taskSequence: TaskSequence) -> ExecutionContext:
-        schema_lookup: dict[DatasetId, str] = {}
-        for task_id, task_instance in self.job.tasks.items():
-            for output, fqn in task_instance.definition.output_schema:
-                schema_lookup[DatasetId(task_id, output)] = fqn
-
         param_source_ext: dict[TaskId, dict[int | str, tuple[DatasetId, str]]] = {
             task: {
-                k: (dataset_id, schema_lookup[dataset_id])
+                k: (dataset_id, self.schema_lookup[dataset_id])
                 for k, dataset_id in self.param_source[task].items()
             }
             for task in taskSequence.tasks
@@ -71,6 +76,21 @@ class RunnerContext:
             publish=taskSequence.publish,
         )
 
+def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> set[DatasetId]:
+    """Assuming a failure at task Cut, identify which datasets from the beginning of
+    the sequence should be additionaly published"""
+    finished = set()
+    additionalPublish = set()
+    found = False
+    for task in taskSequence.tasks:
+        if task == cut or found:
+            found = True
+            for sourceDataset in ctx.param_source[task].values():
+                if sourceDataset.task in finished:
+                    additionalPublish.add(sourceDataset)
+        else:
+            finished.add(task)
+    return additionalPublish - taskSequence.publish
 
 class Config:
     """Some parameters to drive behaviour. Currently not exposed externally -- no clear argument
@@ -121,7 +141,9 @@ def execute_sequence(
         logger.error(f"postinstall validation failed, will send RunnerRestartRequest: {repr(e)}")
         if not taskId:
             raise TypeError("Postinstall should not have been raised in the absence of active task")
-        raise NotImplementedError("make sure all memory up until now is correctly flushed")
+        additionalPublish = task_sequence_postmortem(runnerContext, taskSequence, taskId)
+        logger.debug(f"postinstall failure triggers additional publish of {additionalPublish}")
+        memory.additional_publish_local(additionalPublish)
         callback(
             runnerContext.callback,
             RunnerRestartRequest(worker=taskSequence.worker, task=taskId),
@@ -135,9 +157,9 @@ def execute_sequence(
         )
         return False
 
-def entrypoint(runnerContext: Any):
+def entrypoint(runnerContextClpkl: bytes):
     """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
-    runnerContext = cloudpickle.loads(runnerContext)
+    runnerContext = cloudpickle.loads(runnerContextClpkl)
     if runnerContext.log_base:
         log_path = f"{runnerContext.log_base}.{runnerContext.workerId.worker}"
         logging.config.dictConfig(logging_config_filehandler(log_path))

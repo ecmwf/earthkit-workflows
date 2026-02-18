@@ -14,7 +14,7 @@ import hashlib
 import logging
 import sys
 from contextlib import AbstractContextManager
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 
 import cascade.executor.serde as serde
 import cascade.shm.client as shm_client
@@ -40,6 +40,29 @@ class Memory(AbstractContextManager):
         self.callback = callback
         self.worker = worker
 
+    def _publish(self, outputId: DatasetId, outputSchema: str, outputValue: Any):
+        logger.debug(f"publishing {outputId}")
+        shmid = ds2shmid(outputId)
+        result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(
+            outputValue, outputSchema
+        )
+        l = len(result_ser)
+        rbuf = shm_client.allocate(shmid, l, deser_fun)
+        rbuf.view()[:l] = result_ser
+        rbuf.close()
+        callback(
+            self.callback,
+            DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
+        )
+
+    def additional_publish_local(self, outputIds: Iterable[DatasetId]):
+        # if eg due to a runner crash we need to interrupt a task sequence, it may
+        # trigger a publish of datasets which originally were not published
+        for outputId in outputIds:
+            outputValue = self.local[outputId] # KeyError here is *not* expected
+            raise NotImplementedError # TODO we need the outputSchema
+            # self._publish(outputId, outputSchema, outputValue)
+
     def handle(
         self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool
     ) -> None:
@@ -55,19 +78,7 @@ class Memory(AbstractContextManager):
         self.local[outputId] = outputValue
 
         if isPublish:
-            logger.debug(f"publishing {outputId}")
-            shmid = ds2shmid(outputId)
-            result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(
-                outputValue, outputSchema
-            )
-            l = len(result_ser)
-            rbuf = shm_client.allocate(shmid, l, deser_fun)
-            rbuf.view()[:l] = result_ser
-            rbuf.close()
-            callback(
-                self.callback,
-                DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
-            )
+            self._publish(outputId, outputSchema, outputValue)
         else:
             # NOTE even if its not actually published, we send the message to allow for
             # marking the task itself as completed -- its odd, but arguably better than

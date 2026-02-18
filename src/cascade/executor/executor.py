@@ -56,7 +56,7 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
-from cascade.low.core import DatasetId, HostId, JobInstance, WorkerId
+from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
@@ -75,6 +75,25 @@ def address_of(port: int) -> BackboneAddress:
 class WorkerHandle:
     process: BaseProcess
     cnt: int
+
+def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequence:
+    """Assuming a failure at task Cut, calculate new task sequence which starts with Cut
+    that represents the still-to-be-done-in-new-worker calculation"""
+    remainder = []
+    for task in taskSequence.tasks:
+        if task == cut or remainder:
+            remainder.append(task)
+    if not remainder:
+        raise ValueError(f"empty remainder -> task {cut} not part of the orig {taskSequence=}?")
+    remainder_set = set(remainder)
+
+    return TaskSequence(
+        worker=taskSequence.worker,
+        tasks=remainder,
+        publish={ds for ds in taskSequence.publish if ds.task in remainder_set},
+        extra_env=taskSequence.extra_env,
+    )
+
 
 class Executor:
     def __init__(
@@ -203,6 +222,7 @@ class Executor:
         # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
         ctx = platform.get_mp_ctx("worker")
         initialCnt = 0
+        schema_lookup = RunnerContext.build_schema_lookup(self.job_instance)
         for worker in workers:
             runnerContext = RunnerContext(
                 workerId=worker,
@@ -211,11 +231,12 @@ class Executor:
                 param_source=self.param_source,
                 callback=self.mlistener.address,
                 log_base=self.log_base,
+                schema_lookup=schema_lookup,
             )
             # NOTE we need to cloudpickle because runnerContext contains some lambdas
             p = ctx.Process(
                 target=entrypoint,
-                kwargs={"runnerContext": cloudpickle.dumps(runnerContext)},
+                kwargs={"runnerContextClpkl": cloudpickle.dumps(runnerContext)},
             )
             p.start()
             self.workers[worker] = WorkerHandle(process=p, cnt=initialCnt)
@@ -315,6 +336,7 @@ class Executor:
                         break
                     # from entrypoint
                     elif isinstance(m, RunnerRestartRequest):
+                        # taskSequenceRemainder = task_sequence_remainder(taskSequence: ???, task: ???)
                         raise NotImplementedError("send terminate to current handle, create a new handle, derive the task subsequence and send it, notify controller")
                     elif isinstance(m, TaskFailure):
                         self.to_controller(m)
@@ -329,7 +351,8 @@ class Executor:
                     elif isinstance(m, DatasetRetrieveSuccess):
                         availability_notification = DatasetPublished(ds=m.ds, origin=self.host, transmit_idx=None)
                         for worker in self.workers:
-                            callback(worker_address(worker), availability_notification)
+                            raise NotImplementedError # TODO we need to get workerAttemptCnt
+                            # callback(worker_address(worker), availability_notification)
                         self.to_controller(m)
                     elif isinstance(m, JustForwardToController):
                         self.to_controller(m)
