@@ -85,7 +85,7 @@ class RunnerRestartRequest:
     # Sent by runner when it realizes it cant continue but a restart may help
     # For example when encountering pip install conflict with accumulated state
     worker: WorkerId
-    task: TaskId
+    remainder: TaskSequence
 
 
 @dataclass(frozen=True)

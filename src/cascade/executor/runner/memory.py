@@ -55,13 +55,12 @@ class Memory(AbstractContextManager):
             DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
         )
 
-    def additional_publish_local(self, outputIds: Iterable[DatasetId]):
+    def additional_publish_local(self, outputIds: Iterable[tuple[DatasetId, str]]):
         # if eg due to a runner crash we need to interrupt a task sequence, it may
         # trigger a publish of datasets which originally were not published
-        for outputId in outputIds:
+        for outputId, outputSchema in outputIds:
             outputValue = self.local[outputId] # KeyError here is *not* expected
-            raise NotImplementedError # TODO we need the outputSchema
-            # self._publish(outputId, outputSchema, outputValue)
+            self._publish(outputId, outputSchema, outputValue)
 
     def handle(
         self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool

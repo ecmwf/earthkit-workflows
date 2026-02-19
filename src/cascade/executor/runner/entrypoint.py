@@ -76,21 +76,42 @@ class RunnerContext:
             publish=taskSequence.publish,
         )
 
-def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> set[DatasetId]:
+def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> list[tuple[DatasetId, str]]:
     """Assuming a failure at task Cut, identify which datasets from the beginning of
-    the sequence should be additionaly published"""
+    the sequence should be additionaly published. Returns datasetid + its type"""
     finished = set()
-    additionalPublish = set()
+    required = set()
     found = False
     for task in taskSequence.tasks:
         if task == cut or found:
             found = True
             for sourceDataset in ctx.param_source[task].values():
                 if sourceDataset.task in finished:
-                    additionalPublish.add(sourceDataset)
+                    required.add(sourceDataset)
         else:
             finished.add(task)
-    return additionalPublish - taskSequence.publish
+    additionalPublish = required - taskSequence.publish
+    return [(ds, dict(ctx.job.tasks[ds.task].definition.output_schema)[ds.output]) for ds in additionalPublish]
+
+
+def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequence:
+    """Assuming a failure at task Cut, calculate new task sequence which starts with Cut
+    that represents the still-to-be-done-in-new-worker calculation"""
+    remainder = []
+    for task in taskSequence.tasks:
+        if task == cut or remainder:
+            remainder.append(task)
+    if not remainder:
+        raise ValueError(f"empty remainder -> task {cut} not part of the orig {taskSequence=}?")
+    remainder_set = set(remainder)
+
+    return TaskSequence(
+        worker=taskSequence.worker,
+        tasks=remainder,
+        publish={ds for ds in taskSequence.publish if ds.task in remainder_set},
+        extra_env=taskSequence.extra_env,
+    )
+
 
 class Config:
     """Some parameters to drive behaviour. Currently not exposed externally -- no clear argument
@@ -143,10 +164,11 @@ def execute_sequence(
             raise TypeError("Postinstall should not have been raised in the absence of active task")
         additionalPublish = task_sequence_postmortem(runnerContext, taskSequence, taskId)
         logger.debug(f"postinstall failure triggers additional publish of {additionalPublish}")
+        remainder = task_sequence_remainder(taskSequence, taskId)
         memory.additional_publish_local(additionalPublish)
         callback(
             runnerContext.callback,
-            RunnerRestartRequest(worker=taskSequence.worker, task=taskId),
+            RunnerRestartRequest(worker=taskSequence.worker, remainder=remainder),
         )
         return False
     except Exception as e:

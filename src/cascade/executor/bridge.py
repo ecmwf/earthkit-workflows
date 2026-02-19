@@ -33,6 +33,7 @@ from cascade.executor.msg import (
     ExecutorRegistration,
     ExecutorShutdown,
     Message,
+    RunnerRestartRequest,
     TaskFailure,
     TaskSequence,
 )
@@ -42,7 +43,7 @@ from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
-Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess
+Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess | RunnerRestartRequest
 # TODO consider retries here, esp on the Persist/Retrieve Failures
 ToShutdown = TaskFailure | ExecutorFailure | DatasetRetrieveFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
 Unsupported = TaskSequence | DatasetPurge | DatasetTransmitCommand | DatasetPersistCommand | ExecutorShutdown

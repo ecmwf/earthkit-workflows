@@ -74,25 +74,7 @@ def address_of(port: int) -> BackboneAddress:
 @dataclass
 class WorkerHandle:
     process: BaseProcess
-    cnt: int
-
-def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequence:
-    """Assuming a failure at task Cut, calculate new task sequence which starts with Cut
-    that represents the still-to-be-done-in-new-worker calculation"""
-    remainder = []
-    for task in taskSequence.tasks:
-        if task == cut or remainder:
-            remainder.append(task)
-    if not remainder:
-        raise ValueError(f"empty remainder -> task {cut} not part of the orig {taskSequence=}?")
-    remainder_set = set(remainder)
-
-    return TaskSequence(
-        worker=taskSequence.worker,
-        tasks=remainder,
-        publish={ds for ds in taskSequence.publish if ds.task in remainder_set},
-        extra_env=taskSequence.extra_env,
-    )
+    attempt_cnt: int
 
 
 class Executor:
@@ -108,13 +90,16 @@ class Executor:
         url_base: str,
     ) -> None:
         self.job_instance = job_instance
+        self.schema_lookup = RunnerContext.build_schema_lookup(self.job_instance)
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
         self.host = host
         self.workers: dict[WorkerId, WorkerHandle | None] = {
             WorkerId(host, f"w{i}"): None for i in range(workers)
         }
+        self.worker_awaits: dict[WorkerId, None|TaskSequence] = {}
         self.log_base = log_base
+        self.old_processes: list[BaseProcess] = []
 
         self.datasets: set[DatasetId] = set()
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
@@ -192,10 +177,16 @@ class Executor:
             logger.debug(f"cleanup worker {worker}")
             try:
                 if (handle := self.workers[worker]) is not None:
-                    callback(worker_address(worker, handle.cnt), WorkerShutdown())
+                    callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
                     handle.process.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {worker}")
+        for proc in self.old_processes:
+            logger.debug(f"cleanup old process {proc.pid}")
+            try:
+                proc.join()
+            except Exception as e:
+                logger.warning(f"gotten {repr(e)} when shutting down {proc.pid}")
         if (
             hasattr(self, "shm_process")
             and self.shm_process is not None
@@ -217,38 +208,37 @@ class Executor:
         self.heartbeat_watcher.step()
         self.sender.send("controller", m)
 
-    def start_workers(self, workers: Iterable[WorkerId]) -> None:
-        # TODO this method assumes no other message will arrive to mlistener! Thus cannot be used for workers now
-        # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
+    def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None|TaskSequence) -> WorkerHandle:
         ctx = platform.get_mp_ctx("worker")
-        initialCnt = 0
-        schema_lookup = RunnerContext.build_schema_lookup(self.job_instance)
-        for worker in workers:
-            runnerContext = RunnerContext(
-                workerId=worker,
-                workerAttemptCnt=initialCnt,
-                job=self.job_instance,
-                param_source=self.param_source,
-                callback=self.mlistener.address,
-                log_base=self.log_base,
-                schema_lookup=schema_lookup,
-            )
-            # NOTE we need to cloudpickle because runnerContext contains some lambdas
-            p = ctx.Process(
-                target=entrypoint,
-                kwargs={"runnerContextClpkl": cloudpickle.dumps(runnerContext)},
-            )
-            p.start()
-            self.workers[worker] = WorkerHandle(process=p, cnt=initialCnt)
-            logger.debug(f"started process {p.pid} for worker {worker}")
+        runnerContext = RunnerContext(
+            workerId=worker,
+            workerAttemptCnt=attempt_cnt,
+            job=self.job_instance,
+            param_source=self.param_source,
+            callback=self.mlistener.address,
+            log_base=self.log_base,
+            schema_lookup=self.schema_lookup,
+        )
+        # NOTE we need to cloudpickle because runnerContext contains some lambdas
+        p = ctx.Process(
+            target=entrypoint,
+            kwargs={"runnerContextClpkl": cloudpickle.dumps(runnerContext)},
+        )
+        p.start()
+        if worker in self.worker_awaits:
+            raise ValueError(f"{worker=} was already awaiting")
+        self.worker_awaits[worker] = seq
+        return WorkerHandle(process=p, attempt_cnt=attempt_cnt)
 
-        remaining = set(workers)
-        while remaining:
-            for m in self.mlistener.recv_messages():
-                if not isinstance(m, WorkerReady):
-                    raise ValueError(f"expected WorkerReady, gotten {type(m)}")
-                logger.debug(f"worker {m.worker} ready")
-                remaining.remove(m.worker)
+    def start_workers(self, workers: Iterable[WorkerId]) -> None:
+        # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
+        initialCnt = 0
+        for worker in workers:
+            handle = self._start_worker(worker=worker, attempt_cnt=initialCnt, seq=None)
+            self.workers[worker] = handle
+            logger.debug(f"started process {handle.process.pid} for worker {worker}")
+
+        self.remaining = set(workers)
 
     def register(self) -> None:
         # NOTE we do register explicitly post-construction so that the former one is network-latency-free.
@@ -297,6 +287,10 @@ class Executor:
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
+        if self.old_processes and not self.old_processes[0].is_alive():
+            # we check just the first one for simplicity
+            self.old_processes[0].join()
+            self.old_processes.pop(0)
 
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
@@ -317,7 +311,13 @@ class Executor:
                         handle = self.workers[m.worker]
                         if handle is None or handle.process.exitcode is not None:
                             raise ValueError(f"worker process {m.worker} is not alive")
-                        callback(worker_address(m.worker, handle.cnt), m)
+                        if m.worker in self.worker_awaits:
+                            if self.worker_awaits[m.worker] is not None:
+                                raise ValueError(f"double enqueue for {m.worker}")
+                            else:
+                                self.worker_awaits[m.worker] = m
+                        else:
+                            callback(worker_address(m.worker, handle.attempt_cnt), m)
                     elif isinstance(m, Ack):
                         self.sender.ack(m.idx)
                     elif isinstance(m, DatasetPurge):
@@ -327,7 +327,7 @@ class Executor:
                             for worker in self.workers:
                                 handle = self.workers[worker]
                                 if handle is not None:
-                                    callback(worker_address(worker, handle.cnt), m)
+                                    callback(worker_address(worker, handle.attempt_cnt), m)
                             self.datasets.remove(m.ds)
                             callback(self.daddress, m)
                     elif isinstance(m, ExecutorShutdown):
@@ -335,9 +335,24 @@ class Executor:
                         self.terminate()
                         break
                     # from entrypoint
+                    elif isinstance(m, WorkerReady):
+                        if not m.worker in self.worker_awaits:
+                            logger.warning(f"unexpectedly gotten WorkerReady from {m.worker}, assuming double send")
+                        else:
+                            maybe_seq = self.worker_awaits.pop(m.worker)
+                            if maybe_seq is not None:
+                                handle = self.workers[m.worker]
+                                if handle is None:
+                                    raise ValueError(f"worker {m.worker} is alive but has no handle")
+                                callback(worker_address(m.worker, handle.attempt_cnt), maybe_seq)
                     elif isinstance(m, RunnerRestartRequest):
-                        # taskSequenceRemainder = task_sequence_remainder(taskSequence: ???, task: ???)
-                        raise NotImplementedError("send terminate to current handle, create a new handle, derive the task subsequence and send it, notify controller")
+                        handle = self.workers[m.worker]
+                        if handle is None:
+                            raise ValueError("unexpected restart from worker without handle")
+                        callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
+                        self.old_processes.append(handle.process)
+                        self._start_worker(m.worker, handle.attempt_cnt+1, m.remainder)
+                        self.to_controller(m)
                     elif isinstance(m, TaskFailure):
                         self.to_controller(m)
                     elif isinstance(m, DatasetPublished):
@@ -345,14 +360,14 @@ class Executor:
                             # NOTE if we knew the origin worker, we would exclude it here... but doesn't really matter
                             handle = self.workers[worker]
                             if handle is not None:
-                                callback(worker_address(worker, handle.cnt), m)
+                                callback(worker_address(worker, handle.attempt_cnt), m)
                         self.datasets.add(m.ds)
                         self.to_controller(m)
                     elif isinstance(m, DatasetRetrieveSuccess):
                         availability_notification = DatasetPublished(ds=m.ds, origin=self.host, transmit_idx=None)
-                        for worker in self.workers:
-                            raise NotImplementedError # TODO we need to get workerAttemptCnt
-                            # callback(worker_address(worker), availability_notification)
+                        for worker, handle in self.workers.items():
+                            if handle is not None:
+                                callback(worker_address(worker, handle.attempt_cnt), availability_notification)
                         self.to_controller(m)
                     elif isinstance(m, JustForwardToController):
                         self.to_controller(m)
