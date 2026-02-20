@@ -344,14 +344,19 @@ class Executor:
                                 handle = self.workers[m.worker]
                                 if handle is None:
                                     raise ValueError(f"worker {m.worker} is alive but has no handle")
-                                callback(worker_address(m.worker, handle.attempt_cnt), maybe_seq)
+                                address=worker_address(m.worker, handle.attempt_cnt)
+                                logger.debug(f"worker {m.worker} ready, sending task sequence {maybe_seq} to {address}")
+                                callback(address, maybe_seq)
+                            else:
+                                logger.debug(f"worker {m.worker} ready, no work enqueued")
                     elif isinstance(m, RunnerRestartRequest):
                         handle = self.workers[m.worker]
                         if handle is None:
                             raise ValueError("unexpected restart from worker without handle")
                         callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
                         self.old_processes.append(handle.process)
-                        self._start_worker(m.worker, handle.attempt_cnt+1, m.remainder)
+                        logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt+1}")
+                        self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt+1, m.remainder)
                         self.to_controller(m)
                     elif isinstance(m, TaskFailure):
                         self.to_controller(m)

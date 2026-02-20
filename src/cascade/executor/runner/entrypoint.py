@@ -189,7 +189,9 @@ def entrypoint(runnerContextClpkl: bytes):
         logging.config.dictConfig(logging_config)
     ctx = zmq.Context()
     socket = ctx.socket(zmq.PULL)
-    socket.bind(worker_address(runnerContext.workerId, runnerContext.workerAttemptCnt))
+    address = worker_address(runnerContext.workerId, runnerContext.workerAttemptCnt)
+    logger.debug(f"worker {runnerContext.workerId} binding to {address=}")
+    socket.bind(address)
     callback(runnerContext.callback, WorkerReady(runnerContext.workerId))
     with (
         Memory(runnerContext.callback, runnerContext.workerId) as memory,
