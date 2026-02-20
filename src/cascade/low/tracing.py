@@ -102,13 +102,13 @@ def label(key: str, value: str) -> None:
     """Makes all subsequent marks contain this KV. Carries over to later-forked subprocesses, but
     not to forkspawned
     """
-    global d  # noqa: F824
+    global d
     d[key] = value
 
 
 def mark(labels: Labels) -> None:
     at = time_ns()
-    global d  # noqa: F824
+    global d
     event = _labels({**d, **labels})
     marker.debug(f"{dataBegin}{event};{at=}")
 

@@ -81,12 +81,15 @@ def test_runner(monkeypatch):
         publish=set(),
         extra_env=[],
     )
+    job = JobInstance(tasks={}, edges=[])
     emptyRc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
-        job=JobInstance(tasks={}, edges=[]),
+        job=job,
         param_source={},
         log_base=None,
+        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(job),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -120,10 +123,12 @@ def test_runner(monkeypatch):
     oneTaskJob = JobInstance(tasks={"t2": t2}, edges=[])
     oneTaskRc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=oneTaskJob,
         param_source=param_source(oneTaskJob.edges),
         log_base=None,
+        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(oneTaskJob),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -165,10 +170,12 @@ def test_runner(monkeypatch):
     )
     twoTaskRc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=twoTaskJob,
         param_source=param_source(twoTaskJob.edges),
         log_base=None,
+        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(twoTaskJob),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -232,10 +239,12 @@ def test_runner(monkeypatch):
     )
     t4Rc = entrypoint.RunnerContext(
         workerId=worker,
+        workerAttemptCnt=0,
         callback=test_address,
         job=t4Job,
         param_source=param_source(t4Job.edges),
         log_base=None,
+        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(t4Job),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:

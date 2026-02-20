@@ -27,9 +27,6 @@ jobs:
       - uses: extractions/setup-just@v3
       - run: |
           echo "uv version is $(uv --version)"
-          if [ "${{ matrix.python_version }}" = "3.14" ] ; then
-            uv python install 3.14.3 # TODO remove after we are safely past 3.14.3+ on all agents
-          fi
           uv sync --python "${{ matrix.python_version }}"
           just fmt
           just val

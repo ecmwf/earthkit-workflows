@@ -81,12 +81,11 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
 
     # invoke
     result = func(*args, **kwargs)
-    if outputsN == 1:
-        mark({"task": taskId, "action": TaskLifecycle.computed})
-        run_end = perf_counter_ns()
 
     # store outputs
     if outputsN == 1:
+        run_end = perf_counter_ns()
+        mark({"task": taskId, "action": TaskLifecycle.computed})
         outputKey, outputSchema = outputs[0]
         outputId = DatasetId(taskId, outputKey)
         memory.handle(

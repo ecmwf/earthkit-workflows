@@ -120,7 +120,7 @@ def trim_with_persisted(jobRich: JobInstanceRich, preschedule: Preschedule, pers
         component_trimmed = _trim_component(component, parents, preserved_tasks)
         components_new.append(component_trimmed)
         preserved_tasks_all = preserved_tasks_all.union(preserved_tasks)
-    components_new.sort(key=lambda c: c.weight, reverse=True)
+    components_new.sort(key=lambda c: c.weight(), reverse=True)
     preschedule_mod = Preschedule(
         components=components_new,
         edge_o={

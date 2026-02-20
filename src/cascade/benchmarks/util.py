@@ -22,7 +22,6 @@ from typing import Any
 import orjson
 
 import cascade.executor.platform as platform
-import cascade.low.into
 from cascade.controller.impl import run
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
@@ -32,12 +31,14 @@ from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
-from earthkit.workflows.graph import Graph, deduplicate_nodes
 
 logger = logging.getLogger("cascade.benchmarks")
 
 
 def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich:
+    # NOTE we dont want to import these at the top level to prevent imports pollution of executor
+    import cascade.low.into
+    from earthkit.workflows.graph import Graph, deduplicate_nodes
     # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
     if benchmark is not None and instance_path is not None:
         raise TypeError("specified both benchmark name and job instance")
@@ -163,6 +164,8 @@ def run_locally(
     log_base: str | None = None,
     report_address: str | None = None,
 ) -> dict[DatasetId, Any]:
+    # NOTE the provided job may cary traces of imports we dont want to pollute executor with
+    job = JobInstanceRich(**orjson.loads(job.model_dump_json().encode()))
     if log_base is not None:
         log_path = f"{log_base}.controller.txt"
         logging.config.dictConfig(logging_config_filehandler(log_path))

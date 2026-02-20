@@ -17,7 +17,13 @@ from typing import Iterable, cast
 from cascade.controller.core import State
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Event
-from cascade.executor.msg import DatasetPersistSuccess, DatasetPublished, DatasetRetrieveSuccess, DatasetTransmitPayload
+from cascade.executor.msg import (
+    DatasetPersistSuccess,
+    DatasetPublished,
+    DatasetRetrieveSuccess,
+    DatasetTransmitPayload,
+    RunnerRestartRequest,
+)
 from cascade.low.core import DatasetId, HostId, WorkerId
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext, VirtualCheckpointHost
 from cascade.low.func import assert_never
@@ -132,5 +138,7 @@ def notify(
             state.acknowledge_persist(event.ds)
         elif isinstance(event, DatasetRetrieveSuccess):
             pass
+        elif isinstance(event, RunnerRestartRequest):
+            pass # NOTE possibly we should modify state, from the PoV of this runner being a good transmit candidate
         else:
             assert_never(event)

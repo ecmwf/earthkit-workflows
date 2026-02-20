@@ -45,7 +45,7 @@ MpSituation = typing.Literal[
 _MpSituation = typing.get_args(MpSituation)
 
 
-def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.SpawnContext:
+def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.SpawnContext|mp.context.ForkServerContext:
     """Generally, forking is safe everywhere as we try to be careful not to
     initialize non-safe objects prior to forking. However, combination of
     mac + mps + anemoi + pickled callables causes xpc_error_connection_invalid,
@@ -60,6 +60,12 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.Spaw
         raise TypeError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":
         return mp.get_context("spawn")
+    elif situation == "executor-loc":
+        # NOTE in the case of executor being launched locally, from eg benchmark util
+        # after it has constructed a jobInstance, there is a chance of the process
+        # being tainted with some imports such as earthkit.workflows.fluent which in
+        # turn brings in numpy -- therefore, we cannot allow to fork
+        return mp.get_context("forkserver")
     else:
         return mp.get_context("fork")
 

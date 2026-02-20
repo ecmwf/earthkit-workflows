@@ -32,7 +32,6 @@ from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
-
 class Commands:
     venv_command = lambda name: ["uv", "venv", name]
     install_command = lambda name: [
@@ -131,6 +130,18 @@ class InstallIssue:
     desired_version: Version
     mod_issues: list[tuple[str, Version]]
 
+class PostinstallException(BaseException):
+    issues: list[InstallIssue]
+
+    def __init__(self, issues: list[InstallIssue]) -> None:
+        self.issues = issues
+
+    def __str__(self) -> str:
+        msg = repr(self.issues)
+        return f"failed to install correctly: {msg[:1024]}{'...' if len(msg) > 1024 else ''}"
+
+
+
 def _postinstall_verify(pip_output) -> list[InstallIssue]:
     installed_packages = _parse_pip_install(pip_output)
     rv = []
@@ -154,6 +165,9 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
     the pin otherwise. This is default `uv` behaviour, but remember we
     override --prefix, thus uv has no way of knowing. We thus have to explicate.
     """
+    # NOTE this does not work for transitive dependencies. We may
+    # decide to drop the whole --prefix business, and completely switch
+    # over to the new venv even before doing any install
 
     installed_raw, _ = run_command(Commands.freeze_command)
     def maybe_tuple(kv: str) -> None|tuple[str, str]:
@@ -223,9 +237,7 @@ class PackagesEnv(AbstractContextManager):
         # importlib.invalidate_caches()
         install_issues = _postinstall_verify(install_output)
         if install_issues:
-            msg = repr(install_issues)
-            # TODO raise an error that would be converted to a message which then makes executor re-run the whole task sequence
-            raise ValueError(f"failed to install correctly: {msg}")
+            raise PostinstallException(install_issues)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         sys.path = [
