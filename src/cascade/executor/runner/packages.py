@@ -30,9 +30,6 @@ from typing import Iterator, Literal, cast
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-from packaging.specifiers import SpecifierSet
-from packaging.version import Version
-
 logger = logging.getLogger(__name__)
 
 class Commands:
