@@ -6,9 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Contains utility methods for benchmark definitions and cluster starting"""
-
-# TODO rework, simplify, split into benchmark.util and cluster.setup or smth
+"""Main entrypoints for cluster or local starting for executors and controllers"""
 
 import logging
 import logging.config
@@ -19,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter_ns
 from typing import Any
 
+import fire
 import orjson
 
 import cascade.executor.platform as platform
@@ -32,59 +31,10 @@ from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
-logger = logging.getLogger("cascade.benchmarks")
+logger = logging.getLogger(__name__)
 
 
-def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich:
-    # NOTE we dont want to import these at the top level to prevent imports pollution of executor
-    import cascade.low.into
-    from earthkit.workflows.graph import Graph, deduplicate_nodes
-    # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
-    if benchmark is not None and instance_path is not None:
-        raise TypeError("specified both benchmark name and job instance")
-    elif instance_path is not None:
-        with open(instance_path, "rb") as f:
-            d = orjson.loads(f.read())
-            return JobInstanceRich(**d)
-    elif benchmark is not None:
-        instance: JobInstance
-        if benchmark.startswith("j1"):
-            import cascade.benchmarks.job1 as job1
-
-            graphs = {
-                "j1.prob": job1.get_prob(),
-                "j1.ensms": job1.get_ensms(),
-                "j1.efi": job1.get_efi(),
-            }
-            union = lambda prefix: deduplicate_nodes(
-                msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph)
-            )
-            graphs["j1.all"] = union("j1.")
-            instance = cascade.low.into.graph2job(graphs[benchmark])
-        elif benchmark.startswith("generators"):
-            import cascade.benchmarks.generators as generators
-
-            instance = generators.get_job()
-        elif benchmark.startswith("matmul"):
-            import cascade.benchmarks.matmul as matmul
-
-            instance = matmul.get_job()
-        elif benchmark.startswith("dist"):
-            import cascade.benchmarks.dist as dist
-
-            instance = dist.get_job()
-        elif benchmark.startswith("dask"):
-            import cascade.benchmarks.dask as dask
-
-            instance = dask.get_job(benchmark[len("dask.") :])
-        else:
-            raise NotImplementedError(benchmark)
-        return JobInstanceRich(jobInstance=instance, checkpointSpec=None)
-    else:
-        raise TypeError("specified neither benchmark name nor job instance")
-
-
-def get_cuda_count() -> int:
+def _get_cuda_count() -> int:
     try:
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             # TODO we dont want to just count, we want to actually use literally these ids
@@ -107,13 +57,13 @@ def get_cuda_count() -> int:
     return gpus
 
 
-def get_gpu_count(host_idx: int, worker_count: int) -> int:
+def _get_gpu_count(host_idx: int, worker_count: int) -> int:
     if sys.platform == "darwin":
         # we should inspect some gpu capabilities details to prevent overcommit
         return worker_count
     else:
         if host_idx == 0:
-            return get_cuda_count()
+            return _get_cuda_count()
         else:
             return 0
 
@@ -179,7 +129,7 @@ def run_locally(
     try:
         # executors forking
         for i, executor in enumerate(range(hosts)):
-            gpu_count = get_gpu_count(i, workers)
+            gpu_count = _get_gpu_count(i, workers)
             # NOTE forkserver/spawn seem to forget venv, we need fork
             logger.debug(f"forking into executor on host {i}")
             p = platform.get_mp_ctx("executor-loc").Process(
@@ -235,17 +185,20 @@ def run_locally(
                 p.kill()
         raise
 
+def _deserialize(instance_path: str) -> JobInstanceRich:
+    with open(instance_path, "rb") as f:
+        d = orjson.loads(f.read())
+        return JobInstanceRich(**d)
 
 def main_local(
     workers_per_host: int,
+    instance: str,
     hosts: int = 1,
     report_address: str | None = None,
-    job: str | None = None,
-    instance: str | None = None,
     port_base: int = 12345,
     log_base: str | None = None,
 ) -> None:
-    jobInstanceRich = get_job(job, instance)
+    jobInstanceRich = _deserialize(instance)
     run_locally(
         jobInstanceRich,
         hosts,
@@ -259,11 +212,10 @@ def main_local(
 def main_dist(
     idx: int,
     controller_url: str,
+    instance: str,
     hosts: int = 3,
     workers_per_host: int = 10,
     shm_vol_gb: int = 64,
-    job: str | None = None,
-    instance: str | None = None,
     report_address: str | None = None,
 ) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
@@ -271,7 +223,7 @@ def main_dist(
     """
     launch = perf_counter_ns()
 
-    jobInstanceRich = get_job(job, instance)
+    jobInstanceRich = _deserialize(instance)
 
     if idx == 0:
         logging.config.dictConfig(logging_config)
@@ -287,7 +239,7 @@ def main_dist(
             f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
         )
     else:
-        gpu_count = get_gpu_count(0, workers_per_host)
+        gpu_count = _get_gpu_count(0, workers_per_host)
         launch_executor(
             jobInstanceRich,
             controller_url,
@@ -299,3 +251,6 @@ def main_dist(
             log_base = None, # TODO handle log collection for dist scenario
             url_base = f"tcp://{platform.get_bindabble_self()}",
         )
+
+if __name__ == "__main__":
+    fire.Fire({"local": main_local, "dist": main_dist})

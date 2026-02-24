@@ -30,7 +30,7 @@ def get_bindabble_self():
 
 def gpu_init(worker_num: int):
     if sys.platform != "darwin":
-        # TODO there is implicit coupling with executor.executor and benchmarks.main -- make it cleaner!
+        # TODO there is implicit coupling with executor.executor and cascade.main -- make it cleaner!
         gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
         os.environ["CUDA_VISIBLE_DEVICES"] = (
             str(worker_num) if worker_num < gpus else ""
@@ -61,7 +61,7 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.Spaw
     if sys.platform == "darwin":
         return mp.get_context("spawn")
     elif situation == "executor-loc":
-        # NOTE in the case of executor being launched locally, from eg benchmark util
+        # NOTE in the case of executor being launched locally, from eg cascade main
         # after it has constructed a jobInstance, there is a chance of the process
         # being tainted with some imports such as earthkit.workflows.fluent which in
         # turn brings in numpy -- therefore, we cannot allow to fork

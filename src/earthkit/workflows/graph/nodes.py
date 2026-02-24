@@ -10,6 +10,8 @@ from typing import Any
 
 from typing_extensions import Self
 
+from earthkit.workflows.adapters import DefaultNodeOutput
+
 
 class Output:
     """Helper class to refer to node outputs"""
@@ -66,7 +68,7 @@ class Node:
         will be connected to its default output.
     """
 
-    DEFAULT_OUTPUT = "0"
+    DEFAULT_OUTPUT = DefaultNodeOutput
 
     name: str
     inputs: dict[str, Output]

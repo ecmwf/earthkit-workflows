@@ -21,7 +21,7 @@ logging_config = {
         "forecastbox.worker": {"level": "DEBUG"},
         "forecastbox.executor": {"level": "DEBUG"},
         "cascade": {"level": "INFO"},
-        "cascade.benchmarks": {"level": "DEBUG"},
+        "cascade.main": {"level": "DEBUG"},
         "cascade.low": {"level": "DEBUG"},
         "cascade.shm": {"level": "DEBUG"},
         "cascade.controller": {"level": "DEBUG"},

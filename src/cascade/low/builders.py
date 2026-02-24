@@ -17,13 +17,13 @@ from typing_extensions import Self
 
 from cascade.low.core import (
     DatasetId,
+    DefaultTaskOutput,
     JobInstance,
     Task2TaskEdge,
     TaskDefinition,
     TaskInstance,
 )
 from cascade.low.func import Either
-from earthkit.workflows.graph import Node
 
 
 class TaskBuilder(TaskInstance):
@@ -62,7 +62,7 @@ class TaskBuilder(TaskInstance):
             func=TaskDefinition.func_enc(f),
             environment=environment if environment else [],
             input_schema=input_schema,
-            output_schema=[(Node.DEFAULT_OUTPUT, type2str(sig.return_annotation))],
+            output_schema=[(DefaultTaskOutput, type2str(sig.return_annotation))],
         )
         return cls(
             definition=definition, static_input_kw=static_input_kw, static_input_ps={}
@@ -84,7 +84,7 @@ class TaskBuilder(TaskInstance):
             func=None,
             environment=environment if environment else [],
             input_schema=input_schema,
-            output_schema=[(Node.DEFAULT_OUTPUT, output_class)],
+            output_schema=[(DefaultTaskOutput, output_class)],
         )
         return cls(definition=definition, static_input_kw={}, static_input_ps={})
 
@@ -106,11 +106,11 @@ class JobBuilder:
     def with_node(self, name: str, task: TaskInstance) -> Self:
         return replace(self, nodes=self.nodes.set(name, task))
 
-    def with_output(self, task: str, output: str = Node.DEFAULT_OUTPUT) -> Self:
+    def with_output(self, task: str, output: str = DefaultTaskOutput) -> Self:
         return replace(self, outputs=self.outputs.append(DatasetId(task, output)))
 
     def with_edge(
-        self, source: str, sink: str, into: str | int, frum: str = Node.DEFAULT_OUTPUT
+        self, source: str, sink: str, into: str | int, frum: str = DefaultTaskOutput
     ) -> Self:
         new_edge = Task2TaskEdge(
             source=DatasetId(source, frum),

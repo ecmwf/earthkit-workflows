@@ -125,7 +125,7 @@ def _postproc_assignment(
 
 # TODO this is not particularly systematic! We cant bind dynamically at the host as we send this
 # in advance, so we need to hardcode. Ideally we centrallize all port opening into a single module,
-# in particular unify this with the portBase from benchmarks/__main__ and then derived ports from
+# in particular unify this with the portBase from cascade.main and then derived ports from
 # executor/executor.py etc. As is, we have a single global variable that we increment, to ensure
 # no port collision happens gang-wise -- we dont really expect many gangs per a workflow
 gang_port = 12355

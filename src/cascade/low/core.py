@@ -27,6 +27,9 @@ from typing_extensions import Self
 # and expect every executor to generate some value like "ok" in such case
 NO_OUTPUT_PLACEHOLDER = "__NO_OUTPUT__"
 
+# name of the output of the task in case the task has exactly one, ie, the callable is not a generator
+DefaultTaskOutput = "0" 
+
 
 # Definitions
 class TaskDefinition(BaseModel):

@@ -41,7 +41,7 @@ def _spawn_troika_singlehost(
     script += f'JOB_ENC="{job_desc_enc}"'
     job_json_path = f"/tmp/cascJob.{job_id}.json"
     script += f'echo "$JOB_ENC" | base64 --decode > {job_json_path}'
-    script += "python -m cascade.benchmarks local"
+    script += "python -m cascade.main local"
     script += f" --instance {job_json_path}"
 
     script += (
@@ -86,7 +86,7 @@ def _spawn_local(
     base = [
         "python",
         "-m",
-        "cascade.benchmarks",
+        "cascade.main",
         "local",
     ]
 

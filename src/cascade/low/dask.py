@@ -21,8 +21,7 @@ from typing import Any
 from dask._task_spec import Alias, DataNode, Task, TaskRef
 
 from cascade.low.builders import TaskBuilder
-from cascade.low.core import DatasetId, JobInstance, Task2TaskEdge, TaskInstance
-from earthkit.workflows.graph import Node
+from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskInstance
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,7 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
     for i, v in enumerate(task.args):
         if isinstance(v, Alias | TaskRef):
             edge = Task2TaskEdge(
-                source=DatasetId(task=daskKeyRepr(v.key), output=Node.DEFAULT_OUTPUT),
+                source=DatasetId(task=daskKeyRepr(v.key), output=DefaultTaskOutput),
                 sink_task=key,
                 sink_input_ps=i,
                 sink_input_kw=None,
@@ -52,7 +51,7 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
     for k, v in task.kwargs.items():
         if isinstance(v, Alias | TaskRef):
             edge = Task2TaskEdge(
-                source=DatasetId(task=daskKeyRepr(v.key), output=Node.DEFAULT_OUTPUT),
+                source=DatasetId(task=daskKeyRepr(v.key), output=DefaultTaskOutput),
                 sink_task=key,
                 sink_input_kw=k,
                 sink_input_ps=None,

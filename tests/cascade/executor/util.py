@@ -8,8 +8,6 @@
 
 """Module for simplifying writing tests
 
-Similar to util, but not enough to unify
-
 It is capable, for a single given task, to spin an shm server, put all task's inputs into it, execute the task, store outputs in memory, and retrieve the result.
 See the `demo()` function at the very end
 """
@@ -36,6 +34,15 @@ from cascade.low.core import DatasetId, WorkerId
 from cascade.shm.server import entrypoint as shm_server
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class CallableInstance:
+    func: Callable
+    kwargs: dict[str, Any]
+    args: list[tuple[int, Any]]
+    env: list[str]
+    exp_output: Any
+
 
 
 @contextmanager
@@ -84,13 +91,6 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
         memory.flush()
 
 
-@dataclass
-class CallableInstance:
-    func: Callable
-    kwargs: dict[str, Any]
-    args: list[tuple[int, Any]]
-    env: list[str]
-    exp_output: Any
 
 
 def callable2ctx(
@@ -155,19 +155,3 @@ def run_test(
         output_des = cloudpickle.loads(output_buf.view())
         output_buf.close()
     assert output_des == callableInstance.exp_output
-
-
-def demo():
-    def myfunc(l: int) -> float:
-        import numpy as np
-
-        return np.arange(l).sum()
-
-    ci = CallableInstance(
-        func=myfunc, kwargs={"l": 4}, args=[], env=["numpy"], exp_output=6
-    )
-    run_test(ci, "numpyTest1", 2)
-
-
-if __name__ == "__main__":
-    demo()
