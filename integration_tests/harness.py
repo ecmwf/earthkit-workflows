@@ -1,4 +1,4 @@
-from cascade.benchmarks.util import run_locally
+from cascade.main import run_locally
 import importlib
 import sys
 from base import JobSpec

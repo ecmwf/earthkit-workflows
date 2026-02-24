@@ -6,13 +6,9 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Intended to test that various 3rd-party callables work under cascade
+"""Intended to test that various 3rd-party callables work under cascade"""
 
-Similar modules will be found among earthkit-workflows plugins, all utilizing the
-cascade.benchmarks.tests module
-"""
-
-from cascade.benchmarks.tests import CallableInstance, run_test
+from .util import CallableInstance, run_test
 
 
 def test_numpy():

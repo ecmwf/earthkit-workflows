@@ -11,14 +11,7 @@
 import logging
 from typing import Any, Callable, cast
 
-from cascade.low.core import (
-    DatasetId,
-    JobInstance,
-    Task2TaskEdge,
-    TaskDefinition,
-    TaskInstance,
-)
-from earthkit.workflows.graph import Graph, Node, serialise
+from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +56,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     edges = []
     for param, other in node["inputs"].items():
         if isinstance(other, str):
-            source = DatasetId(other, Node.DEFAULT_OUTPUT)
+            source = DatasetId(other, DefaultTaskOutput)
         else:
             source = DatasetId(other[0], other[1])
         edges.append(
@@ -76,7 +69,7 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
         )
         static_input_ps[str(rev_lookup[param])] = None
 
-    outputs = node["outputs"] if node["outputs"] else [Node.DEFAULT_OUTPUT]
+    outputs = node["outputs"] if node["outputs"] else [DefaultTaskOutput]
 
     definition = TaskDefinition(
         **func_def,
@@ -94,11 +87,11 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     return task, edges
 
 
-def graph2job(graph: Graph) -> JobInstance:
-    ser = serialise(graph)  # simpler
+def graph2job(graph: dict) -> JobInstance:
+    # graph assumed to be ekw.graph.serialise(ekw.graph.Graph)
     edges = []
     tasks = {}
-    for node_name, node_val in ser.items():
+    for node_name, node_val in graph.items():
         task, task_edges = node2task(node_name, node_val)
         edges += task_edges
         tasks[node_name] = task
