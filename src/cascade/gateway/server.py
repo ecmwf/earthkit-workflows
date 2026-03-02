@@ -11,6 +11,7 @@ here we just match the right method of `gateway.router` based on what message we
 """
 
 import base64
+import datetime as dt
 import logging
 from typing import cast
 
@@ -18,6 +19,7 @@ import zmq
 
 import cascade.gateway.api as api
 from cascade.controller.report import JobProgress, deserialize
+from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.executor.comms import get_context
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
@@ -85,7 +87,7 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
 
 def serve(
     url: str,
-    log_base: str | None = None,
+    loggingConfig: LoggingConfig,
     troika_config: str | None = None,
     max_jobs: int | None = None,
 ) -> None:
@@ -95,7 +97,7 @@ def serve(
     fe = ctx.socket(zmq.REP)
     fe.bind(url)
     poller.register(fe, flags=zmq.POLLIN)
-    jobs = JobRouter(poller, log_base, troika_config, max_jobs)
+    jobs = JobRouter(poller, loggingConfig, troika_config, max_jobs)
 
     logger.debug("entering recv loop")
     is_break = False
@@ -106,3 +108,15 @@ def serve(
                 is_break = handle_fe(socket, jobs)
             else:
                 handle_controller(socket, jobs)
+
+def roleLoggingStr() -> str:
+    # In case there are multiple gateway restarts etc, we dont want to collide.
+    # For other roles this matters not -- they are distinguished by jobId in the name, or by #attempt counter
+    now = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return f"gateway.{now}"
+
+
+def main_enp(url: str, loggingConfig: LoggingConfig, max_jobs: int | None) -> None:
+    # use when process is not __main__ but eg forked from another
+    init_from_obj(loggingConfig, roleLoggingStr())
+    serve(url, loggingConfig, None, max_jobs)

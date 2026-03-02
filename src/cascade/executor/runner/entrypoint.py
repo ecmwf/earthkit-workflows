@@ -20,8 +20,8 @@ from typing_extensions import Self
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
+from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.executor.comms import callback
-from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.msg import (
     BackboneAddress,
     DatasetPublished,
@@ -41,7 +41,7 @@ from cascade.low.tracing import label
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RunnerContext:
     """The static runner configuration"""
 
@@ -50,7 +50,7 @@ class RunnerContext:
     job: JobInstance
     callback: BackboneAddress
     param_source: dict[TaskId, dict[int | str, DatasetId]]
-    log_base: str | None
+    loggingConfig: LoggingConfig
     schema_lookup: dict[DatasetId, str]
 
     @staticmethod
@@ -182,11 +182,7 @@ def execute_sequence(
 def entrypoint(runnerContextClpkl: bytes):
     """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
     runnerContext = cloudpickle.loads(runnerContextClpkl)
-    if runnerContext.log_base:
-        log_path = f"{runnerContext.log_base}.{runnerContext.workerId.worker}"
-        logging.config.dictConfig(logging_config_filehandler(log_path))
-    else:
-        logging.config.dictConfig(logging_config)
+    init_from_obj(runnerContext.loggingConfig, f"worker_{runnerContext.workerId.worker}")
     ctx = zmq.Context()
     socket = ctx.socket(zmq.PULL)
     address = worker_address(runnerContext.workerId, runnerContext.workerAttemptCnt)

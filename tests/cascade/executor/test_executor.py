@@ -16,6 +16,7 @@ from multiprocessing import Process
 
 import numpy as np
 
+from cascade.deployment.logging import DefaultLoggingConfig
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
 from cascade.executor.comms import Listener, callback, send_data
@@ -59,7 +60,7 @@ def launch_executor(
         "test_executor",
         portBase,
         None,
-        None,
+        DefaultLoggingConfig,
         "tcp://localhost",
     )
     executor.register()

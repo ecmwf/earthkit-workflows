@@ -3,7 +3,7 @@ from multiprocessing import Process
 
 import cascade.gateway.api as api
 import cascade.gateway.client as client
-from cascade.gateway.__main__ import main
+from cascade.gateway.__main__ import main_cli
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskInstance
 
@@ -68,7 +68,7 @@ def get_job_slow() -> JobInstanceRich:
 
 def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=main, args=(url,), kwargs={"max_jobs": max_jobs})
+    p = Process(target=main_cli, args=(url,), kwargs={"max_jobs": max_jobs})
     p.start()
     return url, p
 

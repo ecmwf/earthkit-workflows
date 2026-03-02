@@ -29,6 +29,7 @@ from cascade.controller.report import (
     JobProgressEnqueued,
     JobProgressStarted,
 )
+from cascade.deployment.logging import LoggingConfig
 from cascade.executor.comms import get_context
 from cascade.gateway.api import JobSpec
 from cascade.gateway.spawning import spawn_subprocess
@@ -50,7 +51,7 @@ class JobRouter:
     def __init__(
         self,
         poller: zmq.Poller,
-        log_base: str | None,
+        loggingConfig: LoggingConfig,
         troika_config: str | None,
         max_jobs: int | None,
     ):
@@ -60,7 +61,7 @@ class JobRouter:
         self.max_jobs = max_jobs
         self.jobs_queue: OrderedDict[JobId, JobSpec] = OrderedDict()
         self.procs: dict[str, subprocess.Popen] = {}
-        self.log_base = log_base
+        self.loggingConfig = loggingConfig
         self.troika_config = troika_config
 
     def maybe_spawn(self) -> None:
@@ -79,7 +80,7 @@ class JobRouter:
         self.poller.register(socket, flags=zmq.POLLIN)
         self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
         self.procs[job_id] = spawn_subprocess(
-            job_spec, full_addr, job_id, self.log_base, self.troika_config
+            job_spec, full_addr, job_id, self.loggingConfig, self.troika_config
         )
         self.active_jobs += 1
 

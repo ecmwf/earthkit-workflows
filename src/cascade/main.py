@@ -22,6 +22,7 @@ import orjson
 
 import cascade.executor.platform as platform
 from cascade.controller.impl import run
+from cascade.deployment.logging import DefaultLoggingConfig, LoggingConfig, init_from_cliparam, init_from_obj
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
 from cascade.executor.config import logging_config, logging_config_filehandler
@@ -76,15 +77,10 @@ def launch_executor(
     i: int,
     shm_vol_gb: int | None,
     gpu_count: int,
-    log_base: str | None,
+    loggingConfig: LoggingConfig,
     url_base: str,
 ):
-    if log_base is not None:
-        log_base = f"{log_base}.host{i}"
-        log_path = f"{log_base}.txt"
-        logging.config.dictConfig(logging_config_filehandler(log_path))
-    else:
-        logging.config.dictConfig(logging_config)
+    init_from_obj(loggingConfig, "executor")
     try:
         logger.info(f"will set {gpu_count} gpus on host {i}")
         os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
@@ -95,7 +91,7 @@ def launch_executor(
             f"h{i}",
             portBase,
             shm_vol_gb,
-            log_base,
+            loggingConfig,
             url_base,
         )
         executor.register()
@@ -111,16 +107,12 @@ def run_locally(
     hosts: int,
     workers: int,
     portBase: int = 12345,
-    log_base: str | None = None,
+    loggingConfigSer: str | None = None,
     report_address: str | None = None,
 ) -> dict[DatasetId, Any]:
     # NOTE the provided job may cary traces of imports we dont want to pollute executor with
     job = JobInstanceRich(**orjson.loads(job.model_dump_json().encode()))
-    if log_base is not None:
-        log_path = f"{log_base}.controller.txt"
-        logging.config.dictConfig(logging_config_filehandler(log_path))
-    else:
-        logging.config.dictConfig(logging_config)
+    loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
     logger.debug(f"local run starting with {hosts=} and {workers=} on {portBase=}")
     launch = perf_counter_ns()
     c = f"tcp://localhost:{portBase}"
@@ -142,7 +134,7 @@ def run_locally(
                     i,
                     None,
                     gpu_count,
-                    log_base,
+                    loggingConfig.withContext(f"host_{i}"),
                     "tcp://localhost",
                 ),
             )
@@ -196,7 +188,7 @@ def main_local(
     hosts: int = 1,
     report_address: str | None = None,
     port_base: int = 12345,
-    log_base: str | None = None,
+    loggingConfigSer: str | None = None,
 ) -> None:
     jobInstanceRich = _deserialize(instance)
     run_locally(
@@ -205,7 +197,7 @@ def main_local(
         workers_per_host,
         report_address=report_address,
         portBase=port_base,
-        log_base=log_base,
+        loggingConfigSer=loggingConfigSer,
     )
 
 
@@ -248,7 +240,7 @@ def main_dist(
             idx,
             shm_vol_gb,
             gpu_count,
-            log_base = None, # TODO handle log collection for dist scenario
+            loggingConfig = DefaultLoggingConfig, # TODO handle logging for dist scenario
             url_base = f"tcp://{platform.get_bindabble_self()}",
         )
 
