@@ -28,6 +28,7 @@ import cloudpickle
 import cascade.executor.platform as platform
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
+from cascade.deployment.logging import LoggingConfig, as_dict_config
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
@@ -86,7 +87,7 @@ class Executor:
         host: HostId,
         portBase: int,
         shm_vol_gb: int | None,
-        log_base: str | None,
+        loggingConfig: LoggingConfig,
         url_base: str,
     ) -> None:
         self.job_instance = job_instance
@@ -98,7 +99,7 @@ class Executor:
             WorkerId(host, f"w{i}"): None for i in range(workers)
         }
         self.worker_awaits: dict[WorkerId, None|TaskSequence] = {}
-        self.log_base = log_base
+        self.loggingConfig = loggingConfig
         self.old_processes: list[BaseProcess] = []
 
         self.datasets: set[DatasetId] = set()
@@ -115,25 +116,17 @@ class Executor:
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
         shm_api.publish_socket_addr(shm_port)
         ctx = platform.get_mp_ctx("executor-aux")
-        if log_base:
-            shm_logging = logging_config_filehandler(f"{log_base}.shm.txt")
-        else:
-            shm_logging = logging_config
         logger.debug("about to start an shm process")
         self.shm_process = ctx.Process(
             target=shm_server,
             kwargs={
                 "capacity": shm_vol_gb * (1024**3) if shm_vol_gb else None,
-                "logging_config": shm_logging,
+                "logging_config": as_dict_config(loggingConfig, "shm"),
                 "shm_pref": f"sCasc{host}",
             },
         )
         self.shm_process.start()
         self.daddress = address_of(portBase + 1)
-        if log_base:
-            dsr_logging = logging_config_filehandler(f"{log_base}.dsr.txt")
-        else:
-            dsr_logging = logging_config
         logger.debug("about to start a data server process")
         self.data_server = ctx.Process(
             target=start_data_server,
@@ -141,7 +134,7 @@ class Executor:
                 self.mlistener.address,
                 self.daddress,
                 self.host,
-                dsr_logging,
+                as_dict_config(loggingConfig, "dsr"),
             ),
         )
         self.data_server.start()
@@ -216,7 +209,7 @@ class Executor:
             job=self.job_instance,
             param_source=self.param_source,
             callback=self.mlistener.address,
-            log_base=self.log_base,
+            loggingConfig=self.loggingConfig,
             schema_lookup=self.schema_lookup,
         )
         # NOTE we need to cloudpickle because runnerContext contains some lambdas

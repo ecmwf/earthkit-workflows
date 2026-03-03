@@ -23,6 +23,7 @@ import tempfile
 import pathlib
 import pickle
 
+from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.controller.impl import run
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
@@ -56,7 +57,7 @@ def launch_executor(
         f"test_executor{i}",
         portBase,
         None,
-        None,
+        DefaultLoggingConfig,
         "tcp://localhost",
     )
     executor.register()

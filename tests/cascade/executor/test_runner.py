@@ -11,6 +11,7 @@
 from multiprocessing.shared_memory import SharedMemory
 from typing import Any
 
+from cascade.deployment.logging import DefaultLoggingConfig
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
 import cascade.executor.serde as serde
@@ -88,7 +89,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=job,
         param_source={},
-        log_base=None,
+        loggingConfig=DefaultLoggingConfig,
         schema_lookup=entrypoint.RunnerContext.build_schema_lookup(job),
     )
 
@@ -127,7 +128,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=oneTaskJob,
         param_source=param_source(oneTaskJob.edges),
-        log_base=None,
+        loggingConfig=DefaultLoggingConfig,
         schema_lookup=entrypoint.RunnerContext.build_schema_lookup(oneTaskJob),
     )
 
@@ -174,7 +175,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=twoTaskJob,
         param_source=param_source(twoTaskJob.edges),
-        log_base=None,
+        loggingConfig=DefaultLoggingConfig,
         schema_lookup=entrypoint.RunnerContext.build_schema_lookup(twoTaskJob),
     )
 
@@ -243,7 +244,7 @@ def test_runner(monkeypatch):
         callback=test_address,
         job=t4Job,
         param_source=param_source(t4Job.edges),
-        log_base=None,
+        loggingConfig=DefaultLoggingConfig,
         schema_lookup=entrypoint.RunnerContext.build_schema_lookup(t4Job),
     )
 

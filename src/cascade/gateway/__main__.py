@@ -10,23 +10,18 @@ import logging.config
 
 import fire
 
-from cascade.executor.config import logging_config, logging_config_filehandler
-from cascade.gateway.server import serve
+from cascade.deployment.logging import init_from_cliparam
+from cascade.gateway.server import roleLoggingStr, serve
 
 
-def main(
+def main_cli(
     url: str,
-    log_base: str | None = None,
+    loggingConfigSer: str | None = None,
     troika_config: str | None = None,
     max_jobs: int | None = None,
 ) -> None:
-    if log_base:
-        log_path = f"{log_base}/gateway.txt"
-        logging.config.dictConfig(logging_config_filehandler(log_path))
-    else:
-        logging.config.dictConfig(logging_config)
-    serve(url, log_base, troika_config, max_jobs)
-
+    loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
+    serve(url, loggingConfig, troika_config, max_jobs)
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    fire.Fire(main_cli)

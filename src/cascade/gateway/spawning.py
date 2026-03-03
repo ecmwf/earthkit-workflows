@@ -18,6 +18,7 @@ import subprocess
 import orjson
 
 from cascade.controller.report import JobId
+from cascade.deployment.logging import LoggingConfig
 from cascade.gateway.api import JobSpec, TroikaSpec
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ def _spawn_troika_singlehost(
 
 
 def _spawn_local(
-    job_spec: JobSpec, addr: str, job_id: JobId, log_base: str | None
+    job_spec: JobSpec, addr: str, job_id: JobId, loggingConfig: LoggingConfig,
 ) -> subprocess.Popen:
     base = [
         "python",
@@ -101,10 +102,7 @@ def _spawn_local(
         f"{job_spec.hosts}",
     ]
     report = ["--report_address", f"{addr},{job_id}"]
-    if log_base:
-        logs = ["--log_base", f"{log_base}/job.{job_id}"]
-    else:
-        logs = []
+    logs = ["--loggingConfigSer", loggingConfig.withContext(f"job_{job_id}").ser_cliparam()]
     global local_job_port
     portBase = ["--port_base", str(local_job_port)]
     local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
@@ -139,12 +137,11 @@ def spawn_subprocess(
     job_spec: JobSpec,
     addr: str,
     job_id: JobId,
-    log_base: str | None,
+    loggingConfig: LoggingConfig,
     troika_config: str | None,
 ) -> subprocess.Popen:
     if job_spec.troika is not None:
-        if log_base is not None:
-            raise ValueError(f"unexpected {log_base=}")
+        # TODO support logging config properly
         if troika_config is None:
             raise ValueError("cant spawn troika job without troika config")
         if not job_spec.use_slurm:
@@ -156,8 +153,7 @@ def spawn_subprocess(
             raise NotImplementedError
 
     elif job_spec.use_slurm:
-        if log_base is not None:
-            raise ValueError(f"unexpected {log_base=}")
+        # TODO support logging config properly
         return _spawn_slurm(job_spec, addr, job_id)
     else:
-        return _spawn_local(job_spec, addr, job_id, log_base)
+        return _spawn_local(job_spec, addr, job_id, loggingConfig)
