@@ -43,7 +43,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
         try:
             progresses, datasets, queue_length = jobs.progress_of(m.job_ids)
             rv = api.JobProgressResponse(
-                progresses=cast(dict[str, JobProgress|None], progresses),
+                progresses=cast(dict[str, JobProgress | None], progresses),
                 datasets=datasets,
                 error=None,
                 queue_length=queue_length,
@@ -54,7 +54,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
     elif isinstance(m, api.ResultRetrievalRequest):
         try:
             result = jobs.get_result(m.job_id, m.dataset_id)
-            encoded = base64.b64encode(result).decode('ascii')
+            encoded = base64.b64encode(result).decode("ascii")
             rv = api.ResultRetrievalResponse(result=encoded, error=None)
         except Exception as e:
             logger.exception(f"failed to get result: {m}")
@@ -70,7 +70,9 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
         jobs.shutdown()
         rv = api.ShutdownResponse(error=None)
     else:
-        raise TypeError(m)
+        from cascade.low.exceptions import CascadeInternalError
+
+        raise CascadeInternalError(f"unexpected message type in gateway handle_fe: {type(m)}")
     response = serialize_response(rv)
     socket.send(response)
     return isinstance(rv, api.ShutdownResponse)
@@ -108,6 +110,7 @@ def serve(
                 is_break = handle_fe(socket, jobs)
             else:
                 handle_controller(socket, jobs)
+
 
 def roleLoggingStr() -> str:
     # In case there are multiple gateway restarts etc, we dont want to collide.

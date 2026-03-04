@@ -32,6 +32,7 @@ from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
+
 class Commands:
     venv_command = lambda name: ["uv", "venv", name]
     install_command = lambda name: [
@@ -50,12 +51,17 @@ def run_command(command: list[str]) -> tuple[str, str]:
     try:
         result = subprocess.run(command, check=False, capture_output=True, text=True)
     except FileNotFoundError as ex:
-        raise ValueError(f"command failure: {ex}")
+        from cascade.low.exceptions import CascadeInfrastructureError
+
+        raise CascadeInfrastructureError(f"command failure: {repr(ex)}", parent=ex) from ex
     if result.returncode != 0:
         msg = f"command failed with {result.returncode}. Stderr: {result.stderr}, Stdout: {result.stdout}, Args: {result.args}"
         logger.error(msg)
-        raise ValueError(msg)
+        from cascade.low.exceptions import CascadeInfrastructureError
+
+        raise CascadeInfrastructureError(msg)
     return result.stdout, result.stderr
+
 
 def new_venv() -> tempfile.TemporaryDirectory:
     """1. Creates a new temporary directory with a venv inside.
@@ -77,6 +83,7 @@ def new_venv() -> tempfile.TemporaryDirectory:
 
     return td
 
+
 def _parse_pip_install(pip_output: str) -> dict[str, Version]:
     """Assumed input like: 'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
     Provided output: {'numpy': '2.4.1'}"""
@@ -85,7 +92,7 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
         clean_line = line.strip()
         if not clean_line.startswith("+"):
             continue
-        
+
         parts = clean_line.lstrip("+ ").split("==")
         if len(parts) != 2:
             logger.warning(f"Suspicious pip output: {clean_line} -- ignoring!")
@@ -96,15 +103,16 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
             logger.warning(f"failed to parse package {parts[0]} version {parts[1]} due to {repr(e)}-- ignoring!")
     return rv
 
+
 def _get_dist_modules(dist_name: str) -> list[str]:
     # TODO presumably cacheable
     try:
         handle = importlib.metadata.distribution(dist_name)
-        top_level = handle.read_text('top_level.txt')
+        top_level = handle.read_text("top_level.txt")
         if top_level:
             return top_level.split()
         elif handle.files:
-            return list({path.parts[0] for path in handle.files if path.suffix == '.py'})
+            return list({path.parts[0] for path in handle.files if path.suffix == ".py"})
         else:
             logger.warning(f"neither files nor top level for {dist_name} -- ignoring")
             return []
@@ -112,7 +120,8 @@ def _get_dist_modules(dist_name: str) -> list[str]:
         logging.warning(f"Could not find metadata for installed package: {dist_name} due to {repr(e)} -- ignoring")
         return []
 
-def _maybe_module_version(mod_name: str) -> Version|None:
+
+def _maybe_module_version(mod_name: str) -> Version | None:
     # TODO presumably cacheable, unless None
     if mod_name in sys.modules:
         mod = sys.modules[mod_name]
@@ -124,11 +133,13 @@ def _maybe_module_version(mod_name: str) -> Version|None:
         else:
             logging.warning(f"Module '{mod_name}' is loaded, but has no __version__ attribute -- ignoring")
 
+
 @dataclass
 class InstallIssue:
     dist_name: str
     desired_version: Version
     mod_issues: list[tuple[str, Version]]
+
 
 class PostinstallException(BaseException):
     issues: list[InstallIssue]
@@ -139,7 +150,6 @@ class PostinstallException(BaseException):
     def __str__(self) -> str:
         msg = repr(self.issues)
         return f"failed to install correctly: {msg[:1024]}{'...' if len(msg) > 1024 else ''}"
-
 
 
 def _postinstall_verify(pip_output) -> list[InstallIssue]:
@@ -153,11 +163,12 @@ def _postinstall_verify(pip_output) -> list[InstallIssue]:
         # pip reports + torch==2.7.1, but torch module version declares 2.7.1+cu126
         # we have no real means of deciding whether this is correct or not -- but we make the assumption
         # that checkpoints et cetera won't ever depend on this particular build discriminator => .base_version
-        mod_issues = [(m, v) for m, v in versions if v and v.base_version != desired_version.base_version] 
+        mod_issues = [(m, v) for m, v in versions if v and v.base_version != desired_version.base_version]
         if mod_issues:
             rv.append(InstallIssue(dist_name=dist_name, desired_version=desired_version, mod_issues=mod_issues))
 
     return rv
+
 
 def _prefer_installed(packages: list[str]) -> Iterator[str]:
     """If a package is desired to be installed but is not exactly pinned,
@@ -170,26 +181,28 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
     # over to the new venv even before doing any install
 
     installed_raw, _ = run_command(Commands.freeze_command)
-    def maybe_tuple(kv: str) -> None|tuple[str, str]:
-        if kv.startswith('-e'):
-            return kv.rsplit('/', 1)[1], '--editable'
-        elif '@ git' in kv:
-            return kv.split('@', 1)[0], '--git'
-        elif '==' in kv:
-            return cast(tuple[str, str], kv.split('==', 1))
+
+    def maybe_tuple(kv: str) -> None | tuple[str, str]:
+        if kv.startswith("-e"):
+            return kv.rsplit("/", 1)[1], "--editable"
+        elif "@ git" in kv:
+            return kv.split("@", 1)[0], "--git"
+        elif "==" in kv:
+            return cast(tuple[str, str], kv.split("==", 1))
         else:
             logger.warning(f"unable to discern package install {kv}")
             return None
+
     _installed = (maybe_tuple(kv) for kv in installed_raw.splitlines() if kv)
     installed = dict(tup_or_none for tup_or_none in _installed if tup_or_none)
     for package_spec in packages:
         try:
-            parts = re.split(r'([<>=!~].*)', package_spec)
+            parts = re.split(r"([<>=!~].*)", package_spec)
             package = parts[0]
             if package not in installed:
                 yield package
             elif len(parts) == 1:
-                if installed[package] == '--editable' or installed[package] == '--git':
+                if installed[package] == "--editable" or installed[package] == "--git":
                     continue
                 yield f"{package}=={installed[package]}"
             else:
@@ -197,7 +210,7 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
                 # NOTE in case of mismatch we just warn because we dont know if the module was imported already
                 # NOTE we dont check for import because we need to after install *anyway*
                 # NOTE for editable + explicit constraint, we leave it to uv -- imo unclear
-                if installed[package] == '--editable' or installed[package] == '--git':
+                if installed[package] == "--editable" or installed[package] == "--git":
                     logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
                     yield package_spec
                 elif Version(installed[package]) in specifier:
@@ -240,9 +253,7 @@ class PackagesEnv(AbstractContextManager):
             raise PostinstallException(install_issues)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
-        sys.path = [
-            p for p in sys.path if self.td is None or not p.startswith(self.td.name)
-        ]
+        sys.path = [p for p in sys.path if self.td is None or not p.startswith(self.td.name)]
         if self.td is not None:
             self.td.cleanup()
         return False

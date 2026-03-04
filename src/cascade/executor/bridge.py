@@ -50,7 +50,7 @@ Unsupported = TaskSequence | DatasetPurge | DatasetTransmitCommand | DatasetPers
 
 
 class Bridge:
-    def __init__(self, controller_url: str, expected_executors: int, checkpoint_spec: CheckpointSpec|None=None) -> None:
+    def __init__(self, controller_url: str, expected_executors: int, checkpoint_spec: CheckpointSpec | None = None) -> None:
         self.checkpoint_spec = checkpoint_spec
         self.mlistener = Listener(controller_url)
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
@@ -65,30 +65,25 @@ class Bridge:
             logger.debug(f"received {messages=}")
             for message in messages:
                 if not isinstance(message, ExecutorRegistration):
-                    raise TypeError(type(message))
-                if (
-                    message.host in self.sender.hosts
-                    or "data." + message.host in self.sender.hosts
-                ):
-                    logger.warning(
-                        f"double registration of {message.host}, suggesting network congestion"
-                    )
+                    from cascade.low.exceptions import CascadeInternalError
+
+                    raise CascadeInternalError(f"expected ExecutorRegistration during init, got {type(message)}")
+                if message.host in self.sender.hosts or "data." + message.host in self.sender.hosts:
+                    logger.warning(f"double registration of {message.host}, suggesting network congestion")
                     continue
                 self.sender.add_host(message.host, message.maddress)
                 self.sender.add_host("data." + message.host, message.daddress)
                 for worker in message.workers:
-                    self.environment.workers[worker.worker_id] = Worker(
-                        cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb
-                    )
+                    self.environment.workers[worker.worker_id] = Worker(cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb)
                 self.environment.host_url_base[message.host] = message.url_base
                 registered += 1
-                self.heartbeat_checker[message.host] = GraceWatcher(
-                    2 * executor_heartbeat_grace_ms
-                )
+                self.heartbeat_checker[message.host] = GraceWatcher(2 * executor_heartbeat_grace_ms)
                 self.heartbeat_checker[message.host].step()
             if time.time_ns() > registration_grace:
                 self.shutdown()
-                raise ValueError("failed to recevied registration in due time")
+                from cascade.low.exceptions import CascadeInfrastructureError
+
+                raise CascadeInfrastructureError("failed to receive registration in due time")
 
     def _send(self, hostId: HostId, message: Message) -> None:
         self.sender.send(hostId, message)
@@ -103,13 +98,9 @@ class Bridge:
             while (not events) and (not shutdown_reason):
                 # timeout ms matches
                 for message in self.mlistener.recv_messages(timeout_ms=resend_grace_ms):
-                    if hasattr(message, "host") and isinstance(
-                        (host := message.host), HostId
-                    ):
+                    if hasattr(message, "host") and isinstance((host := message.host), HostId):
                         self.heartbeat_checker[host].step()
-                    if hasattr(message, "worker") and isinstance(
-                        (worker := message.worker), WorkerId
-                    ):
+                    if hasattr(message, "worker") and isinstance((worker := message.worker), WorkerId):
                         self.heartbeat_checker[worker.host].step()
                     if isinstance(message, Event):
                         events.append(message)
@@ -118,30 +109,19 @@ class Bridge:
                     elif isinstance(message, ExecutorRegistration):
                         pass
                     elif isinstance(message, ToShutdown):
-                        logger.critical(
-                            f"received failure {message=}, proceeding with a shutdown"
-                        )
-                        if (
-                            isinstance(message, ExecutorExit | ExecutorFailure)
-                            and message.host in self.sender.hosts
-                        ):
+                        logger.critical(f"received failure {message=}, proceeding with a shutdown")
+                        if isinstance(message, ExecutorExit | ExecutorFailure) and message.host in self.sender.hosts:
                             self.sender.hosts.pop(message.host)
                             self.sender.hosts.pop("data." + message.host)
                         shutdown_reason = message
                     elif isinstance(message, Unsupported):
-                        logger.critical(
-                            f"received unexpected {message=}, proceeding with a shutdown"
-                        )
+                        logger.critical(f"received unexpected {message=}, proceeding with a shutdown")
                         shutdown_reason = message
                     else:
                         assert_never(message)
-                failed_heartbeats = (
-                    e for e in self.heartbeat_checker.items() if e[1].is_breach() == 2
-                )
+                failed_heartbeats = (e for e in self.heartbeat_checker.items() if e[1].is_breach() == 2)
                 for host, checker in failed_heartbeats:
-                    logger.warning(
-                        f"{host=} failed to heartbeat for {checker.elapsed_ms()/1e3:.3f}s"
-                    )
+                    logger.warning(f"{host=} failed to heartbeat for {checker.elapsed_ms() / 1e3:.3f}s")
                 self.sender.maybe_retry()
             if shutdown_reason is None:
                 return events
@@ -149,7 +129,13 @@ class Bridge:
             logger.exception("gotten exception, proceeding with a shutdown")
             shutdown_reason = e
         self.shutdown()
-        raise ValueError(shutdown_reason)
+        from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
+
+        if isinstance(shutdown_reason, CascadeError):
+            raise shutdown_reason
+        raise CascadeInfrastructureError(
+            f"bridge shutdown: {shutdown_reason!r}", parent=shutdown_reason if isinstance(shutdown_reason, Exception) else None
+        )
 
     def task_sequence(self, taskSequence: TaskSequence) -> None:
         self._send(taskSequence.worker.host, taskSequence)
@@ -204,6 +190,4 @@ class Bridge:
                 else:
                     logger.warning(f"ignoring {type(message)}")
         if self.sender.hosts:
-            logger.warning(
-                f"not all hosts exited during grace period: {self.sender.hosts.keys()}, quitting anyway"
-            )
+            logger.warning(f"not all hosts exited during grace period: {self.sender.hosts.keys()}, quitting anyway")

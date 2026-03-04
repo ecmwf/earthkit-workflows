@@ -42,6 +42,7 @@ from cascade.executor.msg import (
 )
 from cascade.executor.runner.memory import ds2shmid
 from cascade.low.core import DatasetId
+from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
 from cascade.low.func import assert_never
 from cascade.low.tracing import TransmitLifecycle, label, mark
 
@@ -69,12 +70,8 @@ class DataServer:
             DatasetTransmitCommand | DatasetTransmitPayload | DatasetPersistCommand | DatasetRetrieveCommand, Future
         ] = {}
         self.awaiting_confirmation: dict[int, tuple[DatasetTransmitCommand, int]] = {}
-        self.invalid: set[DatasetId] = (
-            set()
-        )  # for preventing out-of-order stores/transmits for datasets that have already been purged
-        self.acks: set[int] = (
-            set()
-        )  # it could happen that Ack arrives before respective Future finishes, so we need to store separately
+        self.invalid: set[DatasetId] = set()  # for preventing out-of-order stores/transmits for datasets that have already been purged
+        self.acks: set[int] = set()  # it could happen that Ack arrives before respective Future finishes, so we need to store separately
         # TODO the two above should be eventually purged, see comms.Listener.acked for a similar concern
 
     def maybe_clean(self) -> None:
@@ -111,9 +108,7 @@ class DataServer:
                 )
             except shm_client.ConflictError as e:
                 # NOTE this branch is for situations where the controller issued redundantly two transmits
-                logger.warning(
-                    f"store of {payload.header.ds} failed with {e}, presumably already computed; continuing"
-                )
+                logger.warning(f"store of {payload.header.ds} failed with {e}, presumably already computed; continuing")
                 mark(
                     {
                         "dataset": repr(payload.header.ds),
@@ -142,9 +137,7 @@ class DataServer:
                 }
             )
         except Exception as e:
-            logger.exception(
-                "failed to store payload of {payload.header.ds}, reporting up"
-            )
+            logger.exception("failed to store payload of {payload.header.ds}, reporting up")
             callback(
                 self.maddress,
                 DatasetTransmitFailure(
@@ -152,15 +145,13 @@ class DataServer:
                     detail=f"{payload.header.confirm_idx}, {payload.header.ds} -> {repr(e)}",
                 ),
             )
-        return (
-            time_ns()
-        )  # not actually consumed but uniform signature with send_payload simplifies typing
+        return time_ns()  # not actually consumed but uniform signature with send_payload simplifies typing
 
     def _retrieve_dataset(self, command: DatasetRetrieveCommand) -> int:
         buf: None | shm_client.AllocatedBuffer = None
         try:
             if command.target != self.host:
-                raise ValueError(f"invalid host in {command=}")
+                raise CascadeInternalError(f"invalid host in {command=}")
             buf = retrieve_dataset(command)
             logger.debug(f"dataset for {command} retrieved")
             callback(self.maddress, DatasetRetrieveSuccess(host=self.host, ds=command.ds))
@@ -179,7 +170,7 @@ class DataServer:
         buf: None | shm_client.AllocatedBuffer = None
         try:
             if command.source != self.host:
-                raise ValueError(f"invalid host in {command=}")
+                raise CascadeInternalError(f"invalid host in {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
             persist_dataset(command, buf)
             logger.debug(f"dataset for {command} persisted")
@@ -200,7 +191,7 @@ class DataServer:
         payload: None | DatasetTransmitPayload = None
         try:
             if command.target == self.host or command.source != self.host:
-                raise ValueError(f"invalid {command=}")
+                raise CascadeInternalError(f"invalid {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
             mark(
                 {
@@ -225,9 +216,7 @@ class DataServer:
             logger.exception(f"failed to send payload for {command}, reporting up")
             callback(
                 self.maddress,
-                DatasetTransmitFailure(
-                    host=self.host, detail=f"{repr(command)} -> {repr(e)}"
-                ),
+                DatasetTransmitFailure(host=self.host, detail=f"{repr(command)} -> {repr(e)}"),
             )
         finally:
             if payload is not None:
@@ -247,49 +236,16 @@ class DataServer:
                     logger.debug(f"received message {type(m)}")
                     if isinstance(m, DatasetTransmitCommand):
                         if m.idx in self.awaiting_confirmation:
-                            raise ValueError(
-                                f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}"
-                            )
+                            raise CascadeInternalError(f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}")
                         if m.ds in self.invalid:
-                            raise ValueError(
-                                f"unexpected transmit command {m} as the dataset was already purged"
-                            )
-                        mark(
-                            {
-                                "dataset": repr(m.ds),
-                                "action": TransmitLifecycle.started,
-                                "target": m.target,
-                            }
-                        )
+                            raise CascadeInternalError(f"unexpected transmit command {m} as the dataset was already purged")
                         self.awaiting_confirmation[m.idx] = (m, -1)
                         fut = self.ds_proc_tp.submit(self._send_payload, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetPersistCommand):
                         if m.ds in self.invalid:
-                            raise ValueError(
-                                f"unexpected persist command {m} as the dataset was already purged"
-                            )
-                        # TODO mark?
-                        fut = self.ds_proc_tp.submit(self._persist_dataset, m)
-                        self.futs_in_progress[m] = fut
-                    elif isinstance(m, DatasetRetrieveCommand):
-                        # TODO mark?
-                        fut = self.ds_proc_tp.submit(self._retrieve_dataset, m)
-                        self.futs_in_progress[m] = fut
-                    elif isinstance(m, DatasetTransmitPayload):
-                        if m.header.ds in self.invalid:
-                            logger.warning(
-                                f"ignoring transmit payload {m.header} as the dataset was already purged"
-                            )
-                            continue
-                        mark(
-                            {
-                                "dataset": repr(m.header.ds),
-                                "action": TransmitLifecycle.received,
-                                "target": self.host,
-                            }
-                        )
-                        fut = self.ds_proc_tp.submit(self._store_payload, m)
+                            raise CascadeInternalError(description=f"unexpected persist command {m} as the dataset was already purged")
+                        fut = self.ds_proc_tp.submit(self._store_payload, m)  # ty: ignore[invalid-argument-type]
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, Ack):
                         logger.debug(f"confirmed transmit {m.idx}")
@@ -299,16 +255,14 @@ class DataServer:
                         # TODO submit this as a future? This actively blocks the whole server
                         to_wait = []
                         for commandProg, fut in self.futs_in_progress.items():
-                            if isinstance(commandProg, DatasetTransmitCommand|DatasetPersistCommand|DatasetRetrieveCommand):
+                            if isinstance(commandProg, DatasetTransmitCommand | DatasetPersistCommand | DatasetRetrieveCommand):
                                 val = commandProg.ds
                             elif isinstance(commandProg, DatasetTransmitPayload):
                                 val = commandProg.header.ds
                             else:
                                 assert_never(commandProg)
                             if m.ds == val:
-                                logger.debug(
-                                    f"waiting for future of {type(commandProg)} of {val}"
-                                )
+                                logger.debug(f"waiting for future of {type(commandProg)} of {val}")
                                 to_wait.append(fut)
                         wait(self.futs_in_progress.values(), return_when=ALL_COMPLETED)
                         self.maybe_clean()
@@ -321,7 +275,7 @@ class DataServer:
                         shm_client.purge(ds2shmid(m.ds))
                         self.invalid.add(m.ds)
                     else:
-                        raise NotImplementedError(type(m))
+                        raise CascadeInternalError(f"unexpected message type in data_server recv_loop: {type(m)}")
 
                 # TODO ideally, we would be able to re-use the ReliableSender here
                 # but we need to be careful because of a/ thread pool b/ opened shm
@@ -336,16 +290,12 @@ class DataServer:
                     self.maybe_clean()
                     command = self.awaiting_confirmation[e][0]
                     if command in self.futs_in_progress:
-                        raise ValueError(
-                            f"asked for retry of {command}, but said future still in progress"
-                        )
+                        raise CascadeInternalError(f"asked for retry of {command}, but said future still in progress")
                     elif command.idx in self.acks:
                         self.awaiting_confirmation.pop(e)
 
                     elif command.ds in self.invalid:
-                        logger.warning(
-                            f"{command} won't be retried as the dataset has been purged; assuming lost"
-                        )
+                        logger.warning(f"{command} won't be retried as the dataset has been purged; assuming lost")
                         self.awaiting_confirmation.pop(e)
                     else:
                         logger.warning(f"submitting a retry of {command}")
@@ -354,6 +304,13 @@ class DataServer:
                         self.awaiting_confirmation[e] = (command, -1)
             except:
                 # NOTE do something more clean here? Not critical since we monitor this process anyway
+                import sys
+
+                ex = sys.exc_info()[1]
+                if ex is not None:
+                    raise CascadeInfrastructureError(
+                        "data_server recv_loop failed", parent=ex if isinstance(ex, Exception) else None
+                    ) from ex
                 raise
 
 

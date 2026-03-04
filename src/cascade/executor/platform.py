@@ -32,20 +32,16 @@ def gpu_init(worker_num: int):
     if sys.platform != "darwin":
         # TODO there is implicit coupling with executor.executor and cascade.main -- make it cleaner!
         gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
-        os.environ["CUDA_VISIBLE_DEVICES"] = (
-            str(worker_num) if worker_num < gpus else ""
-        )
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(worker_num) if worker_num < gpus else ""
     else:
         pass  # no macos specific gpu init due to unified mem model
 
 
-MpSituation = typing.Literal[
-    "worker", "executor-loc", "executor-aux", "gateway", "other"
-]
+MpSituation = typing.Literal["worker", "executor-loc", "executor-aux", "gateway", "other"]
 _MpSituation = typing.get_args(MpSituation)
 
 
-def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.SpawnContext|mp.context.ForkServerContext:
+def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.SpawnContext | mp.context.ForkServerContext:
     """Generally, forking is safe everywhere as we try to be careful not to
     initialize non-safe objects prior to forking. However, combination of
     mac + mps + anemoi + pickled callables causes xpc_error_connection_invalid,
@@ -57,7 +53,9 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.Spaw
     """
 
     if situation not in _MpSituation:
-        raise TypeError(f"{situation=} is not in {_MpSituation}")
+        from cascade.low.exceptions import CascadeInternalError
+
+        raise CascadeInternalError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":
         return mp.get_context("spawn")
     elif situation == "executor-loc":
@@ -69,17 +67,20 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext|mp.context.Spaw
     else:
         return mp.get_context("fork")
 
+
 # NOTE not really perftested, more like for fun
 if sys.platform == "darwin":
+
     def advise_seqread(fd: int) -> None:
         # after https://github.com/python/cpython/issues/113092 merged, use that instead
-        F_RDADVISE=44
+        F_RDADVISE = 44
         # taken from https://github.com/phracker/MacOSX-SDKs/blob/master/MacOSX10.8.sdk/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/sys/fcntl.h#L235
         try:
             fcntl.fcntl(fd, F_RDADVISE, 1)
         except OSError:
             pass
 else:
+
     def advise_seqread(fd: int) -> None:
         try:
             os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_SEQUENTIAL)

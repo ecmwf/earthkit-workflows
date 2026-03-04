@@ -29,9 +29,7 @@ JobId = str
 class JobProgress:
     started: bool
     completed: bool
-    pct: (
-        str | None
-    )  # number in (0, 1) formatted as {:.2%} without the percent sign -- eg 0.10, 23.68
+    pct: str | None  # number in (0, 1) formatted as {:.2%} without the percent sign -- eg 0.10, 23.68
     failure: str | None
 
     @classmethod
@@ -65,7 +63,9 @@ def deserialize(raw: bytes) -> ControllerReport:
     if isinstance(maybe, ControllerReport):
         return maybe
     else:
-        raise TypeError(type(maybe))
+        from cascade.low.exceptions import CascadeInternalError
+
+        raise CascadeInternalError(f"failed to deserialize ControllerReport, got {type(maybe)}")
 
 
 def serialize(report: ControllerReport) -> bytes:
@@ -93,34 +93,26 @@ class Reporter:
             return
         pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
-        report = ControllerReport(
-            self.job_id, JobProgress.progressed(pct), monotonic_ns(), []
-        )
+        report = ControllerReport(self.job_id, JobProgress.progressed(pct), monotonic_ns(), [])
         _send(self.socket, report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:
         if self.socket is None:
             return
         logger.debug(f"uploading result {dataset=}")
-        report = ControllerReport(
-            self.job_id, None, monotonic_ns(), [(dataset, result)]
-        )
+        report = ControllerReport(self.job_id, None, monotonic_ns(), [(dataset, result)])
         _send(self.socket, report)
 
     def send_failure(self, failure: str) -> None:
         if self.socket is None:
             return
         logger.debug(f"reporting failure {failure=}")
-        report = ControllerReport(
-            self.job_id, JobProgress.failed(failure), monotonic_ns(), []
-        )
+        report = ControllerReport(self.job_id, JobProgress.failed(failure), monotonic_ns(), [])
         _send(self.socket, report)
 
     def success(self) -> None:
         if self.socket is None:
             return
         logger.debug("reporter sending shutdown")
-        report = ControllerReport(
-            self.job_id, JobProgress.succeeded(), monotonic_ns(), []
-        )
+        report = ControllerReport(self.job_id, JobProgress.succeeded(), monotonic_ns(), [])
         _send(self.socket, report)

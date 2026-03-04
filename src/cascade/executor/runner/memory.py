@@ -43,9 +43,7 @@ class Memory(AbstractContextManager):
     def _publish(self, outputId: DatasetId, outputSchema: str, outputValue: Any):
         logger.debug(f"publishing {outputId}")
         shmid = ds2shmid(outputId)
-        result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(
-            outputValue, outputSchema
-        )
+        result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
         l = len(result_ser)
         rbuf = shm_client.allocate(shmid, l, deser_fun)
         rbuf.view()[:l] = result_ser
@@ -59,17 +57,13 @@ class Memory(AbstractContextManager):
         # if eg due to a runner crash we need to interrupt a task sequence, it may
         # trigger a publish of datasets which originally were not published
         for outputId, outputSchema in outputIds:
-            outputValue = self.local[outputId] # KeyError here is *not* expected
+            outputValue = self.local[outputId]  # KeyError here is *not* expected
             self._publish(outputId, outputSchema, outputValue)
 
-    def handle(
-        self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool
-    ) -> None:
+    def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool) -> None:
         if outputId == NO_OUTPUT_PLACEHOLDER:
             if outputValue is not None:
-                logger.warning(
-                    f"gotten output of type {type(outputValue)} where none was expected, updating annotation"
-                )
+                logger.warning(f"gotten output of type {type(outputValue)} where none was expected, updating annotation")
                 outputSchema = "Any"
             else:
                 outputValue = "ok"
@@ -94,14 +88,14 @@ class Memory(AbstractContextManager):
     def provide(self, inputId: DatasetId, annotation: str) -> Any:
         if inputId not in self.local:
             if inputId in self.bufs:
-                raise ValueError(f"internal data corruption for {inputId}")
+                from cascade.low.exceptions import CascadeInternalError
+
+                raise CascadeInternalError(f"internal data corruption for {inputId}")
             shmid = ds2shmid(inputId)
             logger.debug(f"asking for {inputId} via {shmid}")
             buf = shm_client.get(shmid)
             self.bufs[inputId] = buf
-            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(
-                buf.view(), annotation, buf.deser_fun
-            )
+            self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation, buf.deser_fun)
 
         return self.local[inputId]
 
@@ -120,33 +114,26 @@ class Memory(AbstractContextManager):
         # after every taskSequence. In principle, we could purge some locals earlier, and ideally scheduler
         # would invoke some targeted purges to also remove some published ones earlier (eg, they are still
         # needed somewhere but not here)
-        purgeable = [
-            inputId
-            for inputId in self.local
-            if inputId not in self.bufs and (not datasets or inputId in datasets)
-        ]
+        purgeable = [inputId for inputId in self.local if inputId not in self.bufs and (not datasets or inputId in datasets)]
         logger.debug(f"will flush {len(purgeable)} datasets")
         for inputId in purgeable:
             self.local.pop(inputId)
 
         # NOTE poor man's gpu mem management -- currently torch only. Given the task sequence limitation,
         # this may not be the best place to invoke.
-        if (
-            "torch" in sys.modules
-        ):  # if no task on this worker imported torch, no need to flush
+        if "torch" in sys.modules:  # if no task on this worker imported torch, no need to flush
             try:
                 import torch  # ty: ignore[unresolved-import]
+
                 logger.debug(f"imported torch version {torch.__version__} to clean cuda memory")
 
                 if torch.cuda.is_available():
                     free, total = torch.cuda.mem_get_info()
-                    logger.debug(f"cuda mem avail: {free/total:.2%}")
+                    logger.debug(f"cuda mem avail: {free / total:.2%}")
                     if free / total < 0.8:
                         torch.cuda.empty_cache()
                         free, total = torch.cuda.mem_get_info()
-                        logger.debug(
-                            f"cuda mem avail post cache empty: {free/total:.2%}"
-                        )
+                        logger.debug(f"cuda mem avail post cache empty: {free / total:.2%}")
                         if free / total < 0.8:
                             # NOTE this ofc makes low sense if there is any other application (like browser or ollama)
                             # that the user may be running

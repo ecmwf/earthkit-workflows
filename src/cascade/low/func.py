@@ -42,7 +42,9 @@ def maybe_head(v: Iterable[T]) -> Optional[T]:
 
 def assert_never(v: Any) -> NoReturn:
     """For exhaustive enumm checks etc"""
-    raise TypeError(v)
+    from cascade.low.exceptions import CascadeInternalError
+
+    raise CascadeInternalError(f"unexpected value in exhaustive check: {v!r}")
 
 
 @runtime_checkable
@@ -76,7 +78,9 @@ class Either(Generic[T, E]):
     def get_or_raise(self, raiser: Optional[Callable[[E], BaseException]] = None) -> T:
         if self.e:
             if not raiser:
-                raise ValueError(self.e)
+                from cascade.low.exceptions import CascadeInternalError
+
+                raise CascadeInternalError(f"Either contains error: {self.e}")
             else:
                 raise raiser(self.e)
         else:
@@ -106,7 +110,6 @@ def ensure(l: list, i: int) -> None:
 
 @runtime_checkable
 class Monoid(Protocol):
-
     @abstractmethod
     def __add__(self, other: Self) -> Self:
         raise NotImplementedError
@@ -158,9 +161,7 @@ def resolve_callable(s: str) -> Callable:
         return module.__dict__[function_name]
 
 
-def pydantic_recursive_collect(
-    base: BaseModel | Iterable, attr: str, prefix: str = "."
-) -> list[tuple[str, Any]]:
+def pydantic_recursive_collect(base: BaseModel | Iterable, attr: str, prefix: str = ".") -> list[tuple[str, Any]]:
     """Recurse into base, visiting each sub-model, list, dictionary, etc, invoking `attr` if present
     and collecting results. Assumes the `attr` has signature `Callable[[self], list[T]]`. The collected
     results are (source, item), where item is returned by `attr` and source is the dot-separated path

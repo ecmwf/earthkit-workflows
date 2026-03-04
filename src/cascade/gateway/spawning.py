@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 local_job_port = 12345
 
 
-def _spawn_troika_singlehost(
-    job_spec: JobSpec, addr: str, job_id: JobId, troika: TroikaSpec, troika_config: str
-) -> subprocess.Popen:
+def _spawn_troika_singlehost(job_spec: JobSpec, addr: str, job_id: JobId, troika: TroikaSpec, troika_config: str) -> subprocess.Popen:
     script = "#!/bin/bash\n"
     script += f"source {troika.venv}\n"
     for k, v in job_spec.envvars.items():
@@ -45,9 +43,7 @@ def _spawn_troika_singlehost(
     script += "python -m cascade.main local"
     script += f" --instance {job_json_path}"
 
-    script += (
-        f" --workers_per_host {job_spec.workers_per_host} --hosts {job_spec.hosts}"
-    )
+    script += f" --workers_per_host {job_spec.workers_per_host} --hosts {job_spec.hosts}"
     script += f" --report_address {addr},{job_id}"
     # NOTE technically not needed to be globally unique, but we cant rely on troika environment isolation...
     global local_job_port
@@ -59,13 +55,7 @@ def _spawn_troika_singlehost(
         f.write(script)
     os.chmod(
         script_path,
-        stat.S_IRUSR
-        | stat.S_IRGRP
-        | stat.S_IROTH
-        | stat.S_IWUSR
-        | stat.S_IXUSR
-        | stat.S_IXGRP
-        | stat.S_IXOTH,
+        stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
     )
     return subprocess.Popen(
         [
@@ -82,7 +72,10 @@ def _spawn_troika_singlehost(
 
 
 def _spawn_local(
-    job_spec: JobSpec, addr: str, job_id: JobId, loggingConfig: LoggingConfig,
+    job_spec: JobSpec,
+    addr: str,
+    job_id: JobId,
+    loggingConfig: LoggingConfig,
 ) -> subprocess.Popen:
     base = [
         "python",
@@ -106,9 +99,7 @@ def _spawn_local(
     global local_job_port
     portBase = ["--port_base", str(local_job_port)]
     local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
-    return subprocess.Popen(
-        base + infra + report + portBase + logs, env={**os.environ, **job_spec.envvars}
-    )
+    return subprocess.Popen(base + infra + report + portBase + logs, env={**os.environ, **job_spec.envvars})
 
 
 def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
@@ -122,15 +113,11 @@ def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Pope
     with open(f"./localConfigs/_tmp/{job_id}.json", "wb") as f:
         f.write(orjson.dumps(job_spec.job_instance.model_dump()))
     extra_vars["INSTANCE"] = f"./localConfigs/_tmp/{job_id}.json"
-    subprocess.run(
-        ["cp", "localConfigs/gateway.sh", f"localConfigs/_tmp/{job_id}"], check=True
-    )
+    subprocess.run(["cp", "localConfigs/gateway.sh", f"localConfigs/_tmp/{job_id}"], check=True)
     with open(f"./localConfigs/_tmp/{job_id}", "a") as f:
         for k, v in itertools.chain(job_spec.envvars.items(), extra_vars.items()):
             f.write(f"export {k}={v}\n")
-    return subprocess.Popen(
-        ["./scripts/launch_slurm.sh", f"localConfigs/_tmp/{job_id}"]
-    )
+    return subprocess.Popen(["./scripts/launch_slurm.sh", f"localConfigs/_tmp/{job_id}"])
 
 
 def spawn_subprocess(
@@ -143,14 +130,16 @@ def spawn_subprocess(
     if job_spec.troika is not None:
         # TODO support logging config properly
         if troika_config is None:
-            raise ValueError("cant spawn troika job without troika config")
+            from cascade.low.exceptions import CascadeUserError
+
+            raise CascadeUserError("cant spawn troika job without troika config")
         if not job_spec.use_slurm:
-            return _spawn_troika_singlehost(
-                job_spec, addr, job_id, job_spec.troika, troika_config
-            )
+            return _spawn_troika_singlehost(job_spec, addr, job_id, job_spec.troika, troika_config)
         else:
             # TODO create a slurm script like in spawn_slurm, but dont refer to any other file
-            raise NotImplementedError
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError("troika + slurm combination not yet implemented")
 
     elif job_spec.use_slurm:
         # TODO support logging config properly

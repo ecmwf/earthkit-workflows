@@ -53,17 +53,15 @@ def run(
         total_gpus = sum(worker.gpu for worker in env.workers.values())
         needs_gpus = any(task.definition.needs_gpu for task in job.jobInstance.tasks.values())
         if needs_gpus and total_gpus == 0:
-            raise ValueError("environment contains no gpu yet job demands one")
+            from cascade.low.exceptions import CascadeUserError
+
+            raise CascadeUserError("environment contains no gpu yet job demands one")
 
         virtual_update_schedule(persisted_valid, schedule, context)
         virtual_events = virtual_checkpoint_publish(persisted_valid)
         timer(notify_wrapper, Microtrace.ctrl_notify)(virtual_events)
 
-        while (
-            state.has_awaitable()
-            or context.has_awaitable()
-            or schedule.has_computable()
-        ):
+        while state.has_awaitable() or context.has_awaitable() or schedule.has_computable():
             mark({"action": ControllerPhases.assign})
             assignments = []
             if schedule.has_computable():
@@ -83,9 +81,13 @@ def run(
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")
     except Exception as ex:
-        logger.error("crash in controller, shuting down")
+        from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
+
+        logger.error("crash in controller, shutting down, propagating as InfrastructureError")
         reporter.send_failure(repr(ex))
-        raise
+        if isinstance(ex, CascadeError):
+            raise
+        raise CascadeInfrastructureError("crash in controller", parent=ex) from ex
     else:
         reporter.success()
     finally:

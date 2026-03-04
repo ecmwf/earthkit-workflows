@@ -89,9 +89,7 @@ def notify(
         if isinstance(event, DatasetPublished):
             logger.debug(f"received {event=}")
             # NOTE here we'll need to distinguish memory-only and host-wide (shm) publications, currently all events mean shm
-            host = (
-                event.origin if isinstance(event.origin, HostId) else event.origin.host
-            )
+            host = event.origin if isinstance(event.origin, HostId) else event.origin.host
             context.host2ds[host][event.ds] = DatasetStatus.available
             context.ds2host[event.ds][host] = DatasetStatus.available
             state.consider_fetch(event.ds, host)
@@ -112,12 +110,12 @@ def notify(
                 isWorker = isinstance(worker, WorkerId)
                 isVirtual = worker == VirtualCheckpointHost
                 if not isWorker and not isVirtual:
-                    raise ValueError(
-                        f"malformed event, expected origin to be WorkerId: {event}"
-                    )
+                    from cascade.low.exceptions import CascadeInternalError
+
+                    raise CascadeInternalError(f"malformed event, expected origin to be WorkerId: {event}")
                 logger.debug(f"last output of {task}, assuming completion")
                 state.task_done(task, context.edge_i.get(event.ds.task, set()))
-                if isWorker: 
+                if isWorker:
                     mark(
                         {
                             "task": task,
@@ -126,7 +124,7 @@ def notify(
                             "host": "controller",
                         }
                     )
-                    worker = cast(WorkerId, worker) # ty cant yet derive this to be true
+                    worker = cast(WorkerId, worker)  # ty cant yet derive this to be true
                     context.task_done_at(task, worker)
                 else:
                     context.task_done(task)
@@ -139,6 +137,6 @@ def notify(
         elif isinstance(event, DatasetRetrieveSuccess):
             pass
         elif isinstance(event, RunnerRestartRequest):
-            pass # NOTE possibly we should modify state, from the PoV of this runner being a good transmit candidate
+            pass  # NOTE possibly we should modify state, from the PoV of this runner being a good transmit candidate
         else:
             assert_never(event)

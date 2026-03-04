@@ -29,6 +29,7 @@ from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
+from cascade.low.exceptions import CascadeInfrastructureError
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
@@ -45,11 +46,7 @@ def _get_cuda_count() -> int:
             return visible_count
         gpus = sum(
             1
-            for l in subprocess.run(
-                ["nvidia-smi", "--list-gpus"], check=True, capture_output=True
-            )
-            .stdout.decode("ascii")
-            .split("\n")
+            for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True).stdout.decode("ascii").split("\n")
             if "GPU" in l
         )
     except:
@@ -96,10 +93,10 @@ def launch_executor(
         )
         executor.register()
         executor.recv_loop()
-    except Exception:
+    except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
-        logger.exception("executor failure")
-        raise
+        logger.exception("executor failure, propagating as InfrastructureError")
+        raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
 
 
 def run_locally(
@@ -116,7 +113,7 @@ def run_locally(
     logger.debug(f"local run starting with {hosts=} and {workers=} on {portBase=}")
     launch = perf_counter_ns()
     c = f"tcp://localhost:{portBase}"
-    m = f"tcp://localhost:{portBase+1}"
+    m = f"tcp://localhost:{portBase + 1}"
     ps = []
     try:
         # executors forking
@@ -150,7 +147,7 @@ def run_locally(
                 # TODO ideally we would somehow connect this with the Register message
                 # consumption in the Controller -- but there we don't assume that
                 # executors are on the same physical host
-                raise ValueError(f"executor {i} failed to live due to {p.exitcode}")
+                raise CascadeInfrastructureError(description=f"executor {i} failed to live due to {p.exitcode}")
 
         # start bridge itself
         logger.debug("starting bridge")
@@ -158,14 +155,12 @@ def run_locally(
         start = perf_counter_ns()
         result = run(job, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
-        print(
-            f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
-        )
+        print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
         if os.environ.get("CASCADE_DEBUG_PRINT"):
             for key, value in result.outputs.items():
                 print(f"{key} => {value}")
         return result.outputs
-    except Exception:
+    except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
         logger.exception("controller failure, proceed with executor shutdown")
         for p in ps:
@@ -175,12 +170,14 @@ def run_locally(
 
                 time.sleep(1)
                 p.kill()
-        raise
+        raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+
 
 def _deserialize(instance_path: str) -> JobInstanceRich:
     with open(instance_path, "rb") as f:
         d = orjson.loads(f.read())
         return JobInstanceRich(**d)
+
 
 def main_local(
     workers_per_host: int,
@@ -227,9 +224,7 @@ def main_dist(
         start = perf_counter_ns()
         run(jobInstanceRich, b, preschedule, report_address=report_address)
         end = perf_counter_ns()
-        print(
-            f"compute took {(end-start)/1e9:.3f}s, including startup {(end-launch)/1e9:.3f}s"
-        )
+        print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
     else:
         gpu_count = _get_gpu_count(0, workers_per_host)
         launch_executor(
@@ -240,9 +235,10 @@ def main_dist(
             idx,
             shm_vol_gb,
             gpu_count,
-            loggingConfig = DefaultLoggingConfig, # TODO handle logging for dist scenario
-            url_base = f"tcp://{platform.get_bindabble_self()}",
+            loggingConfig=DefaultLoggingConfig,  # TODO handle logging for dist scenario
+            url_base=f"tcp://{platform.get_bindabble_self()}",
         )
+
 
 if __name__ == "__main__":
     fire.Fire({"local": main_local, "dist": main_dist})

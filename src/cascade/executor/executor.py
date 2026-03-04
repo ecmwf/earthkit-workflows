@@ -66,7 +66,8 @@ logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms
 
 # messages from the data server which need to go to controller, but have no additional logic here
-JustForwardToController = DatasetTransmitFailure|DatasetPersistSuccess|DatasetPersistFailure|DatasetRetrieveFailure
+JustForwardToController = DatasetTransmitFailure | DatasetPersistSuccess | DatasetPersistFailure | DatasetRetrieveFailure
+
 
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{platform.get_bindabble_self()}:{port}"
@@ -95,10 +96,8 @@ class Executor:
         self.param_source = param_source(job_instance.edges)
         self.controller_address = controller_address
         self.host = host
-        self.workers: dict[WorkerId, WorkerHandle | None] = {
-            WorkerId(host, f"w{i}"): None for i in range(workers)
-        }
-        self.worker_awaits: dict[WorkerId, None|TaskSequence] = {}
+        self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
+        self.worker_awaits: dict[WorkerId, None | TaskSequence] = {}
         self.loggingConfig = loggingConfig
         self.old_processes: list[BaseProcess] = []
 
@@ -180,28 +179,20 @@ class Executor:
                 proc.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {proc.pid}")
-        if (
-            hasattr(self, "shm_process")
-            and self.shm_process is not None
-            and self.shm_process.is_alive()
-        ):
+        if hasattr(self, "shm_process") and self.shm_process is not None and self.shm_process.is_alive():
             try:
                 shm_client.shutdown()
                 self.shm_process.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down shm server")
-        if (
-            hasattr(self, "data_server")
-            and self.data_server is not None
-            and self.data_server.is_alive()
-        ):
+        if hasattr(self, "data_server") and self.data_server is not None and self.data_server.is_alive():
             self.data_server.kill()
 
     def to_controller(self, m: Message) -> None:
         self.heartbeat_watcher.step()
         self.sender.send("controller", m)
 
-    def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None|TaskSequence) -> WorkerHandle:
+    def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
         ctx = platform.get_mp_ctx("worker")
         runnerContext = RunnerContext(
             workerId=worker,
@@ -219,7 +210,9 @@ class Executor:
         )
         p.start()
         if worker in self.worker_awaits:
-            raise ValueError(f"{worker=} was already awaiting")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError(f"{worker=} was already awaiting")
         self.worker_awaits[worker] = seq
         return WorkerHandle(process=p, attempt_cnt=attempt_cnt)
 
@@ -260,23 +253,21 @@ class Executor:
         procFail = lambda ex: ex is not None and ex != 0
         for k, e in self.workers.items():
             if e is None:
-                raise ValueError(f"process on {k} is not alive")
+                from cascade.low.exceptions import CascadeInfrastructureError
+
+                raise CascadeInfrastructureError(f"process on {k} is not alive")
             elif procFail(e.process.exitcode):
-                raise ValueError(
-                    f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}"
-                )
+                from cascade.low.exceptions import CascadeInfrastructureError
+
+                raise CascadeInfrastructureError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
         if procFail(self.shm_process.exitcode):
-            raise ValueError(
-                f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}"
-            )
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
         if procFail(self.data_server.exitcode):
-            raise ValueError(
-                f"data server {self.data_server.pid} failed with {self.data_server.exitcode}"
-            )
-        if self.heartbeat_watcher.is_breach() > 0:
-            logger.debug(
-                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}"
-            )
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
@@ -303,10 +294,14 @@ class Executor:
                             )
                         handle = self.workers[m.worker]
                         if handle is None or handle.process.exitcode is not None:
-                            raise ValueError(f"worker process {m.worker} is not alive")
+                            from cascade.low.exceptions import CascadeInfrastructureError
+
+                            raise CascadeInfrastructureError(f"worker process {m.worker} is not alive")
                         if m.worker in self.worker_awaits:
                             if self.worker_awaits[m.worker] is not None:
-                                raise ValueError(f"double enqueue for {m.worker}")
+                                from cascade.low.exceptions import CascadeInfrastructureError
+
+                                raise CascadeInfrastructureError(f"double enqueue for {m.worker}")
                             else:
                                 self.worker_awaits[m.worker] = m
                         else:
@@ -336,8 +331,10 @@ class Executor:
                             if maybe_seq is not None:
                                 handle = self.workers[m.worker]
                                 if handle is None:
-                                    raise ValueError(f"worker {m.worker} is alive but has no handle")
-                                address=worker_address(m.worker, handle.attempt_cnt)
+                                    from cascade.low.exceptions import CascadeInfrastructureError
+
+                                    raise CascadeInfrastructureError(f"worker {m.worker} is alive but has no handle")
+                                address = worker_address(m.worker, handle.attempt_cnt)
                                 logger.debug(f"worker {m.worker} ready, sending task sequence {maybe_seq} to {address}")
                                 callback(address, maybe_seq)
                             else:
@@ -345,11 +342,13 @@ class Executor:
                     elif isinstance(m, RunnerRestartRequest):
                         handle = self.workers[m.worker]
                         if handle is None:
-                            raise ValueError("unexpected restart from worker without handle")
+                            from cascade.low.exceptions import CascadeInfrastructureError
+
+                            raise CascadeInfrastructureError("unexpected restart from worker without handle")
                         callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
                         self.old_processes.append(handle.process)
-                        logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt+1}")
-                        self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt+1, m.remainder)
+                        logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt + 1}")
+                        self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt + 1, m.remainder)
                         self.to_controller(m)
                     elif isinstance(m, TaskFailure):
                         self.to_controller(m)
@@ -371,9 +370,13 @@ class Executor:
                         self.to_controller(m)
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)
-                        raise TypeError(m)
+                        from cascade.low.exceptions import CascadeInternalError
+
+                        raise CascadeInternalError(f"unexpected message type in executor recv_loop: {type(m)}")
                 self.healthcheck()
             except Exception as e:
-                logger.exception("executor exited, about to report to controller")
+                from cascade.low.exceptions import CascadeError
+
+                logger.exception("executor exited, about to report to controller, propagating as InfrastructureError")
                 self.to_controller(ExecutorFailure(self.host, repr(e)))
                 self.terminate()

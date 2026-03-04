@@ -63,10 +63,7 @@ class RunnerContext:
 
     def project(self, taskSequence: TaskSequence) -> ExecutionContext:
         param_source_ext: dict[TaskId, dict[int | str, tuple[DatasetId, str]]] = {
-            task: {
-                k: (dataset_id, self.schema_lookup[dataset_id])
-                for k, dataset_id in self.param_source[task].items()
-            }
+            task: {k: (dataset_id, self.schema_lookup[dataset_id]) for k, dataset_id in self.param_source[task].items()}
             for task in taskSequence.tasks
         }
         return ExecutionContext(
@@ -75,6 +72,7 @@ class RunnerContext:
             callback=self.callback,
             publish=taskSequence.publish,
         )
+
 
 def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> list[tuple[DatasetId, str]]:
     """Assuming a failure at task Cut, identify which datasets from the beginning of
@@ -102,7 +100,9 @@ def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequ
         if task == cut or remainder:
             remainder.append(task)
     if not remainder:
-        raise ValueError(f"empty remainder -> task {cut} not part of the orig {taskSequence=}?")
+        from cascade.low.exceptions import CascadeInternalError
+
+        raise CascadeInternalError(f"empty remainder -> task {cut} not part of the orig {taskSequence=}?")
     remainder_set = set(remainder)
 
     return TaskSequence(
@@ -127,9 +127,7 @@ class Config:
     # it, ie, we retain a cache of age 1. We could ultimately have controller decide about this, or
     # decide dynamically based on memory pressure -- but neither is easy.
     posttask_flush = False  # after task is done, drop all outputs from memory
-    pretask_flush = (
-        True  # when we receive a task, we drop those in memory that wont be needed
-    )
+    pretask_flush = True  # when we receive a task, we drop those in memory that wont be needed
 
 
 def worker_address(workerId: WorkerId, workerAttemptCnt: int) -> BackboneAddress:
@@ -161,7 +159,9 @@ def execute_sequence(
     except PostinstallException as e:
         logger.error(f"postinstall validation failed, will send RunnerRestartRequest: {repr(e)}")
         if not taskId:
-            raise TypeError("Postinstall should not have been raised in the absence of active task")
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError("Postinstall should not have been raised in the absence of active task")
         additionalPublish = task_sequence_postmortem(runnerContext, taskSequence, taskId)
         logger.debug(f"postinstall failure triggers additional publish of {additionalPublish}")
         remainder = task_sequence_remainder(taskSequence, taskId)
@@ -172,12 +172,15 @@ def execute_sequence(
         )
         return False
     except Exception as e:
-        logger.exception("runner failure, about to report")
+        from cascade.low.exceptions import CascadeError
+
+        logger.exception("runner failure, about to report, propagating as TaskFailure")
         callback(
             runnerContext.callback,
             TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)),
         )
         return False
+
 
 def entrypoint(runnerContextClpkl: bytes):
     """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
@@ -228,17 +231,11 @@ def entrypoint(runnerContextClpkl: bytes):
                 availab_ds.discard(mDes.ds)
             elif isinstance(mDes, TaskSequence):
                 if waiting_ts is not None:
-                    raise ValueError(
-                        f"double task sequence enqueued: 1/ {waiting_ts}, 2/ {mDes}"
-                    )
-                required = {
-                    dataset_id
-                    for task in mDes.tasks
-                    for dataset_id in runnerContext.param_source[task].values()
-                } - {
-                    DatasetId(task, key)
-                    for task in mDes.tasks
-                    for key, _ in runnerContext.job.tasks[task].definition.output_schema
+                    from cascade.low.exceptions import CascadeInternalError
+
+                    raise CascadeInternalError(f"double task sequence enqueued: 1/ {waiting_ts}, 2/ {mDes}")
+                required = {dataset_id for task in mDes.tasks for dataset_id in runnerContext.param_source[task].values()} - {
+                    DatasetId(task, key) for task in mDes.tasks for key, _ in runnerContext.job.tasks[task].definition.output_schema
                 }
                 missing_ds = required - availab_ds
                 if Config.pretask_flush:
@@ -251,4 +248,6 @@ def entrypoint(runnerContextClpkl: bytes):
                 else:
                     isTerminating = not execute_sequence(mDes, memory, pckg, runnerContext)
             else:
-                raise ValueError(f"unexpected message received: {type(mDes)}")
+                from cascade.low.exceptions import CascadeInternalError
+
+                raise CascadeInternalError(f"unexpected message received: {type(mDes)}")

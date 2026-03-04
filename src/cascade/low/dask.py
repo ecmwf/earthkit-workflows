@@ -45,7 +45,9 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
             edges.append(edge)
         elif isinstance(v, Task):
             # TODO
-            raise NotImplementedError
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError("nested Task in dask graph args not yet implemented")
         else:
             instance.static_input_ps[f"{i}"] = v
     for k, v in task.kwargs.items():
@@ -59,7 +61,9 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
             edges.append(edge)
         elif isinstance(v, Task):
             # TODO
-            raise NotImplementedError
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError("nested Task in dask graph kwargs not yet implemented")
         else:
             instance.static_input_kw[k] = v
 
@@ -90,7 +94,9 @@ def graph2job(dask: dict) -> JobInstance:
             logger.warning("encountered nested container => confused ostrich")
             continue
         else:
-            raise NotImplementedError
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError(f"unsupported dask graph node type: {type(value)}")
 
     return JobInstance(
         tasks=task_nodes,

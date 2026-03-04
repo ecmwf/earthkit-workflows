@@ -51,7 +51,9 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     elif task.definition.entrypoint is not None:
         func = resolve_callable(task.definition.entrypoint)
     else:
-        raise TypeError("neither entrypoint nor func given")
+        from cascade.low.exceptions import CascadeInternalError
+
+        raise CascadeInternalError("neither entrypoint nor func given")
 
     args: list[Any] = []
     for idx_str, arg in task.static_input_ps.items():
@@ -61,9 +63,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     kwargs: dict[str, Any] = {}
     kwargs.update(task.static_input_kw)
 
-    for param_pos, (dataset_id, annotation) in executionContext.param_source[
-        taskId
-    ].items():
+    for param_pos, (dataset_id, annotation) in executionContext.param_source[taskId].items():
         value = memory.provide(dataset_id, annotation)
         if isinstance(param_pos, str):
             kwargs[param_pos] = value
@@ -76,7 +76,9 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     outputs = task.definition.output_schema
     outputsN = len(outputs)
     if outputsN == 0:
-        raise ValueError(f"no output key for task {taskId}")
+        from cascade.low.exceptions import CascadeInternalError
+
+        raise CascadeInternalError(f"no output key for task {taskId}")
     mark({"task": taskId, "action": TaskLifecycle.loaded})
     prep_end = perf_counter_ns()
 
@@ -95,11 +97,13 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
                 outputId in executionContext.publish,
             )
         if not assert_iter_empty(outputsI):
-            raise ValueError("schema declared more outputs than there were results")
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError("schema declared more outputs than there were results")
         if not assert_iter_empty(result):
-            raise ValueError(
-                "function produced more results than there were schema outputs"
-            )
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError("function produced more results than there were schema outputs")
         # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
         mark({"task": taskId, "action": TaskLifecycle.computed})
         run_end = perf_counter_ns()
@@ -108,22 +112,20 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         run_end = perf_counter_ns()
         mark({"task": taskId, "action": TaskLifecycle.computed})
         if outputsN != 1:
-            raise ValueError(
-                f"task {taskId} returned non-generator result but has {outputsN} outputs declared"
-            )
+            from cascade.low.exceptions import CascadeInternalError
+
+            raise CascadeInternalError(f"task {taskId} returned non-generator result but has {outputsN} outputs declared")
         outputKey, outputSchema = outputs[0]
         outputId = DatasetId(taskId, outputKey)
-        memory.handle(
-            outputId, outputSchema, result, outputId in executionContext.publish
-        )
+        memory.handle(outputId, outputSchema, result, outputId in executionContext.publish)
         mark({"task": taskId, "action": TaskLifecycle.published})
     end = perf_counter_ns()
 
     trace(Microtrace.wrk_task, end - start)
-    logger.debug(f"outer elapsed {(end-start)/1e9: .5f} s in {taskId}")
+    logger.debug(f"outer elapsed {(end - start) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_load, prep_end - start)
-    logger.debug(f"prep elapsed {(prep_end-start)/1e9: .5f} s in {taskId}")
+    logger.debug(f"prep elapsed {(prep_end - start) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_compute, run_end - prep_end)
-    logger.debug(f"inner elapsed {(run_end-prep_end)/1e9: .5f} s in {taskId}")
+    logger.debug(f"inner elapsed {(run_end - prep_end) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_publish, end - run_end)
-    logger.debug(f"post elapsed {(end-run_end)/1e9: .5f} s in {taskId}")
+    logger.debug(f"post elapsed {(end - run_end) / 1e9: .5f} s in {taskId}")

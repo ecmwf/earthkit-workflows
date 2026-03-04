@@ -20,9 +20,7 @@ import cascade.gateway.api as api
 logger = logging.getLogger(__name__)
 
 
-def request_response(
-    m: api.CascadeGatewayAPI, url: str, timeout_ms: int = 1000
-) -> api.CascadeGatewayAPI:
+def request_response(m: api.CascadeGatewayAPI, url: str, timeout_ms: int = 1000) -> api.CascadeGatewayAPI:
     """Sends a Request message, provides a corresponding Response message in a blocking manner"""
 
     local = threading.local()
@@ -35,16 +33,20 @@ def request_response(
         # with first frame being the `clazz`
         d = m.model_dump(mode="json")
         if "clazz" in d:
-            raise ValueError("field `clazz` must not be present in the message")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("field `clazz` must not be present in the message")
         d["clazz"] = type(m).__name__
         if not d["clazz"].endswith("Request"):
-            raise ValueError("message must be a Request")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("message must be a Request")
         b = orjson.dumps(d)
     except Exception as e:
+        from cascade.low.exceptions import CascadeInfrastructureError
+
         logger.exception(f"failed to serialize message: {repr(m)[:32]}")
-        raise ValueError(
-            f"failed to serialize message: {repr(m)[:32]} => {repr(e)[:32]}"
-        )
+        raise CascadeInfrastructureError(f"failed to serialize message: {repr(m)[:32]} => {repr(e)[:32]}", parent=e)
 
     try:
         s = local.context.socket(zmq.REQ)
@@ -59,22 +61,32 @@ def request_response(
     except TimeoutError:
         raise
     except Exception as e:
+        from cascade.low.exceptions import CascadeInfrastructureError
+
         logger.exception(f"failed to communicate on {url=}")
-        raise ValueError(f"failed to communicate on {url=} => {repr(e)[:32]}")
+        raise CascadeInfrastructureError(f"failed to communicate on {url=} => {repr(e)[:32]}", parent=e)
 
     try:
         rd = orjson.loads(rr)
         rdc = rd.pop("clazz")
         if not rdc.endswith("Response"):
-            raise ValueError("recieved message is not a Response")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("recieved message is not a Response")
         if d["clazz"][: -len("Request")] != rdc[: -len("Response")]:
-            raise ValueError("mismatch between sent and received classes")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("mismatch between sent and received classes")
         if rdc not in api.__dict__.keys():
-            raise ValueError("message clazz not understood")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("message clazz not understood")
         return cast(api.CascadeGatewayAPI, api.__dict__[rdc](**rd))
     except Exception as e:
+        from cascade.low.exceptions import CascadeInfrastructureError
+
         logger.exception(f"failed to parse message: {rr[:32]}")
-        raise ValueError(f"failed to parse message: {rr[:32]} => {repr(e)[:32]}")
+        raise CascadeInfrastructureError(f"failed to parse message: {rr[:32]} => {repr(e)[:32]}", parent=e)
 
 
 def parse_request(rr: bytes) -> api.CascadeGatewayAPI:
@@ -82,13 +94,19 @@ def parse_request(rr: bytes) -> api.CascadeGatewayAPI:
         rd = orjson.loads(rr)
         rdc = rd.pop("clazz")
         if not rdc.endswith("Request"):
-            raise ValueError("recieved message is not a Request")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("recieved message is not a Request")
         if rdc not in api.__dict__.keys():
-            raise ValueError("message clazz not understood")
+            from cascade.low.exceptions import CascadeInfrastructureError
+
+            raise CascadeInfrastructureError("message clazz not understood")
         return cast(api.CascadeGatewayAPI, api.__dict__[rdc](**rd))
     except Exception as e:
+        from cascade.low.exceptions import CascadeInfrastructureError
+
         logger.exception(f"failed to parse message: {rr[:32]!r}")
-        raise ValueError(f"failed to parse message: {rr[:32]!r} => {repr(e)[:32]}")
+        raise CascadeInfrastructureError(f"failed to parse message: {rr[:32]!r} => {repr(e)[:32]}", parent=e)
 
 
 def serialize_response(m: api.CascadeGatewayAPI) -> bytes:
@@ -102,6 +120,4 @@ def serialize_response(m: api.CascadeGatewayAPI) -> bytes:
         return orjson.dumps(d)
     except Exception as e:
         logger.exception(f"failed to serialize message: {repr(m)[:32]}")
-        raise ValueError(
-            f"failed to serialize message: {repr(m)[:32]} => {repr(e)[:32]}"
-        )
+        raise ValueError(f"failed to serialize message: {repr(m)[:32]} => {repr(e)[:32]}")

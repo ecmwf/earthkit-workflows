@@ -13,4 +13,6 @@ from typing import Any, NoReturn
 
 def assert_never(v: Any) -> NoReturn:
     """For exhaustive enumm checks etc"""
-    raise TypeError(v)
+    from cascade.low.exceptions import CascadeInternalError
+
+    raise CascadeInternalError(f"unexpected value in exhaustive check: {v!r}")
