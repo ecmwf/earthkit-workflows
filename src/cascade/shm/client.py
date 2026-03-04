@@ -14,7 +14,7 @@ from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Type, TypeVar
 
 import cascade.shm.api as api
-from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
+from cascade.shm.func import ShmInfrastructureError, ShmInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class AllocatedBuffer:
 
     def view(self) -> memoryview:
         if not self.shm:
-            raise CascadeInfrastructureError(description="shm already closed!")
+            raise ShmInternalError("shm already closed!")
         assert self.shm.buf is not None
         mv = self.shm.buf[: self.l]
         if self.readonly:
@@ -114,11 +114,11 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
                 continue
             elif response_com.error == "conflict":
                 raise ConflictError
-            raise CascadeInfrastructureError(description=response_com.error)  # ty: ignore[invalid-argument-type]
+            raise ShmInfrastructureError(response_com.error)  # ty: ignore[invalid-argument-type]
         if not isinstance(response_com, resp_class):
-            raise CascadeInternalError(description=f"unexpected response type: {type(response_com)}")
+            raise ShmInternalError(f"unexpected response type: {type(response_com)}")
         return response_com
-    raise CascadeInfrastructureError(description="shm server request timed out")
+    raise ShmInfrastructureError("shm server request timed out")
 
 
 def close_callback(key: str, rdid: str) -> None:

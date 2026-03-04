@@ -15,6 +15,8 @@ import socket
 import sys
 import typing
 
+from cascade.low.exceptions import CascadeInternalError
+
 
 def get_bindabble_self():
     """Returns a hostname such that zmq can bind to it"""
@@ -53,8 +55,6 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
     """
 
     if situation not in _MpSituation:
-        from cascade.low.exceptions import CascadeInternalError
-
         raise CascadeInternalError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":
         return mp.get_context("spawn")

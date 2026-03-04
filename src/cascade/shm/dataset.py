@@ -27,8 +27,7 @@ from multiprocessing.shared_memory import SharedMemory
 
 import cascade.shm.algorithms as algorithms
 import cascade.shm.disk as disk
-from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
-from cascade.shm.func import assert_never
+from cascade.shm.func import ShmInfrastructureError, ShmInternalError, assert_never
 
 logger = logging.getLogger(__name__)
 
@@ -157,12 +156,12 @@ class Manager:
     def close_callback(self, key: str, rdid: str) -> None:
         if not rdid:
             if self.datasets[key].status != DatasetStatus.created:
-                raise CascadeInternalError(description=f"invalid transition from {self.datasets[key].status} for {key} and {rdid}")
+                raise ShmInternalError(f"invalid transition from {self.datasets[key].status} for {key} and {rdid}")
             logger.debug(f"create callback finished -> {key} is in-memory")
             self.datasets[key].status = DatasetStatus.in_memory
         else:
             if self.datasets[key].status != DatasetStatus.in_memory:
-                raise CascadeInternalError(description=f"invalid transition from {self.datasets[key].status} for {key} and {rdid}")
+                raise ShmInternalError(f"invalid transition from {self.datasets[key].status} for {key} and {rdid}")
             if rdid not in self.datasets[key].ongoing_reads:
                 logger.warning(f"unexpected/redundant remove of ongoing reader: {key}, {rdid}")
             else:
@@ -211,10 +210,10 @@ class Manager:
     def page_in(self, key: str) -> None:
         ds = self.datasets[key]
         if ds.status != DatasetStatus.on_disk:
-            raise CascadeInternalError(description=f"invalid restore on {ds}")
+            raise ShmInternalError(f"invalid restore on {ds}")
         ds.status = DatasetStatus.paged_in
         if self.free_space < ds.size:
-            raise CascadeInfrastructureError(description="insufficient space")
+            raise ShmInfrastructureError("insufficient space")
         self.free_space -= ds.size
 
         def callback(ok: bool):

@@ -58,6 +58,7 @@ from cascade.executor.msg import (
 )
 from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
@@ -210,9 +211,7 @@ class Executor:
         )
         p.start()
         if worker in self.worker_awaits:
-            from cascade.low.exceptions import CascadeInfrastructureError
-
-            raise CascadeInfrastructureError(f"{worker=} was already awaiting")
+            raise CascadeInternalError(f"{worker=} was already awaiting")
         self.worker_awaits[worker] = seq
         return WorkerHandle(process=p, attempt_cnt=attempt_cnt)
 
@@ -253,21 +252,21 @@ class Executor:
         procFail = lambda ex: ex is not None and ex != 0
         for k, e in self.workers.items():
             if e is None:
-                from cascade.low.exceptions import CascadeInfrastructureError
-
-                raise CascadeInfrastructureError(f"process on {k} is not alive")
+                # this should not really be happening -> InternalError
+                raise CascadeInternalError(f"process on {k} is not alive")
             elif procFail(e.process.exitcode):
-                from cascade.low.exceptions import CascadeInfrastructureError
-
-                raise CascadeInfrastructureError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
+                # we assume low memory setting or callable issue -> UserError
+                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
         if procFail(self.shm_process.exitcode):
-            from cascade.low.exceptions import CascadeInfrastructureError
-
+            # possibly low memory setting but this is system config -> InfrastructureError
             raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
         if procFail(self.data_server.exitcode):
-            from cascade.low.exceptions import CascadeInfrastructureError
-
+            # unknown issue, it failed to report its own -> InfrastructureError
             raise CascadeInfrastructureError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
+        if self.heartbeat_watcher.is_breach() > 0:
+            logger.debug(
+                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}"
+            )
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
@@ -294,14 +293,11 @@ class Executor:
                             )
                         handle = self.workers[m.worker]
                         if handle is None or handle.process.exitcode is not None:
-                            from cascade.low.exceptions import CascadeInfrastructureError
-
+                            # unexpected exit -> InfrastructureError
                             raise CascadeInfrastructureError(f"worker process {m.worker} is not alive")
                         if m.worker in self.worker_awaits:
                             if self.worker_awaits[m.worker] is not None:
-                                from cascade.low.exceptions import CascadeInfrastructureError
-
-                                raise CascadeInfrastructureError(f"double enqueue for {m.worker}")
+                                raise CascadeInternalError(f"double enqueue for {m.worker}")
                             else:
                                 self.worker_awaits[m.worker] = m
                         else:
@@ -331,9 +327,7 @@ class Executor:
                             if maybe_seq is not None:
                                 handle = self.workers[m.worker]
                                 if handle is None:
-                                    from cascade.low.exceptions import CascadeInfrastructureError
-
-                                    raise CascadeInfrastructureError(f"worker {m.worker} is alive but has no handle")
+                                    raise CascadeInternalError(f"worker {m.worker} is alive but has no handle")
                                 address = worker_address(m.worker, handle.attempt_cnt)
                                 logger.debug(f"worker {m.worker} ready, sending task sequence {maybe_seq} to {address}")
                                 callback(address, maybe_seq)
@@ -342,9 +336,7 @@ class Executor:
                     elif isinstance(m, RunnerRestartRequest):
                         handle = self.workers[m.worker]
                         if handle is None:
-                            from cascade.low.exceptions import CascadeInfrastructureError
-
-                            raise CascadeInfrastructureError("unexpected restart from worker without handle")
+                            raise CascadeInternalError("unexpected restart from worker without handle")
                         callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
                         self.old_processes.append(handle.process)
                         logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt + 1}")
@@ -370,13 +362,14 @@ class Executor:
                         self.to_controller(m)
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)
-                        from cascade.low.exceptions import CascadeInternalError
-
                         raise CascadeInternalError(f"unexpected message type in executor recv_loop: {type(m)}")
                 self.healthcheck()
             except Exception as e:
-                from cascade.low.exceptions import CascadeError
-
-                logger.exception("executor exited, about to report to controller, propagating as InfrastructureError")
-                self.to_controller(ExecutorFailure(self.host, repr(e)))
+                logger.exception("executor exited, about to report to controller, propagating")
+                # TODO handle proper error serde?
+                if isinstance(e, CascadeError):
+                    msg = repr(e)
+                else:
+                    msg = repr(CascadeInfrastructureError(repr(e), parent=e))
+                self.to_controller(ExecutorFailure(self.host, msg))
                 self.terminate()

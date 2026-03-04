@@ -30,6 +30,8 @@ from typing import Iterator, Literal, cast
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
+from cascade.low.exceptions import CascadeInternalError, CascadeUserError
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,15 +53,18 @@ def run_command(command: list[str]) -> tuple[str, str]:
     try:
         result = subprocess.run(command, check=False, capture_output=True, text=True)
     except FileNotFoundError as ex:
-        from cascade.low.exceptions import CascadeInfrastructureError
-
-        raise CascadeInfrastructureError(f"command failure: {repr(ex)}", parent=ex) from ex
+        # either badly deployed or code bug of calling bad command -> InternalError
+        raise CascadeInternalError(f"command failure: {ex}", parent=ex) from ex
     if result.returncode != 0:
         msg = f"command failed with {result.returncode}. Stderr: {result.stderr}, Stdout: {result.stdout}, Args: {result.args}"
         logger.error(msg)
-        from cascade.low.exceptions import CascadeInfrastructureError
 
-        raise CascadeInfrastructureError(msg)
+        if "was not found in the package registry" in result.stderr:
+            # presumably bad job env -> UserError
+            raise CascadeUserError(msg)
+        else:
+            # no idea -> InternalError
+            raise CascadeInternalError(msg)
     return result.stdout, result.stderr
 
 

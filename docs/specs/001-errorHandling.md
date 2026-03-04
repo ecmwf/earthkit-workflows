@@ -19,3 +19,8 @@ Be mindful that we often do `try: ...; except Exception as e: logger.exception; 
 When we just `raise ValueError` or `raise TypeError`, no need to wrap, just use the cascade error directly, with description being the original text without repr.
 Similarly KeyError and the like need not be wrapped.
 Consider modifying the logger statements, with like 'logger.exception("failed during xxx, propagating")' -> 'logger.exception("failed during xxx, propagating as InfrastructureError")'.
+
+Lastly, very often we already wrap our exceptions, like when Executor raises an exception, it propagates over zmq to the Controller, which then wraps it.
+Here you need to make sure that you distinguish on the exception class:
+ - if it is *not* already a Cascade error, make a best guess and wrap it
+ - if it is already a Cascade error, propagate without change, we don't need to mark that the exception was propagated through Controller

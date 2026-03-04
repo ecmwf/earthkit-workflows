@@ -29,7 +29,7 @@ from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
-from cascade.low.exceptions import CascadeInfrastructureError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
@@ -95,8 +95,11 @@ def launch_executor(
         executor.recv_loop()
     except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
-        logger.exception("executor failure, propagating as InfrastructureError")
-        raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+        logger.exception("executor failure, propagating")
+        if isinstance(e, CascadeError):
+            raise
+        else:
+            raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
 
 
 def run_locally(
@@ -170,7 +173,10 @@ def run_locally(
 
                 time.sleep(1)
                 p.kill()
-        raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+        if isinstance(e, CascadeError):
+            raise
+        else:
+            raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
 
 
 def _deserialize(instance_path: str) -> JobInstanceRich:

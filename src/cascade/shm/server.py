@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import cascade.shm.api as api
 import cascade.shm.dataset as dataset
-from cascade.low.exceptions import CascadeInternalError
+from cascade.shm.func import ShmInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class LocalServer:
             resp, _addr = self.sock.accept()
             b = resp.recv(1024)
         else:
-            raise CascadeInternalError(description=f"unsupported socket type: {self.sock.type}")
+            raise ShmInternalError(f"unsupported socket type: {self.sock.type}")
         return api.deser(b), resp
 
     def respond(self, comm: api.Comm, address: str | socket.socket) -> None:
@@ -48,7 +48,7 @@ class LocalServer:
             logger.debug(f"will send to {address} message {m}")
             cast(socket.socket, address).send(m)
         else:
-            raise CascadeInternalError(description=f"unsupported socket type: {self.sock.type}")
+            raise ShmInternalError(f"unsupported socket type: {self.sock.type}")
 
     def atexit(self, signum: int, frame: Any) -> None:
         self.manager.atexit()
@@ -101,7 +101,7 @@ class LocalServer:
                         status = api.DatasetStatus.ready
                     response = api.DatasetStatusResponse(status=status)
                 else:
-                    raise CascadeInternalError(description=f"unsupported: {type(payload)}")
+                    raise ShmInternalError(f"unsupported: {type(payload)}")
             except Exception as e:
                 logger.exception(f"failure during handling of {payload}")
                 response = api.OkResponse(error=repr(e))

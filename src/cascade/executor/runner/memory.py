@@ -21,6 +21,7 @@ import cascade.shm.client as shm_client
 from cascade.executor.comms import callback
 from cascade.executor.msg import BackboneAddress, DatasetPublished
 from cascade.low.core import NO_OUTPUT_PLACEHOLDER, DatasetId, WorkerId
+from cascade.low.exceptions import CascadeInternalError
 from cascade.low.tracing import Microtrace, timer
 
 logger = logging.getLogger(__name__)
@@ -88,8 +89,6 @@ class Memory(AbstractContextManager):
     def provide(self, inputId: DatasetId, annotation: str) -> Any:
         if inputId not in self.local:
             if inputId in self.bufs:
-                from cascade.low.exceptions import CascadeInternalError
-
                 raise CascadeInternalError(f"internal data corruption for {inputId}")
             shmid = ds2shmid(inputId)
             logger.debug(f"asking for {inputId} via {shmid}")
@@ -123,7 +122,7 @@ class Memory(AbstractContextManager):
         # this may not be the best place to invoke.
         if "torch" in sys.modules:  # if no task on this worker imported torch, no need to flush
             try:
-                import torch  # ty: ignore[unresolved-import]
+                import torch  # ty: ignore[unresolved-import] # *exceptional in-body import*
 
                 logger.debug(f"imported torch version {torch.__version__} to clean cuda memory")
 

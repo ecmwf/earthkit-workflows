@@ -9,9 +9,12 @@
 """Cascade exception hierarchy.
 
 Three categories:
- - CascadeInternalError: programmer error, unexpected state, internal invariant violation
- - CascadeInfrastructureError: OS, network, shm, or other infra issues; re-run may help
- - CascadeUserError: user code or configuration issue; user must fix their code/config
+ - CascadeInternalError: programmer error, unexpected state, internal invariant violation,
+   only code update is expected to help
+ - CascadeInfrastructureError: OS, network, shm, or other infra issues; re-run may help,
+   perhaps with extra resources or less noisy neighbor network traffic
+ - CascadeUserError: user code or configuration issue; user must fix their code/config,
+   then a re-run may help
 """
 
 

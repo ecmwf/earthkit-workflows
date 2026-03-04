@@ -20,6 +20,7 @@ import orjson
 from cascade.controller.report import JobId
 from cascade.deployment.logging import LoggingConfig
 from cascade.gateway.api import JobSpec, TroikaSpec
+from cascade.low.exceptions import CascadeUserError
 
 logger = logging.getLogger(__name__)
 
@@ -130,16 +131,13 @@ def spawn_subprocess(
     if job_spec.troika is not None:
         # TODO support logging config properly
         if troika_config is None:
-            from cascade.low.exceptions import CascadeUserError
-
             raise CascadeUserError("cant spawn troika job without troika config")
         if not job_spec.use_slurm:
             return _spawn_troika_singlehost(job_spec, addr, job_id, job_spec.troika, troika_config)
         else:
             # TODO create a slurm script like in spawn_slurm, but dont refer to any other file
-            from cascade.low.exceptions import CascadeInternalError
-
-            raise CascadeInternalError("troika + slurm combination not yet implemented")
+            # not implemented, but considered UserError, they should know
+            raise CascadeUserError("troika + slurm combination not yet implemented")
 
     elif job_spec.use_slurm:
         # TODO support logging config properly

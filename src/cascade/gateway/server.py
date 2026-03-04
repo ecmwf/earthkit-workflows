@@ -23,6 +23,7 @@ from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.executor.comms import get_context
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
+from cascade.low.exceptions import CascadeInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,6 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
         jobs.shutdown()
         rv = api.ShutdownResponse(error=None)
     else:
-        from cascade.low.exceptions import CascadeInternalError
-
         raise CascadeInternalError(f"unexpected message type in gateway handle_fe: {type(m)}")
     response = serialize_response(rv)
     socket.send(response)

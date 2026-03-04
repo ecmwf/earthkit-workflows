@@ -25,6 +25,7 @@ from cascade.executor.msg import (
     RunnerRestartRequest,
 )
 from cascade.low.core import DatasetId, HostId, WorkerId
+from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext, VirtualCheckpointHost
 from cascade.low.func import assert_never
 from cascade.low.tracing import TaskLifecycle, TransmitLifecycle, mark
@@ -110,8 +111,6 @@ def notify(
                 isWorker = isinstance(worker, WorkerId)
                 isVirtual = worker == VirtualCheckpointHost
                 if not isWorker and not isVirtual:
-                    from cascade.low.exceptions import CascadeInternalError
-
                     raise CascadeInternalError(f"malformed event, expected origin to be WorkerId: {event}")
                 logger.debug(f"last output of {task}, assuming completion")
                 state.task_done(task, context.edge_i.get(event.ds.task, set()))

@@ -20,6 +20,7 @@ from typing import Any, Callable
 from cascade.executor.msg import BackboneAddress
 from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
+from cascade.low.exceptions import CascadeInternalError, CascadeUserError
 from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
 from cascade.low.tracing import Microtrace, TaskLifecycle, mark, trace
 
@@ -51,8 +52,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     elif task.definition.entrypoint is not None:
         func = resolve_callable(task.definition.entrypoint)
     else:
-        from cascade.low.exceptions import CascadeInternalError
-
+        # this should not happen, we compile ourselves -> InternalError
         raise CascadeInternalError("neither entrypoint nor func given")
 
     args: list[Any] = []
@@ -76,8 +76,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     outputs = task.definition.output_schema
     outputsN = len(outputs)
     if outputsN == 0:
-        from cascade.low.exceptions import CascadeInternalError
-
+        # this should not happen, we compile ourselves -> InternalError
         raise CascadeInternalError(f"no output key for task {taskId}")
     mark({"task": taskId, "action": TaskLifecycle.loaded})
     prep_end = perf_counter_ns()
@@ -97,13 +96,11 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
                 outputId in executionContext.publish,
             )
         if not assert_iter_empty(outputsI):
-            from cascade.low.exceptions import CascadeInternalError
-
-            raise CascadeInternalError("schema declared more outputs than there were results")
+            # we cant check number of results beforehand -> UserError
+            raise CascadeUserError("schema declared more outputs than there were results")
         if not assert_iter_empty(result):
-            from cascade.low.exceptions import CascadeInternalError
-
-            raise CascadeInternalError("function produced more results than there were schema outputs")
+            # we cant check number of results beforehand -> UserError
+            raise CascadeUserError("function produced more results than there were schema outputs")
         # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
         mark({"task": taskId, "action": TaskLifecycle.computed})
         run_end = perf_counter_ns()
@@ -112,9 +109,8 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         run_end = perf_counter_ns()
         mark({"task": taskId, "action": TaskLifecycle.computed})
         if outputsN != 1:
-            from cascade.low.exceptions import CascadeInternalError
-
-            raise CascadeInternalError(f"task {taskId} returned non-generator result but has {outputsN} outputs declared")
+            # we cant check number of results beforehand -> UserError
+            raise CascadeUserError(f"task {taskId} returned non-generator result but has {outputsN} outputs declared")
         outputKey, outputSchema = outputs[0]
         outputId = DatasetId(taskId, outputKey)
         memory.handle(outputId, outputSchema, result, outputId in executionContext.publish)

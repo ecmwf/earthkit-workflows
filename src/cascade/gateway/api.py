@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from cascade.controller.report import JobId, JobProgress
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
+from cascade.low.exceptions import CascadeInternalError
 
 CascadeGatewayAPI = BaseModel
 
@@ -95,9 +96,8 @@ def decoded_result(result: ResultRetrievalResponse, job: JobInstance) -> Any:
     # TODO dont base64, instead skip the whole json business and send two zmq frames
     # TODO dont cloudpickle, instead use the JobInstance's registered serde
     if not result.result:
-        from cascade.low.exceptions import CascadeInfrastructureError
-
-        raise CascadeInfrastructureError(f"result retrieval failed: {result.error}")
+        # we are in control of encoding -> InternalError
+        raise CascadeInternalError(f"result retrieval failed: {result.error}")
     as_bytes = base64.b64decode(result.result)
     as_value = cloudpickle.loads(as_bytes)
     return as_value

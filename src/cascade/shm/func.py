@@ -6,13 +6,17 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-# NOTE Copy of cascade.low.func -- dont want to create dependency in either direction. Ideally one func typing util lib
+# NOTE Copy of cascade.low.{func, exceptions} -- dont want to create dependency in either direction. Ideally one func typing util lib
 
 from typing import Any, NoReturn
 
 
+class ShmInternalError(ValueError):
+    pass
+
+class ShmInfrastructureError(ValueError):
+    pass
+
 def assert_never(v: Any) -> NoReturn:
     """For exhaustive enumm checks etc"""
-    from cascade.low.exceptions import CascadeInternalError
-
-    raise CascadeInternalError(f"unexpected value in exhaustive check: {v!r}")
+    raise TypeError(f"unexpected value in exhaustive check: {v!r}")

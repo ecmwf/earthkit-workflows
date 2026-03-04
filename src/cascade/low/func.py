@@ -42,7 +42,8 @@ def maybe_head(v: Iterable[T]) -> Optional[T]:
 
 def assert_never(v: Any) -> NoReturn:
     """For exhaustive enumm checks etc"""
-    from cascade.low.exceptions import CascadeInternalError
+    # TODO once we switch to ecpy util this needs to be redone/preserved
+    from cascade.low.exceptions import CascadeInternalError  # *exceptional in-body import*
 
     raise CascadeInternalError(f"unexpected value in exhaustive check: {v!r}")
 
@@ -78,7 +79,8 @@ class Either(Generic[T, E]):
     def get_or_raise(self, raiser: Optional[Callable[[E], BaseException]] = None) -> T:
         if self.e:
             if not raiser:
-                from cascade.low.exceptions import CascadeInternalError
+                # TODO once we switch to ecpy util this needs to be redone/preserved
+                from cascade.low.exceptions import CascadeInternalError  # *exceptional in-body import*
 
                 raise CascadeInternalError(f"Either contains error: {self.e}")
             else:

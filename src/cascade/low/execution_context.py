@@ -25,6 +25,7 @@ from cascade.low.core import (
     TaskId,
     WorkerId,
 )
+from cascade.low.exceptions import CascadeInternalError
 
 
 class DatasetStatus(int, Enum):
@@ -119,8 +120,6 @@ class JobExecutionContext:
             self.ongoing[worker].remove(task)
             self.task_done(task)
         else:
-            from cascade.low.exceptions import CascadeInternalError
-
             raise CascadeInternalError(f"{task} success but cant remove from `ongoing`")
         if not self.ongoing[worker]:
             self.idle_workers.add(worker)
@@ -162,8 +161,6 @@ def init_context(
     total = len(job.jobInstance.tasks.keys())
 
     if VirtualCheckpointHost in host2workers:
-        from cascade.low.exceptions import CascadeInternalError
-
         raise CascadeInternalError(f"the value {VirtualCheckpointHost} is invalid for environment hosts")
 
     return JobExecutionContext(

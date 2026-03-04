@@ -38,6 +38,7 @@ from cascade.executor.msg import (
     TaskSequence,
 )
 from cascade.low.core import CheckpointSpec, DatasetId, Environment, HostId, Worker, WorkerId
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
 from cascade.low.execution_context import VirtualCheckpointHost
 from cascade.low.func import assert_never
 
@@ -65,8 +66,7 @@ class Bridge:
             logger.debug(f"received {messages=}")
             for message in messages:
                 if not isinstance(message, ExecutorRegistration):
-                    from cascade.low.exceptions import CascadeInternalError
-
+                    # we make sure that even with bad netw we dont send anything else -> InternalError
                     raise CascadeInternalError(f"expected ExecutorRegistration during init, got {type(message)}")
                 if message.host in self.sender.hosts or "data." + message.host in self.sender.hosts:
                     logger.warning(f"double registration of {message.host}, suggesting network congestion")
@@ -81,8 +81,7 @@ class Bridge:
                 self.heartbeat_checker[message.host].step()
             if time.time_ns() > registration_grace:
                 self.shutdown()
-                from cascade.low.exceptions import CascadeInfrastructureError
-
+                # most likely means start failures or bad network -> InfrastructureError
                 raise CascadeInfrastructureError("failed to receive registration in due time")
 
     def _send(self, hostId: HostId, message: Message) -> None:
@@ -129,13 +128,15 @@ class Bridge:
             logger.exception("gotten exception, proceeding with a shutdown")
             shutdown_reason = e
         self.shutdown()
-        from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
 
         if isinstance(shutdown_reason, CascadeError):
             raise shutdown_reason
-        raise CascadeInfrastructureError(
-            f"bridge shutdown: {shutdown_reason!r}", parent=shutdown_reason if isinstance(shutdown_reason, Exception) else None
-        )
+        elif isinstance(shutdown_reason, Message):
+            # TODO here we should properly deserialize the message's exception!
+            raise CascadeInternalError(description=f"bridge shutdown: {shutdown_reason!r}")
+        else:
+            # unknown at this stage is assumed to be InfrastructureError
+            raise CascadeInfrastructureError(description=f"bridge shutdown: {shutdown_reason!r}", parent=shutdown_reason)
 
     def task_sequence(self, taskSequence: TaskSequence) -> None:
         self._send(taskSequence.worker.host, taskSequence)

@@ -42,7 +42,7 @@ from cascade.executor.msg import (
 )
 from cascade.executor.runner.memory import ds2shmid
 from cascade.low.core import DatasetId
-from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
 from cascade.low.func import assert_never
 from cascade.low.tracing import TransmitLifecycle, label, mark
 
@@ -239,13 +239,40 @@ class DataServer:
                             raise CascadeInternalError(f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}")
                         if m.ds in self.invalid:
                             raise CascadeInternalError(f"unexpected transmit command {m} as the dataset was already purged")
+                        mark(
+                            {
+                                "dataset": repr(m.ds),
+                                "action": TransmitLifecycle.started,
+                                "target": m.target,
+                            }
+                        )
                         self.awaiting_confirmation[m.idx] = (m, -1)
                         fut = self.ds_proc_tp.submit(self._send_payload, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetPersistCommand):
                         if m.ds in self.invalid:
                             raise CascadeInternalError(description=f"unexpected persist command {m} as the dataset was already purged")
-                        fut = self.ds_proc_tp.submit(self._store_payload, m)  # ty: ignore[invalid-argument-type]
+                        # TODO mark?
+                        fut = self.ds_proc_tp.submit(self._persist_dataset, m)
+                        self.futs_in_progress[m] = fut
+                    elif isinstance(m, DatasetRetrieveCommand):
+                        # TODO mark?
+                        fut = self.ds_proc_tp.submit(self._retrieve_dataset, m)
+                        self.futs_in_progress[m] = fut
+                    elif isinstance(m, DatasetTransmitPayload):
+                        if m.header.ds in self.invalid:
+                            logger.warning(
+                                f"ignoring transmit payload {m.header} as the dataset was already purged"
+                            )
+                            continue
+                        mark(
+                            {
+                                "dataset": repr(m.header.ds),
+                                "action": TransmitLifecycle.received,
+                                "target": self.host,
+                            }
+                        )
+                        fut = self.ds_proc_tp.submit(self._store_payload, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, Ack):
                         logger.debug(f"confirmed transmit {m.idx}")
@@ -302,16 +329,12 @@ class DataServer:
                         fut = self.ds_proc_tp.submit(self._send_payload, command)
                         self.futs_in_progress[command] = fut
                         self.awaiting_confirmation[e] = (command, -1)
-            except:
-                # NOTE do something more clean here? Not critical since we monitor this process anyway
-                import sys
-
-                ex = sys.exc_info()[1]
-                if ex is not None:
-                    raise CascadeInfrastructureError(
-                        "data_server recv_loop failed", parent=ex if isinstance(ex, Exception) else None
-                    ) from ex
+            except CascadeError as e:
                 raise
+            except Exception as e:
+                # NOTE do something more clean here? Not critical since we monitor this process anyway
+                # no idea -> InfrastructureError
+                raise CascadeInfrastructureError("data_server recv_loop failed", parent=e) from e
 
 
 def start_data_server(

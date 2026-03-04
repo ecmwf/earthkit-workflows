@@ -18,6 +18,7 @@ from typing_extensions import Self
 
 from cascade.executor.comms import get_context
 from cascade.low.core import DatasetId
+from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,6 @@ def deserialize(raw: bytes) -> ControllerReport:
     if isinstance(maybe, ControllerReport):
         return maybe
     else:
-        from cascade.low.exceptions import CascadeInternalError
-
         raise CascadeInternalError(f"failed to deserialize ControllerReport, got {type(maybe)}")
 
 

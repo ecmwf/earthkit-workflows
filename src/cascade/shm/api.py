@@ -15,7 +15,7 @@ from typing import Protocol, Type, cast, runtime_checkable
 
 from typing_extensions import Self
 
-from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
+from cascade.shm.func import ShmInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ def publish_socket_addr(sock: int | str) -> None:
 def get_socket_addr() -> tuple[socket.socket, int | str]:
     ssock = os.getenv(client_socket_envvar)
     if not ssock:
-        raise CascadeInfrastructureError(description=f"missing sock addr in {client_socket_envvar}")
+        raise ShmInternalError(f"missing sock addr in {client_socket_envvar}")
     kind, addr = ssock.split(":", 1)
     if kind == "port":
         addr = int(addr)
@@ -269,7 +269,7 @@ def get_socket_addr() -> tuple[socket.socket, int | str]:
         # TODO can we support SOCK_DGRAM too? Problem with response address
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     else:
-        raise CascadeInternalError(description=f"unsupported socket kind: {kind}")
+        raise ShmInternalError(f"unsupported socket kind: {kind}")
     return sock, addr
 
 

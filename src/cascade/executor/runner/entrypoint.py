@@ -36,6 +36,7 @@ from cascade.executor.runner.memory import Memory
 from cascade.executor.runner.packages import PackagesEnv, PostinstallException
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
 from cascade.low.tracing import label
 
 logger = logging.getLogger(__name__)
@@ -100,8 +101,6 @@ def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequ
         if task == cut or remainder:
             remainder.append(task)
     if not remainder:
-        from cascade.low.exceptions import CascadeInternalError
-
         raise CascadeInternalError(f"empty remainder -> task {cut} not part of the orig {taskSequence=}?")
     remainder_set = set(remainder)
 
@@ -159,8 +158,6 @@ def execute_sequence(
     except PostinstallException as e:
         logger.error(f"postinstall validation failed, will send RunnerRestartRequest: {repr(e)}")
         if not taskId:
-            from cascade.low.exceptions import CascadeInternalError
-
             raise CascadeInternalError("Postinstall should not have been raised in the absence of active task")
         additionalPublish = task_sequence_postmortem(runnerContext, taskSequence, taskId)
         logger.debug(f"postinstall failure triggers additional publish of {additionalPublish}")
@@ -172,12 +169,15 @@ def execute_sequence(
         )
         return False
     except Exception as e:
-        from cascade.low.exceptions import CascadeError
-
         logger.exception("runner failure, about to report, propagating as TaskFailure")
+        # TODO handle proper error serde?
+        if isinstance(e, CascadeError):
+            msg = repr(e)
+        else:
+            msg = repr(CascadeInfrastructureError(repr(e), parent=e))
         callback(
             runnerContext.callback,
-            TaskFailure(worker=taskSequence.worker, task=taskId, detail=repr(e)),
+            TaskFailure(worker=taskSequence.worker, task=taskId, detail=msg),
         )
         return False
 
@@ -231,8 +231,6 @@ def entrypoint(runnerContextClpkl: bytes):
                 availab_ds.discard(mDes.ds)
             elif isinstance(mDes, TaskSequence):
                 if waiting_ts is not None:
-                    from cascade.low.exceptions import CascadeInternalError
-
                     raise CascadeInternalError(f"double task sequence enqueued: 1/ {waiting_ts}, 2/ {mDes}")
                 required = {dataset_id for task in mDes.tasks for dataset_id in runnerContext.param_source[task].values()} - {
                     DatasetId(task, key) for task in mDes.tasks for key, _ in runnerContext.job.tasks[task].definition.output_schema
@@ -248,6 +246,4 @@ def entrypoint(runnerContextClpkl: bytes):
                 else:
                     isTerminating = not execute_sequence(mDes, memory, pckg, runnerContext)
             else:
-                from cascade.low.exceptions import CascadeInternalError
-
                 raise CascadeInternalError(f"unexpected message received: {type(mDes)}")
