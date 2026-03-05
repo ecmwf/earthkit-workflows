@@ -20,7 +20,7 @@ from typing import Any, Callable
 from cascade.executor.msg import BackboneAddress
 from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
-from cascade.low.exceptions import CascadeInternalError, CascadeUserError
+from cascade.low.exceptions import CascadeError, CascadeInternalError, CascadeUserError
 from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
 from cascade.low.tracing import Microtrace, TaskLifecycle, mark, trace
 
@@ -82,19 +82,27 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     prep_end = perf_counter_ns()
 
     # invoke
-    result = func(*args, **kwargs)
+    try:
+        result = func(*args, **kwargs)
+    except Exception as e:
+        raise CascadeUserError(f"user func failure in {taskId=} with {repr(e)}") from e
 
     # store outputs
     if isinstance(result, Generator):
         outputsI = iter(outputs)
-        for (outputKey, outputSchema), outputValue in zip(outputsI, result):
-            outputId = DatasetId(taskId, outputKey)
-            memory.handle(
-                outputId,
-                outputSchema,
-                outputValue,
-                outputId in executionContext.publish,
-            )
+        try:
+            for (outputKey, outputSchema), outputValue in zip(outputsI, result):
+                outputId = DatasetId(taskId, outputKey)
+                memory.handle(
+                    outputId,
+                    outputSchema,
+                    outputValue,
+                    outputId in executionContext.publish,
+                )
+        except CascadeError:
+            raise
+        except Exception as e:
+            raise CascadeUserError(f"user func failure in {taskId=} with {repr(e)}") from e
         if not assert_iter_empty(outputsI):
             # we cant check number of results beforehand -> UserError
             raise CascadeUserError("schema declared more outputs than there were results")

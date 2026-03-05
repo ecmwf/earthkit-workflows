@@ -85,7 +85,7 @@ def init_from_cliparam(cliparam: str|None, hostAndRole: str) -> LoggingConfig:
         loggingConfig = LoggingConfig(**orjson.loads(base64.b64decode(cliparam.encode('utf-8'))))
     else:
         loggingConfig = DefaultLoggingConfig
-        logging.getLogger(__name__).warning("using default config for logging at {hostAndRole}")
+        logging.getLogger(__name__).warning(f"using default config for logging at {hostAndRole}")
 
     init_from_obj(loggingConfig, hostAndRole)
     return loggingConfig
