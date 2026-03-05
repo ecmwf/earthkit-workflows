@@ -25,6 +25,7 @@ from cascade.low.core import (
     TaskId,
     WorkerId,
 )
+from cascade.low.exceptions import CascadeInternalError
 
 
 class DatasetStatus(int, Enum):
@@ -39,6 +40,7 @@ class TaskStatus(int, Enum):
     running = 1  # set by executor
     succeeded = 2  # set by executor
     failed = 3  # set by executor
+
 
 VirtualCheckpointHost: HostId = "virtualCheckpointHost"
 
@@ -55,7 +57,7 @@ class JobExecutionContext:
     edge_i: dict[TaskId, set[DatasetId]]
     task_o: dict[TaskId, set[DatasetId]]
     environment: Environment
-    checkpoint_spec: CheckpointSpec|None
+    checkpoint_spec: CheckpointSpec | None
 
     # dynamic
     worker2ds: dict[WorkerId, dict[DatasetId, DatasetStatus]]
@@ -86,7 +88,7 @@ class JobExecutionContext:
 
     def publication_mandatory(self, ds: DatasetId) -> bool:
         # TODO this would better be handled by scheduler state!
-        to_output = ds in self.job_instance.ext_outputs 
+        to_output = ds in self.job_instance.ext_outputs
         to_persist = False if self.checkpoint_spec is None else (ds in self.checkpoint_spec.to_persist)
         return to_output or to_persist
 
@@ -118,7 +120,7 @@ class JobExecutionContext:
             self.ongoing[worker].remove(task)
             self.task_done(task)
         else:
-            raise ValueError(f"{task} success but cant remove from `ongoing`")
+            raise CascadeInternalError(f"{task} success but cant remove from `ongoing`")
         if not self.ongoing[worker]:
             self.idle_workers.add(worker)
 
@@ -159,7 +161,7 @@ def init_context(
     total = len(job.jobInstance.tasks.keys())
 
     if VirtualCheckpointHost in host2workers:
-        raise ValueError(f"the value {VirtualCheckpointHost} is invalid for environment hosts")
+        raise CascadeInternalError(f"the value {VirtualCheckpointHost} is invalid for environment hosts")
 
     return JobExecutionContext(
         job_instance=job.jobInstance,

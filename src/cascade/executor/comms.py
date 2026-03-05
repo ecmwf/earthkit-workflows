@@ -26,6 +26,7 @@ from cascade.executor.msg import (
 )
 from cascade.executor.serde import des_message, ser_message
 from cascade.low.core import HostId
+from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
 
 logger = logging.getLogger(__name__)
 default_timeout_ms = 1_000
@@ -106,62 +107,62 @@ class Listener:
         self.socket.bind(address)
         self.poller = zmq.Poller()
         self.poller.register(self.socket, flags=zmq.POLLIN)
-        self.acked: set[Syn] = (
-            set()
-        )  # TODO eventually pop things from here (timestamp lapse?) to prevent mem growth
+        self.acked: set[Syn] = set()  # TODO eventually pop things from here (timestamp lapse?) to prevent mem growth
 
     def _recv_one(self, timeout_ms: int | None) -> Message | None:
         ready = self.poller.poll(timeout_ms if timeout_ms is not None else None)
         if len(ready) > 1:
-            raise ValueError(f"unexpected number of socket events: {len(ready)}")
+            # we have just one registered -> InternalError
+            raise CascadeInternalError(f"unexpected number of socket events: {len(ready)}")
         if not ready:
             return None
         else:
             # TODO move parts of this to serde, including corresponding `send_data` and `ReliableSender.send` parts
             data = ready[0][0].recv_multipart()
             if len(data) == 0:
-                raise ValueError("unexpected empty message")
+                # this could be zmq/network issue -> InfrastructureError
+                # or could we handle better?
+                raise CascadeInfrastructureError("unexpected empty message")
             m0 = des_message(data[0])
             if isinstance(m0, Syn):
                 callback(m0.addr, Ack(idx=m0.idx))
                 if len(data) == 1:
-                    raise ValueError("unexpected message with Syn only")
+                    # invalid but seemingly intact message, most likely InternalError
+                    raise CascadeInternalError("unexpected message with Syn only")
                 if m0 in self.acked:
-                    logger.warning(
-                        f"received already-acked {m0}, assuming retry, dropping message"
-                    )
+                    logger.warning(f"received already-acked {m0}, assuming retry, dropping message")
                     return None
                 else:
                     self.acked.add(m0)
             elif isinstance(m0, DatasetTransmitPayloadHeader):
                 if len(data) != 2:
-                    raise ValueError(
-                        f"first message was payload header, but {len(data)=} != 2"
-                    )
+                    # invalid but seemingly intact message, most likely InternalError
+                    raise CascadeInternalError(f"first message was payload header, but {len(data)=} != 2")
                 else:
                     return DatasetTransmitPayload(header=m0, value=data[1])
             else:
                 if len(data) != 1:
-                    raise ValueError(f"expected len 1 but gotten {len(data)}")
+                    # invalid but seemingly intact message, most likely InternalError
+                    raise CascadeInternalError(f"expected len 1 but gotten {len(data)}")
                 return m0
             m1 = des_message(data[1])
             if isinstance(m1, Syn):
-                raise ValueError("unexpected double Syn")
+                # this could be zmq/network issue -> InfrastructureError
+                # or could we handle better?
+                raise CascadeInfrastructureError("unexpected double Syn")
             elif isinstance(m1, DatasetTransmitPayloadHeader):
                 if len(data) != 3:
-                    raise ValueError(
-                        f"second message was payload header, but {len(data)=} != 3"
-                    )
+                    # invalid but seemingly intact message, most likely InternalError
+                    raise CascadeInternalError(f"second message was payload header, but {len(data)=} != 3")
                 else:
                     return DatasetTransmitPayload(header=m1, value=data[2])
             else:
                 if len(data) != 2:
-                    raise ValueError(f"expected {len(data)=} to equal 2")
+                    # invalid but seemingly intact message, most likely InternalError
+                    raise CascadeInfrastructureError(f"expected {len(data)=} to equal 2")
                 return m1
 
-    def recv_messages(
-        self, timeout_ms: int | None = default_timeout_ms
-    ) -> list[Message]:
+    def recv_messages(self, timeout_ms: int | None = default_timeout_ms) -> list[Message]:
         messages: list[Message] = []
         # logger.debug(f"receiving messages on {self.address} with {timeout_sec=}")
         message = self._recv_one(timeout_ms)
@@ -223,18 +224,13 @@ class ReliableSender:
         watermark = time.time_ns() - self.resend_grace
         for idx, record in self.inflight.items():
             if record.at < watermark:
-                logger.warning(
-                    f"retrying message {idx} ({record.clazz}) due to no confirmation after {watermark-record.at}ns"
-                )
+                logger.warning(f"retrying message {idx} ({record.clazz}) due to no confirmation after {watermark - record.at}ns")
                 if (socket := self.hosts.get(record.host, None)) is not None:
                     socket[0].send_multipart(record.message)
                     self.inflight[idx].at = time.time_ns()
                     self.inflight[idx].remaining -= 1
                     if self.inflight[idx].remaining <= 0:
-                        raise ValueError(
-                            f"message {idx} ({record.clazz}) retried too many times"
-                        )
+
+                        raise CascadeInfrastructureError(f"message {idx} ({record.clazz}) retried too many times")
                 else:
-                    logger.warning(
-                        f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown"
-                    )
+                    logger.warning(f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown")

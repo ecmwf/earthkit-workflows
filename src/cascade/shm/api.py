@@ -15,6 +15,8 @@ from typing import Protocol, Type, cast, runtime_checkable
 
 from typing_extensions import Self
 
+from cascade.shm.func import ShmInternalError
+
 logger = logging.getLogger(__name__)
 
 # TODO too much manual serde... either automate it based on dataclass field inspection, or just pickle it
@@ -108,13 +110,7 @@ class GetResponse:
     deser_fun: str
 
     def ser(self) -> bytes:
-        return (
-            self.l.to_bytes(4, "big")
-            + ser_str(self.deser_fun)
-            + ser_str(self.shmid)
-            + ser_str(self.rdid)
-            + ser_str(self.error)
-        )
+        return self.l.to_bytes(4, "big") + ser_str(self.deser_fun) + ser_str(self.shmid) + ser_str(self.rdid) + ser_str(self.error)
 
     @classmethod
     def deser(cls, data: memoryview) -> Self:
@@ -174,7 +170,6 @@ class CloseCallback:
 
 
 class EmptyCommand:
-
     def ser(self) -> bytes:
         return b""
 
@@ -265,7 +260,7 @@ def publish_socket_addr(sock: int | str) -> None:
 def get_socket_addr() -> tuple[socket.socket, int | str]:
     ssock = os.getenv(client_socket_envvar)
     if not ssock:
-        raise ValueError(f"missing sock addr in {client_socket_envvar}")
+        raise ShmInternalError(f"missing sock addr in {client_socket_envvar}")
     kind, addr = ssock.split(":", 1)
     if kind == "port":
         addr = int(addr)
@@ -274,7 +269,7 @@ def get_socket_addr() -> tuple[socket.socket, int | str]:
         # TODO can we support SOCK_DGRAM too? Problem with response address
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     else:
-        raise NotImplementedError(kind)
+        raise ShmInternalError(f"unsupported socket kind: {kind}")
     return sock, addr
 
 

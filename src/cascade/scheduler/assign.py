@@ -16,6 +16,7 @@ from time import perf_counter_ns
 from typing import Iterable, Iterator
 
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
+from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import DatasetStatus, JobExecutionContext, VirtualCheckpointHost
 from cascade.low.tracing import Microtrace, trace
 from cascade.scheduler.core import (
@@ -29,9 +30,7 @@ from cascade.scheduler.core import (
 logger = logging.getLogger(__name__)
 
 
-def build_assignment(
-    worker: WorkerId, task: TaskId, context: JobExecutionContext, core: ComponentCore
-) -> Assignment:
+def build_assignment(worker: WorkerId, task: TaskId, context: JobExecutionContext, core: ComponentCore) -> Assignment:
     eligible_load = {DatasetStatus.preparing, DatasetStatus.available}
     eligible_transmit = {DatasetStatus.available}
     prep: list[tuple[DatasetId, HostId]] = []
@@ -48,7 +47,7 @@ def build_assignment(
         task = tasks[0]
         if context.job_instance.tasks[task].definition.needs_gpu and not worker_has_gpu:
             if not assigned:
-                raise ValueError(f"tried to assign gpu {task=} to non-gpu {worker=}")
+                raise CascadeInternalError(description=f"tried to assign gpu {task=} to non-gpu {worker=}")
             else:
                 break
         for dataset in context.edge_i[task]:
@@ -58,17 +57,13 @@ def build_assignment(
                 else:
                     # TODO instead of any, pick the best host -- business, distance, etc
                     # Note also that one of the hosts may be the VirtualCheckpointHost
-                    if any(
-                        candidate := host
-                        for host, status in context.ds2host[dataset].items()
-                        if status in eligible_transmit
-                    ):
-                        prep.append((dataset, candidate)) # ty: ignore[unresolved-reference] # candidate walrus
+                    if any(candidate := host for host, status in context.ds2host[dataset].items() if status in eligible_transmit):
+                        prep.append((dataset, candidate))  # ty: ignore[unresolved-reference] # candidate walrus
                         context.dataset_preparing(dataset, worker)
                     else:
                         # if we are dealing with the first task to assign, we don't expect to be here!
                         if not assigned:
-                            raise ValueError(f"{dataset=} not found anywhere!")
+                            raise CascadeInternalError(description=f"{dataset=} not found anywhere!")
                         # if we are already trying some fusing opportunities, it is legit to not find the dataset anywhere
                         else:
                             # TODO rollback preps done for this one task
@@ -82,18 +77,13 @@ def build_assignment(
     if len(tasks) > 1:
         head = tasks[0]
         if head in core.fusing_opportunities:
-            raise ValueError(f"double assignment to {head} in fusing opportunities!")
+            raise CascadeInternalError(description=f"double assignment to {head} in fusing opportunities!")
         core.fusing_opportunities[head] = tasks
 
     # trim for only the necessary ones: 1/ having any edge outside of this assignment 2/ global output 3/ persistable
     all_outputs = {ds for task in assigned for ds in context.task_o[task]}
     assigned_tasks = set(assigned)
-    trimmed_outputs = {
-        ds
-        for ds in all_outputs
-        if (context.edge_o[ds] - assigned_tasks)
-        or context.publication_mandatory(ds)
-    }
+    trimmed_outputs = {ds for ds in all_outputs if (context.edge_o[ds] - assigned_tasks) or context.publication_mandatory(ds)}
 
     return Assignment(
         worker=worker,
@@ -173,11 +163,7 @@ def _try_assign_gang(
     coordinator = None
 
     # similarly to _assignment_heuristic, a greedy algorithm
-    candidates = [
-        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t)
-        for w in gpu_workers
-        for t in gpu_tasks
-    ]
+    candidates = [(schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in gpu_workers for t in gpu_tasks]
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in gpu_tasks and worker in gpu_workers:
@@ -188,9 +174,7 @@ def _try_assign_gang(
             trace(Microtrace.ctrl_assign, end - start)
             assignment = build_assignment(worker, task, context, component.core)
             if not coordinator:
-                coordinator = (
-                    f"{context.environment.host_url_base[worker.host]}:{gang_port}"
-                )
+                coordinator = f"{context.environment.host_url_base[worker.host]}:{gang_port}"
             assignment.extra_env.append(("CASCADE_GANG_WORLD_SIZE", str(world_size)))
             assignment.extra_env.append(("CASCADE_GANG_RANK", str(rank)))
             assignment.extra_env.append(("CASCADE_GANG_COORDINATOR", coordinator))
@@ -201,16 +185,10 @@ def _try_assign_gang(
             gpu_tasks.remove(task)
             gpu_workers.remove(worker)
     if gpu_tasks:
-        raise ValueError(
-            f"expected to assign all gang gpu tasks, yet {gpu_tasks} remain"
-        )
+        raise CascadeInternalError(description=f"expected to assign all gang gpu tasks, yet {gpu_tasks} remain")
 
     all_workers = cpu_workers.union(gpu_workers)
-    candidates = [
-        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t)
-        for w in all_workers
-        for t in cpu_tasks
-    ]
+    candidates = [(schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in all_workers for t in cpu_tasks]
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in cpu_tasks and worker in all_workers:
@@ -221,9 +199,7 @@ def _try_assign_gang(
             trace(Microtrace.ctrl_assign, end - start)
             assignment = build_assignment(worker, task, context, component.core)
             if not coordinator:
-                coordinator = (
-                    f"{context.environment.host_url_base[worker.host]}:{gang_port}"
-                )
+                coordinator = f"{context.environment.host_url_base[worker.host]}:{gang_port}"
             assignment.extra_env.append(("CASCADE_GANG_WORLD_SIZE", str(world_size)))
             assignment.extra_env.append(("CASCADE_GANG_RANK", str(rank)))
             assignment.extra_env.append(("CASCADE_GANG_COORDINATOR", coordinator))
@@ -234,9 +210,7 @@ def _try_assign_gang(
             cpu_tasks.remove(task)
             all_workers.remove(worker)
     if cpu_tasks:
-        raise ValueError(
-            f"expected to assign all gang cpu tasks, yet {cpu_tasks} remain"
-        )
+        raise CascadeInternalError(description=f"expected to assign all gang cpu tasks, yet {cpu_tasks} remain")
 
     end = perf_counter_ns()
     trace(Microtrace.ctrl_assign, end - start)
@@ -279,11 +253,7 @@ def _assignment_heuristic(
     # second, sort task-worker combination by first overhead, second value, and pick greedily
     remaining_t = set(unassigned)
     remaining_w = set(workers)
-    candidates = [
-        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t)
-        for w in workers
-        for t in remaining_t
-    ]
+    candidates = [(schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in workers for t in remaining_t]
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in remaining_t and worker in remaining_w:
@@ -326,9 +296,7 @@ def assign_within_component(
     fail_acc: list[frozenset[TaskId]] = []
     for gang in component.gang_preparation.ready:
         logger.debug(f"trying to assign a {gang=}")
-        yield from _try_assign_gang(
-            schedule, gang, list(context.idle_workers), component_id, context, fail_acc
-        )
+        yield from _try_assign_gang(schedule, gang, list(context.idle_workers), component_id, context, fail_acc)
     component.gang_preparation.ready = fail_acc
 
     # the other cases: build them first
@@ -347,12 +315,7 @@ def assign_within_component(
             cpu_t.append(task)
 
     # tasks immediately needing a gpu
-    eligible_w = [
-        worker
-        for worker in workers
-        if context.environment.workers[worker].gpu > 0
-        and worker in context.idle_workers
-    ]
+    eligible_w = [worker for worker in workers if context.environment.workers[worker].gpu > 0 and worker in context.idle_workers]
     logger.debug(
         f"considering {len(gpu_t)}# gpu tasks, {len(opu_t)}# maybe-gpu tasks, {len(cpu_t)}# cpu tasks, with {len(workers)}# workers out of which {len(eligible_w)} have gpu"
     )
@@ -363,9 +326,7 @@ def assign_within_component(
     # remaining tasks
     eligible_w = [worker for worker in workers if worker in context.idle_workers]
     u_opu_t = [task for task in opu_t if task in component.computable]
-    yield from _assignment_heuristic(
-        schedule, cpu_t + u_opu_t, eligible_w, component_id, context
-    )
+    yield from _assignment_heuristic(schedule, cpu_t + u_opu_t, eligible_w, component_id, context)
 
 
 def update_worker2task_distance(
@@ -403,9 +364,7 @@ def update_worker2task_distance(
                 computable[task] = val
 
 
-def set_worker2task_overhead(
-    schedule: Schedule, context: JobExecutionContext, worker: WorkerId, task: TaskId
-):
+def set_worker2task_overhead(schedule: Schedule, context: JobExecutionContext, worker: WorkerId, task: TaskId):
     # NOTE beware this is used in migrate host2component as well as twice in notify. We may
     # want to later distinguish between `calc_new` (for migrate and new computable) vs
     # `calc_update` (basicaly when host2host transmit finishes)
@@ -438,15 +397,9 @@ def migrate_to_component(
     """
     schedule.host2component[host] = component_id
     component = schedule.components[component_id]
-    logger.debug(
-        f"migrate {host=} to {component_id=} => {component.worker2task_values=}"
-    )
+    logger.debug(f"migrate {host=} to {component_id=} => {component.worker2task_values=}")
     for worker in context.host2workers[host]:
-        component.worker2task_distance[worker] = defaultdict(
-            lambda: component.core.depth
-        )
-        update_worker2task_distance(
-            component.worker2task_values, worker, schedule, context
-        )
+        component.worker2task_distance[worker] = defaultdict(lambda: component.core.depth)
+        update_worker2task_distance(component.worker2task_values, worker, schedule, context)
         for task in component.worker2task_values:
             set_worker2task_overhead(schedule, context, worker, task)
