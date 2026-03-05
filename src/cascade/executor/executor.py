@@ -58,7 +58,7 @@ from cascade.executor.msg import (
 )
 from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
@@ -366,10 +366,6 @@ class Executor:
                 self.healthcheck()
             except Exception as e:
                 logger.exception("executor exited, about to report to controller, propagating")
-                # TODO handle proper error serde?
-                if isinstance(e, CascadeError):
-                    msg = repr(e)
-                else:
-                    msg = repr(CascadeInfrastructureError(repr(e), parent=e))
+                msg = ser(e) if isinstance(e, CascadeError) else ser(CascadeInfrastructureError(repr(e), parent=e))
                 self.to_controller(ExecutorFailure(self.host, msg))
                 self.terminate()

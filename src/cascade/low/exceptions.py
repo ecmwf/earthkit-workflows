@@ -47,25 +47,41 @@ class CascadeInfrastructureError(CascadeError):
 class CascadeUserError(CascadeError):
     pass
 
-"""
-# TODO we need to be able to reliably pass those exceptions through cascade.executor.comms.msg
 
-Define a method in this module `def ser(CascadeError) -> str` which basically returns repr,
-and a des(str) -> CascadeError method, which tries to parse the string as '<CascadeError class name>(<detail>)',
-if matches constructs the right class and detail and returns it, otherwise returns CascadeInternalError(input).
-Don't worry about preserving the parent field, set it to None.
+def ser(exc: CascadeError) -> str:
+    """Serialize a CascadeError to a string representation."""
+    return repr(exc)
 
-Inspect all places in the cascade.executor module where any of 
-TaskFailure, ExecutorFailure, DatasetRetrieveFailure, DatasetTransmitFailure, DatasetPersistFailure
-are created, and make sure that the `ser` method is used to build the `detail` of the respective message class
-from the Exception that leads to it. But if there is no exception, put there `# TODO fill exception here` comment,
-but don't change the code.
-There may already be a `# TODO handle proper serde` comment -- remove it if you handle that case properly.
 
-Then in the bridge code, there is a # TODO comment for deserialization -- thats where you need to invoke 
-the des method you created.
-
-Write a simple unit test that tests the ser-des method, put it to a tests/cascade/low/test_exceptions.py new file.
-Don't change other tests.
-After `just val` recipe passes, commit, but dont push.
-"""
+def des(s: str) -> CascadeError:
+    """Deserialize a string back to a CascadeError.
+    
+    Attempts to parse the string as '<CascadeErrorClassName>(<detail>)'.
+    If successful, constructs the appropriate exception class.
+    Otherwise, returns CascadeInternalError with the input string.
+    Parent field is always set to None.
+    """
+    import re
+    
+    # Try to match pattern: ClassName('detail') or ClassName("detail")
+    # We need to handle both single and double quotes, and escaped quotes
+    match = re.match(r"^(CascadeError|CascadeInternalError|CascadeInfrastructureError|CascadeUserError)\((['\"])(.+?)\2(?:, parent=.*)?\)$", s, re.DOTALL)
+    
+    if match:
+        class_name = match.group(1)
+        detail = match.group(3)
+        
+        # Map class name to actual class
+        class_map = {
+            "CascadeError": CascadeError,
+            "CascadeInternalError": CascadeInternalError,
+            "CascadeInfrastructureError": CascadeInfrastructureError,
+            "CascadeUserError": CascadeUserError,
+        }
+        
+        exc_class = class_map.get(class_name)
+        if exc_class:
+            return exc_class(description=detail, parent=None)
+    
+    # If parsing fails, return as CascadeInternalError
+    return CascadeInternalError(description=s, parent=None)

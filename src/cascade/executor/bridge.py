@@ -38,7 +38,7 @@ from cascade.executor.msg import (
     TaskSequence,
 )
 from cascade.low.core import CheckpointSpec, DatasetId, Environment, HostId, Worker, WorkerId
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, des
 from cascade.low.execution_context import VirtualCheckpointHost
 from cascade.low.func import assert_never
 
@@ -132,8 +132,7 @@ class Bridge:
         if isinstance(shutdown_reason, CascadeError):
             raise shutdown_reason
         elif isinstance(shutdown_reason, Message):
-            # TODO here we should properly deserialize the message's exception!
-            raise CascadeInternalError(description=f"bridge shutdown: {shutdown_reason!r}")
+            raise des(shutdown_reason.detail)  # type: ignore[attr-defined]
         else:
             # unknown at this stage is assumed to be InfrastructureError
             raise CascadeInfrastructureError(description=f"bridge shutdown: {shutdown_reason!r}", parent=shutdown_reason)

@@ -36,7 +36,7 @@ from cascade.executor.runner.memory import Memory
 from cascade.executor.runner.packages import PackagesEnv, PostinstallException
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, ser
 from cascade.low.tracing import label
 
 logger = logging.getLogger(__name__)
@@ -170,11 +170,7 @@ def execute_sequence(
         return False
     except Exception as e:
         logger.exception("runner failure, about to report, propagating as TaskFailure")
-        # TODO handle proper error serde?
-        if isinstance(e, CascadeError):
-            msg = repr(e)
-        else:
-            msg = repr(CascadeInfrastructureError(repr(e), parent=e))
+        msg = ser(e) if isinstance(e, CascadeError) else ser(CascadeInfrastructureError(repr(e), parent=e))
         callback(
             runnerContext.callback,
             TaskFailure(worker=taskSequence.worker, task=taskId, detail=msg),
