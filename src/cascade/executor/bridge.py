@@ -131,11 +131,14 @@ class Bridge:
 
         if isinstance(shutdown_reason, CascadeError):
             raise shutdown_reason
-        elif isinstance(shutdown_reason, Message):
-            raise des(shutdown_reason.detail)  # type: ignore[attr-defined]
+        elif isinstance(shutdown_reason, Message) and hasattr(shutdown_reason, 'detail') and isinstance(shutdown_reason.detail, str):
+            raise des(shutdown_reason.detail)
         else:
             # unknown at this stage is assumed to be InfrastructureError
-            raise CascadeInfrastructureError(description=f"bridge shutdown: {shutdown_reason!r}", parent=shutdown_reason)
+            raise CascadeInfrastructureError(
+                description=f"bridge shutdown: {shutdown_reason!r}",
+                parent=shutdown_reason if isinstance(shutdown_reason, Exception) else None,
+            )
 
     def task_sequence(self, taskSequence: TaskSequence) -> None:
         self._send(taskSequence.worker.host, taskSequence)

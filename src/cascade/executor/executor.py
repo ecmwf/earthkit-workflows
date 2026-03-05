@@ -366,6 +366,5 @@ class Executor:
                 self.healthcheck()
             except Exception as e:
                 logger.exception("executor exited, about to report to controller, propagating")
-                msg = ser(e) if isinstance(e, CascadeError) else ser(CascadeInfrastructureError(repr(e), parent=e))
-                self.to_controller(ExecutorFailure(self.host, msg))
+                self.to_controller(ExecutorFailure(self.host, ser(e)))
                 self.terminate()

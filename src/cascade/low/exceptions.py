@@ -35,6 +35,9 @@ class CascadeError(Exception):
             return f"{self.description} (caused by {repr(self.parent)})"
         return self.description
 
+    def add_context(self, context: str) -> None:
+        self.description = f"{context}; {self.description}"
+
 
 class CascadeInternalError(CascadeError):
     pass
@@ -48,10 +51,13 @@ class CascadeUserError(CascadeError):
     pass
 
 
-def ser(exc: CascadeError) -> str:
-    """Serialize a CascadeError to a string representation."""
-    return repr(exc)
-
+def ser(e: Exception, extra_context: str|None = None) -> str:
+    """Serialize error to a string representation, converting to CascadeError first if needed."""
+    # we go with InternalError, because context-aware conversions should have happened prior
+    e = e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e)
+    if extra_context:
+        e.add_context(extra_context)
+    return repr(e)
 
 def des(s: str) -> CascadeError:
     """Deserialize a string back to a CascadeError.

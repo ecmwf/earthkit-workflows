@@ -170,10 +170,9 @@ def execute_sequence(
         return False
     except Exception as e:
         logger.exception("runner failure, about to report, propagating as TaskFailure")
-        msg = ser(e) if isinstance(e, CascadeError) else ser(CascadeInfrastructureError(repr(e), parent=e))
         callback(
             runnerContext.callback,
-            TaskFailure(worker=taskSequence.worker, task=taskId, detail=msg),
+            TaskFailure(worker=taskSequence.worker, task=taskId, detail=ser(e)),
         )
         return False
 

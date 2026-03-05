@@ -83,13 +83,10 @@ class DataServer:
                 if fut.done():
                     ex = fut.exception()
                     if ex:
-                        if isinstance(ex, CascadeError):
-                            detail = f"{repr(key)} -> {ser(ex)}"
-                        else:
-                            detail = f"{repr(key)} -> {repr(ex)}"
+                        ex = cast(Exception, ex) # NOTE ty consider ex BaseException & ~AlwaysFalsy
                         callback(
                             self.maddress,
-                            DatasetTransmitFailure(host=self.host, detail=detail),
+                            DatasetTransmitFailure(host=self.host, detail=ser(ex, repr(key))),
                         )
                     else:
                         result = fut.result()
@@ -141,12 +138,11 @@ class DataServer:
             )
         except Exception as e:
             logger.exception("failed to store payload of {payload.header.ds}, reporting up")
-            detail = ser(e) if isinstance(e, CascadeError) else repr(e)
             callback(
                 self.maddress,
                 DatasetTransmitFailure(
                     host=self.host,
-                    detail=f"{payload.header.confirm_idx}, {payload.header.ds} -> {detail}",
+                    detail=ser(e, f"{payload.header.confirm_idx}, {payload.header.ds}"),
                 ),
             )
         return time_ns()  # not actually consumed but uniform signature with send_payload simplifies typing
@@ -161,10 +157,12 @@ class DataServer:
             callback(self.maddress, DatasetRetrieveSuccess(host=self.host, ds=command.ds))
         except Exception as e:
             logger.exception(f"failed to retrieve dataset for {command}, reporting up")
-            detail = ser(e) if isinstance(e, CascadeError) else repr(e)
             callback(
                 self.maddress,
-                DatasetRetrieveFailure(host=self.host, detail=f"{repr(command)} -> {detail}"),
+                DatasetRetrieveFailure(
+                    host=self.host,
+                    detail=ser(e, repr(command)),
+                ),
             )
         finally:
             if buf is not None:
@@ -182,10 +180,12 @@ class DataServer:
             callback(self.maddress, DatasetPersistSuccess(host=self.host, ds=command.ds))
         except Exception as e:
             logger.exception(f"failed to persist dataset for {command}, reporting up")
-            detail = ser(e) if isinstance(e, CascadeError) else repr(e)
             callback(
                 self.maddress,
-                DatasetPersistFailure(host=self.host, detail=f"{repr(command)} -> {detail}"),
+                DatasetPersistFailure(
+                    host=self.host,
+                    detail=ser(e, repr(command)),
+                ),
             )
         finally:
             if buf is not None:
@@ -220,10 +220,12 @@ class DataServer:
             logger.debug(f"payload for {command} sent")
         except Exception as e:
             logger.exception(f"failed to send payload for {command}, reporting up")
-            detail = ser(e) if isinstance(e, CascadeError) else repr(e)
             callback(
                 self.maddress,
-                DatasetTransmitFailure(host=self.host, detail=f"{repr(command)} -> {detail}"),
+                DatasetTransmitFailure(
+                    host=self.host,
+                    detail=ser(e, repr(command)),
+                ),
             )
         finally:
             if payload is not None:
