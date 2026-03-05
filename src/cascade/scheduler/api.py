@@ -11,6 +11,7 @@ from collections import defaultdict
 from typing import Iterator
 
 from cascade.low.core import TaskId, WorkerId
+from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext, TaskStatus
 from cascade.low.tracing import Microtrace, timer
 from cascade.scheduler.assign import (
@@ -36,13 +37,11 @@ def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
     """
     for gang in gang_prep.lookup[task]:
         if gang not in gang_prep.countdown:
-            raise ValueError(
-                f"after {task=} marked computable, {gang=} not found -- double compuptable mark?"
-            )
+            raise CascadeInternalError(description=f"after {task=} marked computable, {gang=} not found -- double compuptable mark?")
         remaining = gang_prep.countdown[gang]
         if task not in remaining:
-            raise ValueError(
-                f"after {task=} marked computable, {gang=} does not have it in {remaining=}. Invalid gang?"
+            raise CascadeInternalError(
+                description=f"after {task=} marked computable, {gang=} does not have it in {remaining=}. Invalid gang?"
             )
         remaining.remove(task)
         if not remaining:
@@ -55,9 +54,7 @@ def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Sch
     components: list[ComponentSchedule] = []
     ts2component: dict[TaskId, ComponentId] = {}
 
-    gangs = [
-        frozenset(constraint.gang) for constraint in context.job_instance.constraints
-    ]
+    gangs = [frozenset(constraint.gang) for constraint in context.job_instance.constraints]
 
     computable = 0
     for componentId, precomponent in enumerate(preschedule.components):
@@ -90,10 +87,7 @@ def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Sch
             computable={task: 0 for task in precomponent.sources},
             worker2task_distance={},
             worker2task_values=set(precomponent.sources),
-            is_computable_tracker={
-                task: {inp for inp in context.edge_i[task]}
-                for task in precomponent.nodes
-            },
+            is_computable_tracker={task: {inp for inp in context.edge_i[task]} for task in precomponent.nodes},
             gang_preparation=gang_preparation,
         )
         components.append(component)
@@ -104,7 +98,7 @@ def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Sch
     if gangs:
         for gang in gangs:
             logger.error(f"a gang not part of a component: {gang}")
-        raise ValueError(f"a total of {len(gangs)} were not a subcomponent")
+        raise CascadeInternalError(description=f"a total of {len(gangs)} were not a subcomponent")
 
     return Schedule(
         components=components,
@@ -133,31 +127,21 @@ def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignm
 
     for component_id, local_workers in component2workers.items():
         if local_workers:
-            yield from assign_within_component(
-                schedule, local_workers, component_id, context
-            )
+            yield from assign_within_component(schedule, local_workers, component_id, context)
 
     if not context.idle_workers:
         return
 
     # step II: assign remaining workers to new components
-    components = [
-        (component.weight, component_id)
-        for component_id, component in enumerate(schedule.components)
-        if component.weight > 0
-    ]
+    components = [(component.weight, component_id) for component_id, component in enumerate(schedule.components) if component.weight > 0]
     if not components:
         return
 
-    components.sort(
-        reverse=True
-    )  # TODO consider number of currently assigned workers too
+    components.sort(reverse=True)  # TODO consider number of currently assigned workers too
     migrants = defaultdict(list)
     for worker in context.idle_workers:
         # TODO we dont currently allow partial assignments, this is subopt!
-        if (component := schedule.host2component[worker.host]) is None or (
-            schedule.components[component].weight == 0
-        ):
+        if (component := schedule.host2component[worker.host]) is None or (schedule.components[component].weight == 0):
             migrants[worker.host].append(worker)
         # TODO we ultimately want to be able to have weight-and-capacity-aware m-n host2component
         # assignments, not just round robin of the whole host2component
@@ -165,16 +149,12 @@ def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignm
     component_i = 0
     for host, workers in migrants.items():
         component_id = components[component_i][1]
-        timer(migrate_to_component, Microtrace.ctrl_migrate)(
-            host, component_id, schedule, context
-        )
+        timer(migrate_to_component, Microtrace.ctrl_migrate)(host, component_id, schedule, context)
         yield from assign_within_component(schedule, workers, component_id, context)
         component_i = (component_i + 1) % len(components)
 
 
-def plan(
-    schedule: Schedule, context: JobExecutionContext, assignments: list[Assignment]
-):
+def plan(schedule: Schedule, context: JobExecutionContext, assignments: list[Assignment]):
     """Given actions that were just sent to a worker, update state to reflect it, including preparation
     and planning for future assignments.
     Unlike `assign`, this is less performance critical, so slightly longer calculations can happen here.
@@ -192,12 +172,10 @@ def plan(
             for ds in assignment.outputs:
                 children = context.edge_o[ds]
                 # context.dataset_preparing(ds, assignment.worker) # happends during build already
-                update_worker2task_distance(
-                    children, assignment.worker, schedule, context
-                )
+                update_worker2task_distance(children, assignment.worker, schedule, context)
             context.worker2ts[assignment.worker][task] = TaskStatus.enqueued
             context.ts2worker[task][assignment.worker] = TaskStatus.enqueued
             if task in context.ongoing[assignment.worker]:
-                raise ValueError(f"double add of {task} to {assignment.worker}")
+                raise CascadeInternalError(description=f"double add of {task} to {assignment.worker}")
             context.ongoing[assignment.worker].add(task)
             context.ongoing_total += 1

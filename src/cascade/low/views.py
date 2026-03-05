@@ -11,6 +11,7 @@
 from collections import defaultdict
 
 from cascade.low.core import DatasetId, JobInstance, Task2TaskEdge, TaskId
+from cascade.low.exceptions import CascadeInternalError
 
 
 def param_source(
@@ -22,12 +23,12 @@ def param_source(
         sink_input: int | str
         if e.sink_input_kw is not None:
             if e.sink_input_ps is not None:
-                raise TypeError
+                raise CascadeInternalError("edge has both sink_input_kw and sink_input_ps set")
             else:
                 sink_input = e.sink_input_kw
         else:
             if e.sink_input_ps is None:
-                raise TypeError
+                raise CascadeInternalError("edge has neither sink_input_kw nor sink_input_ps set")
             else:
                 sink_input = e.sink_input_ps
         rv[e.sink_task][sink_input] = e.source
@@ -44,9 +45,4 @@ def dependants(edges: list[Task2TaskEdge]) -> dict[DatasetId, set[TaskId]]:
 
 def sinks(job: JobInstance) -> set[DatasetId]:
     non_sinks = {k for k, v in dependants(job.edges).items() if v}
-    return {
-        dataset
-        for task in job.tasks
-        for dataset in job.outputs_of(task)
-        if dataset not in non_sinks
-    }
+    return {dataset for task in job.tasks for dataset in job.outputs_of(task) if dataset not in non_sinks}

@@ -20,6 +20,7 @@ from typing import Any, Callable
 from cascade.executor.msg import BackboneAddress
 from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
+from cascade.low.exceptions import CascadeError, CascadeInternalError, CascadeUserError
 from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
 from cascade.low.tracing import Microtrace, TaskLifecycle, mark, trace
 
@@ -51,7 +52,8 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     elif task.definition.entrypoint is not None:
         func = resolve_callable(task.definition.entrypoint)
     else:
-        raise TypeError("neither entrypoint nor func given")
+        # this should not happen, we compile ourselves -> InternalError
+        raise CascadeInternalError("neither entrypoint nor func given")
 
     args: list[Any] = []
     for idx_str, arg in task.static_input_ps.items():
@@ -61,9 +63,7 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     kwargs: dict[str, Any] = {}
     kwargs.update(task.static_input_kw)
 
-    for param_pos, (dataset_id, annotation) in executionContext.param_source[
-        taskId
-    ].items():
+    for param_pos, (dataset_id, annotation) in executionContext.param_source[taskId].items():
         value = memory.provide(dataset_id, annotation)
         if isinstance(param_pos, str):
             kwargs[param_pos] = value
@@ -76,30 +76,39 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     outputs = task.definition.output_schema
     outputsN = len(outputs)
     if outputsN == 0:
-        raise ValueError(f"no output key for task {taskId}")
+        # this should not happen, we compile ourselves -> InternalError
+        raise CascadeInternalError(f"no output key for task {taskId}")
     mark({"task": taskId, "action": TaskLifecycle.loaded})
     prep_end = perf_counter_ns()
 
     # invoke
-    result = func(*args, **kwargs)
+    try:
+        result = func(*args, **kwargs)
+    except Exception as e:
+        raise CascadeUserError(f"user func failure in {taskId=} with {repr(e)}") from e
 
     # store outputs
     if isinstance(result, Generator):
         outputsI = iter(outputs)
-        for (outputKey, outputSchema), outputValue in zip(outputsI, result):
-            outputId = DatasetId(taskId, outputKey)
-            memory.handle(
-                outputId,
-                outputSchema,
-                outputValue,
-                outputId in executionContext.publish,
-            )
+        try:
+            for (outputKey, outputSchema), outputValue in zip(outputsI, result):
+                outputId = DatasetId(taskId, outputKey)
+                memory.handle(
+                    outputId,
+                    outputSchema,
+                    outputValue,
+                    outputId in executionContext.publish,
+                )
+        except CascadeError:
+            raise
+        except Exception as e:
+            raise CascadeUserError(f"user func failure in {taskId=} with {repr(e)}") from e
         if not assert_iter_empty(outputsI):
-            raise ValueError("schema declared more outputs than there were results")
+            # we cant check number of results beforehand -> UserError
+            raise CascadeUserError("schema declared more outputs than there were results")
         if not assert_iter_empty(result):
-            raise ValueError(
-                "function produced more results than there were schema outputs"
-            )
+            # we cant check number of results beforehand -> UserError
+            raise CascadeUserError("function produced more results than there were schema outputs")
         # in principle, we should mark computed & calc run_end prior to ultimate publish, but imo not worth it
         mark({"task": taskId, "action": TaskLifecycle.computed})
         run_end = perf_counter_ns()
@@ -108,22 +117,19 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         run_end = perf_counter_ns()
         mark({"task": taskId, "action": TaskLifecycle.computed})
         if outputsN != 1:
-            raise ValueError(
-                f"task {taskId} returned non-generator result but has {outputsN} outputs declared"
-            )
+            # we cant check number of results beforehand -> UserError
+            raise CascadeUserError(f"task {taskId} returned non-generator result but has {outputsN} outputs declared")
         outputKey, outputSchema = outputs[0]
         outputId = DatasetId(taskId, outputKey)
-        memory.handle(
-            outputId, outputSchema, result, outputId in executionContext.publish
-        )
+        memory.handle(outputId, outputSchema, result, outputId in executionContext.publish)
         mark({"task": taskId, "action": TaskLifecycle.published})
     end = perf_counter_ns()
 
     trace(Microtrace.wrk_task, end - start)
-    logger.debug(f"outer elapsed {(end-start)/1e9: .5f} s in {taskId}")
+    logger.debug(f"outer elapsed {(end - start) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_load, prep_end - start)
-    logger.debug(f"prep elapsed {(prep_end-start)/1e9: .5f} s in {taskId}")
+    logger.debug(f"prep elapsed {(prep_end - start) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_compute, run_end - prep_end)
-    logger.debug(f"inner elapsed {(run_end-prep_end)/1e9: .5f} s in {taskId}")
+    logger.debug(f"inner elapsed {(run_end - prep_end) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_publish, end - run_end)
-    logger.debug(f"post elapsed {(end-run_end)/1e9: .5f} s in {taskId}")
+    logger.debug(f"post elapsed {(end - run_end) / 1e9: .5f} s in {taskId}")

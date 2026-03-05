@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import cascade.shm.api as api
 import cascade.shm.dataset as dataset
+from cascade.shm.func import ShmInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,7 @@ class LocalServer:
 
     def __init__(self, shm_pref: str, capacity: int | None = None):
         self.sock = api.get_server_socket()
-        logger.info(
-            f"shm server starting with {self.sock=} with {capacity=} and prefix {shm_pref}"
-        )
+        logger.info(f"shm server starting with {self.sock=} with {capacity=} and prefix {shm_pref}")
         self.manager = dataset.Manager(shm_pref, capacity)
         signal.signal(signal.SIGINT, self.atexit)
         signal.signal(signal.SIGTERM, self.atexit)
@@ -38,7 +37,7 @@ class LocalServer:
             resp, _addr = self.sock.accept()
             b = resp.recv(1024)
         else:
-            raise NotImplementedError(self.sock.type)
+            raise ShmInternalError(f"unsupported socket type: {self.sock.type}")
         return api.deser(b), resp
 
     def respond(self, comm: api.Comm, address: str | socket.socket) -> None:
@@ -49,7 +48,7 @@ class LocalServer:
             logger.debug(f"will send to {address} message {m}")
             cast(socket.socket, address).send(m)
         else:
-            raise NotImplementedError(self.sock.type)
+            raise ShmInternalError(f"unsupported socket type: {self.sock.type}")
 
     def atexit(self, signum: int, frame: Any) -> None:
         self.manager.atexit()
@@ -61,9 +60,7 @@ class LocalServer:
             logger.debug(f"gotten {payload=}")
             try:
                 if isinstance(payload, api.AllocateRequest):
-                    shmid, error = self.manager.add(
-                        payload.key, payload.l, payload.deser_fun
-                    )
+                    shmid, error = self.manager.add(payload.key, payload.l, payload.deser_fun)
                     if error:
                         response = api.AllocateResponse(shmid="", error=error)
                     else:
@@ -74,13 +71,9 @@ class LocalServer:
                 elif isinstance(payload, api.GetRequest):
                     shmid, l, rdid, deser_fun, error = self.manager.get(payload.key)
                     if error:
-                        response = api.GetResponse(
-                            shmid="", l=0, rdid=rdid, deser_fun=deser_fun, error=error
-                        )
+                        response = api.GetResponse(shmid="", l=0, rdid=rdid, deser_fun=deser_fun, error=error)
                     else:
-                        response = api.GetResponse(
-                            shmid=shmid, l=l, rdid=rdid, deser_fun=deser_fun, error=""
-                        )
+                        response = api.GetResponse(shmid=shmid, l=l, rdid=rdid, deser_fun=deser_fun, error="")
                 elif isinstance(payload, api.ShutdownCommand):
                     response = api.OkResponse()
                     self.respond(response, client)
@@ -108,7 +101,7 @@ class LocalServer:
                         status = api.DatasetStatus.ready
                     response = api.DatasetStatusResponse(status=status)
                 else:
-                    raise ValueError(f"unsupported: {type(payload)}")
+                    raise ShmInternalError(f"unsupported: {type(payload)}")
             except Exception as e:
                 logger.exception(f"failure during handling of {payload}")
                 response = api.OkResponse(error=repr(e))

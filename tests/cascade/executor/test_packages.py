@@ -2,6 +2,7 @@ import re
 
 import pytest
 
+from cascade.low.exceptions import CascadeInternalError, CascadeUserError
 from cascade.executor.runner.packages import run_command, _parse_pip_install, _get_dist_modules, _maybe_module_version, _postinstall_verify, InstallIssue, _prefer_installed
 from packaging.version import Version
 
@@ -14,12 +15,12 @@ def test_run_command() -> None:
     run_command(succ_command)
 
     with pytest.raises(
-        ValueError,
-        match=re.escape("command failure: [Errno 2] No such file or directory: 'you'"),
+        CascadeInternalError,
+        match=re.escape("command failure: [Errno 2] No such file or directory: 'you' (caused by FileNotFoundError(2, 'No such file or directory'))")
     ):
         run_command(bad1_command)
     with pytest.raises(
-        ValueError,
+        CascadeUserError,
         match=r"nonexistentpackagename was not found in the package registry",
     ):
         run_command(bad2_command)

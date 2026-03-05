@@ -27,7 +27,7 @@ from multiprocessing.shared_memory import SharedMemory
 
 import cascade.shm.algorithms as algorithms
 import cascade.shm.disk as disk
-from cascade.shm.func import assert_never
+from cascade.shm.func import ShmInfrastructureError, ShmInternalError, assert_never
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,7 @@ def get_capacity() -> int:
         avail = r.stdout.decode("ascii").split("\n")[1].strip()
         return int(avail)
     except FileNotFoundError:
-        return 128 * (
-            1024**3
-        )  # gets likely trimmed later... this is for macos which doest have findmnt
+        return 128 * (1024**3)  # gets likely trimmed later... this is for macos which doest have findmnt
 
 
 class DatasetStatus(int, Enum):
@@ -75,17 +73,9 @@ class Dataset:
     delayed_purge: bool = False
 
     def is_pageoutable(self, ref_time: int) -> bool:
-        created_stale = (
-            self.status == DatasetStatus.created
-            and ref_time - self.created > STALE_CREATE
-        )
-        no_fresh_read = (
-            not (self.ongoing_reads)
-            or ref_time - max(self.ongoing_reads.values()) > STALE_READ
-        )
-        return created_stale or (
-            self.status == DatasetStatus.in_memory and no_fresh_read
-        )
+        created_stale = self.status == DatasetStatus.created and ref_time - self.created > STALE_CREATE
+        no_fresh_read = not (self.ongoing_reads) or ref_time - max(self.ongoing_reads.values()) > STALE_READ
+        return created_stale or (self.status == DatasetStatus.in_memory and no_fresh_read)
 
 
 class Manager:
@@ -123,9 +113,7 @@ class Manager:
             capacity = default_capacity
         elif capacity > default_capacity:
             # TODO introduce capacity setter api which includes this check
-            logger.warning(
-                f"configured with more capacity than available, trimming to {default_capacity}"
-            )
+            logger.warning(f"configured with more capacity than available, trimming to {default_capacity}")
             capacity = default_capacity
         self.capacity = capacity
         logger.info(f"dataset started with actual capacity {self.capacity}")
@@ -168,20 +156,14 @@ class Manager:
     def close_callback(self, key: str, rdid: str) -> None:
         if not rdid:
             if self.datasets[key].status != DatasetStatus.created:
-                raise ValueError(
-                    f"invalid transition from {self.datasets[key].status} for {key} and {rdid}"
-                )
+                raise ShmInternalError(f"invalid transition from {self.datasets[key].status} for {key} and {rdid}")
             logger.debug(f"create callback finished -> {key} is in-memory")
             self.datasets[key].status = DatasetStatus.in_memory
         else:
             if self.datasets[key].status != DatasetStatus.in_memory:
-                raise ValueError(
-                    f"invalid transition from {self.datasets[key].status} for {key} and {rdid}"
-                )
+                raise ShmInternalError(f"invalid transition from {self.datasets[key].status} for {key} and {rdid}")
             if rdid not in self.datasets[key].ongoing_reads:
-                logger.warning(
-                    f"unexpected/redundant remove of ongoing reader: {key}, {rdid}"
-                )
+                logger.warning(f"unexpected/redundant remove of ongoing reader: {key}, {rdid}")
             else:
                 self.datasets[key].ongoing_reads.pop(rdid)
         if self.datasets[key].delayed_purge and not self.datasets[key].ongoing_reads:
@@ -216,9 +198,7 @@ class Manager:
         if not self.pageout_all.acquire(blocking=False):
             return
         candidates = (
-            algorithms.Entity(
-                key, ds.created, ds.retrieved_first, ds.retrieved_last, ds.size
-            )
+            algorithms.Entity(key, ds.created, ds.retrieved_first, ds.retrieved_last, ds.size)
             for key, ds in self.datasets.items()
             if ds.is_pageoutable(time.time_ns())
         )
@@ -230,10 +210,10 @@ class Manager:
     def page_in(self, key: str) -> None:
         ds = self.datasets[key]
         if ds.status != DatasetStatus.on_disk:
-            raise ValueError(f"invalid restore on {ds}")
+            raise ShmInternalError(f"invalid restore on {ds}")
         ds.status = DatasetStatus.paged_in
         if self.free_space < ds.size:
-            raise ValueError("insufficient space")
+            raise ShmInfrastructureError("insufficient space")
         self.free_space -= ds.size
 
         def callback(ok: bool):
@@ -288,9 +268,7 @@ class Manager:
             # - b2/ it is received by shm and purged, but ack fails on zmq
             # - b3/ data server retries, but now the key is unknown
             # - b/ this would be fixed by keeping track of tombstones
-            logger.warning(
-                f"key unknown to this shm instance: {key}, ignoring purge request"
-            )
+            logger.warning(f"key unknown to this shm instance: {key}, ignoring purge request")
             return
         try:
             logger.debug(f"attempting purge-inquire of {key}")
@@ -298,9 +276,7 @@ class Manager:
                 ds = self.datasets[key]
                 if ds.ongoing_reads and not is_exit:
                     # logging as debug because this is a common and legit scenario due to scheduler speed
-                    logger.debug(
-                        f"premature purge of {key} while there are still reads, delaying"
-                    )
+                    logger.debug(f"premature purge of {key} while there are still reads, delaying")
                     ds.delayed_purge = True
                     return
             except Exception:
@@ -328,9 +304,7 @@ class Manager:
                     self.free_space += ds.size
             self.datasets.pop(key)
         except Exception:
-            logger.exception(
-                f"failed to purge {key}, free space may be incorrect, /dev/shm may have leaked"
-            )
+            logger.exception(f"failed to purge {key}, free space may be incorrect, /dev/shm may have leaked")
 
     def atexit(self) -> None:
         keys = list(self.datasets.keys())

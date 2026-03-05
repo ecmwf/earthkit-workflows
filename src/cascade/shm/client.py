@@ -14,6 +14,7 @@ from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Type, TypeVar
 
 import cascade.shm.api as api
+from cascade.shm.func import ShmInfrastructureError, ShmInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,7 @@ class AllocatedBuffer:
             # NOTE this is quite wrong as instead of crashing, it would lead to undefined behaviour
             # However, as the systems we operate on don't seem to be reliable wrt cleanup/isolation,
             # it ends up being a lesser evil
-            logger.error(
-                f"attempted opening {shmid=} but gotten FileExists. Will delete and retry"
-            )
+            logger.error(f"attempted opening {shmid=} but gotten FileExists. Will delete and retry")
             _shm = SharedMemory(shmid, create=False, **shm_kwargs)
             _shm.close()
             _shm.unlink()
@@ -62,7 +61,7 @@ class AllocatedBuffer:
 
     def view(self) -> memoryview:
         if not self.shm:
-            raise ValueError("shm already closed!")
+            raise ShmInternalError("shm already closed!")
         assert self.shm.buf is not None
         mv = self.shm.buf[: self.l]
         if self.readonly:
@@ -115,11 +114,11 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
                 continue
             elif response_com.error == "conflict":
                 raise ConflictError
-            raise ValueError(response_com.error)
+            raise ShmInfrastructureError(response_com.error)  # ty: ignore[invalid-argument-type]
         if not isinstance(response_com, resp_class):
-            raise TypeError(type(response_com))
+            raise ShmInternalError(f"unexpected response type: {type(response_com)}")
         return response_com
-    raise TimeoutError
+    raise ShmInfrastructureError("shm server request timed out")
 
 
 def close_callback(key: str, rdid: str) -> None:
@@ -127,15 +126,11 @@ def close_callback(key: str, rdid: str) -> None:
     _send_command(comm, api.OkResponse)
 
 
-def allocate(
-    key: str, l: int, deser_fun: str, timeout_sec: float = 60.0
-) -> AllocatedBuffer:
+def allocate(key: str, l: int, deser_fun: str, timeout_sec: float = 60.0) -> AllocatedBuffer:
     comm = api.AllocateRequest(key=key, l=l, deser_fun=deser_fun)
     resp = _send_command(comm, api.AllocateResponse, timeout_sec)
     callback = lambda: close_callback(key, "")
-    return AllocatedBuffer(
-        shmid=resp.shmid, l=l, create=True, close_callback=callback, deser_fun=deser_fun
-    )
+    return AllocatedBuffer(shmid=resp.shmid, l=l, create=True, close_callback=callback, deser_fun=deser_fun)
 
 
 def get(key: str, timeout_sec: float = 60.0) -> AllocatedBuffer:

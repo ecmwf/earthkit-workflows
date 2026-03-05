@@ -16,6 +16,7 @@ from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
 from cascade.executor.checkpoints import list_persisted_datasets
 from cascade.low.core import JobInstance, JobInstanceRich, type_dec
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeUserError
 from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, init_schedule, plan
@@ -53,17 +54,13 @@ def run(
         total_gpus = sum(worker.gpu for worker in env.workers.values())
         needs_gpus = any(task.definition.needs_gpu for task in job.jobInstance.tasks.values())
         if needs_gpus and total_gpus == 0:
-            raise ValueError("environment contains no gpu yet job demands one")
+            raise CascadeUserError("environment contains no gpu yet job demands one")
 
         virtual_update_schedule(persisted_valid, schedule, context)
         virtual_events = virtual_checkpoint_publish(persisted_valid)
         timer(notify_wrapper, Microtrace.ctrl_notify)(virtual_events)
 
-        while (
-            state.has_awaitable()
-            or context.has_awaitable()
-            or schedule.has_computable()
-        ):
+        while state.has_awaitable() or context.has_awaitable() or schedule.has_computable():
             mark({"action": ControllerPhases.assign})
             assignments = []
             if schedule.has_computable():
@@ -83,9 +80,13 @@ def run(
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")
     except Exception as ex:
-        logger.error("crash in controller, shuting down")
+        logger.error("crash in controller, shutting down & propagating")
         reporter.send_failure(repr(ex))
-        raise
+        if isinstance(ex, CascadeError):
+            raise
+        else:
+            # unknown at this stage is assumed to be InfrastructureError
+            raise CascadeInfrastructureError("crash in controller", parent=ex) from ex
     else:
         reporter.success()
     finally:
