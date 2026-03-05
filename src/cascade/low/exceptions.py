@@ -46,3 +46,26 @@ class CascadeInfrastructureError(CascadeError):
 
 class CascadeUserError(CascadeError):
     pass
+
+"""
+# TODO we need to be able to reliably pass those exceptions through cascade.executor.comms.msg
+
+Define a method in this module `def ser(CascadeError) -> str` which basically returns repr,
+and a des(str) -> CascadeError method, which tries to parse the string as '<CascadeError class name>(<detail>)',
+if matches constructs the right class and detail and returns it, otherwise returns CascadeInternalError(input).
+Don't worry about preserving the parent field, set it to None.
+
+Inspect all places in the cascade.executor module where any of 
+TaskFailure, ExecutorFailure, DatasetRetrieveFailure, DatasetTransmitFailure, DatasetPersistFailure
+are created, and make sure that the `ser` method is used to build the `detail` of the respective message class
+from the Exception that leads to it. But if there is no exception, put there `# TODO fill exception here` comment,
+but don't change the code.
+There may already be a `# TODO handle proper serde` comment -- remove it if you handle that case properly.
+
+Then in the bridge code, there is a # TODO comment for deserialization -- thats where you need to invoke 
+the des method you created.
+
+Write a simple unit test that tests the ser-des method, put it to a tests/cascade/low/test_exceptions.py new file.
+Don't change other tests.
+After `just val` recipe passes, commit, but dont push.
+"""
