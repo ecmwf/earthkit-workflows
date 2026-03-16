@@ -15,20 +15,18 @@ repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.15.4
   hooks:
-  - id: ruff-check # better black/flake/isort
-    files: ^src/
+  - id: ruff-check
+    exclude: '(dev/.*|.*_)\.py$'
     args:
-    - --select
-    - I # isorting
-    - --fix
-    - --exit-non-zero-on-fix
+      - --line-length=120
+      - --fix
+      - --exit-non-zero-on-fix
+      - --preview
   - id: ruff-format
-    files: ^backend/
-- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-  rev: v2.16.0
+- repo: https://github.com/google/yamlfmt
+  rev: v0.13.0
   hooks:
-  - id: pretty-format-yaml
-    args: [--autofix, --preserve-quotes]
+  - id: yamlfmt
 ci:
   autoupdate_schedule: monthly
   autoupdate_commit_msg: "chore(deps): pre-commit.ci autoupdate"
