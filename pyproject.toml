@@ -67,6 +67,32 @@ addopts = "-n8"
 
 [tool.ruff]
 line-length = 120
-lint.select = [ "E", "F", "I" ]
-lint.isort.force-single-line = true
-lint.ignore = [ "E722", "E731", "E741" ]
+
+[tool.ruff.lint]
+ignore = [
+  "D1",  # pydocstyle: Missing Docstrings
+  "D107",  # pydocstyle: numpy convention
+  "D203",
+  "D205",
+  "D212",
+  "D213",
+  "D401",
+  "D402",
+  "D413",
+  "D415",
+  "D416",
+  "D417",
+  "E722",
+  "E731",
+  "E741",
+]
+select = [
+  "F",  # pyflakes
+  "E",  # pycodestyle
+  "W",  # pycodestyle warnings
+  "I",  # isort
+  "D",  # pydocstyle
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
