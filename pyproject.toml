@@ -66,5 +66,7 @@ testpaths = ["tests/"]
 addopts = "-n8"
 
 [tool.ruff]
-line-length = 140
+line-length = 120
+lint.select = [ "E", "F", "I" ]
+lint.isort.force-single-line = true
 lint.ignore = [ "E722", "E731", "E741" ]
