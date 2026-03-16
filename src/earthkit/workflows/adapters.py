@@ -14,10 +14,9 @@ adapters is imported by most of ekw.
 Currently, only cascade is supported.
 """
 
-import logging
-
 try:
     from cascade.low.core import DefaultTaskOutput
+
     DefaultNodeOutput = DefaultTaskOutput
 except ImportError:
     logger.error("failed to import any execution engine! Defaulting to dummy impl")

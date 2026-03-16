@@ -17,17 +17,13 @@ def get_job(job_name: str) -> JobInstance:
         dl = {"a": 1, "b": 2, "c": (add, "a", "b")}
         dn = convert_legacy_graph(dl)
         job = graph2job(dn)
-        job.ext_outputs = [
-            dataset for task in job.tasks for dataset in job.outputs_of(task)
-        ]
+        job.ext_outputs = [dataset for task in job.tasks for dataset in job.outputs_of(task)]
         return job
     elif job_name == "groupby":
         df = dd.DataFrame.from_dict({"x": [0, 0, 1, 1], "y": [1, 2, 3, 4]})
         df = df.groupby("x").sum()
         job = graph2job(df.__dask_graph__())
-        job.ext_outputs = [
-            dataset for task in job.tasks for dataset in job.outputs_of(task)
-        ]
+        job.ext_outputs = [dataset for task in job.tasks for dataset in job.outputs_of(task)]
         return job
     else:
         raise NotImplementedError(job_name)

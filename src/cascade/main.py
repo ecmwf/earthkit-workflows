@@ -25,12 +25,11 @@ from cascade.controller.impl import run
 from cascade.deployment.logging import DefaultLoggingConfig, LoggingConfig, init_from_cliparam, init_from_obj
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
-from cascade.executor.config import logging_config, logging_config_filehandler
+from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
+from cascade.low.core import DatasetId, JobInstanceRich
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
-from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
 logger = logging.getLogger(__name__)
@@ -46,7 +45,9 @@ def _get_cuda_count() -> int:
             return visible_count
         gpus = sum(
             1
-            for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True).stdout.decode("ascii").split("\n")
+            for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True)
+            .stdout.decode("ascii")
+            .split("\n")
             if "GPU" in l
         )
     except:

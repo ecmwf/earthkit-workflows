@@ -14,8 +14,10 @@ from typing import Any, NoReturn
 class ShmInternalError(ValueError):
     pass
 
+
 class ShmInfrastructureError(ValueError):
     pass
+
 
 def assert_never(v: Any) -> NoReturn:
     """For exhaustive enumm checks etc"""

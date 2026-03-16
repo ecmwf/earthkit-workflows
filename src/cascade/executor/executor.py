@@ -32,7 +32,6 @@ from cascade.deployment.logging import LoggingConfig, as_dict_config
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
-from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.data_server import start_data_server
 from cascade.executor.msg import (
     Ack,
@@ -57,8 +56,8 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
-from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
+from cascade.low.core import DatasetId, HostId, JobInstance, WorkerId
+from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
@@ -67,7 +66,9 @@ logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms
 
 # messages from the data server which need to go to controller, but have no additional logic here
-JustForwardToController = DatasetTransmitFailure | DatasetPersistSuccess | DatasetPersistFailure | DatasetRetrieveFailure
+JustForwardToController = (
+    DatasetTransmitFailure | DatasetPersistSuccess | DatasetPersistFailure | DatasetRetrieveFailure
+)
 
 
 def address_of(port: int) -> BackboneAddress:
@@ -256,13 +257,19 @@ class Executor:
                 raise CascadeInternalError(f"process on {k} is not alive")
             elif procFail(e.process.exitcode):
                 # we assume low memory setting or callable issue -> UserError
-                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
+                raise CascadeUserError(
+                    f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}"
+                )
         if procFail(self.shm_process.exitcode):
             # possibly low memory setting but this is system config -> InfrastructureError
-            raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
+            raise CascadeInfrastructureError(
+                f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}"
+            )
         if procFail(self.data_server.exitcode):
             # unknown issue, it failed to report its own -> InfrastructureError
-            raise CascadeInfrastructureError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
+            raise CascadeInfrastructureError(
+                f"data server {self.data_server.pid} failed with {self.data_server.exitcode}"
+            )
         if self.heartbeat_watcher.is_breach() > 0:
             logger.debug(
                 f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}"
@@ -320,7 +327,7 @@ class Executor:
                         break
                     # from entrypoint
                     elif isinstance(m, WorkerReady):
-                        if not m.worker in self.worker_awaits:
+                        if m.worker not in self.worker_awaits:
                             logger.warning(f"unexpectedly gotten WorkerReady from {m.worker}, assuming double send")
                         else:
                             maybe_seq = self.worker_awaits.pop(m.worker)

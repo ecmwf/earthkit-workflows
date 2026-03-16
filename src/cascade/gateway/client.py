@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 def request_response(m: api.CascadeGatewayAPI, url: str, timeout_ms: int = 1000) -> api.CascadeGatewayAPI:
     """Sends a Request message, provides a corresponding Response message in a blocking manner"""
-
     local = threading.local()
     if not hasattr(local, "context"):
         local.context = zmq.Context()

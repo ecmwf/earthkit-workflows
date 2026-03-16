@@ -123,9 +123,9 @@ def test_broadcast():
     it = np.nditer(out_array, flags=["multi_index", "refs_ok"])
     for _ in it:
         print(it.multi_index)
-        assert out_array[it.multi_index].item(0).inputs[
-            "input0"
-        ].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
+        assert out_array[it.multi_index].item(0).inputs["input0"].parent == nodetree_array(input_action.nodes)[
+            it.multi_index[:2]
+        ].item(0)
 
 
 def test_flatten_expand():
@@ -282,15 +282,13 @@ def test_generators():
         for val in range(length):
             yield val * sum([1, *multipliers])
 
-    action = from_source(
-        functools.partial(test_func, 10), ("val", list(range(0, 100, 10)))
-    )
+    action = from_source(functools.partial(test_func, 10), ("val", list(range(0, 100, 10))))
     narray = nodetree_array(action.nodes)
     assert narray.shape == (10,)
     assert narray.dims == ("val",)
-    cas = action.map(
-        functools.partial(test_func, length=5), ("map", list(range(5)))
-    ).reduce(functools.partial(test_func, length=2), ("reduce", ["a", "b"]))
+    cas = action.map(functools.partial(test_func, length=5), ("map", list(range(5)))).reduce(
+        functools.partial(test_func, length=2), ("reduce", ["a", "b"])
+    )
     new_narray = nodetree_array(cas.nodes)
     assert new_narray.dims == ("map", "reduce")
     expected_coords = {"map": list(range(5)), "reduce": ["a", "b"]}

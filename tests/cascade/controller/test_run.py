@@ -14,24 +14,23 @@
 # by setting RUN_ALL_TESTS=1, as on CI is particularly flaky and incompatible
 # with xdist etc
 
-
 import os
+import pathlib
+import pickle
+import tempfile
 from logging.config import dictConfig
 from multiprocessing import Process
 from time import sleep
-import tempfile
-import pathlib
-import pickle
 
-from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.controller.impl import run
+from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
 from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance, JobInstanceRich, CheckpointSpec, DatasetId
+from cascade.low.core import CheckpointSpec, DatasetId, JobInstance, JobInstanceRich
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
 
@@ -76,7 +75,7 @@ def run_cluster(
     if not preschedule:
         preschedule = precompute(job.jobInstance)
     c = f"tcp://localhost:{portBase}"
-    m = f"tcp://localhost:{portBase+1}"
+    m = f"tcp://localhost:{portBase + 1}"
     ps = []
     for i, executor in enumerate(range(executors)):
         p = Process(target=launch_executor, args=(job.jobInstance, c, portBase + 1 + i * 10, i))
@@ -167,24 +166,25 @@ def test_para4():
     run_cluster(job, 12400, 4)
     sleep(1)  # improves stability
 
+
 def test_para1_persist():
     if not run_all_tests:
         return
     job = get_job()
     with tempfile.TemporaryDirectory() as td:
         spec = CheckpointSpec(
-           storage_type="fs",
-           storage_params=td,
-           retrieve_id=None,
-           persist_id="run1",
-           to_persist=[DatasetId(task="c2i1", output="0")],
+            storage_type="fs",
+            storage_params=td,
+            retrieve_id=None,
+            persist_id="run1",
+            to_persist=[DatasetId(task="c2i1", output="0")],
         )
         job.checkpointSpec = spec
         run_cluster(job, 12600, 1)
 
         root = pathlib.Path(td)
-        run1 = root / 'run1'
-        dts1 = run1 / 'c2i1.0'
+        run1 = root / "run1"
+        dts1 = run1 / "c2i1.0"
         assert [str(e) for e in root.iterdir()] == [str(run1)]
         assert [str(e) for e in run1.iterdir()] == [str(dts1)]
         content = dts1.read_bytes()
@@ -230,24 +230,26 @@ def test_fusing():
     run_cluster(jobInstanceRich, 12800, 2, preschedule)
     sleep(1)  # improves stability
 
+
 def test_checkpoints():
     """This takes a job with a checkpoint config, and runs it twice,
-    in a way that recognizes whether it checkpointed or not"""
-
+    in a way that recognizes whether it checkpointed or not
+    """
     with tempfile.TemporaryDirectory() as tmp_root, tempfile.TemporaryDirectory() as ckpt_root:
         sourcetask_code = f"import pathlib; f = pathlib.Path('{tmp_root}') / 'file.txt'; f.write_text('ok') if not f.exists() else 1/0;"
         jobInstance = (
-            JobBuilder()
+            (
+                JobBuilder()
                 .with_node(
                     "source",
                     TaskBuilder.from_callable(exec).with_values(sourcetask_code),
                 )
-                .with_node(
-                    "product",
-                    TaskBuilder.from_callable(lambda e: e)
-                )
+                .with_node("product", TaskBuilder.from_callable(lambda e: e))
                 .with_edge("source", "product", 0)
-        ).build().get_or_raise()
+            )
+            .build()
+            .get_or_raise()
+        )
 
         preschedule = precompute(jobInstance)
 

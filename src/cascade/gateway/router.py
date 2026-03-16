@@ -79,9 +79,7 @@ class JobRouter:
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
         self.poller.register(socket, flags=zmq.POLLIN)
         self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
-        self.procs[job_id] = spawn_subprocess(
-            job_spec, full_addr, job_id, self.loggingConfig, self.troika_config
-        )
+        self.procs[job_id] = spawn_subprocess(job_spec, full_addr, job_id, self.loggingConfig, self.troika_config)
         self.active_jobs += 1
 
     def enqueue_job(self, job_spec: JobSpec) -> JobId:
@@ -106,19 +104,13 @@ class JobRouter:
                 progresses[job_id] = JobProgressEnqueued
             else:
                 progresses[job_id] = None
-        datasets = {
-            job_id: list(self.jobs[job_id].results.keys())
-            for job_id in job_ids
-            if job_id in self.jobs
-        }
+        datasets = {job_id: list(self.jobs[job_id].results.keys()) for job_id in job_ids if job_id in self.jobs}
         return progresses, datasets, len(self.jobs_queue)
 
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
         return self.jobs[job_id].results[dataset_id]
 
-    def maybe_update(
-        self, job_id: JobId, progress: JobProgress | None, timestamp: int
-    ) -> None:
+    def maybe_update(self, job_id: JobId, progress: JobProgress | None, timestamp: int) -> None:
         if progress is None:
             return
         job = self.jobs[job_id]

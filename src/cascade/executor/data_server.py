@@ -70,8 +70,12 @@ class DataServer:
             DatasetTransmitCommand | DatasetTransmitPayload | DatasetPersistCommand | DatasetRetrieveCommand, Future
         ] = {}
         self.awaiting_confirmation: dict[int, tuple[DatasetTransmitCommand, int]] = {}
-        self.invalid: set[DatasetId] = set()  # for preventing out-of-order stores/transmits for datasets that have already been purged
-        self.acks: set[int] = set()  # it could happen that Ack arrives before respective Future finishes, so we need to store separately
+        self.invalid: set[DatasetId] = (
+            set()
+        )  # for preventing out-of-order stores/transmits for datasets that have already been purged
+        self.acks: set[int] = (
+            set()
+        )  # it could happen that Ack arrives before respective Future finishes, so we need to store separately
         # TODO the two above should be eventually purged, see comms.Listener.acked for a similar concern
 
     def maybe_clean(self) -> None:
@@ -83,7 +87,7 @@ class DataServer:
                 if fut.done():
                     ex = fut.exception()
                     if ex:
-                        ex = cast(Exception, ex) # NOTE ty consider ex BaseException & ~AlwaysFalsy
+                        ex = cast(Exception, ex)  # NOTE ty consider ex BaseException & ~AlwaysFalsy
                         callback(
                             self.maddress,
                             DatasetTransmitFailure(host=self.host, detail=ser(ex, repr(key))),
@@ -245,9 +249,13 @@ class DataServer:
                     logger.debug(f"received message {type(m)}")
                     if isinstance(m, DatasetTransmitCommand):
                         if m.idx in self.awaiting_confirmation:
-                            raise CascadeInternalError(f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}")
+                            raise CascadeInternalError(
+                                f"transmit idx conflict: {m}, {self.awaiting_confirmation[m.idx]}"
+                            )
                         if m.ds in self.invalid:
-                            raise CascadeInternalError(f"unexpected transmit command {m} as the dataset was already purged")
+                            raise CascadeInternalError(
+                                f"unexpected transmit command {m} as the dataset was already purged"
+                            )
                         mark(
                             {
                                 "dataset": repr(m.ds),
@@ -260,7 +268,9 @@ class DataServer:
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetPersistCommand):
                         if m.ds in self.invalid:
-                            raise CascadeInternalError(description=f"unexpected persist command {m} as the dataset was already purged")
+                            raise CascadeInternalError(
+                                description=f"unexpected persist command {m} as the dataset was already purged"
+                            )
                         # TODO mark?
                         fut = self.ds_proc_tp.submit(self._persist_dataset, m)
                         self.futs_in_progress[m] = fut
@@ -270,9 +280,7 @@ class DataServer:
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetTransmitPayload):
                         if m.header.ds in self.invalid:
-                            logger.warning(
-                                f"ignoring transmit payload {m.header} as the dataset was already purged"
-                            )
+                            logger.warning(f"ignoring transmit payload {m.header} as the dataset was already purged")
                             continue
                         mark(
                             {
@@ -291,7 +299,9 @@ class DataServer:
                         # TODO submit this as a future? This actively blocks the whole server
                         to_wait = []
                         for commandProg, fut in self.futs_in_progress.items():
-                            if isinstance(commandProg, DatasetTransmitCommand | DatasetPersistCommand | DatasetRetrieveCommand):
+                            if isinstance(
+                                commandProg, DatasetTransmitCommand | DatasetPersistCommand | DatasetRetrieveCommand
+                            ):
                                 val = commandProg.ds
                             elif isinstance(commandProg, DatasetTransmitPayload):
                                 val = commandProg.header.ds

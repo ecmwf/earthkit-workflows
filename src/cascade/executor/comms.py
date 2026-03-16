@@ -224,13 +224,16 @@ class ReliableSender:
         watermark = time.time_ns() - self.resend_grace
         for idx, record in self.inflight.items():
             if record.at < watermark:
-                logger.warning(f"retrying message {idx} ({record.clazz}) due to no confirmation after {watermark - record.at}ns")
+                logger.warning(
+                    f"retrying message {idx} ({record.clazz}) due to no confirmation after {watermark - record.at}ns"
+                )
                 if (socket := self.hosts.get(record.host, None)) is not None:
                     socket[0].send_multipart(record.message)
                     self.inflight[idx].at = time.time_ns()
                     self.inflight[idx].remaining -= 1
                     if self.inflight[idx].remaining <= 0:
-
                         raise CascadeInfrastructureError(f"message {idx} ({record.clazz}) retried too many times")
                 else:
-                    logger.warning(f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown")
+                    logger.warning(
+                        f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown"
+                    )

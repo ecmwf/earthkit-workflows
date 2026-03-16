@@ -78,9 +78,7 @@ def graph2sat(g: SimplifiedGraph, workers: list[str]):
             for worker in workers:
                 coschLoc = model.new_int_var(0, 1, f"{tasks[i]}~{tasks[j]}@{worker}")
                 loc.append(coschLoc)
-                model.add_multiplication_equality(
-                    coschLoc, [w2t[(tasks[i], worker)], w2t[(tasks[j], worker)]]
-                )
+                model.add_multiplication_equality(coschLoc, [w2t[(tasks[i], worker)], w2t[(tasks[j], worker)]])
             # coscheduled variable constraint
             model.add(sum(loc) == cosch)
             # respect worker parallelism

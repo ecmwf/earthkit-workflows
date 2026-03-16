@@ -85,10 +85,7 @@ class Node:
         self.name = name
         self.outputs = [Node.DEFAULT_OUTPUT] if outputs is None else outputs
         self.payload = payload
-        self.inputs = {
-            iname: (inp if isinstance(inp, Output) else inp.get_output())
-            for iname, inp in kwargs.items()
-        }
+        self.inputs = {iname: (inp if isinstance(inp, Output) else inp.get_output()) for iname, inp in kwargs.items()}
 
     def __getattr__(self, name: str) -> Output:
         return self.get_output(name)
@@ -145,6 +142,4 @@ class Node:
 
     def copy(self) -> Self:
         """Shallow copy of the node (the payload is not copied)"""
-        return self.__class__(
-            self.name, self.outputs.copy(), self.payload, **self.inputs
-        )
+        return self.__class__(self.name, self.outputs.copy(), self.payload, **self.inputs)

@@ -91,7 +91,8 @@ def new_venv() -> tempfile.TemporaryDirectory:
 
 def _parse_pip_install(pip_output: str) -> dict[str, Version]:
     """Assumed input like: 'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
-    Provided output: {'numpy': '2.4.1'}"""
+    Provided output: {'numpy': '2.4.1'}
+    """
     rv = {}
     for line in pip_output.splitlines():
         clean_line = line.strip()
@@ -134,7 +135,9 @@ def _maybe_module_version(mod_name: str) -> Version | None:
             try:
                 return Version(mod.__version__)
             except Exception as e:
-                logger.warning(f"failed to parse module {mod_name} version {mod.__version__} due to {repr(e)}-- ignoring!")
+                logger.warning(
+                    f"failed to parse module {mod_name} version {mod.__version__} due to {repr(e)}-- ignoring!"
+                )
         else:
             logging.warning(f"Module '{mod_name}' is loaded, but has no __version__ attribute -- ignoring")
 
@@ -223,7 +226,7 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
                 else:
                     logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
                     yield package_spec
-        except Exception as e:
+        except Exception:
             logger.warning(f"failed to discern preference for package {package} -- continuing")
             yield package
 

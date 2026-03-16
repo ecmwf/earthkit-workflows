@@ -33,21 +33,25 @@ def serialize_params(spec: CheckpointSpec, id_: str) -> str:
         case "fs":
             if not isinstance(spec.storage_params, str):
                 # we are in control of how these are created -> InternalError
-                raise CascadeInternalError(f"expected checkpoint storage params to be str, gotten {spec.storage_params.__class__}")
+                raise CascadeInternalError(
+                    f"expected checkpoint storage params to be str, gotten {spec.storage_params.__class__}"
+                )
             root = pathlib.Path(spec.storage_params)
             return str(root / id_)
         case s:
             assert_never(s)
 
 
-def build_persist_command(checkpoint_spec: CheckpointSpec | None, ds: DatasetId, hostId: HostId) -> DatasetPersistCommand:
+def build_persist_command(
+    checkpoint_spec: CheckpointSpec | None, ds: DatasetId, hostId: HostId
+) -> DatasetPersistCommand:
     if checkpoint_spec is None:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected persist need when checkpoint storage not configured")
+        raise CascadeInternalError("unexpected persist need when checkpoint storage not configured")
     id_ = checkpoint_spec.persist_id
     if not id_:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected persist need when there is no persist id")
+        raise CascadeInternalError("unexpected persist need when there is no persist id")
     persist_params = serialize_params(checkpoint_spec, id_)
     return DatasetPersistCommand(
         source=hostId,
@@ -84,14 +88,16 @@ def list_persisted_datasets(spec: CheckpointSpec) -> list[DatasetId]:
             assert_never(s)
 
 
-def build_retrieve_command(checkpoint_spec: CheckpointSpec | None, ds: DatasetId, hostId: HostId) -> DatasetRetrieveCommand:
+def build_retrieve_command(
+    checkpoint_spec: CheckpointSpec | None, ds: DatasetId, hostId: HostId
+) -> DatasetRetrieveCommand:
     if checkpoint_spec is None:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected retrieve need when checkpoint storage not configured")
+        raise CascadeInternalError("unexpected retrieve need when checkpoint storage not configured")
     id_ = checkpoint_spec.retrieve_id
     if not id_:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected retrieve when there is no retrive id")
+        raise CascadeInternalError("unexpected retrieve when there is no retrive id")
     retrieve_params = serialize_params(checkpoint_spec, id_)
     return DatasetRetrieveCommand(
         target=hostId,
@@ -128,16 +134,18 @@ def possible_repersist(dataset: DatasetId, checkpointSpec: CheckpointSpec | None
     # If needbe, spawn a thread or something. In that case needs a completion callback
     if not checkpointSpec:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected repersist when checkpoint storage not configured")
+        raise CascadeInternalError("unexpected repersist when checkpoint storage not configured")
     if not checkpointSpec.retrieve_id:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected repersist when no retrieve id")
+        raise CascadeInternalError("unexpected repersist when no retrieve id")
     if not checkpointSpec.persist_id:
         # should have been validated prior -> InternalError
-        raise CascadeInternalError(f"unexpected repersist when no persist id")
+        raise CascadeInternalError("unexpected repersist when no persist id")
     if checkpointSpec.retrieve_id == checkpointSpec.persist_id:
         # we assume reproducibility---bold!---so we better warn about it
-        logger.warning(f"no-op for persist of {dataset} as was already persisted under the same id {checkpointSpec.retrieve_id}")
+        logger.warning(
+            f"no-op for persist of {dataset} as was already persisted under the same id {checkpointSpec.retrieve_id}"
+        )
         return
 
     # NOTE the host is the virtual one so the message is not really valid, but no big deal

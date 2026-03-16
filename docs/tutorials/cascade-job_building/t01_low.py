@@ -60,15 +60,9 @@ task3_definition = TaskDefinition(
 
 # one task definition can be used multiple times with different static parameters,
 # so theres one extra wrapping
-task1_instance = TaskInstance(
-    definition=task1_definition, static_input_kw={}, static_input_ps={}
-)
-task2_instance = TaskInstance(
-    definition=task2_definition, static_input_kw={}, static_input_ps={}
-)
-task3_instance = TaskInstance(
-    definition=task3_definition, static_input_kw={}, static_input_ps={}
-)
+task1_instance = TaskInstance(definition=task1_definition, static_input_kw={}, static_input_ps={})
+task2_instance = TaskInstance(definition=task2_definition, static_input_kw={}, static_input_ps={})
+task3_instance = TaskInstance(definition=task3_definition, static_input_kw={}, static_input_ps={})
 
 # now we glue tasks together
 edge1to2 = Task2TaskEdge(

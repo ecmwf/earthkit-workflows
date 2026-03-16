@@ -9,7 +9,6 @@
 """Custom json formatter, felt easier than struggling with another 3rd party lib"""
 
 import logging
-import logging.config
 
 import orjson
 
@@ -23,14 +22,14 @@ class JSONFormatter(logging.Formatter):
             "process": record.process,
             "message": record.getMessage(),
         }
-        
+
         # NOTE standard_attrs = {
         #    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename',
         #    'module', 'exc_info', 'exc_text', 'stack_info', 'lineno', 'funcName',
         #    'created', 'msecs', 'relativeCreated', 'thread', 'threadName',
         #    'processName', 'process', 'message', 'asctime', 'taskName',
-        #}
-        
+        # }
+
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 

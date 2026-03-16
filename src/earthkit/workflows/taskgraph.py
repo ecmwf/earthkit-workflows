@@ -70,9 +70,7 @@ class Task(Node):
         self.resources.cpu_cycles = value
 
     def copy(self) -> "Task":
-        newnode = Task(
-            self.name, self.outputs.copy(), self.payload, self.resources, **self.inputs
-        )
+        newnode = Task(self.name, self.outputs.copy(), self.payload, self.resources, **self.inputs)
         return newnode
 
 
@@ -125,9 +123,7 @@ class TaskGraph(Graph):
         if task in self._accumulated_duration:
             return self._accumulated_duration[task]
 
-        duration = cast(
-            Task, task
-        ).duration  # nodes seem to be runtime patched to tasks
+        duration = cast(Task, task).duration  # nodes seem to be runtime patched to tasks
         for child in predecessors(self, task):
             if child in self._accumulated_duration:
                 duration += self._accumulated_duration[child]
@@ -137,9 +133,7 @@ class TaskGraph(Graph):
 
 
 class ExecutionGraph(TaskGraph):
-    def _make_communication_task(
-        self, source: Node, target: Node, state: Callable | None = None
-    ):
+    def _make_communication_task(self, source: Node, target: Node, state: Callable | None = None):
         t = Communication(
             f"{source.name}-{target.name}",
             source,

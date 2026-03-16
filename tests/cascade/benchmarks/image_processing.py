@@ -8,13 +8,12 @@
 
 import io
 
-import matplotlib.pyplot as plt# ty: ignore[unresolved-import]
+import matplotlib.pyplot as plt  # ty: ignore[unresolved-import]
 import numpy as np
-from PIL import Image
-
-from cascade.cascade import Cascade # ty: ignore[unresolved-import]
+from cascade.cascade import Cascade  # ty: ignore[unresolved-import]
 from cascade.fluent import Fluent, Payload  # ty: ignore[unresolved-import]
-from cascade.visualise import visualise # ty: ignore[unresolved-import]
+from cascade.visualise import visualise  # ty: ignore[unresolved-import]
+from PIL import Image
 
 
 def mandelbrot(c, max_iter):
@@ -29,9 +28,7 @@ def mandelbrot(c, max_iter):
     return n + 1 - np.log(np.log2(abs(z)))
 
 
-def generate_fractal_image(
-    xmin=0, xmax=100, ymin=0, ymax=100, width=200, height=200, max_iter=5
-):
+def generate_fractal_image(xmin=0, xmax=100, ymin=0, ymax=100, width=200, height=200, max_iter=5):
     """Generate a fractal image of the Mandelbrot set."""
     r1 = np.linspace(xmin, xmax, width)
     r2 = np.linspace(ymin, ymax, height)

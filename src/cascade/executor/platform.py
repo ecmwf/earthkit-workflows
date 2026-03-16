@@ -20,7 +20,6 @@ from cascade.low.exceptions import CascadeInternalError
 
 def get_bindabble_self():
     """Returns a hostname such that zmq can bind to it"""
-
     if sys.platform == "darwin":
         # NOTE on macos, getfqdn usually returns like '66246.local', which can't then be bound to
         # This is a stopper for running a cluster of macos devices -- but we don't plan that yet
@@ -43,7 +42,9 @@ MpSituation = typing.Literal["worker", "executor-loc", "executor-aux", "gateway"
 _MpSituation = typing.get_args(MpSituation)
 
 
-def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.SpawnContext | mp.context.ForkServerContext:
+def get_mp_ctx(
+    situation: MpSituation,
+) -> mp.context.ForkContext | mp.context.SpawnContext | mp.context.ForkServerContext:
     """Generally, forking is safe everywhere as we try to be careful not to
     initialize non-safe objects prior to forking. However, combination of
     mac + mps + anemoi + pickled callables causes xpc_error_connection_invalid,
@@ -53,7 +54,6 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
     We distinguish in which situation is this method called, as fine graining
     may be (eventually) possible
     """
-
     if situation not in _MpSituation:
         raise CascadeInternalError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":

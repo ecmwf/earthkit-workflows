@@ -2,14 +2,14 @@ name: CI # TODO rename the file in a standalone PR, its not macos-test, but ci
 
 on:
   # Trigger the workflow manually
-  workflow_dispatch: ~
+  workflow_dispatch:
 
   push:
     branches:
-      - 'main'
-      - 'develop'
+    - 'main'
+    - 'develop'
 
-  pull_request: ~
+  pull_request:
 
 jobs:
   ci:
@@ -21,12 +21,12 @@ jobs:
     runs-on: "${{ fromJSON('{\"linux-x86\": [\"self-hosted\", \"Linux\", \"platform-builder-Rocky-8.6\"], \"macos-ARM64\": [\"self-hosted\", \"macOS\", \"ARM64\"]}')[matrix.arch_type] }}"
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
       # NOTE if setup uv used, make sure to configure uv cache correctly, to not fill home. But should be already installed and configured
       # - uses: astral-sh/setup-uv@v7
-      - uses: extractions/setup-just@v3
-      - run: |
-          echo "uv version is $(uv --version)"
-          uv sync --python "${{ matrix.python_version }}"
-          just fmt
-          just val
+    - uses: extractions/setup-just@v3
+    - run: |
+        echo "uv version is $(uv --version)"
+        uv sync --python "${{ matrix.python_version }}"
+        just fmt
+        just val

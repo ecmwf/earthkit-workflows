@@ -55,12 +55,7 @@ def fixMode(df):
     rows = ~df.dataset.isna()
     proj = df[rows & ~df["mode"].isna()].set_index(["dataset", "worker"])["mode"]
     lookup = proj[~proj.index.duplicated(keep="last")]
-    return (
-        df.set_index(["dataset", "worker"])
-        .drop(columns="mode")
-        .join(lookup)
-        .reset_index()
-    )
+    return df.set_index(["dataset", "worker"]).drop(columns="mode").join(lookup).reset_index()
 
 
 def ensureColumns(df, columns):
@@ -73,9 +68,7 @@ def ensureColumns(df, columns):
 def transmitDurations(df):
     df = fixMode(df)
     datasets = df[~df.dataset.isna()].drop(columns="task")
-    durations = datasets.pivot(
-        index=["dataset", "worker", "mode"], columns=["action"], values=["at"]
-    )
+    durations = datasets.pivot(index=["dataset", "worker", "mode"], columns=["action"], values=["at"])
     durations.columns = [name[1][len("transmit") :] for name in durations.columns]
     durations = durations.reset_index()
     localFix = durations["mode"] == "local"
@@ -110,9 +103,7 @@ def analyzeTransmits(df):
     print(f"total transmit duration: {fmn(durations.total.sum())}")
     print(" *** ")
     print(f"mode counts: {durations['mode'].value_counts()}")
-    print(
-        f"per-mode transmit duration: {durations[['mode', 'total']].groupby('mode').sum()}"
-    )
+    print(f"per-mode transmit duration: {durations[['mode', 'total']].groupby('mode').sum()}")
     print(" *** ")
     print(f"total comm delay: {fmn(durations.commDelay.sum())}")
     print(f"mean comm delay: {fmn(durations.commDelay.mean())}")
@@ -133,9 +124,7 @@ def analyzeTasks(df):
     durations = taskDurations(df)
     print(f"total task duration: {fmn(durations.total.sum())}")
     print(" *** ")
-    print(
-        f"total task duration per worker: {durations.groupby('worker').onWorker.agg(['mean', 'sum'])}"
-    )
+    print(f"total task duration per worker: {durations.groupby('worker').onWorker.agg(['mean', 'sum'])}")
     print(" *** ")
     print(f"total comm delay: {fmn(durations.commDelay.sum())}")
     print(f"mean comm delay: {fmn(durations.commDelay.mean())}")
@@ -188,12 +177,8 @@ taskCompareF1F4 = (
     .rename(columns={"total": "total1"})
     .join(task_f4.set_index(["task"])[["total"]].rename(columns={"total": "total4"}))
 )
-taskCompareF1F4 = taskCompareF1F4.assign(
-    dif=taskCompareF1F4.total4 - taskCompareF1F4.total1
-)
-taskCompareF1F4 = taskCompareF1F4.assign(
-    rel=taskCompareF1F4.dif / taskCompareF1F4.total4
-)
+taskCompareF1F4 = taskCompareF1F4.assign(dif=taskCompareF1F4.total4 - taskCompareF1F4.total1)
+taskCompareF1F4 = taskCompareF1F4.assign(rel=taskCompareF1F4.dif / taskCompareF1F4.total4)
 taskCompareF1F4.sort_values(by="rel")
 
 

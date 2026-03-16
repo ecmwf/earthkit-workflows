@@ -65,22 +65,16 @@ class Source(DatasetSubgraph):
         assert set(variables) == set(i.keys())
         return i
 
-    def __init__(
-        self, kallable: Callable, dims: list[str], variables: list[str]
-    ) -> Self:
+    def __init__(self, kallable: Callable, dims: list[str], variables: list[str]) -> Self:
         self.dims = dims
         self.variables = variables
         # note that now we have two tasks here! One that reads the data, another that validates
         self.implementation = (
             JobBuilder()
-            .with_node(
-                "read", TaskBuilder.from_callable(kallable, environment=["xarray"])
-            )
+            .with_node("read", TaskBuilder.from_callable(kallable, environment=["xarray"]))
             .with_node(
                 "validate",
-                TaskBuilder.from_callable(Source._validate).with_values(
-                    dims=dims, variables=variables
-                ),
+                TaskBuilder.from_callable(Source._validate).with_values(dims=dims, variables=variables),
             )
             .with_edge("read", "validate", "i")
         )
@@ -108,9 +102,7 @@ class ApplyNumpyReduce(DatasetSubgraph):
         axis = tuple(idx for idx, e in enumerate(array.dims) if e in over_dims)
         raw = f(array.to_numpy(), axis=axis)
         remainingDims = [e for e in array.dims if e not in over_dims]
-        result = xr.DataArray(
-            raw, dims=remainingDims, coords={d: array.coords[d] for d in remainingDims}
-        )
+        result = xr.DataArray(raw, dims=remainingDims, coords={d: array.coords[d] for d in remainingDims})
         # we need to wrap so that possible downstream actions can parse
         return xr.Dataset({varName: result})
 
@@ -120,9 +112,7 @@ class ApplyNumpyReduce(DatasetSubgraph):
         return variables[0], i[variables[0]]
 
     @staticmethod
-    def _project_gen(
-        i: xr.Dataset, variables: list[str]
-    ) -> Iterator[tuple[str, xr.DataArray]]:
+    def _project_gen(i: xr.Dataset, variables: list[str]) -> Iterator[tuple[str, xr.DataArray]]:
         for v in variables:
             print(f"yielding for {v}")
             yield v, i[v]
@@ -146,29 +136,17 @@ class ApplyNumpyReduce(DatasetSubgraph):
 
         for source, variables in frum.projection.items():
             if target := [v for v in variables if v in over_variables]:
-                kallable = (
-                    ApplyNumpyReduce._project_one
-                    if len(target) == 1
-                    else ApplyNumpyReduce._project_gen
-                )
-                projectT = TaskBuilder.from_callable(kallable).with_values(
-                    variables=target
-                )
-                projectT.definition.output_schema = [
-                    (f"{i}", "tuple[str, xr.DataArray]") for i in range(len(target))
-                ]
+                kallable = ApplyNumpyReduce._project_one if len(target) == 1 else ApplyNumpyReduce._project_gen
+                projectT = TaskBuilder.from_callable(kallable).with_values(variables=target)
+                projectT.definition.output_schema = [(f"{i}", "tuple[str, xr.DataArray]") for i in range(len(target))]
                 projectN = f"project_{uuid.uuid4()}"
-                self.implementation = self.implementation.with_node(
-                    projectN, projectT
-                ).with_edge(source, projectN, "i")
+                self.implementation = self.implementation.with_node(projectN, projectT).with_edge(source, projectN, "i")
                 for i, v in enumerate(target):
-                    applyT = TaskBuilder.from_callable(
-                        ApplyNumpyReduce._apply
-                    ).with_values(f=f, over_dims=over_dims)
+                    applyT = TaskBuilder.from_callable(ApplyNumpyReduce._apply).with_values(f=f, over_dims=over_dims)
                     applyN = f"apply_{uuid.uuid4()}"
-                    self.implementation = self.implementation.with_node(
-                        applyN, applyT
-                    ).with_edge(projectN, applyN, "i", f"{i}")
+                    self.implementation = self.implementation.with_node(applyN, applyT).with_edge(
+                        projectN, applyN, "i", f"{i}"
+                    )
                     self.projection[applyN] = {v}
 
 
@@ -187,9 +165,7 @@ temperMaxAtPlace = ApplyNumpyReduce(["temper"], ["t"], np.max, source)
 temperMeanOfMaxes = ApplyNumpyReduce(["temper"], ["x", "y"], np.mean, temperMaxAtPlace)
 
 # or process two variables within a single job
-meanForEachVariableOverTime = ApplyNumpyReduce(
-    ["precip", "temper"], ["x", "y"], np.mean, source
-)
+meanForEachVariableOverTime = ApplyNumpyReduce(["precip", "temper"], ["x", "y"], np.mean, source)
 
 if __name__ == "__main__":
     # print(run_job(temperMeanOfMaxes.as_instance()))

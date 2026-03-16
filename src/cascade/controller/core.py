@@ -8,9 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 import cascade.executor.serde as serde
-from cascade.executor.msg import DatasetPersistSuccess, DatasetTransmitPayload
 from cascade.low.core import DatasetId, HostId, TaskId
-from cascade.low.execution_context import VirtualCheckpointHost
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +42,7 @@ class State:
         """If dataset not required anymore, add to purging_queue"""
         no_dependants = not self.purging_tracker.get(dataset, None)
         not_required_output = self.outputs.get(dataset, 1) is not None
-        not_required_persist = not dataset in self.to_persist
+        not_required_persist = dataset not in self.to_persist
         if all((no_dependants, not_required_output, not_required_persist)):
             logger.debug(f"adding {dataset=} to purging queue")
             if dataset in self.purging_tracker:
@@ -53,19 +51,12 @@ class State:
 
     def consider_fetch(self, dataset: DatasetId, at: HostId) -> None:
         """If required as output and not yet arrived, add to fetching queue"""
-        if (
-            dataset in self.outputs
-            and self.outputs[dataset] is None
-            and dataset not in self.fetching_queue
-        ):
+        if dataset in self.outputs and self.outputs[dataset] is None and dataset not in self.fetching_queue:
             self.fetching_queue[dataset] = at
 
     def consider_persist(self, dataset: DatasetId, at: HostId) -> None:
         """If required as persist and not yet acknowledged, add to persist queue"""
-        if (
-            dataset in self.to_persist
-            and dataset not in self.persist_queue
-        ):
+        if dataset in self.to_persist and dataset not in self.persist_queue:
             self.persist_queue[dataset] = at
 
     def receive_payload(self, ds: DatasetId, payload: bytes, deser_fun: str) -> None:
@@ -102,9 +93,7 @@ class State:
 
 
 def init_state(outputs: set[DatasetId], to_persist: set[DatasetId], edge_o: dict[DatasetId, set[TaskId]]) -> State:
-    purging_tracker = {
-        ds: {task for task in dependants} for ds, dependants in edge_o.items()
-    }
+    purging_tracker = {ds: {task for task in dependants} for ds, dependants in edge_o.items()}
 
     return State(
         outputs={e: None for e in outputs},

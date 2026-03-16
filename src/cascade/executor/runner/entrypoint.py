@@ -9,14 +9,11 @@
 """The entrypoint itself"""
 
 import logging
-import logging.config
 import os
 from dataclasses import dataclass
-from typing import Any
 
 import cloudpickle
 import zmq
-from typing_extensions import Self
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
@@ -36,7 +33,7 @@ from cascade.executor.runner.memory import Memory
 from cascade.executor.runner.packages import PackagesEnv, PostinstallException
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, ser
+from cascade.low.exceptions import CascadeInternalError, ser
 from cascade.low.tracing import label
 
 logger = logging.getLogger(__name__)
@@ -75,9 +72,12 @@ class RunnerContext:
         )
 
 
-def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> list[tuple[DatasetId, str]]:
+def task_sequence_postmortem(
+    ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId
+) -> list[tuple[DatasetId, str]]:
     """Assuming a failure at task Cut, identify which datasets from the beginning of
-    the sequence should be additionaly published. Returns datasetid + its type"""
+    the sequence should be additionaly published. Returns datasetid + its type
+    """
     finished = set()
     required = set()
     found = False
@@ -95,7 +95,8 @@ def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut
 
 def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequence:
     """Assuming a failure at task Cut, calculate new task sequence which starts with Cut
-    that represents the still-to-be-done-in-new-worker calculation"""
+    that represents the still-to-be-done-in-new-worker calculation
+    """
     remainder = []
     for task in taskSequence.tasks:
         if task == cut or remainder:
@@ -140,7 +141,8 @@ def execute_sequence(
     runnerContext: RunnerContext,
 ) -> bool:
     """Returns whether ended successfully. If not, it means a failure callback
-    was issued, and the outer loop should only wait for WorkerShutdown message."""
+    was issued, and the outer loop should only wait for WorkerShutdown message.
+    """
     taskId: TaskId | None = None
     try:
         for key, value in taskSequence.extra_env:
@@ -178,7 +180,7 @@ def execute_sequence(
 
 
 def entrypoint(runnerContextClpkl: bytes):
-    """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
+    """RunnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
     runnerContext = cloudpickle.loads(runnerContextClpkl)
     init_from_obj(runnerContext.loggingConfig, f"worker_{runnerContext.workerId.worker}")
     ctx = zmq.Context()
@@ -227,8 +229,12 @@ def entrypoint(runnerContextClpkl: bytes):
             elif isinstance(mDes, TaskSequence):
                 if waiting_ts is not None:
                     raise CascadeInternalError(f"double task sequence enqueued: 1/ {waiting_ts}, 2/ {mDes}")
-                required = {dataset_id for task in mDes.tasks for dataset_id in runnerContext.param_source[task].values()} - {
-                    DatasetId(task, key) for task in mDes.tasks for key, _ in runnerContext.job.tasks[task].definition.output_schema
+                required = {
+                    dataset_id for task in mDes.tasks for dataset_id in runnerContext.param_source[task].values()
+                } - {
+                    DatasetId(task, key)
+                    for task in mDes.tasks
+                    for key, _ in runnerContext.job.tasks[task].definition.output_schema
                 }
                 missing_ds = required - availab_ds
                 if Config.pretask_flush:

@@ -27,9 +27,7 @@ class Context:
 
     @classmethod
     def report(cls):
-        rpt = (
-            lambda t1, t2: f"from {t1[0]} to {t2[0]} took {(t2[1]-t1[1]) / 1e6:.3f} ms"
-        )
+        rpt = lambda t1, t2: f"from {t1[0]} to {t2[0]} took {(t2[1] - t1[1]) / 1e6:.3f} ms"
         print(rpt(cls.steps[0], cls.steps[-1]))
         for i in range(len(cls.steps) - 1):
             print(rpt(cls.steps[i], cls.steps[i + 1]))

@@ -15,15 +15,11 @@ from .nodes import Node, Output
 
 
 class NodeFactory(Protocol):
-    def __call__(
-        self, name: str, outputs: list[str], payload: Any, **inputs: Output
-    ) -> Node:
+    def __call__(self, name: str, outputs: list[str], payload: Any, **inputs: Output) -> Node:
         pass
 
 
-def default_node_factory(
-    name: str, outputs: list[str], payload: Any, **inputs: Output
-) -> Node:
+def default_node_factory(name: str, outputs: list[str], payload: Any, **inputs: Output) -> Node:
     # NOTE this logic is rather fragile; necessary due to the existence of default output. Remove it and simplify here
     if not outputs:
         return Node(name, payload=payload, outputs=[], **inputs)
@@ -70,10 +66,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
     bare `Node` objects
     """
     deps = {
-        name: [
-            inp if isinstance(inp, str) else inp[0]
-            for inp in node.get("inputs", {}).values()
-        ]
+        name: [inp if isinstance(inp, str) else inp[0] for inp in node.get("inputs", {}).values()]
         for name, node in data.items()
     }
 
@@ -89,9 +82,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
             else:
                 parent, oname = src
                 node_inputs[iname] = nodes[parent].get_output(oname)
-        nodes[name] = _deserialise_node(
-            name, node_data, node_factory=node_factory, **node_inputs
-        )
+        nodes[name] = _deserialise_node(name, node_data, node_factory=node_factory, **node_inputs)
         if (sink := nodes[name]).is_sink():
             sinks.append(sink)
     return Graph(sinks)

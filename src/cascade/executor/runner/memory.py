@@ -64,7 +64,9 @@ class Memory(AbstractContextManager):
     def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool) -> None:
         if outputId == NO_OUTPUT_PLACEHOLDER:
             if outputValue is not None:
-                logger.warning(f"gotten output of type {type(outputValue)} where none was expected, updating annotation")
+                logger.warning(
+                    f"gotten output of type {type(outputValue)} where none was expected, updating annotation"
+                )
                 outputSchema = "Any"
             else:
                 outputValue = "ok"
@@ -113,7 +115,9 @@ class Memory(AbstractContextManager):
         # after every taskSequence. In principle, we could purge some locals earlier, and ideally scheduler
         # would invoke some targeted purges to also remove some published ones earlier (eg, they are still
         # needed somewhere but not here)
-        purgeable = [inputId for inputId in self.local if inputId not in self.bufs and (not datasets or inputId in datasets)]
+        purgeable = [
+            inputId for inputId in self.local if inputId not in self.bufs and (not datasets or inputId in datasets)
+        ]
         logger.debug(f"will flush {len(purgeable)} datasets")
         for inputId in purgeable:
             self.local.pop(inputId)

@@ -11,7 +11,7 @@
 import logging
 import time
 
-from cascade.executor.checkpoints import build_persist_command, build_retrieve_command, serialize_params
+from cascade.executor.checkpoints import build_persist_command, build_retrieve_command
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.executor import heartbeat_grace_ms as executor_heartbeat_grace_ms
@@ -22,7 +22,6 @@ from cascade.executor.msg import (
     DatasetPersistSuccess,
     DatasetPublished,
     DatasetPurge,
-    DatasetRetrieveCommand,
     DatasetRetrieveFailure,
     DatasetRetrieveSuccess,
     DatasetTransmitCommand,
@@ -44,14 +43,25 @@ from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
-Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess | RunnerRestartRequest
+Event = (
+    DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess | RunnerRestartRequest
+)
 # TODO consider retries here, esp on the Persist/Retrieve Failures
-ToShutdown = TaskFailure | ExecutorFailure | DatasetRetrieveFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
+ToShutdown = (
+    TaskFailure
+    | ExecutorFailure
+    | DatasetRetrieveFailure
+    | DatasetTransmitFailure
+    | DatasetPersistFailure
+    | ExecutorExit
+)
 Unsupported = TaskSequence | DatasetPurge | DatasetTransmitCommand | DatasetPersistCommand | ExecutorShutdown
 
 
 class Bridge:
-    def __init__(self, controller_url: str, expected_executors: int, checkpoint_spec: CheckpointSpec | None = None) -> None:
+    def __init__(
+        self, controller_url: str, expected_executors: int, checkpoint_spec: CheckpointSpec | None = None
+    ) -> None:
         self.checkpoint_spec = checkpoint_spec
         self.mlistener = Listener(controller_url)
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
@@ -74,7 +84,9 @@ class Bridge:
                 self.sender.add_host(message.host, message.maddress)
                 self.sender.add_host("data." + message.host, message.daddress)
                 for worker in message.workers:
-                    self.environment.workers[worker.worker_id] = Worker(cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb)
+                    self.environment.workers[worker.worker_id] = Worker(
+                        cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb
+                    )
                 self.environment.host_url_base[message.host] = message.url_base
                 registered += 1
                 self.heartbeat_checker[message.host] = GraceWatcher(2 * executor_heartbeat_grace_ms)
@@ -131,7 +143,11 @@ class Bridge:
 
         if isinstance(shutdown_reason, CascadeError):
             raise shutdown_reason
-        elif isinstance(shutdown_reason, Message) and hasattr(shutdown_reason, 'detail') and isinstance(shutdown_reason.detail, str):
+        elif (
+            isinstance(shutdown_reason, Message)
+            and hasattr(shutdown_reason, "detail")
+            and isinstance(shutdown_reason.detail, str)
+        ):
             raise des(shutdown_reason.detail)
         else:
             # unknown at this stage is assumed to be InfrastructureError

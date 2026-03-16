@@ -32,14 +32,14 @@ handlers = {
         },
     },
     "filename": lambda filename: {
-            "handlers": {
-                "default": {
-                    "formatter": "default",
-                    "class": "logging.FileHandler",
-                    "filename": filename,
-                },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.FileHandler",
+                "filename": filename,
             },
         },
+    },
 }
 
 formatters = {
@@ -54,7 +54,7 @@ formatters = {
     "json": {
         "formatters": {
             "default": {
-               "()": "__main__.JSONFormatter", 
+                "()": "__main__.JSONFormatter",
             },
         },
     },

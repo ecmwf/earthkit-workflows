@@ -9,26 +9,11 @@
 """Contains utility methods for benchmark definitions"""
 
 import logging
-import logging.config
-import os
-import subprocess
-import sys
-from concurrent.futures import ThreadPoolExecutor
-from time import perf_counter_ns
-from typing import Any
 
 import orjson
 
-import cascade.executor.platform as platform
-from cascade.controller.impl import run
-from cascade.executor.bridge import Bridge
-from cascade.executor.comms import callback
-from cascade.executor.config import logging_config, logging_config_filehandler
-from cascade.executor.executor import Executor
-from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
+from cascade.low.core import JobInstance, JobInstanceRich
 from cascade.low.func import msum
-from cascade.scheduler.precompute import precompute
 
 logger = logging.getLogger("cascade.benchmarks")
 
@@ -37,6 +22,7 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
     # NOTE we dont want to import these at the top level to prevent imports pollution of executor
     import cascade.low.into
     from earthkit.workflows.graph import Graph, deduplicate_nodes
+
     # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
     if benchmark is not None and instance_path is not None:
         raise TypeError("specified both benchmark name and job instance")

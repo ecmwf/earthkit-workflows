@@ -20,11 +20,11 @@ from dataclasses import dataclass, field
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import (
-        JobInstanceRich,
     DatasetId,
     Environment,
     JobExecutionRecord,
     JobInstance,
+    JobInstanceRich,
     TaskExecutionRecord,
     Worker,
     WorkerId,
@@ -33,7 +33,7 @@ from earthkit.workflows.graph import Node
 
 # NOTE ideally we replace it with representative real world usecases
 
-## *** graph builders ***
+# *** graph builders ***
 
 
 def mapMonad(b: bytes) -> bytes:
@@ -55,19 +55,13 @@ def sinkFunc(*args) -> str:
 @dataclass
 class BuilderGroup:
     job: JobBuilder = field(default_factory=lambda: JobBuilder())
-    record: JobExecutionRecord = field(
-        default_factory=lambda: JobExecutionRecord(tasks={}, datasets_mb={})
-    )
+    record: JobExecutionRecord = field(default_factory=lambda: JobExecutionRecord(tasks={}, datasets_mb={}))
     layers: list[int] = field(default_factory=list)
 
 
-def add_large_source(
-    builder: BuilderGroup, runtime: int, runmem: int, outsize: int
-) -> None:
+def add_large_source(builder: BuilderGroup, runtime: int, runmem: int, outsize: int) -> None:
     builder.job = builder.job.with_node("source", TaskBuilder.from_callable(sourceFunc))
-    builder.record.tasks["source"] = TaskExecutionRecord(
-        cpuseconds=runtime, memory_mb=runmem
-    )
+    builder.record.tasks["source"] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
     builder.record.datasets_mb[DatasetId("source", Node.DEFAULT_OUTPUT)] = outsize
     builder.layers = [1]
 
@@ -83,22 +77,16 @@ def add_postproc(
     for i in range(n):
         node = f"pproc{len(builder.layers)}-{i}"
         if from_layer == 0:
-            builder.job = builder.job.with_node(
-                node, TaskBuilder.from_callable(mapMonad)
-            )
+            builder.job = builder.job.with_node(node, TaskBuilder.from_callable(mapMonad))
             builder.job = builder.job.with_edge("source", node, "b")
         else:
-            e1 = f"pproc{from_layer}-{(i+131)%builder.layers[from_layer]}"
-            e2 = f"pproc{from_layer}-{(i+53)%builder.layers[from_layer]}"
-            builder.job = builder.job.with_node(
-                node, TaskBuilder.from_callable(mapDiad)
-            )
+            e1 = f"pproc{from_layer}-{(i + 131) % builder.layers[from_layer]}"
+            e2 = f"pproc{from_layer}-{(i + 53) % builder.layers[from_layer]}"
+            builder.job = builder.job.with_node(node, TaskBuilder.from_callable(mapDiad))
             builder.job = builder.job.with_edge(e1, node, "a")
             builder.job = builder.job.with_edge(e2, node, "b")
             # print(f"adding {node} with edges {e1}, {e2}")
-        builder.record.tasks[node] = TaskExecutionRecord(
-            cpuseconds=runtime, memory_mb=runmem
-        )
+        builder.record.tasks[node] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
         builder.record.datasets_mb[DatasetId(node, Node.DEFAULT_OUTPUT)] = outsize
     builder.layers.append(n)
 
@@ -116,9 +104,8 @@ def add_sink(
     for i in range(builder.layers[from_layer] // frac):
         source = ((i * frac) + 157) % builder.layers[from_layer]
         builder.job = builder.job.with_edge(f"pproc{from_layer}-{source}", node, i)
-    builder.record.tasks[node] = TaskExecutionRecord(
-        cpuseconds=runtime, memory_mb=runmem
-    )
+    builder.record.tasks[node] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
+
 
 def enrich_instance(job: JobInstance) -> JobInstanceRich:
     return JobInstanceRich(
@@ -159,7 +146,7 @@ def get_job1() -> tuple[JobInstanceRich, JobExecutionRecord]:
     return enrich_instance(builder.job.build().get_or_raise()), builder.record
 
 
-## *** environment builders ***
+# *** environment builders ***
 def get_env(hosts: int, workers_per_host: int) -> Environment:
     return Environment(
         workers={

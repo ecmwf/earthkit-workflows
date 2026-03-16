@@ -21,7 +21,7 @@ from typing import Protocol, runtime_checkable
 
 from cascade.low.core import CheckpointStorageType, DatasetId, HostId, TaskId, WorkerId
 
-## Meta
+# Meta
 
 VERSION = 1  # for serde compatibility
 
@@ -52,7 +52,7 @@ def message(clazz):
 
 BackboneAddress = str  # eg zmq address
 
-## Msgs
+# Msgs
 
 
 @dataclass(frozen=True)
@@ -79,6 +79,7 @@ class TaskFailure:
     worker: WorkerId
     task: TaskId | None
     detail: str
+
 
 @dataclass(frozen=True)
 class RunnerRestartRequest:
@@ -108,12 +109,14 @@ class DatasetTransmitCommand:
     ds: DatasetId
     idx: int  # TODO consider using in tracing all over. Would need scheduler to assign it
 
+
 @dataclass(frozen=True)
 class DatasetPersistCommand:
     source: HostId
     ds: DatasetId
     storage_type: CheckpointStorageType
-    persist_params: str # storage-type-specific serialization of params
+    persist_params: str  # storage-type-specific serialization of params
+
 
 @dataclass(frozen=True)
 class DatasetTransmitPayloadHeader:
@@ -135,32 +138,38 @@ class DatasetTransmitFailure:
     host: HostId
     detail: str
 
+
 @dataclass(frozen=True)
 class DatasetPersistFailure:
     host: HostId
     detail: str
+
 
 @dataclass(frozen=True)
 class DatasetPersistSuccess:
     host: HostId
     ds: DatasetId
 
+
 @dataclass(frozen=True)
 class DatasetRetrieveCommand:
     target: HostId
     ds: DatasetId
     storage_type: CheckpointStorageType
-    retrieve_params: str # storage-type-specific serialization of params
+    retrieve_params: str  # storage-type-specific serialization of params
+
 
 @dataclass(frozen=True)
 class DatasetRetrieveFailure:
     host: HostId
     detail: str
 
+
 @dataclass(frozen=True)
 class DatasetRetrieveSuccess:
     host: HostId
     ds: DatasetId
+
 
 @dataclass(frozen=True)
 class ExecutorFailure:

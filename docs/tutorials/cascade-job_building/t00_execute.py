@@ -4,6 +4,7 @@ import random
 from typing import Any
 
 from cascade.benchmarks.util import run_locally
+
 from cascade.low.core import DatasetId, JobInstance
 
 

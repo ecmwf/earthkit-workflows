@@ -76,9 +76,7 @@ def node_info(node):
         labels.append(f"Output{'' if len(node.outputs) == 1 else 's'}: {outputs_s}")
 
     shape = random.Random(node.name.split(":")[0]).choice(AVAILABLE_SHAPES)
-    colour = random.Random(f"{node.name.split(':')[0]}-{str(node.outputs)}").choice(
-        AVAILABLE_COLOURS
-    )
+    colour = random.Random(f"{node.name.split(':')[0]}-{str(node.outputs)}").choice(AVAILABLE_COLOURS)
 
     return {
         "title": "\n".join(labels),
@@ -149,7 +147,6 @@ PRESET_OPTIONS = Literal["hierarchical", "quick", "blob", "none"]
 
 def truncate_name(name: str, max_length: int = 10) -> str:
     """Truncate a name to a maximum length"""
-
     if ":" not in name:
         return name
 
@@ -205,9 +202,7 @@ def to_pyvis(
                 f"{truncate_name(node.name)}.{truncate_name(iname)}",
                 node,
             )
-            net.add_edge(
-                truncate_name(isrc.parent.name), truncate_name(node.name), **eattrs
-            )
+            net.add_edge(truncate_name(isrc.parent.name), truncate_name(node.name), **eattrs)
 
     options = options or {}
     preset_options = getattr(VisualisationPresets, preset)()

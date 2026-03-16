@@ -170,7 +170,6 @@ def pydantic_recursive_collect(base: BaseModel | Iterable, attr: str, prefix: st
     of the issuer -- eg if base has BaseModel field `x` whose `attr` yields [1, 2], then this returns
     [(.x, 1), (.x, 2)]
     """
-
     # NOTE a bit ugly, instead of attr it would be better to accept a signature/protocol type
 
     results: list[tuple[str, Any]] = []

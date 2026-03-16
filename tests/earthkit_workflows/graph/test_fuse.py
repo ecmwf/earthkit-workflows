@@ -32,9 +32,7 @@ def fuse_linear(parent: Node, pout: str, child: Node, cin: str) -> Node | None:
         payload.extend(parent.payload)
     payload.append(child.name)
     print(f"Fuse {parent.name} ({parent.payload}) with {child.name} -> {payload}")
-    return Node(
-        f"{parent.name}+{child.name}", child.outputs, payload=payload, **parent.inputs
-    )
+    return Node(f"{parent.name}+{child.name}", child.outputs, payload=payload, **parent.inputs)
 
 
 def test_fuse_linear():
@@ -94,7 +92,7 @@ def test_nofuse_comb():
         "accum-5": {
             "inputs": {
                 "input0": "accum-4",
-                **{f"input{i-3}": f"reader-{i}" for i in range(4, N)},
+                **{f"input{i - 3}": f"reader-{i}" for i in range(4, N)},
             },
             "outputs": [D],
         },

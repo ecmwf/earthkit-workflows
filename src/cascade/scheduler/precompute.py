@@ -115,9 +115,7 @@ def _enrich(
     gangs: set[TaskId],
 ) -> ComponentCore:
     nodes, sources = plain_component
-    logger.debug(
-        f"enrich component start; {len(nodes)} nodes, of that {len(sources)} sources"
-    )
+    logger.debug(f"enrich component start; {len(nodes)} nodes, of that {len(sources)} sources")
 
     sinks = [v for v in nodes if not edge_o[v]]
     remaining = {v: len(edge_o[v]) for v in nodes if edge_o[v]}
@@ -218,16 +216,8 @@ def precompute(job_instance: JobInstance) -> Preschedule:
     for vert, inps in edge_i.items():
         edge_i_proj[vert] = {dataset.task for dataset in inps}
 
-    needs_gpu = {
-        task_id
-        for task_id, task in job_instance.tasks.items()
-        if task.definition.needs_gpu
-    }
-    gangs = {
-        task_id
-        for constraint in job_instance.constraints
-        for task_id in constraint.gang
-    }
+    needs_gpu = {task_id for task_id, task in job_instance.tasks.items() if task.definition.needs_gpu}
+    gangs = {task_id for constraint in job_instance.constraints for task_id in constraint.gang}
 
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense

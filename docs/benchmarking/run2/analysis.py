@@ -62,12 +62,7 @@ def fixMode(df):
     rows = ~df.dataset.isna()
     proj = df[rows & ~df["mode"].isna()].set_index(["dataset", "worker"])["mode"]
     lookup = proj[~proj.index.duplicated(keep="last")]
-    return (
-        df.set_index(["dataset", "worker"])
-        .drop(columns="mode")
-        .join(lookup)
-        .reset_index()
-    )
+    return df.set_index(["dataset", "worker"]).drop(columns="mode").join(lookup).reset_index()
 
 
 def fmn(n):  # TODO set some central
@@ -85,17 +80,13 @@ def analyzeController(df):
     print(f"phases: {df.shape[0]}")
     print(f"total waits duration: {fmn(df.waitDuration.sum())}")
     print(f"total act duration: {fmn(df.actDuration.sum())}")
-    print(
-        f"transmits issued: {df.actionsTransmit.sum()}, transmits received: {df.eventsTransmited.sum()}"
-    )
+    print(f"transmits issued: {df.actionsTransmit.sum()}, transmits received: {df.eventsTransmited.sum()}")
     print(f"busy-during-wait: {fmn((df.busyWorkers * df.waitDuration).sum())}")
 
 
 def transmitDurations(df):
     datasets = fixMode(df)
-    durations = datasets.pivot(
-        index=["dataset", "worker", "mode"], columns=["action"], values=["at"]
-    )
+    durations = datasets.pivot(index=["dataset", "worker", "mode"], columns=["action"], values=["at"])
     durations.columns = [name[1][len("transmit") :] for name in durations.columns]
     durations = durations.reset_index()
     localFix = durations["mode"] == "local"
@@ -127,9 +118,7 @@ def analyzeTransmits(df):
     print(f"total transmit duration: {fmn(durations.total.sum())}")
     print(" *** ")
     print(f"mode counts: {durations['mode'].value_counts()}")
-    print(
-        f"per-mode transmit duration: {durations[['mode', 'total']].groupby('mode').sum()}"
-    )
+    print(f"per-mode transmit duration: {durations[['mode', 'total']].groupby('mode').sum()}")
     print(" *** ")
     print(f"total comm delay: {fmn(durations.commDelay.sum())}")
     print(f"mean comm delay: {fmn(durations.commDelay.mean())}")
@@ -150,9 +139,7 @@ def analyzeTasks(df):
     durations = taskDurations(df)
     print(f"total task duration: {fmn(durations.total.sum())}")
     print(" *** ")
-    print(
-        f"total task duration per worker: {durations.groupby('worker').onWorker.agg(['mean', 'sum'])}"
-    )
+    print(f"total task duration per worker: {durations.groupby('worker').onWorker.agg(['mean', 'sum'])}")
     print(" *** ")
     print(f"total comm delay: {fmn(durations.commDelay.sum())}")
     print(f"mean comm delay: {fmn(durations.commDelay.mean())}")

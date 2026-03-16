@@ -27,18 +27,13 @@ def act(bridge: Bridge, assignment: Assignment) -> None:
     """Converts an assignment to one or more actions which are sent to the bridge, and returned
     for tracing/updating purposes. Does *not* mutate State, but executors behind the Bridge *are* mutated.
     """
-
     for prep in assignment.prep:
         ds = prep[0]
         source_host = prep[1]
         if assignment.worker.host == source_host:
-            logger.debug(
-                f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op"
-            )
+            logger.debug(f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op")
             continue
-        logger.debug(
-            f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge"
-        )
+        logger.debug(f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge")
         mark(
             {
                 "dataset": repr(ds),
@@ -75,7 +70,6 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
     changes in Context, sends commands via Bridge. Mutates State, JobExecutionContext,
     and via bridge the Executors.
     """
-
     for dataset, host in state.drain_fetching_queue():
         if host != VirtualCheckpointHost:
             bridge.fetch(dataset, host)
@@ -83,7 +77,7 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
             # NOTE we would rather not be here, but we dont generally expect
             # checkpointed datasets to be outputs. If needbe, send a command
             # to any worker, or spawn a thread with this
-            logger.warning(f"execute checkpoint retrieve on controller")
+            logger.warning("execute checkpoint retrieve on controller")
             # NOTE the host is the virtual one so the message is not really valid, but no big deal
             virtual_command = build_retrieve_command(bridge.checkpoint_spec, dataset, host)
             buffer = retrieve_dataset(virtual_command)
@@ -108,10 +102,12 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
 
     return state
 
+
 def virtual_checkpoint_publish(datasets: Iterable[DatasetId]) -> Iterator[DatasetPublished]:
     """Virtual in the sense of not actually sending any message, but instead simulating
     a response so that controller.notify can bring the contexts into the right state.
-    Invoked once, at the job start, after the checkpoint has been listed"""
+    Invoked once, at the job start, after the checkpoint has been listed
+    """
     return (
         DatasetPublished(
             origin=VirtualCheckpointHost,

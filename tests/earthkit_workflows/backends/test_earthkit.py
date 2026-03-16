@@ -21,9 +21,7 @@ class MockMetaData(RawMetadata):
 
 
 def random_fieldlist(*shape) -> SimpleFieldList:
-    return FieldList.from_array(
-        random.rand(*shape), [MockMetaData() for x in range(shape[0])]
-    )
+    return FieldList.from_array(random.rand(*shape), [MockMetaData() for x in range(shape[0])])
 
 
 def to_array(fl: SimpleFieldList):

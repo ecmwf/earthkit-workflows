@@ -6,7 +6,6 @@
 
 from bokeh.io import curdoc, output_notebook, show
 from bokeh.models import ColumnDataSource, Grid, HBar, LinearAxis, Plot, VSpan
-
 from cascade.benchmarks.reporting import logParse
 
 output_notebook()
@@ -31,9 +30,7 @@ def plotTaskLane(data: dict, scale, width):
     df = df - zero
     df = df.assign(worker=Td.worker)
 
-    workerToLane = {
-        e: i for i, e in enumerate(Td.worker.drop_duplicates().sort_values())
-    }
+    workerToLane = {e: i for i, e in enumerate(Td.worker.drop_duplicates().sort_values())}
     print(workerToLane)  # TODO use the labels in the if instead
 
     plot = Plot(
@@ -45,16 +42,12 @@ def plotTaskLane(data: dict, scale, width):
     )  # TODO derive width from data
 
     def boxTask(left, right, color):
-        source = ColumnDataSource(
-            dict(y=df.worker.map(workerToLane), left=left, right=right)
-        )
+        source = ColumnDataSource(dict(y=df.worker.map(workerToLane), left=left, right=right))
         glyph = HBar(y="y", right="right", left="left", height=0.5, fill_color=color)
         plot.add_glyph(source, glyph)
 
     def boxTransmit(worker, left, right, color):
-        source = ColumnDataSource(
-            dict(y=worker.map(workerToLane) - 0.5, left=left, right=right)
-        )
+        source = ColumnDataSource(dict(y=worker.map(workerToLane) - 0.5, left=left, right=right))
         glyph = HBar(y="y", right="right", left="left", height=0.25, fill_color=color)
         plot.add_glyph(source, glyph)
 

@@ -35,6 +35,7 @@ from cascade.shm.server import entrypoint as shm_server
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class CallableInstance:
     func: Callable
@@ -42,7 +43,6 @@ class CallableInstance:
     args: list[tuple[int, Any]]
     env: list[str]
     exp_output: Any
-
 
 
 @contextmanager
@@ -91,21 +91,11 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
         memory.flush()
 
 
-
-
-def callable2ctx(
-    callableInstance: CallableInstance, callback: BackboneAddress
-) -> ExecutionContext:
-    taskInstance = TaskBuilder.from_callable(
-        callableInstance.func, callableInstance.env
-    )
+def callable2ctx(callableInstance: CallableInstance, callback: BackboneAddress) -> ExecutionContext:
+    taskInstance = TaskBuilder.from_callable(callableInstance.func, callableInstance.env)
     param_source = {}
-    params = [
-        (key, DatasetId("taskId", f"kwarg.{key}"), value)
-        for key, value in callableInstance.kwargs.items()
-    ] + [
-        (key, DatasetId("taskId", f"pos.{key}"), value)
-        for key, value in callableInstance.args
+    params = [(key, DatasetId("taskId", f"kwarg.{key}"), value) for key, value in callableInstance.kwargs.items()] + [
+        (key, DatasetId("taskId", f"pos.{key}"), value) for key, value in callableInstance.args
     ]
     for key, ds_key, value in params:
         raw = cloudpickle.dumps(value)
@@ -119,16 +109,11 @@ def callable2ctx(
         tasks={"taskId": taskInstance},
         param_source={"taskId": param_source},
         callback=callback,
-        publish={
-            DatasetId("taskId", output)
-            for output, _ in taskInstance.definition.output_schema
-        },
+        publish={DatasetId("taskId", output) for output, _ in taskInstance.definition.output_schema},
     )
 
 
-def run_test(
-    callableInstance: CallableInstance, testId: str, max_runtime_sec: int
-) -> Any:
+def run_test(callableInstance: CallableInstance, testId: str, max_runtime_sec: int) -> Any:
     with setup_shm(testId):
         addr = f"ipc:///tmp/tc{testId}"
         listener = ZmqListener(addr)

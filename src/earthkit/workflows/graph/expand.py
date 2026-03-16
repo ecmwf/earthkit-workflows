@@ -42,12 +42,8 @@ class _Subgraph:
             if lname in self.leaves:
                 return self.leaves[lname].get_output()
         if name == Node.DEFAULT_OUTPUT:
-            raise AttributeError(
-                f"No default output node found in sub-graph {self.name!r}"
-            )
-        raise AttributeError(
-            f"No output node named {name!r} in sub-graph {self.name!r}"
-        )
+            raise AttributeError(f"No default output node found in sub-graph {self.name!r}")
+        raise AttributeError(f"No output node named {name!r} in sub-graph {self.name!r}")
 
 
 class Splicer(Transformer):
@@ -84,11 +80,7 @@ class Splicer(Transformer):
         output_map: dict[str, str] | None,
     ):
         self.name = name
-        self.inputs = (
-            inputs
-            if input_map is None
-            else {iname: inputs[mname] for iname, mname in input_map.items()}
-        )
+        self.inputs = inputs if input_map is None else {iname: inputs[mname] for iname, mname in input_map.items()}
         if output_map is None:
             self.outputs = {oname: oname for oname in outputs}
         else:
@@ -168,9 +160,7 @@ class Splicer(Transformer):
         return Node(name, outputs=None, payload=s.payload, **inputs)
 
 
-ExpanderType = Callable[
-    [Node], Graph | tuple[Graph, dict[str, str] | None, dict[str, str | None]] | None
-]
+ExpanderType = Callable[[Node], Graph | tuple[Graph, dict[str, str] | None, dict[str, str | None]] | None]
 SplicerType = Callable[
     [
         str,
@@ -215,9 +205,7 @@ class _Expander(Transformer):
         return Graph(new_sinks)
 
 
-def expand_graph(
-    expand: ExpanderType, graph: Graph, splicer: SplicerType = Splicer
-) -> Graph:
+def expand_graph(expand: ExpanderType, graph: Graph, splicer: SplicerType = Splicer) -> Graph:
     """Expand a graph by replacing nodes with sub-graphs
 
     The expansion is controlled by the ``expand`` callback, called for every

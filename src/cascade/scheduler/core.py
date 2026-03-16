@@ -46,15 +46,11 @@ ComponentId = int
 
 @dataclass
 class GangPreparation:
-    ready: list[
-        frozenset[TaskId]
-    ]  # used by scheduler to see if any gangs can be assigned/started
+    ready: list[frozenset[TaskId]]  # used by scheduler to see if any gangs can be assigned/started
     countdown: dict[
         frozenset[TaskId], set[TaskId]
     ]  # used to check after a task completion whether a gang can be moved to ready
-    lookup: dict[
-        TaskId, list[frozenset[TaskId]]
-    ]  # used to decrease countdown after a task completion
+    lookup: dict[TaskId, list[frozenset[TaskId]]]  # used to decrease countdown after a task completion
 
 
 @dataclass

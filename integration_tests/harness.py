@@ -1,8 +1,8 @@
-from cascade.main import run_locally
 import importlib
-import sys
-from base import JobSpec
 import logging
+import sys
+
+from cascade.main import run_locally
 
 logger = logging.getLogger("cascade.benchmarks.harness")
 

@@ -57,7 +57,11 @@ def build_assignment(worker: WorkerId, task: TaskId, context: JobExecutionContex
                 else:
                     # TODO instead of any, pick the best host -- business, distance, etc
                     # Note also that one of the hosts may be the VirtualCheckpointHost
-                    if any(candidate := host for host, status in context.ds2host[dataset].items() if status in eligible_transmit):
+                    if any(
+                        candidate := host
+                        for host, status in context.ds2host[dataset].items()
+                        if status in eligible_transmit
+                    ):
                         prep.append((dataset, candidate))  # ty: ignore[unresolved-reference] # candidate walrus
                         context.dataset_preparing(dataset, worker)
                     else:
@@ -83,7 +87,9 @@ def build_assignment(worker: WorkerId, task: TaskId, context: JobExecutionContex
     # trim for only the necessary ones: 1/ having any edge outside of this assignment 2/ global output 3/ persistable
     all_outputs = {ds for task in assigned for ds in context.task_o[task]}
     assigned_tasks = set(assigned)
-    trimmed_outputs = {ds for ds in all_outputs if (context.edge_o[ds] - assigned_tasks) or context.publication_mandatory(ds)}
+    trimmed_outputs = {
+        ds for ds in all_outputs if (context.edge_o[ds] - assigned_tasks) or context.publication_mandatory(ds)
+    }
 
     return Assignment(
         worker=worker,
@@ -163,7 +169,9 @@ def _try_assign_gang(
     coordinator = None
 
     # similarly to _assignment_heuristic, a greedy algorithm
-    candidates = [(schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in gpu_workers for t in gpu_tasks]
+    candidates = [
+        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in gpu_workers for t in gpu_tasks
+    ]
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in gpu_tasks and worker in gpu_workers:
@@ -188,7 +196,9 @@ def _try_assign_gang(
         raise CascadeInternalError(description=f"expected to assign all gang gpu tasks, yet {gpu_tasks} remain")
 
     all_workers = cpu_workers.union(gpu_workers)
-    candidates = [(schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in all_workers for t in cpu_tasks]
+    candidates = [
+        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in all_workers for t in cpu_tasks
+    ]
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in cpu_tasks and worker in all_workers:
@@ -253,7 +263,9 @@ def _assignment_heuristic(
     # second, sort task-worker combination by first overhead, second value, and pick greedily
     remaining_t = set(unassigned)
     remaining_w = set(workers)
-    candidates = [(schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in workers for t in remaining_t]
+    candidates = [
+        (schedule.worker2task_overhead[w][t], component.core.value[t], w, t) for w in workers for t in remaining_t
+    ]
     candidates.sort(key=lambda e: (e[0], e[1]))
     for _, _, worker, task in candidates:
         if task in remaining_t and worker in remaining_w:
@@ -315,7 +327,9 @@ def assign_within_component(
             cpu_t.append(task)
 
     # tasks immediately needing a gpu
-    eligible_w = [worker for worker in workers if context.environment.workers[worker].gpu > 0 and worker in context.idle_workers]
+    eligible_w = [
+        worker for worker in workers if context.environment.workers[worker].gpu > 0 and worker in context.idle_workers
+    ]
     logger.debug(
         f"considering {len(gpu_t)}# gpu tasks, {len(opu_t)}# maybe-gpu tasks, {len(cpu_t)}# cpu tasks, with {len(workers)}# workers out of which {len(eligible_w)} have gpu"
     )

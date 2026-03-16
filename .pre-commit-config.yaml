@@ -18,10 +18,10 @@ repos:
   - id: ruff-check
     exclude: '(dev/.*|.*_)\.py$'
     args:
-      - --line-length=120
-      - --fix
-      - --exit-non-zero-on-fix
-      - --preview
+    - --line-length=120
+    - --fix
+    - --exit-non-zero-on-fix
+    - --preview
   - id: ruff-format
 - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
   rev: v2.16.0

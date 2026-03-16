@@ -15,7 +15,7 @@ from cascade.controller.notify import notify
 from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
 from cascade.executor.checkpoints import list_persisted_datasets
-from cascade.low.core import JobInstance, JobInstanceRich, type_dec
+from cascade.low.core import JobInstanceRich, type_dec
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeUserError
 from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
@@ -75,7 +75,9 @@ def run(
 
             mark({"action": ControllerPhases.wait})
             if state.has_awaitable() or context.has_awaitable():
-                logger.debug(f"about to await bridge with {context.ongoing_total=}, {context.remaining=} and {state.has_awaitable()=}")
+                logger.debug(
+                    f"about to await bridge with {context.ongoing_total=}, {context.remaining=} and {state.has_awaitable()=}"
+                )
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")

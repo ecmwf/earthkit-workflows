@@ -46,14 +46,12 @@ class TaskBuilder(TaskInstance):
         input_schema = {
             p.name: type2str(p.annotation)
             for p in sig.parameters.values()
-            if p.kind
-            in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+            if p.kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
         }
         static_input_kw = {
             p.name: p.default
             for p in sig.parameters.values()
-            if p.kind
-            in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+            if p.kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
             and p.default != inspect.Parameter.empty
         }
 
@@ -64,9 +62,7 @@ class TaskBuilder(TaskInstance):
             input_schema=input_schema,
             output_schema=[(DefaultTaskOutput, type2str(sig.return_annotation))],
         )
-        return cls(
-            definition=definition, static_input_kw=static_input_kw, static_input_ps={}
-        )
+        return cls(definition=definition, static_input_kw=static_input_kw, static_input_ps={})
 
     @classmethod
     def from_entrypoint(
@@ -92,9 +88,7 @@ class TaskBuilder(TaskInstance):
         new_kwargs = {**self.static_input_kw, **kwargs}
         ps_args = {str(k): v for k, v in dict(enumerate(args)).items()}
         new_args = {**self.static_input_ps, **ps_args}
-        return self.model_copy(
-            update={"static_input_kw": new_kwargs, "static_input_ps": new_args}
-        )
+        return self.model_copy(update={"static_input_kw": new_kwargs, "static_input_ps": new_args})
 
 
 @dataclass
@@ -109,9 +103,7 @@ class JobBuilder:
     def with_output(self, task: str, output: str = DefaultTaskOutput) -> Self:
         return replace(self, outputs=self.outputs.append(DatasetId(task, output)))
 
-    def with_edge(
-        self, source: str, sink: str, into: str | int, frum: str = DefaultTaskOutput
-    ) -> Self:
+    def with_edge(self, source: str, sink: str, into: str | int, frum: str = DefaultTaskOutput) -> Self:
         new_edge = Task2TaskEdge(
             source=DatasetId(source, frum),
             sink_task=sink,
@@ -120,7 +112,7 @@ class JobBuilder:
         )
         return replace(self, edges=self.edges.append(new_edge))
 
-    def build(self) -> Either[JobInstance, list[str]]: # ty: ignore[invalid-type-arguments]
+    def build(self) -> Either[JobInstance, list[str]]:  # ty: ignore[invalid-type-arguments]
         # TODO replace `_isinstance` with a smarter check for self-reg types, reuse fiab/type_system
         skipped = {
             "latitude",
@@ -133,9 +125,7 @@ class JobBuilder:
 
         def getType(
             fqn: str,
-        ) -> (
-            Any
-        ):  # NOTE: typing.Type return type is tempting but not true for builtin aliases
+        ) -> Any:  # NOTE: typing.Type return type is tempting but not true for builtin aliases
             if fqn.startswith("tuple"):
                 # TODO recursive parsing of tuples etc!
                 return tuple
@@ -145,9 +135,7 @@ class JobBuilder:
             else:
                 return eval(fqn)
 
-        _isinstance = (
-            lambda v, t: t == "Any" or t in skipped or isinstance(v, getType(t))
-        )
+        _isinstance = lambda v, t: t == "Any" or t in skipped or isinstance(v, getType(t))
 
         # static input types
         static_kw_errors: Iterable[str] = (
@@ -175,29 +163,24 @@ class JobBuilder:
             else:
                 if edge.sink_input_kw is None:
                     return
-                input_param = sink_task.definition.input_schema.get(
-                    edge.sink_input_kw, None
-                )
+                input_param = sink_task.definition.input_schema.get(edge.sink_input_kw, None)
                 if not input_param:
                     yield f"edge pointing to non-existent param {edge.sink_input_kw}"
             if not output_param or not input_param:
                 return
             # TODO replace `issubclass` with a smarter check for self-reg types
             legits = {("grib.earthkit", "grib.mir"), ("grib.mir", "grib.earthkit")}
-            _issubclass = (
-                lambda t1, t2: t2 == "Any"
+            _issubclass = lambda t1, t2: (
+                t2 == "Any"
                 or t1 == t2
                 or (t1, t2) in legits
-                or t1
-                == "typing.Iterator"  # TODO replace with type extraction *and* check that this is multi-output
+                or t1 == "typing.Iterator"  # TODO replace with type extraction *and* check that this is multi-output
                 or issubclass(getType(t1), getType(t2))
             )
             if not _issubclass(output_param, input_param):
                 yield f"edge connects two incompatible nodes: {edge}"
 
-        edge_errors: Iterable[str] = (
-            error for edge in self.edges for error in get_edge_errors(edge)
-        )
+        edge_errors: Iterable[str] = (error for edge in self.edges for error in get_edge_errors(edge))
 
         # all inputs present
         # TODO

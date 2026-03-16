@@ -23,7 +23,5 @@ def mock_action(shape: tuple) -> Action:
     it = np.nditer(nodes, flags=["multi_index", "refs_ok"])
     for _ in it:
         nodes[it.multi_index] = MockNode(f"{it.multi_index}")
-    nodes_xr = xr.DataArray(
-        nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)}
-    )
+    nodes_xr = xr.DataArray(nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)})
     return Action(nodetree_from_dict({"/": nodes_xr}))
