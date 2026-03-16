@@ -25,7 +25,8 @@ from cascade.low.core import CheckpointStorageType, DatasetId, HostId, TaskId, W
 
 VERSION = 1  # for serde compatibility
 
-# TODO use dataclass_transform to get mypy understand that @message/@element produces dataclasses, and that @message produces Messages
+# TODO use dataclass_transform to get mypy understand that @message/@element produces dataclasses,
+# and that @message produces Messages
 # Then replace the `@dataclass`es below with @message/@element
 # NOTE how would we deal with existing dataclasses like WorkerId?
 

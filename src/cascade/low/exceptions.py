@@ -73,7 +73,8 @@ def des(s: str) -> CascadeError:
     # Try to match pattern: ClassName('detail') or ClassName("detail")
     # We need to handle both single and double quotes, and escaped quotes
     match = re.match(
-        r"^(CascadeError|CascadeInternalError|CascadeInfrastructureError|CascadeUserError)\((['\"])(.+?)\2(?:, parent=.*)?\)$",
+        r"^(CascadeError|CascadeInternalError|CascadeInfrastructureError|CascadeUserError)"
+        r"\((['\"])(.+?)\2(?:, parent=.*)?\)$",
         s,
         re.DOTALL,
     )

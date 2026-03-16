@@ -198,8 +198,10 @@ def test_executor():
                 daddress=c1,
             ),
         )
-        # NOTE the below ceased to work since we introduced retries. Now recomputation of a result after a purge is not possible
-        # assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task='sink', output='o')
+        # NOTE the below ceased to work since we introduced retries.
+        # Now recomputation of a result after a purge is not possible
+        # assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and \
+        #   ms[0].header.ds == DatasetId(task='sink', output='o')
         # assert serde.des_output(ms[0].value, 'ndarray', ms[0].header.deser_fun)[0] == 11.
         # callback(ms[0].header.confirm_address, DatasetTransmitConfirm(idx=ms[0].header.confirm_idx))
 

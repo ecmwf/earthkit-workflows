@@ -106,7 +106,8 @@ class ApplyNumpyReduce(DatasetSubgraph):
         # we need to wrap so that possible downstream actions can parse
         return xr.Dataset({varName: result})
 
-    # there are two project methods, required because of how cascade/python act on generator functions. I need to fix this so that only the generator is required
+    # there are two project methods, required because of how cascade/python act on generator functions.
+    # I need to fix this so that only the generator is required
     @staticmethod
     def _project_one(i: xr.Dataset, variables: list[str]) -> tuple[str, xr.DataArray]:
         return variables[0], i[variables[0]]
@@ -181,11 +182,16 @@ if __name__ == "__main__":
 
 """
 (thought) exercises for the reader
-1. ApplyNumpyReduce assumes reduction in coordinates -- what would we need to do to allow for an apply that preserves dims?
-2. We dont set ext_outputs anywhere, meaning nothing is returned when we run the job! How would we best go about it?
-3. Imagine we want a job that outputs temperMeanOfMaxes *and* precipMeanOverTime at once, ie, the Source is shared -- what would we need to change?
+1. ApplyNumpyReduce assumes reduction in coordinates -- what would we need to do to allow for an apply
+   that preserves dims?
+2. We dont set ext_outputs anywhere, meaning nothing is returned when we run the job!
+   How would we best go about it?
+3. Imagine we want a job that outputs temperMeanOfMaxes *and* precipMeanOverTime at once,
+   ie, the Source is shared -- what would we need to change?
    note: try to come up with two distinct solutions here, hint: "merge" vs "singleton"
-4. Implement a NumpyCombine, ie, a class that takes a callable and *two* DatasetSubgraphs, and the `f` takes two xr.DatasetArrays. For example, `sum`.
+4. Implement a NumpyCombine, ie, a class that takes a callable and *two* DatasetSubgraphs,
+   and the `f` takes two xr.DatasetArrays. For example, `sum`.
    note: each of the two distinct solutions from previous exercise can be used as a stepping stone here
-5. Implement each of the precipMeanOverTime, temperMeanOfMaxes, etc, using the ekw.fluent module, ie, our mature solution of the framework problem
+5. Implement each of the precipMeanOverTime, temperMeanOfMaxes, etc, using the ekw.fluent module,
+   ie, our mature solution of the framework problem
 """

@@ -47,7 +47,8 @@ class TransmitLifecycle(str, Enum):
 
 class ControllerPhases(str, Enum):
     # ordered exactly as controller cycles through
-    assign = "ctrl_assign"  # assignment of tasks to workers and submitting to executor, reports how many events were awaited prior
+    assign = "ctrl_assign"  # assignment of tasks to workers and submitting to executor,
+    # reports how many events were awaited prior
     plan = "ctrl_plan"  # planning, ie, update of schedule; reports how many actions were sent in `assign`
     flush = "ctrl_flush"  # calculate dataset purges and fetches, submit to executor
     wait = "ctrl_wait"  # await on executor results

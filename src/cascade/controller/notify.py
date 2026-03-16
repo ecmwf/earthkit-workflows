@@ -89,7 +89,8 @@ def notify(
     for event in events:
         if isinstance(event, DatasetPublished):
             logger.debug(f"received {event=}")
-            # NOTE here we'll need to distinguish memory-only and host-wide (shm) publications, currently all events mean shm
+            # NOTE here we'll need to distinguish memory-only and host-wide (shm) publications,
+            # currently all events mean shm
             host = event.origin if isinstance(event.origin, HostId) else event.origin.host
             context.host2ds[host][event.ds] = DatasetStatus.available
             context.ds2host[event.ds][host] = DatasetStatus.available

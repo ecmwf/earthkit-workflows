@@ -8,7 +8,8 @@
 
 """Module for simplifying writing tests.
 
-It is capable, for a single given task, to spin an shm server, put all task's inputs into it, execute the task, store outputs in memory, and retrieve the result.
+It is capable, for a single given task, to spin an shm server, put all task's inputs into it,
+execute the task, store outputs in memory, and retrieve the result.
 See the `demo()` function at the very end
 """
 

@@ -180,7 +180,10 @@ def execute_sequence(
 
 
 def entrypoint(runnerContextClpkl: bytes):
-    """RunnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts."""
+    """RunnerContext is a cloudpickled instance of RunnerContext.
+
+    Needed for forkserver mp context due to defautdicts.
+    """
     runnerContext = cloudpickle.loads(runnerContextClpkl)
     init_from_obj(runnerContext.loggingConfig, f"worker_{runnerContext.workerId.worker}")
     ctx = zmq.Context()

@@ -37,7 +37,8 @@ def _nearest_common_descendant(
     remaining_children = {v: len(children[v]) for v in nodes}
     queue = [v for v in nodes if remaining_children[v] == 0]
 
-    # for each pair of vertices V & U, we store here their so-far-nearest common descendant D + max(dist(V, D), dist(U, D))
+    # for each pair of vertices V & U, we store here their so-far-nearest common descendant D
+    # + max(dist(V, D), dist(U, D))
     # we need to keep track of D while we build this to be able to recalculate, but we'll drop it in the end
     result: dict[TaskId, dict[TaskId, tuple[TaskId, int]]] = {}
     while queue:

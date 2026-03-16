@@ -272,7 +272,8 @@ class Executor:
             )
         if self.heartbeat_watcher.is_breach() > 0:
             logger.debug(
-                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}"
+                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()}"
+                f" -> sending explicit heartbeat at {self.host}"
             )
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible

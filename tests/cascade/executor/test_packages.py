@@ -25,7 +25,8 @@ def test_run_command() -> None:
     with pytest.raises(
         CascadeInternalError,
         match=re.escape(
-            "command failure: [Errno 2] No such file or directory: 'you' (caused by FileNotFoundError(2, 'No such file or directory'))"
+            "command failure: [Errno 2] No such file or directory: 'you'"
+            " (caused by FileNotFoundError(2, 'No such file or directory'))"
         ),
     ):
         run_command(bad1_command)
@@ -37,7 +38,10 @@ def test_run_command() -> None:
 
 
 def test_parse_pip_install() -> None:
-    assumed = "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n"
+    assumed = (
+        "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\n"
+        "Uninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n"
+    )
     expected = {"numpy": Version("2.4.1")}
     assert _parse_pip_install(assumed) == expected, "failed to parse assumed uv output"
     import numpy
@@ -45,7 +49,8 @@ def test_parse_pip_install() -> None:
     _, actual = run_command(["uv", "pip", "install", f"numpy=={numpy.__version__}"])
     expected = {}
     assert _parse_pip_install(actual) == expected, "failed to parse actual uv output"
-    # TODO it would be nice to actually do some pip install here, but im reluctant to do that in a unit test. Some for test_postinstall_verify
+    # TODO it would be nice to actually do some pip install here, but im reluctant to do that in a unit test.
+    # Same for test_postinstall_verify
 
 
 def test_get_dist_modules() -> None:
@@ -68,10 +73,16 @@ def test_maybe_module_version() -> None:
 def test_postinstall_verify() -> None:
     import numpy
 
-    goodie = "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy=={numpy.__version__}\n"
+    goodie = (
+        "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\n"
+        f"Uninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy=={numpy.__version__}\n"
+    )
     issues = _postinstall_verify(goodie)
     assert not issues
-    baddie = "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==1.0.0\n"
+    baddie = (
+        "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\n"
+        "Uninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==1.0.0\n"
+    )
     issues = _postinstall_verify(baddie)
     assert issues == [
         InstallIssue(

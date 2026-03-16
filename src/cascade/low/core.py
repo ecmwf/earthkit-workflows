@@ -131,7 +131,8 @@ class JobInstance(BaseModel):
     edges: list[Task2TaskEdge]
     serdes: dict[str, tuple[str, str]] = Field(
         default_factory=lambda: {},
-        description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
+        description="for each Type with custom serde, add entry here."
+        " The string is fully qualified name of the ser/des functions",
     )
     ext_outputs: list[DatasetId] = Field(
         default_factory=lambda: [],

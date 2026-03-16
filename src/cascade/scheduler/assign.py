@@ -68,7 +68,8 @@ def build_assignment(worker: WorkerId, task: TaskId, context: JobExecutionContex
                         # if we are dealing with the first task to assign, we don't expect to be here!
                         if not assigned:
                             raise CascadeInternalError(description=f"{dataset=} not found anywhere!")
-                        # if we are already trying some fusing opportunities, it is legit to not find the dataset anywhere
+                        # if we are already trying some fusing opportunities, it is legit
+                        # to not find the dataset anywhere
                         else:
                             # TODO rollback preps done for this one task
                             exhausted = True
@@ -331,7 +332,8 @@ def assign_within_component(
         worker for worker in workers if context.environment.workers[worker].gpu > 0 and worker in context.idle_workers
     ]
     logger.debug(
-        f"considering {len(gpu_t)}# gpu tasks, {len(opu_t)}# maybe-gpu tasks, {len(cpu_t)}# cpu tasks, with {len(workers)}# workers out of which {len(eligible_w)} have gpu"
+        f"considering {len(gpu_t)}# gpu tasks, {len(opu_t)}# maybe-gpu tasks, {len(cpu_t)}# cpu tasks,"
+        f" with {len(workers)}# workers out of which {len(eligible_w)} have gpu"
     )
     yield from _assignment_heuristic(schedule, gpu_t, eligible_w, component_id, context)
     # tasks whose fusing opportunity needs a gpu

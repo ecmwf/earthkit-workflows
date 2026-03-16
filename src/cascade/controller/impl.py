@@ -76,7 +76,8 @@ def run(
             mark({"action": ControllerPhases.wait})
             if state.has_awaitable() or context.has_awaitable():
                 logger.debug(
-                    f"about to await bridge with {context.ongoing_total=}, {context.remaining=} and {state.has_awaitable()=}"
+                    f"about to await bridge with {context.ongoing_total=},"
+                    f" {context.remaining=} and {state.has_awaitable()=}"
                 )
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)

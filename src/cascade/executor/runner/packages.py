@@ -56,7 +56,10 @@ def run_command(command: list[str]) -> tuple[str, str]:
         # either badly deployed or code bug of calling bad command -> InternalError
         raise CascadeInternalError(f"command failure: {ex}", parent=ex) from ex
     if result.returncode != 0:
-        msg = f"command failed with {result.returncode}. Stderr: {result.stderr}, Stdout: {result.stdout}, Args: {result.args}"
+        msg = (
+            f"command failed with {result.returncode}. Stderr: {result.stderr},"
+            f" Stdout: {result.stdout}, Args: {result.args}"
+        )
         logger.error(msg)
 
         if "was not found in the package registry" in result.stderr:
@@ -90,7 +93,13 @@ def new_venv() -> tempfile.TemporaryDirectory:
 
 
 def _parse_pip_install(pip_output: str) -> dict[str, Version]:
-    r"""Assumed input like: 'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
+    r"""Parse uv pip install output.
+
+    Assumed input like::
+
+        'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\n
+        Uninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
+
     Provided output: {'numpy': '2.4.1'}.
     """
     rv = {}
@@ -254,7 +263,8 @@ class PackagesEnv(AbstractContextManager):
         _, install_output = run_command(install_command)
         logger.debug(f"install result: {install_output}")
 
-        # NOTE this is wrong because we would need to reliably unload modules, but that apparently aint possible in python
+        # NOTE this is wrong because we would need to reliably unload modules,
+        # but that apparently aint possible in python
         # importlib.invalidate_caches()
         install_issues = _postinstall_verify(install_output)
         if install_issues:
