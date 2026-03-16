@@ -93,6 +93,3 @@ select = [
   "I",  # isort
   "D",  # pydocstyle
 ]
-
-[tool.ruff.lint.isort]
-force-single-line = true
