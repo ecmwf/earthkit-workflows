@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Intended to be run inside a jupyter notebook
+"""Intended to be run inside a jupyter notebook.
 
 Run `dirTaskLane(<path-to-your-logs-directory>)`
 """

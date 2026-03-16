@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 """Managing datasets in memory -- inputs and outputs of the executed job
-Interaction with shm
+Interaction with shm.
 """
 
 import hashlib
@@ -82,7 +82,7 @@ class Memory(AbstractContextManager):
             # and worker-only publishes at the `controller.notify` level, to not cause
             # incorrect shm.purge calls at worklow end, which log an annoying key error
             logger.debug(f"fake publish of {outputId} for the sake of task completion")
-            shmid = ds2shmid(outputId)
+            ds2shmid(outputId)
             callback(
                 self.callback,
                 DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),

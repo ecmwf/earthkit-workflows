@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 """
-Logging setup and configuration for any process and deployment
+Logging setup and configuration for any process and deployment.
 
 Assumed to propagate in a cascading manner:
  - infrastructure operator configures gateway with logging as cli param,

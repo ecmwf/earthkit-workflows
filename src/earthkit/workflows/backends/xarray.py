@@ -17,7 +17,7 @@ class XArrayBackend:
         DataArrays or Datasetst then function is applied
         along an dimension specified in method_kwargs. If multiple  DataArrays
         or Datasets then these are first stacked before function is applied on the
-        stack
+        stack.
 
         Parameters
         ----------

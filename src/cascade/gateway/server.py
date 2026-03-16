@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 """The recv-loop of `gateway`, as well as basic deser. Actual business logic happens in `gateway.router`,
-here we just match the right method of `gateway.router` based on what message we parsed
+here we just match the right method of `gateway.router` based on what message we parsed.
 """
 
 import base64

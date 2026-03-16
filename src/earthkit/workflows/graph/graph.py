@@ -12,7 +12,7 @@ from earthkit.workflows.graph.nodes import Node
 
 
 class Graph:
-    """Graph class
+    """Graph class.
 
     A graph is represented by the list of its sinks.
 
@@ -72,11 +72,11 @@ class Graph:
 
     @classmethod
     def empty(cls) -> "Graph":
-        """Just making this a monoid"""
+        """Just making this a monoid."""
         return cls(sinks=[])
 
     def nodes(self, forwards=False) -> Iterator[Node]:
-        """Iterate over nodes of the graph
+        """Iterate over nodes of the graph.
 
         If ``forwards`` is true, iterate in topological order. Otherwise,
         iterate backwards starting from the sinks.
@@ -113,11 +113,11 @@ class Graph:
             done.add(node)
 
     def sources(self) -> Iterator[Node]:
-        """Iterate over the sources in the graph"""
+        """Iterate over the sources in the graph."""
         return (n for n in self.nodes(forwards=True) if n.is_source())
 
     def get_node(self, name: str) -> Node:
-        """Get a node by name
+        """Get a node by name.
 
         Raises `KeyError` if not found.
         """
@@ -127,7 +127,7 @@ class Graph:
         raise KeyError(name)
 
     def get_predecessors(self, node: Node) -> dict[str, Node | tuple[Node, str]]:
-        """Get the predecessors (parents) of a node
+        """Get the predecessors (parents) of a node.
 
         The result is a dict where keys are the given node's input names, and
         values are node outputs, encoded as either the node itself (default
@@ -139,7 +139,7 @@ class Graph:
         }
 
     def get_successors(self, node: Node) -> dict[str, list[tuple[Node, str]]]:
-        """Get the successors (children) of a node
+        """Get the successors (children) of a node.
 
         The result is a dict where keys are the given node's output names, and
         values are lists of (child, input name) tuples.
@@ -153,7 +153,7 @@ class Graph:
         return succ
 
     def has_cycle(self) -> bool:
-        """Check whether a graph contains cycles"""
+        """Check whether a graph contains cycles."""
         done: set[Node] = set()
         todo: list[tuple[Node, list[Node]]] = [(sink, []) for sink in self.sinks]
 

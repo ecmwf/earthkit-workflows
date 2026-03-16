@@ -17,7 +17,7 @@ from .helpers import mock_action
 
 
 def test_payload_metadata():
-    """Test payload metadata is passed to the action"""
+    """Test payload metadata is passed to the action."""
     action = mock_action((1, 1))
 
     test_payload = Payload(lambda x: x, metadata={"test_metadata": True})
@@ -33,7 +33,7 @@ def test_payload_metadata():
 
 
 def test_payload_metadata_with_function():
-    """Test payload metadata is passed to the action"""
+    """Test payload metadata is passed to the action."""
     action = mock_action((1, 1))
 
     mult_action = action.multiply(2, payload_metadata={"test_metadata": True})
@@ -47,7 +47,7 @@ def test_payload_metadata_with_function():
 
 
 def test_payload_metadata_from_marks_generic():
-    """Test payload metadata from generic mark"""
+    """Test payload metadata from generic mark."""
     action = mock_action((1, 1))
 
     @ekw_mark.add_execution_metadata(test_metadata=True)

@@ -66,7 +66,7 @@ def same_payload(a: Node, b: Node):
 
 
 def deduplicate_nodes(graph: Graph, pred: PredicateType = same_payload) -> Graph:
-    """Deduplicate graph nodes
+    """Deduplicate graph nodes.
 
     Two nodes are considered identical if:
     - They have the same outputs

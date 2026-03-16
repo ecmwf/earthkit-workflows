@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Tests calculation of preschedule, state initialize & first assign and plan"""
+"""Tests calculation of preschedule, state initialize & first assign and plan."""
 
 from cascade.low.core import DatasetId, WorkerId
 from cascade.low.execution_context import TaskStatus, init_context

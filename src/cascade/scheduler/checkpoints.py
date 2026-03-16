@@ -11,7 +11,7 @@
 discard everything that doesnt need to be computed
 - virtual_update_schedule -- as we start executing, we virtually publish all
 checkpointed datasets. That on its own would break some invariants in
-the schedule, so we do all the corrections in this function
+the schedule, so we do all the corrections in this function.
 """
 
 import logging
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def _filter_invalid(job: JobInstance, persisted: set[DatasetId]) -> tuple[set[TaskId], set[DatasetId]]:
     """Filters out those persisted datasets that overlap partially with a gang or provide only partial outputs
-    of a task
+    of a task.
     """
     persisted_per_task = defaultdict(set)
     for ds in persisted:
@@ -46,7 +46,7 @@ def _filter_invalid(job: JobInstance, persisted: set[DatasetId]) -> tuple[set[Ta
 
 
 def _get_parents(component: ComponentCore, preschedule: Preschedule) -> dict[TaskId, set[TaskId]]:
-    """Just convert edge_i into a task-task dict"""
+    """Just convert edge_i into a task-task dict."""
     parents: dict[TaskId, set[TaskId]] = defaultdict(set)
     for node in component.nodes:
         for dataset in preschedule.edge_i[node]:
@@ -61,7 +61,7 @@ def _discover_component(
     preschedule: Preschedule,
     persisted_tasks: set[TaskId],
 ) -> set[TaskId]:
-    """Returns only the valid nodes, ie, those that are either persisted or should be computed"""
+    """Returns only the valid nodes, ie, those that are either persisted or should be computed."""
     visitable = defaultdict(set)
     for node in component.nodes:
         for d in job.outputs_of(node):
@@ -84,7 +84,7 @@ def _discover_component(
 def _trim_component(
     component: ComponentCore, parents: dict[TaskId, set[TaskId]], preserved_tasks: set[TaskId]
 ) -> ComponentCore:
-    """Restricts the component only to preserved tasks"""
+    """Restricts the component only to preserved tasks."""
     nodes = list(preserved_tasks)
     value = {node: component.value[node] for node in nodes}
     return ComponentCore(
@@ -109,7 +109,7 @@ def trim_with_persisted(
 ) -> tuple[JobInstance, Preschedule, set[DatasetId]]:
     """Removes from job and preschedule everything that does not need to be computed anymore,
     ie, lies in the subgraph of nodes for which every path to a sink goes through a persisted
-    dataset
+    dataset.
 
     Some persisted sets may be ignored, such as if they are only a part of a gang, or only
     a part of a task's output -- we thus return the modified persisted set

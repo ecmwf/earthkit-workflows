@@ -163,7 +163,7 @@ def shutdown(timeout_sec: float = 2.0) -> None:
 
 
 def ensure() -> None:
-    """Loop StatusInquiry until shm server responds with Ok"""
+    """Loop StatusInquiry until shm server responds with Ok."""
     logger.debug("entering shm ensure loop")
     comm = api.StatusInquiry()
     while True:

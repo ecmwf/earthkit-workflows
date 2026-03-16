@@ -25,7 +25,7 @@ def _quote(s: str) -> str:
 
 
 def to_dot(graph: Graph) -> str:
-    """Convert a graph to GraphViz's 'dot' format"""
+    """Convert a graph to GraphViz's 'dot' format."""
     out = []
     for node in graph.nodes():
         nname = node.name
@@ -42,7 +42,7 @@ def to_dot(graph: Graph) -> str:
 
 
 def render_graph(graph: Graph, **kwargs) -> str:
-    """Render a graph using GraphViz
+    """Render a graph using GraphViz.
 
     Keyword arguments are passed to `graphviz.Source.render`.
     """

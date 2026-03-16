@@ -35,7 +35,7 @@ PayloadFunc = Callable | str
 
 
 class Payload:
-    """Class for detailing function, args and kwargs to be computing in a graph node"""
+    """Class for detailing function, args and kwargs to be computing in a graph node."""
 
     def __init__(
         self,
@@ -105,7 +105,7 @@ R = TypeVar("R")
 
 def capture_payload_metadata(func: Callable[P, R]) -> Callable[P, R]:
     """Wrap a function which returns a new action and insert
-    given `payload_metadata`
+    given `payload_metadata`.
     """
 
     # @functools.wraps(func)
@@ -210,7 +210,7 @@ class Action:
 
     @classmethod
     def register(cls, name: str, obj: type[Action]):
-        """Register an Action class under `name`
+        """Register an Action class under `name`.
 
         Will be accessible from the fluent API as `Action().<name>`
 
@@ -239,11 +239,11 @@ class Action:
 
     @classmethod
     def flush_registry(cls):
-        """Flush the registry of all registered actions"""
+        """Flush the registry of all registered actions."""
         cls.REGISTRY = {}
 
     def as_action(self, other) -> Action:
-        """Parse action into another action class"""
+        """Parse action into another action class."""
         return other(self.nodes)
 
     def join(
@@ -328,7 +328,7 @@ class Action:
         exclude: list[str] | None = None,
         path: Optional[str] = None,
     ) -> "Action":
-        """Broadcast nodes against nodes in other_action
+        """Broadcast nodes against nodes in other_action.
 
         Parameters
         ----------
@@ -419,7 +419,7 @@ class Action:
     ) -> "Action":
         """Apply specified payload on all nodes. If argument is an array of payloads,
         this must be the same size as the array of nodes and each node gets a
-        unique payload from the array
+        unique payload from the array.
 
         Parameters
         ----------
@@ -594,7 +594,7 @@ class Action:
         )
 
     def set_path(self, path: str) -> "Action":
-        """Create path for current node array
+        """Create path for current node array.
 
         Parameters
         ----------
@@ -610,7 +610,7 @@ class Action:
 
     def split(self, expansion: Optional[dict[str, PayloadFunc | Payload]] = None) -> "Action":
         """Create action containing new node arrays by splitting an existing node array
-        by the specified functions in expansion
+        by the specified functions in expansion.
 
         Parameters
         ----------
@@ -651,7 +651,7 @@ class Action:
         path: Optional[str] = None,
         **kwargs,
     ) -> "Action":
-        """Create action contaning nodes match selection criteria
+        """Create action contaning nodes match selection criteria.
 
         Parameters
         ----------
@@ -689,7 +689,7 @@ class Action:
         path: Optional[str] = None,
         **kwargs,
     ) -> "Action":
-        """Create action contaning nodes match index selection criteria
+        """Create action contaning nodes match index selection criteria.
 
         Parameters
         ----------
@@ -978,7 +978,7 @@ class Action:
 
 
 class RegisteredAction:
-    """Wrapper around registered actions"""
+    """Wrapper around registered actions."""
 
     def __init__(self, name: str, action: type[Action], root_action: Action) -> None:
         self._name = name
@@ -1082,7 +1082,7 @@ def from_source(
 
 def merge(*args, **kwargs) -> Action:
     """Merge node arrays in actions. If provided as keyword arguments, the key
-    is used as the root path for the action's node arrays
+    is used as the root path for the action's node arrays.
 
 
     Return

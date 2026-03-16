@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 """This module defines all messages used to communicate in between executor instances, as well
-as externally to eg Controller or Runner
+as externally to eg Controller or Runner.
 """
 
 # TODO split into message categories: worker-only, data-only, regular -- or smth like that
@@ -38,13 +38,13 @@ class _Message(Protocol):
 
 
 def element(clazz):
-    """Any non-primitive class that can appear in a message"""
+    """Any non-primitive class that can appear in a message."""
     # NOTE possibly add more ext like forcing __slot__
     return dataclass(frozen=True)(clazz)
 
 
 def message(clazz):
-    """A top-level standalone message that can be serialized"""
+    """A top-level standalone message that can be serialized."""
     clazz = element(clazz)
     clazz.__sdver__ = VERSION
     return clazz

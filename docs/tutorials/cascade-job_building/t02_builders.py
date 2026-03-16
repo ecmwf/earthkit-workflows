@@ -1,5 +1,5 @@
 """We will craft the same job which ultimately allows the same customizability,
-derives much more + has more defaults, but still operates on individual task level
+derives much more + has more defaults, but still operates on individual task level.
 """
 
 from t00_execute import run_job

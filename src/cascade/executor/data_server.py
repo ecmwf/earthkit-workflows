@@ -79,7 +79,7 @@ class DataServer:
         # TODO the two above should be eventually purged, see comms.Listener.acked for a similar concern
 
     def maybe_clean(self) -> None:
-        """Cleans out completed futures, waits if too many in progress"""
+        """Cleans out completed futures, waits if too many in progress."""
         while True:
             keys = list(self.futs_in_progress.keys())
             for key in keys:

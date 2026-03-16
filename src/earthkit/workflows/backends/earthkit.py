@@ -67,7 +67,7 @@ class FieldListBackend:
     def _merge(*fieldlists: list[FieldList]):
         """Merge fieldlist elements into a single array. fieldlists with
         different number of fields must be concatenated, otherwise, the
-        elements in each fieldlist are stacked along a new dimension
+        elements in each fieldlist are stacked along a new dimension.
         """
         if len(fieldlists) == 1:
             return fieldlists[0].values
@@ -149,7 +149,7 @@ class FieldListBackend:
 
     def concat(*arrays: list[FieldList]) -> FieldList:
         """Concatenates the list of fields inside each FieldList into a single
-        FieldList object
+        FieldList object.
 
         Parameters
         ----------

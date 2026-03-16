@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Spawning new processes for each SubmitJobRequest, locally or remotely"""
+"""Spawning new processes for each SubmitJobRequest, locally or remotely."""
 
 import base64
 import itertools

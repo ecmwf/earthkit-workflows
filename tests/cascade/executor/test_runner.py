@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Tests running a Callable in the same process"""
+"""Tests running a Callable in the same process."""
 
 from multiprocessing.shared_memory import SharedMemory
 from typing import Any

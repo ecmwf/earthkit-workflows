@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Util functions for generating larger graphs + their execution records
+"""Util functions for generating larger graphs + their execution records.
 
 Generates graphs that look like this:
 - one big source node
@@ -115,7 +115,7 @@ def enrich_instance(job: JobInstance) -> JobInstanceRich:
 
 
 def get_job0() -> tuple[JobInstanceRich, JobExecutionRecord]:
-    """One source, one pproc, one sink"""
+    """One source, one pproc, one sink."""
     builder = BuilderGroup()
     add_large_source(builder, 10, 6, 4)
     add_postproc(builder, 0, 1, 1, 1, 1)
@@ -124,7 +124,7 @@ def get_job0() -> tuple[JobInstanceRich, JobExecutionRecord]:
 
 
 def get_job1() -> tuple[JobInstanceRich, JobExecutionRecord]:
-    """One large source branching out into two sets of sinks"""
+    """One large source branching out into two sets of sinks."""
     builder = BuilderGroup()
     # data source: 10 minutes consuming 6G mem and producing 4G output
     add_large_source(builder, 10, 6, 4)

@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""A completely artificial job to showcase a use of Generator in the output of a task
+"""A completely artificial job to showcase a use of Generator in the output of a task.
 
 There is one source which belches out N matrices of size 2**K, and the consumer tasks
 just compute their Lth power
@@ -22,7 +22,7 @@ from cascade.low.core import JobInstance, TaskDefinition, TaskInstance, type_enc
 
 
 def ser_numpy(a: np.ndarray) -> memoryview:  # bytes:
-    """Exists just because numpy.ndarray cant be imported"""
+    """Exists just because numpy.ndarray cant be imported."""
     # return a.tobytes() # beware, this includes a big copy
     return a.data.cast("B")
 

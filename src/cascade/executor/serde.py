@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""This module is responsible for Serialization & Deserialization of messages and outputs"""
+"""This module is responsible for Serialization & Deserialization of messages and outputs."""
 
 import pickle
 from typing import Any, Callable, Type
@@ -58,7 +58,7 @@ DefaultSerde = "cloudpickle.loads"
 
 def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     """Utilizes `custom_ser` attr if present, otherwise defaults to cloudpickle as the most
-    robust general purpose serde
+    robust general purpose serde.
     """
     if (serde := SerdeRegistry.serde.get(type(v), None)) is not None:
         value, deser_fun = serde[0](v), serde[1]

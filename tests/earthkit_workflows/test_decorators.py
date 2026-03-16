@@ -19,7 +19,7 @@ def mock_payload_function(x, y, *, keyword):
 
 
 def test_as_payload():
-    """Test the `as_payload` decorator"""
+    """Test the `as_payload` decorator."""
     payload = mock_payload_function(metadata={"test_metadata": True}, keyword="test")
 
     assert isinstance(payload, Payload)

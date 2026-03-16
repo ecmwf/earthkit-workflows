@@ -11,7 +11,7 @@ Intended to run in every worker instance (regardless whether created by fiab, ca
 Does not handle cross-worker coms on its own, but participates -- thats expected to work via
   1. controller issues command
   2. source worker gets the data from its shm and ships over to target worker
-  3. target worker puts to its shm
+  3. target worker puts to its shm.
 
 Features:
  - uses python's SharedMemory -- no overhead, zero-copy sharing

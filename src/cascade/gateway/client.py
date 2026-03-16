@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Handles request & response communication for classes in gateway.api"""
+"""Handles request & response communication for classes in gateway.api."""
 
 import logging
 import threading
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def request_response(m: api.CascadeGatewayAPI, url: str, timeout_ms: int = 1000) -> api.CascadeGatewayAPI:
-    """Sends a Request message, provides a corresponding Response message in a blocking manner"""
+    """Sends a Request message, provides a corresponding Response message in a blocking manner."""
     local = threading.local()
     if not hasattr(local, "context"):
         local.context = zmq.Context()

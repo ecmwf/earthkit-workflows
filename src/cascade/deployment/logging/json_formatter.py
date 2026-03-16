@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Custom json formatter, felt easier than struggling with another 3rd party lib"""
+"""Custom json formatter, felt easier than struggling with another 3rd party lib."""
 
 import logging
 

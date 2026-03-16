@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Main entrypoints for cluster or local starting for executors and controllers"""
+"""Main entrypoints for cluster or local starting for executors and controllers."""
 
 import logging
 import logging.config

@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Interface for tracing important events that can be used for extracting performance information
+"""Interface for tracing important events that can be used for extracting performance information.
 
 Currently, the export is handled just by logging, assuming to be parsed later. We log at debug
 level since this is assumed to be high level tracing
@@ -96,7 +96,7 @@ def _labels(labels: Labels) -> str:
 
 def label(key: str, value: str) -> None:
     """Makes all subsequent marks contain this KV. Carries over to later-forked subprocesses, but
-    not to forkspawned
+    not to forkspawned.
     """
     global d
     d[key] = value
@@ -114,7 +114,7 @@ def trace(kind: Microtrace, value: int):
 
 
 def timer(f, kind: Microtrace):
-    """Don't use for distributed tracing as this relies on unsync time"""
+    """Don't use for distributed tracing as this relies on unsync time."""
 
     @wraps(f)
     def wrapper(*args, **kwargs):

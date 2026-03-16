@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Implements the mutation of State after Executors have reported some Events"""
+"""Implements the mutation of State after Executors have reported some Events."""
 
 # NOTE currently the implementation is mutating, but we may replace with pyrsistent etc.
 # Thus the caller always *must* use the return value and cease using the input.

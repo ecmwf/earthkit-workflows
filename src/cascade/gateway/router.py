@@ -10,7 +10,7 @@
 - routes the SubmitJobRequest to the appropriate spawn command
 - exposes a port for jobs to report progress, keeps these reports in memory
 - exposes a port for jobs to upload outputs, keeps these outputs in memory
-- directly responds to JobProgressRequest and ResultRetrievalRequest from memory
+- directly responds to JobProgressRequest and ResultRetrievalRequest from memory.
 """
 
 import logging

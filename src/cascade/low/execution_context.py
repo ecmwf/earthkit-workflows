@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 """Common data structures and utility methods that form the interface between scheduler and controller.
-Primarily manifesting in the JobExecutionContext class -- a proto-scheduler of sorts
+Primarily manifesting in the JobExecutionContext class -- a proto-scheduler of sorts.
 """
 
 from collections import defaultdict
@@ -48,7 +48,7 @@ VirtualCheckpointHost: HostId = "virtualCheckpointHost"
 @dataclass
 class JobExecutionContext:
     """Captures what is where -- datasets, running tasks, ... Used for decision making and progress tracking.
-    Broad interface between (generic) scheduler and controller
+    Broad interface between (generic) scheduler and controller.
     """
 
     # static
@@ -93,7 +93,7 @@ class JobExecutionContext:
         return to_output or to_persist
 
     def purge_dataset(self, ds: DatasetId) -> Iterator[HostId]:
-        """Drop dataset from all tracking structures, yields hosts that should be sent purge command"""
+        """Drop dataset from all tracking structures, yields hosts that should be sent purge command."""
         for host in self.ds2host[ds]:
             self.host2ds[host].pop(ds)
             for worker in self.host2workers[host]:

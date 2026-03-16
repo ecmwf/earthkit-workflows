@@ -1,5 +1,5 @@
 """Build a job using the most low level interface possible. This will be verbose and unwieldy,
-but exposes all the available toggles
+but exposes all the available toggles.
 
 For start, we want to generate data, then calculate mean of a single variable over time
 these two conceptual tasks translate into three computational steps:

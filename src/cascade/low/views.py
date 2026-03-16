@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Utility functions and transformers for the core graph objects"""
+"""Utility functions and transformers for the core graph objects."""
 
 from collections import defaultdict
 
@@ -17,7 +17,7 @@ from cascade.low.exceptions import CascadeInternalError
 def param_source(
     edges: list[Task2TaskEdge],
 ) -> dict[TaskId, dict[int | str, DatasetId]]:
-    """Returns map[sink_task][sink_input] = (source_task, source_output)"""
+    """Returns map[sink_task][sink_input] = (source_task, source_output)."""
     rv: dict[TaskId, dict[int | str, DatasetId]] = defaultdict(lambda: defaultdict(lambda: {}))  # type: ignore
     for e in edges:
         sink_input: int | str
@@ -36,7 +36,7 @@ def param_source(
 
 
 def dependants(edges: list[Task2TaskEdge]) -> dict[DatasetId, set[TaskId]]:
-    """Returns map[(source_task, source_output)] = set(sink_task)"""
+    """Returns map[(source_task, source_output)] = set(sink_task)."""
     rv: dict[DatasetId, set[TaskId]] = defaultdict(set)
     for e in edges:
         rv[e.source].add(e.sink_task)

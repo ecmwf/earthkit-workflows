@@ -1,4 +1,4 @@
-"""Placeholder module to be populated by -plugin packages"""
+"""Placeholder module to be populated by -plugin packages."""
 
 import pkgutil
 

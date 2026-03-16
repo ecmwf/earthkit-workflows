@@ -12,12 +12,12 @@ from . import Graph, Node
 
 
 def empty() -> Graph:
-    """Empty graph"""
+    """Empty graph."""
     return Graph([])
 
 
 def linear(nproc: int = 5) -> Graph:
-    """Linear graph
+    """Linear graph.
 
     reader -> process-0 -> ... -> process-{nproc-1} -> writer
     """
@@ -30,7 +30,7 @@ def linear(nproc: int = 5) -> Graph:
 
 
 def disconnected(nchains: int = 5, nproc: int = 1) -> Graph:
-    """Disconnected graph
+    """Disconnected graph.
 
     reader-0 -> process-0.0 -> ... -> process-0.{nproc-1} -> writer-0
     :
@@ -48,7 +48,7 @@ def disconnected(nchains: int = 5, nproc: int = 1) -> Graph:
 
 
 def simple(nread: int = 5, nproc: int = 3) -> Graph:
-    """Simple graph
+    """Simple graph.
 
     `nread` sources (reader-{i} for i in range(nread))
     `nproc` processors reading from all readers (process-{i} for i in range(nproc))
@@ -66,7 +66,7 @@ def simple(nread: int = 5, nproc: int = 3) -> Graph:
 
 
 def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
-    """Graph with multi-output nodes
+    """Graph with multi-output nodes.
 
     `nread` readers (reader-{i} for i in range(nread))
     `nout1` processors (process-{i} for i in range(nout1), nout1 must be at least 3)
@@ -100,7 +100,7 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
 
 
 def comb(nteeth: int = 5, nproc: int = 0):
-    """Comb graph
+    """Comb graph.
 
     `nteeth` readers (reader-{i} for i in range(nteeth))
     `(nproc + 1) * nteeth - 1` processors (

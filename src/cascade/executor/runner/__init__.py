@@ -10,7 +10,7 @@
  - getting & deserializing the inputs
  - serializing & storing the outputs
  - invoking callback to report task success, dataset publication, failures
- - setting up the environment: packages and envvars
+ - setting up the environment: packages and envvars.
 
 The runner is a long-lived process, spawned by the executor module, with TaskSequence command
 being sent to it over ipc zmq.

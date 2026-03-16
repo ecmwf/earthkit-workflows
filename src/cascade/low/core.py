@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Core graph data structures -- prescribes most of the API"""
+"""Core graph data structures -- prescribes most of the API."""
 
 import re
 from base64 import b64decode, b64encode
@@ -163,7 +163,7 @@ class WorkerId:
         return cls(host=host, worker=worker)
 
     def worker_num(self) -> int:
-        """Used eg for gpu allocation"""
+        """Used eg for gpu allocation."""
         # TODO this should actually be precalculated at *Environment* construction, to modulo by gpu count etc
         return int(cast(re.Match[str], re.match("[^0-9]*([0-9]*)", self.worker))[1])
 
@@ -208,7 +208,7 @@ StorageId = str
 
 class CheckpointSpec(BaseModel):
     """For configuring storage/retrieval of checkpoints, to allow job restarts
-    with some datasets already computed
+    with some datasets already computed.
     """
 
     storage_type: CheckpointStorageType
@@ -223,7 +223,7 @@ class CheckpointSpec(BaseModel):
 class JobInstanceRich(BaseModel):
     """Whereas JobInstance is the plain "compute these tasks", this class
     additionally holds execution-related data of more ephemeral nature,
-    like CheckpointConfig, ProfilingInformation, etc
+    like CheckpointConfig, ProfilingInformation, etc.
     """
 
     jobInstance: JobInstance

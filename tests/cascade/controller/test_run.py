@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""For a given graph and instant executor, check that things complete"""
+"""For a given graph and instant executor, check that things complete."""
 
 # NOTE this is a very bulky test, prone to flakyness, interference, incompatible
 # with xdist etc. Consider removing from pytest altogether, and reframing
@@ -233,7 +233,7 @@ def test_fusing():
 
 def test_checkpoints():
     """This takes a job with a checkpoint config, and runs it twice,
-    in a way that recognizes whether it checkpointed or not
+    in a way that recognizes whether it checkpointed or not.
     """
     with tempfile.TemporaryDirectory() as tmp_root, tempfile.TemporaryDirectory() as ckpt_root:
         sourcetask_code = f"import pathlib; f = pathlib.Path('{tmp_root}') / 'file.txt'; f.write_text('ok') if not f.exists() else 1/0;"

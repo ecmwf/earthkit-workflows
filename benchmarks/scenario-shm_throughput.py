@@ -1,4 +1,4 @@
-"""Benchmark shm in isolation (without cascade) by just invoking a lot of reads and writes in a limited memory setting"""
+"""Benchmark shm in isolation (without cascade) by just invoking a lot of reads and writes in a limited memory setting."""
 
 import multiprocessing as mp
 import random
@@ -82,7 +82,7 @@ def scenario1():
 
 
 def scenario2():
-    """Start 1024MB shm, allocate 128 * 8MB (so that all fits), then 128 ** 2 gets to simulate high load"""
+    """Start 1024MB shm, allocate 128 * 8MB (so that all fits), then 128 ** 2 gets to simulate high load."""
     start_shm(1024)
     c.ensure()
 

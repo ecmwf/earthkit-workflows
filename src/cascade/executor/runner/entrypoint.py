@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""The entrypoint itself"""
+"""The entrypoint itself."""
 
 import logging
 import os
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class RunnerContext:
-    """The static runner configuration"""
+    """The static runner configuration."""
 
     workerId: WorkerId
     workerAttemptCnt: int
@@ -76,7 +76,7 @@ def task_sequence_postmortem(
     ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId
 ) -> list[tuple[DatasetId, str]]:
     """Assuming a failure at task Cut, identify which datasets from the beginning of
-    the sequence should be additionaly published. Returns datasetid + its type
+    the sequence should be additionaly published. Returns datasetid + its type.
     """
     finished = set()
     required = set()
@@ -95,7 +95,7 @@ def task_sequence_postmortem(
 
 def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequence:
     """Assuming a failure at task Cut, calculate new task sequence which starts with Cut
-    that represents the still-to-be-done-in-new-worker calculation
+    that represents the still-to-be-done-in-new-worker calculation.
     """
     remainder = []
     for task in taskSequence.tasks:
@@ -180,7 +180,7 @@ def execute_sequence(
 
 
 def entrypoint(runnerContextClpkl: bytes):
-    """RunnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
+    """RunnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts."""
     runnerContext = cloudpickle.loads(runnerContextClpkl)
     init_from_obj(runnerContext.loggingConfig, f"worker_{runnerContext.workerId.worker}")
     ctx = zmq.Context()

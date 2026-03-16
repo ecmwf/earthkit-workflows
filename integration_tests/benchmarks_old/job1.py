@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""One particular job suite for benchmarking: prob, efi ensms
+"""One particular job suite for benchmarking: prob, efi ensms.
 
 When executed as a module, downloads the datasets as local files
 

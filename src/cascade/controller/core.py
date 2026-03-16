@@ -1,6 +1,6 @@
 """Declares core data structures and methods -- most notably Controller's state,
 which handles dynamic work outside of scheduler control, such as dataset purging
-or outputs retrieval
+or outputs retrieval.
 """
 
 import logging
@@ -39,7 +39,7 @@ class State:
         return False
 
     def _consider_purge(self, dataset: DatasetId) -> None:
-        """If dataset not required anymore, add to purging_queue"""
+        """If dataset not required anymore, add to purging_queue."""
         no_dependants = not self.purging_tracker.get(dataset, None)
         not_required_output = self.outputs.get(dataset, 1) is not None
         not_required_persist = dataset not in self.to_persist
@@ -50,28 +50,28 @@ class State:
             self.purging_queue.append(dataset)
 
     def consider_fetch(self, dataset: DatasetId, at: HostId) -> None:
-        """If required as output and not yet arrived, add to fetching queue"""
+        """If required as output and not yet arrived, add to fetching queue."""
         if dataset in self.outputs and self.outputs[dataset] is None and dataset not in self.fetching_queue:
             self.fetching_queue[dataset] = at
 
     def consider_persist(self, dataset: DatasetId, at: HostId) -> None:
-        """If required as persist and not yet acknowledged, add to persist queue"""
+        """If required as persist and not yet acknowledged, add to persist queue."""
         if dataset in self.to_persist and dataset not in self.persist_queue:
             self.persist_queue[dataset] = at
 
     def receive_payload(self, ds: DatasetId, payload: bytes, deser_fun: str) -> None:
-        """Stores deserialized value into outputs, considers purge"""
+        """Stores deserialized value into outputs, considers purge."""
         # NOTE ifneedbe get annotation from job.tasks[event.ds.task].definition.output_schema[event.ds.output]
         self.outputs[ds] = serde.des_output(payload, "Any", deser_fun)
         self._consider_purge(ds)
 
     def acknowledge_persist(self, ds: DatasetId) -> None:
-        """Marks acknowledged, considers purge"""
+        """Marks acknowledged, considers purge."""
         self.to_persist.discard(ds)
         self._consider_purge(ds)
 
     def task_done(self, task: TaskId, inputs: set[DatasetId]) -> None:
-        """Marks that the inputs are not needed for this task anymore, considers purge of each"""
+        """Marks that the inputs are not needed for this task anymore, considers purge of each."""
         for sourceDataset in inputs:
             self.purging_tracker[sourceDataset].remove(task)
             self._consider_purge(sourceDataset)

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
     """When a task becomes computable, mutate the gang_prep to possibly
-    transition some gangs to `ready`
+    transition some gangs to `ready`.
     """
     for gang in gang_prep.lookup[task]:
         if gang not in gang_prep.countdown:
@@ -118,7 +118,7 @@ def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignm
      - changes host2component.
     Yields, to allow for immediate async sending to workers.
     Performance critical section, we need to output an assignment asap. Steps taking longer
-    should be deferred to `plan`
+    should be deferred to `plan`.
     """
     # step I: assign within existing components
     component2workers: dict[ComponentId, list[WorkerId]] = defaultdict(list)

@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""This module handles basic communication structures and functions"""
+"""This module handles basic communication structures and functions."""
 
 import logging
 import pickle
@@ -34,7 +34,7 @@ default_message_resend_ms = 800
 
 
 class GraceWatcher:
-    """For watching whether certain event occurred more than `grace_ms` ago"""
+    """For watching whether certain event occurred more than `grace_ms` ago."""
 
     def __init__(self, grace_ms: int):
         self.step_time_ms = 0
@@ -45,14 +45,14 @@ class GraceWatcher:
         return int(time.time_ns() / 1_000_000)
 
     def step(self) -> None:
-        """Notify that event has occurred recently"""
+        """Notify that event has occurred recently."""
         self.step_time_ms = self._now()
 
     def is_breach(self) -> int:
         """If the last `step()` occurred less than `grace_ms` ago, returns = 0, otherwise > 0.
         If the last return of > 0 occurred more than `grace_ms` ago, return 2, otherwise 1.
         The 2-vs-1 should be used for rate limiting logs, whereas business logic should heed
-        0-vs-non0
+        0-vs-non0.
         """
         now = self._now()
         breachStep = self._now() > self.step_time_ms + self.grace_ms
@@ -66,7 +66,7 @@ class GraceWatcher:
             return 0
 
     def elapsed_ms(self) -> int:
-        """How many ms elapsed since last `step()`"""
+        """How many ms elapsed since last `step()`."""
         return self._now() - self.step_time_ms
 
 

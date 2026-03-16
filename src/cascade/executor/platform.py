@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Macos-vs-Linux specific code"""
+"""Macos-vs-Linux specific code."""
 
 import fcntl
 import multiprocessing as mp
@@ -19,7 +19,7 @@ from cascade.low.exceptions import CascadeInternalError
 
 
 def get_bindabble_self():
-    """Returns a hostname such that zmq can bind to it"""
+    """Returns a hostname such that zmq can bind to it."""
     if sys.platform == "darwin":
         # NOTE on macos, getfqdn usually returns like '66246.local', which can't then be bound to
         # This is a stopper for running a cluster of macos devices -- but we don't plan that yet

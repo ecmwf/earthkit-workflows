@@ -41,7 +41,7 @@ def maybe_head(v: Iterable[T]) -> Optional[T]:
 
 
 def assert_never(v: Any) -> NoReturn:
-    """For exhaustive enumm checks etc"""
+    """For exhaustive enumm checks etc."""
     # TODO once we switch to ecpy util this needs to be redone/preserved
     from cascade.low.exceptions import CascadeInternalError  # *exceptional in-body import*
 
@@ -50,7 +50,7 @@ def assert_never(v: Any) -> NoReturn:
 
 @runtime_checkable
 class Semigroup(Protocol):
-    """Basically 'has plus'"""
+    """Basically 'has plus'."""
 
     @abstractmethod
     def __add__(self, other: Self) -> Self:
@@ -62,7 +62,7 @@ E = TypeVar("E", bound=Semigroup)
 
 
 class Either(Generic[T, E]):
-    """Mostly for lazy gathering of errors during validation. Looks fancier than actually is"""
+    """Mostly for lazy gathering of errors during validation. Looks fancier than actually is."""
 
     def __init__(self, t: Optional[T] = None, e: Optional[E] = None):
         self.t = t
@@ -133,7 +133,7 @@ B = TypeVar("B", bound=BaseModel)
 
 
 def pyd_replace(model: B, **kwargs) -> B:
-    """Like dataclasses.replace but for pydantic"""
+    """Like dataclasses.replace but for pydantic."""
     return model.model_copy(update=kwargs)
 
 
@@ -154,7 +154,7 @@ def next_uuid(s: Container[T], g: Callable[[], T]) -> T:
 
 
 def resolve_callable(s: str) -> Callable:
-    """For s = `a.b.func`, imports `a.b` and retrieves `func` Callable object"""
+    """For s = `a.b.func`, imports `a.b` and retrieves `func` Callable object."""
     if "." not in s:  # this branch is for builtins
         return eval(s)
     else:
@@ -168,7 +168,7 @@ def pydantic_recursive_collect(base: BaseModel | Iterable, attr: str, prefix: st
     and collecting results. Assumes the `attr` has signature `Callable[[self], list[T]]`. The collected
     results are (source, item), where item is returned by `attr` and source is the dot-separated path
     of the issuer -- eg if base has BaseModel field `x` whose `attr` yields [1, 2], then this returns
-    [(.x, 1), (.x, 2)]
+    [(.x, 1), (.x, 2)].
     """
     # NOTE a bit ugly, instead of attr it would be better to accept a signature/protocol type
 

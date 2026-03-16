@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 """Utility functions for handling assignments -- invocation assumed from scheduler.api module,
-for all other purposes this should be treated private
+for all other purposes this should be treated private.
 """
 
 import logging
@@ -135,7 +135,7 @@ def _try_assign_gang(
     context: JobExecutionContext,
     fail_acc: list[frozenset[TaskId]],
 ) -> Iterator[Assignment]:
-    """We greedily assign by descending worker-task distance"""
+    """We greedily assign by descending worker-task distance."""
     global gang_port
     if len(gang) > len(workers):
         logger.debug(f"not enough workers ({len(workers)}) for {gang=}")
@@ -296,7 +296,7 @@ def assign_within_component(
         2/ tasks requiring a gpu,
         3/ tasks whose fusable child requires a gpu,
         4/ all other tasks,
-    using the same algorithm for cases 2-4 and a naive for case 1
+    using the same algorithm for cases 2-4 and a naive for case 1.
     """
     # TODO rework into a more systematic multicriterial opt solution that is able to consider all groups
     # at once, using a generic value/cost framework and matching algorithm. It should additionally be able
@@ -407,7 +407,7 @@ def migrate_to_component(
     context: JobExecutionContext,
 ):
     """Assuming original component assigned to the host didn't have enough tasks anymore,
-    we invoke this function and update state to reflect it
+    we invoke this function and update state to reflect it.
     """
     schedule.host2component[host] = component_id
     component = schedule.components[component_id]

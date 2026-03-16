@@ -20,5 +20,5 @@ class ShmInfrastructureError(ValueError):
 
 
 def assert_never(v: Any) -> NoReturn:
-    """For exhaustive enumm checks etc"""
+    """For exhaustive enumm checks etc."""
     raise TypeError(f"unexpected value in exhaustive check: {v!r}")

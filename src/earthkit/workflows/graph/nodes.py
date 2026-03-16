@@ -14,7 +14,7 @@ from earthkit.workflows.adapters import DefaultNodeOutput
 
 
 class Output:
-    """Helper class to refer to node outputs"""
+    """Helper class to refer to node outputs."""
 
     parent: "Node"
     name: str
@@ -24,7 +24,7 @@ class Output:
         self.name = name
 
     def serialise(self) -> str | tuple[str, str]:
-        """Convert the reference to a serialisable type"""
+        """Convert the reference to a serialisable type."""
         if self.name == Node.DEFAULT_OUTPUT:
             return self.parent.name
         return self.parent.name, self.name
@@ -41,7 +41,7 @@ class Output:
 
 
 class Node:
-    """Base class for graph nodes
+    """Base class for graph nodes.
 
     A node is defined with references to its actual inputs, and can have either
     one default output, or any number of named outputs (including zero). Named
@@ -91,7 +91,7 @@ class Node:
         return self.get_output(name)
 
     def get_output(self, name: str | None = None) -> Output:
-        """Get an output from the node
+        """Get an output from the node.
 
         If ``name`` is ``None``, the node is expected to have a default output,
         which is returned. Otherwise the output with the given name is returned.
@@ -109,7 +109,7 @@ class Node:
         return Output(self, name)
 
     def serialise(self) -> dict[str, Any]:
-        """Convert the node to a serialisable value
+        """Convert the node to a serialisable value.
 
         If the payload object has a ``serialise`` method, it is called without
         arguments to get its serialised form, otherwise the payload is assumed
@@ -129,17 +129,17 @@ class Node:
         return f"<{self.__class__.__name__} {self.name!r} at {id(self):#x}>"
 
     def is_source(self) -> bool:
-        """Check whether the node is a source (i.e. has no inputs)"""
+        """Check whether the node is a source (i.e. has no inputs)."""
         return not self.inputs
 
     def is_processor(self) -> bool:
-        """Check whether the node is a processor (i.e. has both inputs and outputs)"""
+        """Check whether the node is a processor (i.e. has both inputs and outputs)."""
         return (not self.is_sink()) and (not self.is_source())
 
     def is_sink(self) -> bool:
-        """Check whether the node is a sink (i.e. has no outputs)"""
+        """Check whether the node is a sink (i.e. has no outputs)."""
         return not self.outputs
 
     def copy(self) -> Self:
-        """Shallow copy of the node (the payload is not copied)"""
+        """Shallow copy of the node (the payload is not copied)."""
         return self.__class__(self.name, self.outputs.copy(), self.payload, **self.inputs)

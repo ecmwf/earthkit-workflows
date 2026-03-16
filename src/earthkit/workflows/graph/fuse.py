@@ -51,7 +51,7 @@ class _FuseTransformer(Transformer):
 
 
 def fuse_nodes(func: FuseCallback, g: Graph) -> Graph:
-    """Fuse compatible nodes of a graph
+    """Fuse compatible nodes of a graph.
 
     Candidates for fusion are 4-tuples: (parent node, parent output, current
     node, current input). One such tuple is considered only if the parent node

@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Implements the invocation of Bridge/Executor methods given a sequence of Actions"""
+"""Implements the invocation of Bridge/Executor methods given a sequence of Actions."""
 
 import logging
 from typing import Iterable, Iterator, cast
@@ -106,7 +106,7 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
 def virtual_checkpoint_publish(datasets: Iterable[DatasetId]) -> Iterator[DatasetPublished]:
     """Virtual in the sense of not actually sending any message, but instead simulating
     a response so that controller.notify can bring the contexts into the right state.
-    Invoked once, at the job start, after the checkpoint has been listed
+    Invoked once, at the job start, after the checkpoint has been listed.
     """
     return (
         DatasetPublished(

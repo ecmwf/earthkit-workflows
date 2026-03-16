@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Thin wrapper over a single Task/Callable
+"""Thin wrapper over a single Task/Callable.
 
 Just io handling (ie, using Memory api), tracing and callable invocation
 """
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ExecutionContext:
-    """A projection of JobInstance relevant to particular TaskSequence"""
+    """A projection of JobInstance relevant to particular TaskSequence."""
 
     # NOTE once we have long lived workers, this would be replaced by full JobInstance present at the worker
     tasks: dict[TaskId, TaskInstance]

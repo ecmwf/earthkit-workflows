@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Lowering of the earthkit.workflows.graph structures into cascade.low representation"""
+"""Lowering of the earthkit.workflows.graph structures into cascade.low representation."""
 
 import logging
 from typing import Any, Callable, cast

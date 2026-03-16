@@ -13,7 +13,7 @@ from earthkit.workflows.graph.nodes import Node
 
 
 def node_visit(impl: Any, node: Node, inputs: dict[str, Any]):
-    """Helper method shared by Visitor and Transformer"""
+    """Helper method shared by Visitor and Transformer."""
     if node.is_source() and hasattr(impl, "source"):
         return impl.source(node)
     elif node.is_sink() and hasattr(impl, "sink"):
@@ -26,7 +26,7 @@ def node_visit(impl: Any, node: Node, inputs: dict[str, Any]):
 
 
 class Visitor:
-    """Graph visitor base class
+    """Graph visitor base class.
 
     When `visit` is called on a graph, the graph will be visited in arbitrary
     order. A callback method will be called on each node, depending on its type.
@@ -41,7 +41,7 @@ class Visitor:
     """
 
     def visit(self, graph: Graph):
-        """Visit the given graph
+        """Visit the given graph.
 
         See `Visitor` for details.
         """

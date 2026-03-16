@@ -86,7 +86,7 @@ def node_info(node):
 
 
 def edge_info(sname, snode, dname, dnode):
-    """Simple edge info function showing the names of the output and input as edge title"""
+    """Simple edge info function showing the names of the output and input as edge title."""
     return {"title": f"From: {sname}\nTo: {dname}"}
 
 
@@ -146,7 +146,7 @@ PRESET_OPTIONS = Literal["hierarchical", "quick", "blob", "none"]
 
 
 def truncate_name(name: str, max_length: int = 10) -> str:
-    """Truncate a name to a maximum length"""
+    """Truncate a name to a maximum length."""
     if ":" not in name:
         return name
 
@@ -165,7 +165,7 @@ def to_pyvis(
     options: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Network:
-    """Convert a graph to a PyVis network
+    """Convert a graph to a PyVis network.
 
     Parameters
     ----------

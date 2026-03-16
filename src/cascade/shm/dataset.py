@@ -10,7 +10,7 @@
 - shared memory id
 - size
 - state (in shm / on disk)
-- lru metadata
+- lru metadata.
 
 Manages the to-disk-and-back persistence
 """

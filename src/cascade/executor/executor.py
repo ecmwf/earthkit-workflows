@@ -248,7 +248,7 @@ class Executor:
 
     def healthcheck(self) -> None:
         """Checks that no process died, and sends a heartbeat message in case the last message to controller
-        was too long ago
+        was too long ago.
         """
         procFail = lambda ex: ex is not None and ex != 0
         for k, e in self.workers.items():

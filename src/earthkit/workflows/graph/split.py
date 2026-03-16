@@ -41,7 +41,7 @@ class CutEdge(Generic[K]):
 
 
 class Splitter(Transformer, Generic[K]):
-    """Transformer to perform graph splitting
+    """Transformer to perform graph splitting.
 
     Subclasses can override the `cut_edge` method to control how the cut edges
     are replaced by a sink and a source on either side.
@@ -81,7 +81,7 @@ class Splitter(Transformer, Generic[K]):
         return {k: Graph(s) for k, s in self.sinks.items()}, self.cuts
 
     def cut_edge(self, cut: CutEdge[K], sink_in: Output) -> tuple[Node, Node]:
-        """Create nodes to replace a cut edge
+        """Create nodes to replace a cut edge.
 
         Parameters
         ----------
@@ -106,7 +106,7 @@ SplitterType = Callable[[KeyFunc[K]], Splitter[K]]
 def split_graph(
     key: KeyFunc[K], graph: Graph, splitter: SplitterType[K] = Splitter
 ) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
-    """Split a graph according to some key
+    """Split a graph according to some key.
 
     Each sub-graph in the split will consist of nodes with the same key. The key
     type ``K`` must be hashable and support the ``==`` operator.

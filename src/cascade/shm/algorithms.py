@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Pageout algorithms -- selection of which datasets to send from shm to disk
+"""Pageout algorithms -- selection of which datasets to send from shm to disk.
 
 Logic:
  - first those that have been accessed *exactly* once, ordered by created asc

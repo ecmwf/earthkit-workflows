@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Handles the checkpoint management: storage, retrieval"""
+"""Handles the checkpoint management: storage, retrieval."""
 
 import io
 import logging
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def serialize_params(spec: CheckpointSpec, id_: str) -> str:
-    """id_ is either the persist id or retrieve id from the spec"""
+    """id_ is either the persist id or retrieve id from the spec."""
     # NOTE we call this every time we store, ideally call this once when building `low.execution_context`
     match spec.storage_type:
         case "fs":

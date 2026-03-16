@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class LocalServer:
-    """Handles the socket communication, and the invocation of dataset.Manager which has the business logic"""
+    """Handles the socket communication, and the invocation of dataset.Manager which has the business logic."""
 
     def __init__(self, shm_pref: str, capacity: int | None = None):
         self.sock = api.get_server_socket()

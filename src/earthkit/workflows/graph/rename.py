@@ -33,7 +33,7 @@ class _Renamer(Transformer):
 
 
 def rename_nodes(func: RenamerFunc, graph: Graph) -> Graph:
-    """Rename nodes of a graph
+    """Rename nodes of a graph.
 
     Parameters
     ----------
@@ -52,7 +52,7 @@ def rename_nodes(func: RenamerFunc, graph: Graph) -> Graph:
 
 
 def join_namespaced(**graphs: Graph) -> Graph:
-    """Join graphs by prefixing the names of their nodes
+    """Join graphs by prefixing the names of their nodes.
 
     Parameters
     ----------

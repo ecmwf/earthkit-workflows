@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Extending venv with packages required by the executed job
+"""Extending venv with packages required by the executed job.
 
 Note that venv itself is left untouched after the run finishes -- we extend sys path
 with a temporary directory and install in there
@@ -90,8 +90,8 @@ def new_venv() -> tempfile.TemporaryDirectory:
 
 
 def _parse_pip_install(pip_output: str) -> dict[str, Version]:
-    """Assumed input like: 'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
-    Provided output: {'numpy': '2.4.1'}
+    r"""Assumed input like: 'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
+    Provided output: {'numpy': '2.4.1'}.
     """
     rv = {}
     for line in pip_output.splitlines():

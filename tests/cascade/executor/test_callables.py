@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Intended to test that various 3rd-party callables work under cascade"""
+"""Intended to test that various 3rd-party callables work under cascade."""
 
 from .util import CallableInstance, run_test
 

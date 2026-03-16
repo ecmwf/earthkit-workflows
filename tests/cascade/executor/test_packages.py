@@ -57,7 +57,7 @@ def test_maybe_module_version() -> None:
     import numpy
 
     assert _maybe_module_version("numpy") == Version(numpy.__version__)
-    assert _maybe_module_version("cascade") == None  # whoopsie, we dont declare __version__ on cascade
+    assert _maybe_module_version("cascade") is None  # whoopsie, we dont declare __version__ on cascade
     import earthkit.workflows
 
     if not hasattr(earthkit.workflows, "__version__"):

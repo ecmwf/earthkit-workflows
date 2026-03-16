@@ -47,7 +47,7 @@ class _Subgraph:
 
 
 class Splicer(Transformer):
-    """Transformer to connect a sub-graph in place of an expanded node
+    """Transformer to connect a sub-graph in place of an expanded node.
 
     Subclasses can override the `splice_source` and `splice_sink` methods to
     control how sources and sinks of the sub-graph are converted to processors
@@ -116,7 +116,7 @@ class Splicer(Transformer):
         return _Subgraph(self.name, leaves, self.outputs, inner_sinks)
 
     def splice_source(self, name: str, s: Node, input: Output) -> Node:
-        """Create a processor node to replace a source in the sub-graph
+        """Create a processor node to replace a source in the sub-graph.
 
         The default implementation creates a bare Node with the original
         source's name, payload and outputs.
@@ -138,7 +138,7 @@ class Splicer(Transformer):
         return Node(name, s.outputs, s.payload, input=input)
 
     def splice_sink(self, name: str, s: Node, **inputs: Output) -> Node:
-        """Create a processor node to replace a sink in the sub-graph
+        """Create a processor node to replace a sink in the sub-graph.
 
         The default implementation creates a bare Node with the original
         sink's name, payload and inputs.
@@ -206,7 +206,7 @@ class _Expander(Transformer):
 
 
 def expand_graph(expand: ExpanderType, graph: Graph, splicer: SplicerType = Splicer) -> Graph:
-    """Expand a graph by replacing nodes with sub-graphs
+    """Expand a graph by replacing nodes with sub-graphs.
 
     The expansion is controlled by the ``expand`` callback, called for every
     node in topological order. For each node:

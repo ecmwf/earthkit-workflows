@@ -49,7 +49,7 @@ def visualise(
     preset: PRESET_OPTIONS = "hierarchical",
     **kwargs,
 ):
-    """Visualise a graph with PyVis
+    """Visualise a graph with PyVis.
 
     Parameters
     ----------

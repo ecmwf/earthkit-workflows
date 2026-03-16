@@ -1,4 +1,4 @@
-"""Generate dummy data -- sorta like meteo data but small and easy to generate locally"""
+"""Generate dummy data -- sorta like meteo data but small and easy to generate locally."""
 
 import numpy as np
 import xarray as xr

@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Utilities for log parsing and performance reporting"""
+"""Utilities for log parsing and performance reporting."""
 
 import math
 from dataclasses import dataclass

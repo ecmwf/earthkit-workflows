@@ -15,7 +15,7 @@ from .nodes import Node
 
 
 def to_networkx(graph: Graph, serialise=False) -> nx.MultiDiGraph:
-    """Convert a graph to a NetworkX graph
+    """Convert a graph to a NetworkX graph.
 
     If ``serialise`` is true, the node payloads in the output graph are the
     serialised values of the corresponding nodes of the input graph. Otherwise,
@@ -46,7 +46,7 @@ def draw_graph(
     pos: dict[str, Sequence[float]] | None = None,
     with_edge_labels: bool = False,
 ):
-    """Draw a graph using NetworkX"""
+    """Draw a graph using NetworkX."""
     g = to_networkx(graph) if isinstance(graph, Graph) else graph
     pos = topological_layout(g) if pos is None else pos
     nx.draw(g, pos, with_labels=True)

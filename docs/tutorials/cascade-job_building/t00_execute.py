@@ -1,4 +1,4 @@
-"""Simplified interface for job submission"""
+"""Simplified interface for job submission."""
 
 import random
 from typing import Any

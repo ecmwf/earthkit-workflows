@@ -1,4 +1,4 @@
-"""So builders are neat but with task per dimension x chunk x computation, thats still a lot to type
+"""So builders are neat but with task per dimension x chunk x computation, thats still a lot to type.
 
 And if you want to "just apply mean", you need to handle all the edgy business of what glues to what,
 the projections, the concatenates, ...
@@ -56,7 +56,7 @@ Now we will implement two children of the base class, each representing a differ
 
 
 class Source(DatasetSubgraph):
-    """Creates a no-inputs DatasetSubgraph using the provided `kallable`"""
+    """Creates a no-inputs DatasetSubgraph using the provided `kallable`."""
 
     @staticmethod
     def _validate(i: xr.Dataset, dims: list[str], variables: list[str]) -> xr.Dataset:
@@ -93,7 +93,7 @@ execution, and set it -- so that a potential follow-up Apply has correct metadat
 
 
 class ApplyNumpyReduce(DatasetSubgraph):
-    """Reduces `over_dims` for each `over_variables` individually via `f`"""
+    """Reduces `over_dims` for each `over_variables` individually via `f`."""
 
     @staticmethod
     def _apply(f: Callable, i: (str, xr.DataArray), over_dims: list[str]) -> xr.Dataset:

@@ -14,7 +14,7 @@ from earthkit.workflows.graph.visit import node_visit
 
 
 class Transformer:
-    """Graph transformer base class
+    """Graph transformer base class.
 
     When `transform` is called on a graph, the graph will be visited in
     topological order. A callback method will be called on each node, and the
@@ -50,7 +50,7 @@ class Transformer:
     """
 
     def transform(self, graph: Graph) -> Any:
-        """Apply the transformation to the given graph
+        """Apply the transformation to the given graph.
 
         See ``Transformer`` for details.
         """

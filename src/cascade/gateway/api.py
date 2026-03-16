@@ -25,7 +25,7 @@ class TroikaSpec:
     """Requires the gateway to have been started with --troika_config pointing
     to some config.yml troika file. The connection must work (passwordlessly),
     and must allow for script being copied. The remote host must have a venv
-    already in place, and must be able to resolve gateway's fqdn
+    already in place, and must be able to resolve gateway's fqdn.
     """
 
     venv: str  # remote host path to venv -- *do* include the bin/activate
