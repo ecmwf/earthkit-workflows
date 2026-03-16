@@ -1,5 +1,6 @@
 """Benchmark shm in isolation (without cascade) by just invoking a lot of reads and writes
-in a limited memory setting."""
+in a limited memory setting.
+"""
 
 import multiprocessing as mp
 import random
