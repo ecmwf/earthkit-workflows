@@ -14,6 +14,10 @@ adapters is imported by most of ekw.
 Currently, only cascade is supported.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     from cascade.low.core import DefaultTaskOutput
 

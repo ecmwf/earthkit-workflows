@@ -51,11 +51,11 @@ testpaths = ["tests/"]
 
 [tool.ruff]
 line-length = 120
+preview = true
 
 [tool.ruff.lint]
 ignore = [
   "D1",  # pydocstyle: Missing Docstrings
-  "D107",  # pydocstyle: numpy convention
   "D203",
   "D205",
   "D212",

@@ -14,18 +14,21 @@ compilers import from most of ekw.
 Currently, only cascade is supported.
 """
 
+import logging
 from typing import Any, Literal
 
 from earthkit.workflows.graph import Graph, serialise
+
+logger = logging.getLogger(__name__)
 
 try:
     from cascade.low.core import JobInstance
     from cascade.low.into import graph2job as cascadeInto
 except ImportError:
-    logger.error("failed to import any execution engine! Defaulting to dummy impl")
+    logger.error("Failed to import any execution engine! Defaulting to dummy implementation")
 
     def cascadeInto(graph: dict) -> Any:
-        raise NotImplementedError("failed to import cascade execution engine")
+        raise NotImplementedError("Failed to import cascade execution engine")
 
     JobInstance = Any
 
