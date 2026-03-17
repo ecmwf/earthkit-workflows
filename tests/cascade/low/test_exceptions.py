@@ -106,6 +106,6 @@ def test_ser_des_roundtrip_all_types():
     for exc in exceptions:
         serialized = ser(exc)
         deserialized = des(serialized)
-        assert type(deserialized) == type(exc)
+        assert type(deserialized) is type(exc)
         assert deserialized.description == exc.description
         assert deserialized.parent is None

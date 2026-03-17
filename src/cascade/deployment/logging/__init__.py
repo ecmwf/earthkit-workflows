@@ -33,7 +33,6 @@ can be implemented fully within this module
 import base64
 import logging
 import logging.config
-import os
 from typing import Literal
 
 import orjson
