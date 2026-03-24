@@ -15,14 +15,14 @@ repos:
   rev: v0.12.2
   hooks:
   - id: ruff # better black/flake/isort
-    files: ^src/
+    files: ^(src|tests|integration_tests)/
     args:
     - --select
     - I # isorting
     - --fix
     - --exit-non-zero-on-fix
   - id: ruff-format
-    files: ^src/
+    files: ^(src|tests|integration_tests)/
 ci:
   autoupdate_schedule: monthly
   autoupdate_commit_msg: "chore(deps): pre-commit.ci autoupdate"
