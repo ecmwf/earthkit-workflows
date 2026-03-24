@@ -29,14 +29,7 @@ def get_job_succ() -> JobInstanceRich:
     )
     sii = TaskInstance(definition=sid, static_input_kw={}, static_input_ps={})
 
-    ji = (
-        JobBuilder()
-        .with_node("so", soi)
-        .with_node("si", sii)
-        .with_edge("so", "si", 0, "o")
-        .build()
-        .get_or_raise()
-    )
+    ji = JobBuilder().with_node("so", soi).with_node("si", sii).with_edge("so", "si", 0, "o").build().get_or_raise()
     ji.ext_outputs = [DatasetId("si", "o")]
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
@@ -99,7 +92,7 @@ def test_job():
             job_progress_res = client.request_response(job_progress_req, url)
             assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
-            is_computed = job_progress_res.progresses[job_id].pct == "100.00" # ty: ignore[possibly-missing-attribute]
+            is_computed = job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]
             is_datasets = ji.jobInstance.ext_outputs[0] in job_progress_res.datasets[job_id]
             if is_computed and is_datasets:
                 break
@@ -110,9 +103,7 @@ def test_job():
                 time.sleep(2)
         assert tries < tries_limit
 
-        result_retrieval_req = api.ResultRetrievalRequest(
-            job_id=job_id, dataset_id=ji.jobInstance.ext_outputs[0]
-        )
+        result_retrieval_req = api.ResultRetrievalRequest(job_id=job_id, dataset_id=ji.jobInstance.ext_outputs[0])
         result_retrieval_res = client.request_response(result_retrieval_req, url)
         assert isinstance(result_retrieval_res, api.ResultRetrievalResponse)
         assert result_retrieval_res.error is None
@@ -120,9 +111,7 @@ def test_job():
         deser = api.decoded_result(result_retrieval_res, ji.jobInstance)
         assert deser == job_func(init_value)
 
-        result_deletion_req = api.ResultDeletionRequest(
-            datasets={job_id: [ji.jobInstance.ext_outputs[0]]}
-        )
+        result_deletion_req = api.ResultDeletionRequest(datasets={job_id: [ji.jobInstance.ext_outputs[0]]})
         result_deletion_res = client.request_response(result_deletion_req, url)
         assert isinstance(result_deletion_res, api.ResultDeletionResponse)
         assert result_deletion_res.error is None
@@ -150,8 +139,8 @@ def test_job():
             job_progress_res = client.request_response(job_progress_req, url)
             assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
-            assert job_progress_res.progresses[job_id].pct != "100.00" # ty: ignore[possibly-missing-attribute]
-            if job_progress_res.progresses[job_id].failure is not None: # ty: ignore[possibly-missing-attribute]
+            assert job_progress_res.progresses[job_id].pct != "100.00"  # ty: ignore[possibly-missing-attribute]
+            if job_progress_res.progresses[job_id].failure is not None:  # ty: ignore[possibly-missing-attribute]
                 break
             else:
                 tries += 1
@@ -188,7 +177,7 @@ def test_job():
             assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
             is_computed = (
-                    lambda job_id: job_progress_res.progresses[job_id].pct == "100.00" # ty: ignore[possibly-missing-attribute]
+                lambda job_id: job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]
             )
             if all(is_computed(job_id) for job_id in job_ids):
                 break
@@ -202,7 +191,7 @@ def test_job():
         # gw shutdown
         shutdown_req = api.ShutdownRequest()
         shutdown_res = client.request_response(shutdown_req, url, 3000)
-        assert hasattr(shutdown_res, 'error') and shutdown_res.error is None
+        assert hasattr(shutdown_res, "error") and shutdown_res.error is None
         gw.join(5)
         assert gw.exitcode == 0
 

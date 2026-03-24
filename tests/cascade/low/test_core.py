@@ -1,5 +1,6 @@
 from cascade.low.core import DatasetId
 
+
 def test_datasetid_serde():
     cases = [
         DatasetId(task="basic", output="0"),

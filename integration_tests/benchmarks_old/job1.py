@@ -35,11 +35,7 @@ CLIM_DATE = "20241110"
 
 # ** JOB DEFINITIONS ***
 
-files = [
-    f"{data_root}/data_{number}_{step}.grib"
-    for number in range(1, NUM_ENSEMBLES + 1)
-    for step in range(0, END_STEP + 1, 3)
-]
+files = [f"{data_root}/data_{number}_{step}.grib" for number in range(1, NUM_ENSEMBLES + 1) for step in range(0, END_STEP + 1, 3)]
 payloads = [
     Payload(
         lambda f: earthkit.data.from_source("file", f),
@@ -70,8 +66,7 @@ climatology = from_source(
 
 def get_prob():
     prob_windows = [Range(f"{x}-{x}", [x]) for x in range(0, END_STEP + 1, 24)] + [
-        Range(f"{x}-{x + 120}", list(range(x + 6, x + 121, 6)))
-        for x in range(0, END_STEP - 119, 120)
+        Range(f"{x}-{x + 120}", list(range(x + 6, x + 121, 6))) for x in range(0, END_STEP - 119, 120)
     ]
     return (
         inputs.window_operation("min", prob_windows, dim="step", batch_size=2)
@@ -91,10 +86,7 @@ def get_ensms():
 
 
 def get_efi():
-    efi_windows = [
-        Range(f"{x}-{x+24}", list(range(x + 6, x + 25, 6)))
-        for x in range(0, END_STEP - 23, 24)
-    ]
+    efi_windows = [Range(f"{x}-{x + 24}", list(range(x + 6, x + 25, 6))) for x in range(0, END_STEP - 23, 24)]
     return (
         inputs.window_operation("mean", efi_windows, dim="step", batch_size=2)
         .ensemble_extreme(
@@ -136,7 +128,7 @@ def download_inputs():
             }
             data = earthkit.data.from_source("mars", **ekp)
             with open(f"{data_root}/data_{number}_{step}.grib", "wb") as f:
-                data.write(f) # ty: ignore
+                data.write(f)  # ty: ignore
 
 
 def download_climatology():
@@ -151,12 +143,12 @@ def download_climatology():
             "levtype": "sfc",
             "type": "cd",
             "quantile": [f"{x}:100" for x in range(101)],
-            "step": f"{step}-{step+24}",
+            "step": f"{step}-{step + 24}",
             "grid": GRID,
         }
         data = earthkit.data.from_source("mars", **ekp)
         with open(f"{data_root}/data_clim_{step}.grib", "wb") as f:
-            data.write(f) # ty: ignore
+            data.write(f)  # ty: ignore
 
 
 if __name__ == "__main__":

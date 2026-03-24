@@ -65,7 +65,8 @@ def execute_locally():
 
     from multiprocessing.shared_memory import SharedMemory
 
-    mem = SharedMemory("benchmark_tmp", create=True, size=m0.nbytes); assert mem.buf is not None
+    mem = SharedMemory("benchmark_tmp", create=True, size=m0.nbytes)
+    assert mem.buf is not None
     mem.buf[:] = m0.tobytes()
 
 

@@ -47,32 +47,16 @@ def transmitDurations(transmits: pd.DataFrame) -> pd.DataFrame:
     if transmits.shape[0] == 0:
         return transmits
 
-    mode_fix = transmits[~transmits["mode"].isna()].set_index(["dataset", "target"])[
-        "mode"
-    ]
+    mode_fix = transmits[~transmits["mode"].isna()].set_index(["dataset", "target"])["mode"]
     lookup = mode_fix[~mode_fix.index.duplicated(keep="last")]
-    transmits = (
-        transmits.set_index(["dataset", "target"])
-        .drop(columns="mode")
-        .join(lookup)
-        .reset_index()
-    )
+    transmits = transmits.set_index(["dataset", "target"]).drop(columns="mode").join(lookup).reset_index()
 
     # we'd have received and unloaded missing source
-    source_fix = transmits[~transmits["source"].isna()].set_index(
-        ["dataset", "target"]
-    )["source"]
+    source_fix = transmits[~transmits["source"].isna()].set_index(["dataset", "target"])["source"]
     lookup = source_fix[~source_fix.index.duplicated(keep="last")]
-    transmits = (
-        transmits.set_index(["dataset", "target"])
-        .drop(columns="source")
-        .join(lookup)
-        .reset_index()
-    )
+    transmits = transmits.set_index(["dataset", "target"]).drop(columns="source").join(lookup).reset_index()
 
-    durations = transmits.pivot(
-        index=["dataset", "target", "source", "mode"], columns=["action"], values=["at"]
-    )
+    durations = transmits.pivot(index=["dataset", "target", "source", "mode"], columns=["action"], values=["at"])
     durations.columns = [name[1] for name in durations.columns]  # type: ignore
     durations = durations.reset_index()
 
@@ -119,11 +103,7 @@ def logParse(files: Iterable[str]) -> dict[str, pd.DataFrame]:
             "kind": k.value,
             "duration_ns_sum": v.duration_ns_sum,
             "duration_ns_cnt": v.duration_ns_cnt,
-            "duration_ns_avg": (
-                v.duration_ns_sum / v.duration_ns_cnt
-                if v.duration_ns_cnt > 0
-                else math.nan
-            ),
+            "duration_ns_avg": (v.duration_ns_sum / v.duration_ns_cnt if v.duration_ns_cnt > 0 else math.nan),
         }
         for k, v in microtraces.items()
     ]

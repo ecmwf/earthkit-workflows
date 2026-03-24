@@ -11,8 +11,9 @@
 import pytest
 from qubed import Qube
 
-from earthkit.workflows.nodetree import nodetree_array
 from earthkit.workflows._qubed import _convert_num_to_abc, expand_as_qube
+from earthkit.workflows.nodetree import nodetree_array
+
 from .helpers import mock_action
 
 # ============================================================================
@@ -62,17 +63,21 @@ def hierarchical_qube():
     After expansion, children should have BOTH step AND their own dims.
     """
     # Create children with step dimension AND their own dimensions
-    surface = Qube.from_datacube({
-        "step": [6, 12],
-        "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
-    })
+    surface = Qube.from_datacube(
+        {
+            "step": [6, 12],
+            "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
+        }
+    )
     surface.add_metadata({"name": "surface"})
 
-    pressure = Qube.from_datacube({
-        "step": [6, 12],
-        "param": ["q", "t", "u", "v"],
-        "level": [50, 100, 150, 200, 250],
-    })
+    pressure = Qube.from_datacube(
+        {
+            "step": [6, 12],
+            "param": ["q", "t", "u", "v"],
+            "level": [50, 100, 150, 200, 250],
+        }
+    )
     pressure.add_metadata({"name": "pressure"})
 
     # Combine: both children have step, so parent will have step
@@ -99,23 +104,18 @@ def multi_level_qube():
     All children have step dimension in the qube, which creates step dimension on parent.
     After expansion, all branches should have step dimension.
     """
-    child1 = Qube.from_datacube({
-        "step": [1, 2, 3],
-        "param": ["a", "b"]
-    })
+    child1 = Qube.from_datacube({"step": [1, 2, 3], "param": ["a", "b"]})
     child1.add_metadata({"name": "group1"})
 
-    child2 = Qube.from_datacube({
-        "step": [1, 2, 3],
-        "param": ["c", "d"],
-        "class" : "od"
-    })
+    child2 = Qube.from_datacube({"step": [1, 2, 3], "param": ["c", "d"], "class": "od"})
 
-    nested = Qube.from_datacube({
-        "step": [1, 2, 3],
-        "param": ["c", "d"],
-        "level": [100, 200],
-    })
+    nested = Qube.from_datacube(
+        {
+            "step": [1, 2, 3],
+            "param": ["c", "d"],
+            "level": [100, 200],
+        }
+    )
 
     # Combine: child2 and nested both have step+param, so child2|nested will have those
     child2_with_nested = child2 | nested
@@ -125,6 +125,7 @@ def multi_level_qube():
     qube = child1 | child2_with_nested
 
     return qube
+
 
 @pytest.fixture
 def empty_qube():
@@ -482,31 +483,38 @@ def test_expand_as_qube_with_real_action():
     assert "step" in result.nodes.to_dataset().dims
 
 
-@pytest.mark.parametrize("qube_fixture", [
-    "pressure_level_qube",
-    "hierarchical_qube",
-])
+@pytest.mark.parametrize(
+    "qube_fixture",
+    [
+        "pressure_level_qube",
+        "hierarchical_qube",
+    ],
+)
 def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
     action = mock_action(shape=(2, 2))
 
     result = expand_as_qube(action, qube)
-    subset = result.select(param='t')
-    
+    subset = result.select(param="t")
+
     da = nodetree_array(subset.nodes)
     assert "step" in da.dims
     assert "param" not in da.dims
     assert "param" in da.coords
-    
-    assert da.param == 't'
+
+    assert da.param == "t"
 
     with pytest.raises(KeyError):
-        subset = result.select(param='nonexistent_param')
+        subset = result.select(param="nonexistent_param")
 
-@pytest.mark.parametrize("qube_fixture", [
-    "pressure_level_qube",
-    "hierarchical_qube",
-])
+
+@pytest.mark.parametrize(
+    "qube_fixture",
+    [
+        "pressure_level_qube",
+        "hierarchical_qube",
+    ],
+)
 def test_expand_as_qube_with_real_action_post_select_level(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
     action = mock_action(shape=(2, 2))
@@ -522,4 +530,4 @@ def test_expand_as_qube_with_real_action_post_select_level(qube_fixture, request
     assert da.level == 50
 
     with pytest.raises(KeyError):
-        subset = result.select(param='nonexistent_param')
+        subset = result.select(param="nonexistent_param")

@@ -2,13 +2,12 @@
 A trivial job based on earthkit-workflows fluent custom actions.
 """
 
+from base import JobSpec  # ty:ignore[unresolved-import]
+from runtime import product_add, sink_file, source_42, transform_increment  # ty:ignore[unresolved-import]
+
 from cascade.low.core import JobInstanceRich
-from base import JobSpec # ty:ignore[unresolved-import]
-
-from earthkit.workflows.fluent import Action, Payload, from_source
 from earthkit.workflows.compilers import graph2job
-
-from runtime import source_42, transform_increment, product_add, sink_file # ty:ignore[unresolved-import]
+from earthkit.workflows.fluent import Action, Payload, from_source
 
 
 def job() -> JobInstanceRich:
@@ -22,5 +21,6 @@ def job() -> JobInstanceRich:
 
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
-def spc() -> JobSpec: 
+
+def spc() -> JobSpec:
     return JobSpec(workers=1, hosts=1)

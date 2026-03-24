@@ -13,17 +13,14 @@ Run `dirTaskLane(<path-to-your-logs-directory>)`
 
 import os
 
+from benchmarks_old.reporting import logParse  # ty:ignore[unresolved-import]
 from bokeh.io import curdoc, output_notebook, show
 from bokeh.models import ColumnDataSource, Grid, HBar, LinearAxis, Plot, VSpan
-
-from benchmarks_old.reporting import logParse # ty:ignore[unresolved-import]
 
 output_notebook()
 
 
-def plotTaskLane(
-    data: dict, scale, width, isBarController=False, allowFailed=False, vizTrans=True
-):
+def plotTaskLane(data: dict, scale, width, isBarController=False, allowFailed=False, vizTrans=True):
     Td = data["task_durations"].dropna()
     nc = [
         "planned",
@@ -39,9 +36,7 @@ def plotTaskLane(
     df = df - zero
     df = df.assign(worker=Td.worker)
 
-    workerToLane = {
-        e: i for i, e in enumerate(Td.worker.drop_duplicates().sort_values())
-    }
+    workerToLane = {e: i for i, e in enumerate(Td.worker.drop_duplicates().sort_values())}
     print(workerToLane)  # TODO use the labels in the if instead
 
     plot = Plot(
@@ -53,16 +48,12 @@ def plotTaskLane(
     )  # TODO derive width from data
 
     def boxTask(left, right, color):
-        source = ColumnDataSource(
-            dict(y=df.worker.map(workerToLane), left=left, right=right)
-        )
+        source = ColumnDataSource(dict(y=df.worker.map(workerToLane), left=left, right=right))
         glyph = HBar(y="y", right="right", left="left", height=0.5, fill_color=color)
         plot.add_glyph(source, glyph)
 
     def boxTransmit(worker, left, right, color):
-        source = ColumnDataSource(
-            dict(y=worker.map(workerToLane) - 0.5, left=left, right=right)
-        )
+        source = ColumnDataSource(dict(y=worker.map(workerToLane) - 0.5, left=left, right=right))
         glyph = HBar(y="y", right="right", left="left", height=0.25, fill_color=color)
         plot.add_glyph(source, glyph)
 
@@ -95,19 +86,11 @@ def plotTaskLane(
         df = df - zero
         df = df.assign(target=Rd.target + ".w0", source=Rd.source)
         boxTransmit(df.target, df.planned, df.received, "#ff1111")  # target waiting RED
-        boxTransmit(
-            df.target, df.received, df.unloaded, "#1111ff"
-        )  # target memcpy BLUE
-        boxTransmit(
-            df.target, df.unloaded, df.completed, "#444444"
-        )  # target callback GREY
-        boxTransmit(
-            df.source, df.planned, df.started, "#aaaa11"
-        )  # ctrl2source comm delay YELLOW
+        boxTransmit(df.target, df.received, df.unloaded, "#1111ff")  # target memcpy BLUE
+        boxTransmit(df.target, df.unloaded, df.completed, "#444444")  # target callback GREY
+        boxTransmit(df.source, df.planned, df.started, "#aaaa11")  # ctrl2source comm delay YELLOW
         boxTransmit(df.source, df.started, df.loaded, "#1111aa")  # source memcpy BLUE
-        boxTransmit(
-            df.source, df.loaded, df.received, "#444444"
-        )  # source memcpy + network GREY
+        boxTransmit(df.source, df.loaded, df.received, "#444444")  # source memcpy + network GREY
 
     xaxis = LinearAxis()
     plot.add_layout(xaxis, "below")

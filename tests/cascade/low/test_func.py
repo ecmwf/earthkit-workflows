@@ -4,7 +4,6 @@ from cascade.low.func import pydantic_recursive_collect
 
 
 def test_pydantic_recursive_collect() -> None:
-
     class DaModel(BaseModel):
         a: int
 

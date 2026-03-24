@@ -16,9 +16,9 @@ from multiprocessing import Process
 
 import numpy as np
 
-from cascade.deployment.logging import DefaultLoggingConfig
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
+from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.executor.comms import Listener, callback, send_data
 from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
@@ -49,9 +49,7 @@ from cascade.low.core import (
 logger = logging.getLogger(__name__)
 
 
-def launch_executor(
-    job_instance: JobInstance, controller_address: BackboneAddress, portBase: int
-):
+def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int):
     dictConfig(logging_config)
     executor = Executor(
         job_instance,
@@ -92,11 +90,7 @@ def test_executor():
     sink_o = DatasetId("sink", "o")
     job = JobInstance(
         tasks={"source": source, "sink": sink},
-        edges=[
-            Task2TaskEdge(
-                source=source_o, sink_task="sink", sink_input_kw="x", sink_input_ps=None
-            )
-        ],
+        edges=[Task2TaskEdge(source=source_o, sink_task="sink", sink_input_kw="x", sink_input_ps=None)],
     )
 
     # cluster setup
@@ -135,9 +129,7 @@ def test_executor():
         w0 = WorkerId("test_executor", "w0")
         callback(
             m1,
-            TaskSequence(
-                worker=w0, tasks=["source", "sink"], publish={sink_o}, extra_env=[]
-            ),
+            TaskSequence(worker=w0, tasks=["source", "sink"], publish={sink_o}, extra_env=[]),
         )
         # NOTE we need to expect source_o dataset too, because of no finegraining for host-wide and worker-only
         expected = {
@@ -147,9 +139,7 @@ def test_executor():
         while expected:
             ms = l.recv_messages()
             for m in ms:
-                if not isinstance(
-                    m, ExecutorRegistration
-                ):  # there may be extra due to retries
+                if not isinstance(m, ExecutorRegistration):  # there may be extra due to retries
                     expected.remove(m)
 
         # retrieve result
@@ -164,20 +154,14 @@ def test_executor():
             ),
         )
         ms = l.recv_messages()
-        assert (
-            len(ms) == 1
-            and isinstance(ms[0], DatasetTransmitPayload)
-            and ms[0].header.ds == DatasetId(task="sink", output="o")
-        )
+        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task="sink", output="o")
         assert serde.des_output(ms[0].value, "int", ms[0].header.deser_fun)[0] == 3.0
 
         # purge, store, run partial and fetch again
         callback(m1, DatasetPurge(ds=sink_o))
         value, deser_fun = serde.ser_output(np.array([10.0]), "ndarray")
         payload = DatasetTransmitPayload(
-            header=DatasetTransmitPayloadHeader(
-                ds=source_o, confirm_idx=1, confirm_address=c1, deser_fun=deser_fun
-            ),
+            header=DatasetTransmitPayloadHeader(ds=source_o, confirm_idx=1, confirm_address=c1, deser_fun=deser_fun),
             value=value,
         )
         syn = Syn(1, c1)
@@ -191,9 +175,7 @@ def test_executor():
             for m in ms:
                 logger.debug(f"about to remove received message {m}")
                 expected.remove(m)
-        callback(
-            m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}, extra_env=[])
-        )
+        callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}, extra_env=[]))
         expected = [
             DatasetPublished(w0, ds=sink_o, transmit_idx=None),
         ]

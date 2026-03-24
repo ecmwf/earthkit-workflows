@@ -37,6 +37,7 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
     # NOTE we dont want to import these at the top level to prevent imports pollution of executor
     import cascade.low.into
     from earthkit.workflows.graph import Graph, deduplicate_nodes
+
     # NOTE because of os.environ, we don't import all... ideally we'd have some file-based init/config mech instead
     if benchmark is not None and instance_path is not None:
         raise TypeError("specified both benchmark name and job instance")
@@ -47,32 +48,30 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
     elif benchmark is not None:
         instance: JobInstance
         if benchmark.startswith("j1"):
-            import benchmarks_old.job1 as job1 # ty:ignore[unresolved-import]
+            import benchmarks_old.job1 as job1  # ty:ignore[unresolved-import]
 
             graphs = {
                 "j1.prob": job1.get_prob(),
                 "j1.ensms": job1.get_ensms(),
                 "j1.efi": job1.get_efi(),
             }
-            union = lambda prefix: deduplicate_nodes(
-                msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph)
-            )
+            union = lambda prefix: deduplicate_nodes(msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph))
             graphs["j1.all"] = union("j1.")
             instance = cascade.low.into.graph2job(graphs[benchmark])
         elif benchmark.startswith("generators"):
-            import benchmarks_old.generators as generators # ty:ignore[unresolved-import]
+            import benchmarks_old.generators as generators  # ty:ignore[unresolved-import]
 
             instance = generators.get_job()
         elif benchmark.startswith("matmul"):
-            import benchmarks_old.matmul as matmul # ty:ignore[unresolved-import]
+            import benchmarks_old.matmul as matmul  # ty:ignore[unresolved-import]
 
             instance = matmul.get_job()
         elif benchmark.startswith("dist"):
-            import benchmarks_old.dist as dist # ty:ignore[unresolved-import]
+            import benchmarks_old.dist as dist  # ty:ignore[unresolved-import]
 
             instance = dist.get_job()
         elif benchmark.startswith("dask"):
-            import benchmarks_old.dask as dask # ty:ignore[unresolved-import]
+            import benchmarks_old.dask as dask  # ty:ignore[unresolved-import]
 
             instance = dask.get_job(benchmark[len("dask.") :])
         else:
