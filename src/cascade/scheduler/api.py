@@ -38,7 +38,7 @@ def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
     for gang in gang_prep.lookup[task]:
         if gang not in gang_prep.countdown:
             raise CascadeInternalError(
-                description=f"after {task=} marked computable, {gang=} not found -- double compuptable mark?"
+                description=f"after {task=} marked computable, {gang=} not found -- double computable mark?"
             )
         remaining = gang_prep.countdown[gang]
         if task not in remaining:
