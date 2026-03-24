@@ -16,14 +16,14 @@ source ~/venv/casc/bin/activate
 # TODO make this externally sourcable config
 # *** ------ ***
 
-# *** job prep *** 
+# *** job prep ***
 echo "starting procid.jobid $SLURM_PROCID.$SLURM_JOBID with param $1 at host $(hostname) with nodes $SLURM_NODELIST"
 WORKER_NODES=$((SLURM_NTASKS-1))
 CONTROLLER="$(echo $SLURM_NODELIST | sed 's/\(ac.-\)\[\?\([0-9]*\).*/\1\2/')"
 CONTROLLER_URL="tcp://$CONTROLLER:5555"
 echo "selected controller $CONTROLLER at $CONTROLLER_URL, expecting $WORKER_NODES"
 mkdir -p $LOGGING_ROOT/$SLURM_JOBID
-# *** -------- *** 
+# *** -------- ***
 
 # *** job run ***
 if [ "$(hostname | cut -f 1 -d.)" == "$CONTROLLER" ] ; then
