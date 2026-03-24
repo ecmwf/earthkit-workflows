@@ -108,14 +108,8 @@ def get_job() -> JobInstance:
     node = TaskBuilder.from_callable(build_dist_func(IMPL))
 
     for i in range(L):
-        job = (
-            job.with_node(f"proc{i}", node)
-            .with_edge("source", f"proc{i}", "a")
-            .with_edge(f"proc{i}", "sink", f"v{i}")
-        )
-        job.nodes["sink"].definition.input_schema[
-            f"v{i}"
-        ] = "int"  # TODO put some allow_kw into TaskDefinition instead to allow this
+        job = job.with_node(f"proc{i}", node).with_edge("source", f"proc{i}", "a").with_edge(f"proc{i}", "sink", f"v{i}")
+        job.nodes["sink"].definition.input_schema[f"v{i}"] = "int"  # TODO put some allow_kw into TaskDefinition instead to allow this
 
     job = job.build().get_or_raise()
     job.ext_outputs = list(job.outputs_of("sink"))

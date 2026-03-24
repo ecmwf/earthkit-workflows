@@ -51,7 +51,7 @@ class CascadeUserError(CascadeError):
     pass
 
 
-def ser(e: Exception, extra_context: str|None = None) -> str:
+def ser(e: Exception, extra_context: str | None = None) -> str:
     """Serialize error to a string representation, converting to CascadeError first if needed."""
     # we go with InternalError, because context-aware conversions should have happened prior
     e = e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e)
@@ -59,24 +59,27 @@ def ser(e: Exception, extra_context: str|None = None) -> str:
         e.add_context(extra_context)
     return repr(e)
 
+
 def des(s: str) -> CascadeError:
     """Deserialize a string back to a CascadeError.
-    
+
     Attempts to parse the string as '<CascadeErrorClassName>(<detail>)'.
     If successful, constructs the appropriate exception class.
     Otherwise, returns CascadeInternalError with the input string.
     Parent field is always set to None.
     """
     import re
-    
+
     # Try to match pattern: ClassName('detail') or ClassName("detail")
     # We need to handle both single and double quotes, and escaped quotes
-    match = re.match(r"^(CascadeError|CascadeInternalError|CascadeInfrastructureError|CascadeUserError)\((['\"])(.+?)\2(?:, parent=.*)?\)$", s, re.DOTALL)
-    
+    match = re.match(
+        r"^(CascadeError|CascadeInternalError|CascadeInfrastructureError|CascadeUserError)\((['\"])(.+?)\2(?:, parent=.*)?\)$", s, re.DOTALL
+    )
+
     if match:
         class_name = match.group(1)
         detail = match.group(3)
-        
+
         # Map class name to actual class
         class_map = {
             "CascadeError": CascadeError,
@@ -84,10 +87,10 @@ def des(s: str) -> CascadeError:
             "CascadeInfrastructureError": CascadeInfrastructureError,
             "CascadeUserError": CascadeUserError,
         }
-        
+
         exc_class = class_map.get(class_name)
         if exc_class:
             return exc_class(description=detail, parent=None)
-    
+
     # If parsing fails, return as CascadeInternalError
     return CascadeInternalError(description=s, parent=None)

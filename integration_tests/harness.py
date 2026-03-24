@@ -1,8 +1,10 @@
-from cascade.main import run_locally
 import importlib
-import sys
-from base import JobSpec # ty:ignore[unresolved-import]
 import logging
+import sys
+
+from base import JobSpec  # ty:ignore[unresolved-import]
+
+from cascade.main import run_locally
 
 logger = logging.getLogger("cascade.benchmarks.harness")
 

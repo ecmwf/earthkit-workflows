@@ -25,7 +25,7 @@ def test_ser_des_cascade_internal_error():
     exc = CascadeInternalError("something went wrong")
     serialized = ser(exc)
     deserialized = des(serialized)
-    
+
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == "something went wrong"
     assert deserialized.parent is None
@@ -36,7 +36,7 @@ def test_ser_des_cascade_infrastructure_error():
     exc = CascadeInfrastructureError("network failure")
     serialized = ser(exc)
     deserialized = des(serialized)
-    
+
     assert isinstance(deserialized, CascadeInfrastructureError)
     assert deserialized.description == "network failure"
     assert deserialized.parent is None
@@ -47,7 +47,7 @@ def test_ser_des_cascade_user_error():
     exc = CascadeUserError("invalid configuration")
     serialized = ser(exc)
     deserialized = des(serialized)
-    
+
     assert isinstance(deserialized, CascadeUserError)
     assert deserialized.description == "invalid configuration"
     assert deserialized.parent is None
@@ -58,7 +58,7 @@ def test_ser_des_cascade_error():
     exc = CascadeError("general error")
     serialized = ser(exc)
     deserialized = des(serialized)
-    
+
     assert isinstance(deserialized, CascadeError)
     assert deserialized.description == "general error"
     assert deserialized.parent is None
@@ -70,7 +70,7 @@ def test_ser_des_with_parent():
     exc = CascadeInternalError("child error", parent=parent_exc)
     serialized = ser(exc)
     deserialized = des(serialized)
-    
+
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == "child error"
     assert deserialized.parent is None
@@ -80,7 +80,7 @@ def test_des_invalid_string():
     """Test deserialization of invalid string returns CascadeInternalError."""
     invalid_str = "not a valid exception format"
     deserialized = des(invalid_str)
-    
+
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == invalid_str
     assert deserialized.parent is None
@@ -90,7 +90,7 @@ def test_des_unknown_exception_class():
     """Test deserialization of unknown exception class returns CascadeInternalError."""
     invalid_str = "UnknownError('some error')"
     deserialized = des(invalid_str)
-    
+
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == invalid_str
     assert deserialized.parent is None
@@ -104,7 +104,7 @@ def test_ser_des_roundtrip_all_types():
         CascadeInfrastructureError("infra error"),
         CascadeUserError("user error"),
     ]
-    
+
     for exc in exceptions:
         serialized = ser(exc)
         deserialized = des(serialized)

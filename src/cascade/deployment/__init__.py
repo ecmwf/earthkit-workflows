@@ -7,6 +7,6 @@
 # nor does it submit to any jurisdiction.
 
 """
-Configuration and utilities pertaining to deployment. Currently handles: 
+Configuration and utilities pertaining to deployment. Currently handles:
  - logging.
 """

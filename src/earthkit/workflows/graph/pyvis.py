@@ -76,9 +76,7 @@ def node_info(node):
         labels.append(f"Output{'' if len(node.outputs) == 1 else 's'}: {outputs_s}")
 
     shape = random.Random(node.name.split(":")[0]).choice(AVAILABLE_SHAPES)
-    colour = random.Random(f"{node.name.split(':')[0]}-{str(node.outputs)}").choice(
-        AVAILABLE_COLOURS
-    )
+    colour = random.Random(f"{node.name.split(':')[0]}-{str(node.outputs)}").choice(AVAILABLE_COLOURS)
 
     return {
         "title": "\n".join(labels),
@@ -205,9 +203,7 @@ def to_pyvis(
                 f"{truncate_name(node.name)}.{truncate_name(iname)}",
                 node,
             )
-            net.add_edge(
-                truncate_name(isrc.parent.name), truncate_name(node.name), **eattrs
-            )
+            net.add_edge(truncate_name(isrc.parent.name), truncate_name(node.name), **eattrs)
 
     options = options or {}
     preset_options = getattr(VisualisationPresets, preset)()

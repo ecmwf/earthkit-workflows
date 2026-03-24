@@ -46,16 +46,16 @@ import cascade.deployment.logging.defaults as defaults
 class LoggingConfig(BaseModel):
     formatter: Literal["line", "json"]
     """Line is standard python logging, json uses structured logging"""
-    path_base: str|None
+    path_base: str | None
     """If None log to stdout, otherwise log into files in path_base directory, with each process having its own files.
     Expected to have been created beforehand"""
 
     def ser_cliparam(self) -> str:
-        return base64.b64encode(self.model_dump_json().encode('utf-8')).decode('utf-8')
+        return base64.b64encode(self.model_dump_json().encode("utf-8")).decode("utf-8")
 
     def withContext(self, context_kv: str) -> Self:
         if self.path_base is not None:
-            return self.model_copy(update={'path_base': self.path_base + f"{context_kv}."})
+            return self.model_copy(update={"path_base": self.path_base + f"{context_kv}."})
         else:
             # TODO handle context in the stdout loggers. Not critical because all
             # logs of zmq messages have context in them anyway
@@ -64,25 +64,28 @@ class LoggingConfig(BaseModel):
 
 DefaultLoggingConfig = LoggingConfig(formatter="line", path_base=None)
 
+
 def as_dict_config(loggingConfig: LoggingConfig, hostAndRole: str) -> dict:
     if loggingConfig.path_base:
         filename = f"{loggingConfig.path_base}{hostAndRole}.txt"
-        handler = defaults.handlers['filename'](filename) # ty:ignore[call-non-callable] # sloppy typing on my side
+        handler = defaults.handlers["filename"](filename)  # ty:ignore[call-non-callable] # sloppy typing on my side
     else:
-        handler = defaults.handlers['stdout']
+        handler = defaults.handlers["stdout"]
     return {
         **defaults.base,
         **handler,
         **defaults.formatters[loggingConfig.formatter],
     }
 
+
 def init_from_obj(loggingConfig: LoggingConfig, hostAndRole: str) -> None:
     dictConfig = as_dict_config(loggingConfig, hostAndRole)
     logging.config.dictConfig(dictConfig)
 
-def init_from_cliparam(cliparam: str|None, hostAndRole: str) -> LoggingConfig:
+
+def init_from_cliparam(cliparam: str | None, hostAndRole: str) -> LoggingConfig:
     if cliparam is not None:
-        loggingConfig = LoggingConfig(**orjson.loads(base64.b64decode(cliparam.encode('utf-8'))))
+        loggingConfig = LoggingConfig(**orjson.loads(base64.b64decode(cliparam.encode("utf-8"))))
     else:
         loggingConfig = DefaultLoggingConfig
         logging.getLogger(__name__).warning(f"using default config for logging at {hostAndRole}")

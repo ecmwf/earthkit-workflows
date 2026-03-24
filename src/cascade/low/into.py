@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]:
-
     # TODO this is hotfix. Strict schema and the like required for payload
     if hasattr(node["payload"], "to_tuple"):
         payload_tuple = node["payload"].to_tuple()
