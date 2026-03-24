@@ -1,6 +1,15 @@
+"""
+A graph where each node requires a different version of numpy.
+An environment with a single host.
+
+This validates that venv corruption is not happening -- ie, a previous
+task's pip installs can be erased reliably when a new task with
+conflicting requirements is executed.
+"""
+
 from cascade.low.builders import TaskBuilder, JobBuilder
 from cascade.low.core import JobInstance, JobInstanceRich
-from base import JobSpec
+from base import JobSpec # ty:ignore[unresolved-import]
 
 def job() -> JobInstanceRich:
     fac = lambda version: TaskBuilder.from_entrypoint(
