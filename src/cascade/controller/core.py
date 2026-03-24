@@ -53,19 +53,12 @@ class State:
 
     def consider_fetch(self, dataset: DatasetId, at: HostId) -> None:
         """If required as output and not yet arrived, add to fetching queue"""
-        if (
-            dataset in self.outputs
-            and self.outputs[dataset] is None
-            and dataset not in self.fetching_queue
-        ):
+        if dataset in self.outputs and self.outputs[dataset] is None and dataset not in self.fetching_queue:
             self.fetching_queue[dataset] = at
 
     def consider_persist(self, dataset: DatasetId, at: HostId) -> None:
         """If required as persist and not yet acknowledged, add to persist queue"""
-        if (
-            dataset in self.to_persist
-            and dataset not in self.persist_queue
-        ):
+        if dataset in self.to_persist and dataset not in self.persist_queue:
             self.persist_queue[dataset] = at
 
     def receive_payload(self, ds: DatasetId, payload: bytes, deser_fun: str) -> None:
@@ -102,9 +95,7 @@ class State:
 
 
 def init_state(outputs: set[DatasetId], to_persist: set[DatasetId], edge_o: dict[DatasetId, set[TaskId]]) -> State:
-    purging_tracker = {
-        ds: {task for task in dependants} for ds, dependants in edge_o.items()
-    }
+    purging_tracker = {ds: {task for task in dependants} for ds, dependants in edge_o.items()}
 
     return State(
         outputs={e: None for e in outputs},

@@ -83,7 +83,7 @@ class DataServer:
                 if fut.done():
                     ex = fut.exception()
                     if ex:
-                        ex = cast(Exception, ex) # NOTE ty consider ex BaseException & ~AlwaysFalsy
+                        ex = cast(Exception, ex)  # NOTE ty consider ex BaseException & ~AlwaysFalsy
                         callback(
                             self.maddress,
                             DatasetTransmitFailure(host=self.host, detail=ser(ex, repr(key))),
@@ -270,9 +270,7 @@ class DataServer:
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, DatasetTransmitPayload):
                         if m.header.ds in self.invalid:
-                            logger.warning(
-                                f"ignoring transmit payload {m.header} as the dataset was already purged"
-                            )
+                            logger.warning(f"ignoring transmit payload {m.header} as the dataset was already purged")
                             continue
                         mark(
                             {

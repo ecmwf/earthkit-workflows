@@ -230,7 +230,6 @@ class ReliableSender:
                     self.inflight[idx].at = time.time_ns()
                     self.inflight[idx].remaining -= 1
                     if self.inflight[idx].remaining <= 0:
-
                         raise CascadeInfrastructureError(f"message {idx} ({record.clazz}) retried too many times")
                 else:
                     logger.warning(f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown")

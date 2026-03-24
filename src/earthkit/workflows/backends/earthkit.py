@@ -47,9 +47,7 @@ def resolve_metadata(metadata: Metadata, *args) -> dict:
 def new_fieldlist(data, metadata: list[ekdMetadata], overrides: dict):
     if len(overrides) > 0:
         try:
-            new_metadata = [
-                metadata[x].override(overrides) for x in range(len(metadata))
-            ]
+            new_metadata = [metadata[x].override(overrides) for x in range(len(metadata))]
             return FieldList.from_array(
                 standardise_output(data),
                 new_metadata,
@@ -78,9 +76,7 @@ class FieldListBackend:
         xp = array_api_compat.array_namespace(*values)
         return xp.asarray(values)
 
-    def multi_arg_function(
-        func: str, *arrays: list[FieldList], metadata: Metadata = None
-    ) -> FieldList:
+    def multi_arg_function(func: str, *arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
         merged_array = FieldListBackend._merge(*arrays)
         xp = array_api_compat.array_namespace(*merged_array)
         res = standardise_output(getattr(xp, func)(merged_array, axis=0))
@@ -90,13 +86,9 @@ class FieldListBackend:
             resolve_metadata(metadata, *arrays),
         )
 
-    def two_arg_function(
-        func: str, *arrays: FieldList, metadata: Metadata = None
-    ) -> FieldList:
+    def two_arg_function(func: str, *arrays: FieldList, metadata: Metadata = None) -> FieldList:
         # First argument must be FieldList
-        assert isinstance(
-            arrays[0], FieldList
-        ), f"Expected FieldList type, got {type(arrays[0])}"
+        assert isinstance(arrays[0], FieldList), f"Expected FieldList type, got {type(arrays[0])}"
         val1 = arrays[0].values
         if isinstance(arrays[1], FieldList):
             val2 = arrays[1].values
@@ -107,9 +99,7 @@ class FieldListBackend:
             metadata = resolve_metadata(metadata, arrays[0])
             xp = array_api_compat.array_namespace(val1)
         res = getattr(xp, func)(val1, val2)
-        return new_fieldlist(
-            res, [arrays[0][x].metadata() for x in range(len(res))], metadata
-        )
+        return new_fieldlist(res, [arrays[0][x].metadata() for x in range(len(res))], metadata)
 
     def mean(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("mean", *arrays, metadata=metadata)
@@ -135,9 +125,7 @@ class FieldListBackend:
     def stack(*arrays: list[FieldList], axis: int = 0) -> FieldList:
         if axis != 0:
             raise ValueError("Can not stack FieldList along axis != 0")
-        assert all(
-            [len(x) == 1 for x in arrays]
-        ), "Can not stack FieldLists with more than one element, use concat"
+        assert all([len(x) == 1 for x in arrays]), "Can not stack FieldLists with more than one element, use concat"
         return FieldListBackend.concat(*arrays)
 
     def add(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
@@ -148,9 +136,7 @@ class FieldListBackend:
 
     @num_args(2)
     def diff(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
-        return FieldListBackend.multiply(
-            FieldListBackend.subtract(*arrays, metadata=metadata), -1
-        )
+        return FieldListBackend.multiply(FieldListBackend.subtract(*arrays, metadata=metadata), -1)
 
     def multiply(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("multiply", *arrays, metadata=metadata)
@@ -194,9 +180,7 @@ class FieldListBackend:
             ret = array[indices]
         else:
             if not isinstance(dim, str):
-                raise ValueError(
-                    "To perform isel/sel on FieldList, dim must be a string"
-                )
+                raise ValueError("To perform isel/sel on FieldList, dim must be a string")
             if method == "isel":
                 ret = array.isel(**{dim: indices}, **kwargs)
             elif method == "sel":
@@ -228,9 +212,7 @@ class FieldListBackend:
         xp = array_api_compat.array_namespace(arr1.values, arr2.values)
         condition = comp_str2func(xp, comparison)(arr2.values, threshold)
         res = xp.where(condition, replacement, arr1.values)
-        return new_fieldlist(
-            res, arr1.metadata(), resolve_metadata(metadata, arr1, arr2)
-        )
+        return new_fieldlist(res, arr1.metadata(), resolve_metadata(metadata, arr1, arr2))
 
     def set_metadata(data: FieldList, metadata: dict) -> FieldList:
         return new_fieldlist(data.values, data.metadata(), metadata)

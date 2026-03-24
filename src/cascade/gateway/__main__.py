@@ -23,5 +23,6 @@ def main_cli(
     loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
     serve(url, loggingConfig, troika_config, max_jobs)
 
+
 if __name__ == "__main__":
     fire.Fire(main_cli)
