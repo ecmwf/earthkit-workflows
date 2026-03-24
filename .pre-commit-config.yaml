@@ -8,8 +8,7 @@ repos:
   - id: check-added-large-files
     exclude: |
       (?x)(
-        .*uv.lock|
-        .*pylock.toml
+        .*uv.lock
       )
   - id: check-merge-conflict # Check for files that contain merge conflict
 - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -23,7 +22,7 @@ repos:
     - --fix
     - --exit-non-zero-on-fix
   - id: ruff-format
-    files: ^backend/
+    files: ^src/
 ci:
   autoupdate_schedule: monthly
   autoupdate_commit_msg: "chore(deps): pre-commit.ci autoupdate"
