@@ -2,16 +2,17 @@ repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v6.0.0
   hooks:
-  - id: check-yaml # Check YAML files for syntax errors only
-    args: [--unsafe, --allow-multiple-documents]
-#  - id: no-commit-to-branch # NOTE prevents commit to main/master, but since we run prek on that branch it makes no sense
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: check-json
+  - id: check-yaml
+  - id: check-toml
   - id: check-added-large-files
-    exclude: |
-      (?x)(
-        .*uv.lock|
-        .*pylock.toml
-      )
-  - id: check-merge-conflict # Check for files that contain merge conflict
+  - id: check-merge-conflict
+  - id: debug-statements
+  - id: mixed-line-ending
+  - id: no-commit-to-branch
+    args: [--branch, main]
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.15.4
   hooks:
