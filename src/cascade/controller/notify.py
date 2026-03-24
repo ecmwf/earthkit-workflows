@@ -98,14 +98,12 @@ def notify(
             state.consider_persist(event.ds, host)
             consider_computable(schedule, state, context, event.ds, host)
             if event.transmit_idx is not None:
-                mark(
-                    {
-                        "dataset": repr(event.ds),
-                        "action": TransmitLifecycle.completed,
-                        "target": host,
-                        "host": "controller",
-                    }
-                )
+                mark({
+                    "dataset": repr(event.ds),
+                    "action": TransmitLifecycle.completed,
+                    "target": host,
+                    "host": "controller",
+                })
             elif context.is_last_output_of(event.ds):
                 worker = event.origin
                 task = event.ds.task
@@ -116,14 +114,12 @@ def notify(
                 logger.debug(f"last output of {task}, assuming completion")
                 state.task_done(task, context.edge_i.get(event.ds.task, set()))
                 if isWorker:
-                    mark(
-                        {
-                            "task": task,
-                            "action": TaskLifecycle.completed,
-                            "worker": repr(worker),
-                            "host": "controller",
-                        }
-                    )
+                    mark({
+                        "task": task,
+                        "action": TaskLifecycle.completed,
+                        "worker": repr(worker),
+                        "host": "controller",
+                    })
                     worker = cast(WorkerId, worker)  # ty cant yet derive this to be true
                     context.task_done_at(task, worker)
                 else:

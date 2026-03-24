@@ -142,13 +142,11 @@ def test_depdict_disc():
     deps = to_depdict(g)
     edeps = {}
     for i in range(6):
-        edeps.update(
-            {
-                f"writer-{i}": {"input": (f"process-{i}", D)},
-                f"process-{i}": {"input": (f"reader-{i}", D)},
-                f"reader-{i}": {},
-            }
-        )
+        edeps.update({
+            f"writer-{i}": {"input": (f"process-{i}", D)},
+            f"process-{i}": {"input": (f"reader-{i}", D)},
+            f"reader-{i}": {},
+        })
     assert deps == edeps
 
 

@@ -29,11 +29,9 @@ def empty_backend():
     """Fixture to reset the BACKENDS dictionary before each test."""
     BACKEND_COPY = backends.BACKENDS.copy()
     backends.BACKENDS.clear()
-    backends.BACKENDS.update(
-        {
-            object: ArrayAPIBackend,
-        }
-    )
+    backends.BACKENDS.update({
+        object: ArrayAPIBackend,
+    })
     yield
     backends.BACKENDS.clear()
     backends.BACKENDS.update(BACKEND_COPY)

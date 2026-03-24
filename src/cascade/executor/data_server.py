@@ -113,14 +113,12 @@ class DataServer:
             except shm_client.ConflictError as e:
                 # NOTE this branch is for situations where the controller issued redundantly two transmits
                 logger.warning(f"store of {payload.header.ds} failed with {e}, presumably already computed; continuing")
-                mark(
-                    {
-                        "dataset": repr(payload.header.ds),
-                        "action": TransmitLifecycle.unloaded,
-                        "target": self.host,
-                        "mode": "redundant",
-                    }
-                )
+                mark({
+                    "dataset": repr(payload.header.ds),
+                    "action": TransmitLifecycle.unloaded,
+                    "target": self.host,
+                    "mode": "redundant",
+                })
                 return time_ns()
             buf.view()[:l] = payload.value
             buf.close()
@@ -132,14 +130,12 @@ class DataServer:
                     transmit_idx=payload.header.confirm_idx,
                 ),
             )
-            mark(
-                {
-                    "dataset": repr(payload.header.ds),
-                    "action": TransmitLifecycle.unloaded,
-                    "target": self.host,
-                    "mode": "remote",
-                }
-            )
+            mark({
+                "dataset": repr(payload.header.ds),
+                "action": TransmitLifecycle.unloaded,
+                "target": self.host,
+                "mode": "remote",
+            })
         except Exception as e:
             logger.exception("failed to store payload of {payload.header.ds}, reporting up")
             callback(
@@ -203,15 +199,13 @@ class DataServer:
             if command.target == self.host or command.source != self.host:
                 raise CascadeInternalError(f"invalid {command=}")
             buf = shm_client.get(key=ds2shmid(command.ds))
-            mark(
-                {
-                    "dataset": repr(command.ds),
-                    "action": TransmitLifecycle.loaded,
-                    "target": command.target,
-                    "source": self.host,
-                    "mode": "remote",
-                }
-            )
+            mark({
+                "dataset": repr(command.ds),
+                "action": TransmitLifecycle.loaded,
+                "target": command.target,
+                "source": self.host,
+                "mode": "remote",
+            })
             header = DatasetTransmitPayloadHeader(
                 confirm_address=self.daddress,
                 confirm_idx=command.idx,
@@ -256,13 +250,11 @@ class DataServer:
                             raise CascadeInternalError(
                                 f"unexpected transmit command {m} as the dataset was already purged"
                             )
-                        mark(
-                            {
-                                "dataset": repr(m.ds),
-                                "action": TransmitLifecycle.started,
-                                "target": m.target,
-                            }
-                        )
+                        mark({
+                            "dataset": repr(m.ds),
+                            "action": TransmitLifecycle.started,
+                            "target": m.target,
+                        })
                         self.awaiting_confirmation[m.idx] = (m, -1)
                         fut = self.ds_proc_tp.submit(self._send_payload, m)
                         self.futs_in_progress[m] = fut
@@ -282,13 +274,11 @@ class DataServer:
                         if m.header.ds in self.invalid:
                             logger.warning(f"ignoring transmit payload {m.header} as the dataset was already purged")
                             continue
-                        mark(
-                            {
-                                "dataset": repr(m.header.ds),
-                                "action": TransmitLifecycle.received,
-                                "target": self.host,
-                            }
-                        )
+                        mark({
+                            "dataset": repr(m.header.ds),
+                            "action": TransmitLifecycle.received,
+                            "target": self.host,
+                        })
                         fut = self.ds_proc_tp.submit(self._store_payload, m)
                         self.futs_in_progress[m] = fut
                     elif isinstance(m, Ack):

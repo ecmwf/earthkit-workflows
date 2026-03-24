@@ -79,6 +79,7 @@ if sys.platform == "darwin":
             fcntl.fcntl(fd, F_RDADVISE, 1)
         except OSError:
             pass
+
 else:
 
     def advise_seqread(fd: int) -> None:

@@ -292,13 +292,11 @@ class Executor:
                     # from controller
                     if isinstance(m, TaskSequence):
                         for task in m.tasks:
-                            mark(
-                                {
-                                    "task": task,
-                                    "worker": repr(m.worker),
-                                    "action": TaskLifecycle.enqueued,
-                                }
-                            )
+                            mark({
+                                "task": task,
+                                "worker": repr(m.worker),
+                                "action": TaskLifecycle.enqueued,
+                            })
                         handle = self.workers[m.worker]
                         if handle is None or handle.process.exitcode is not None:
                             # unexpected exit -> InfrastructureError

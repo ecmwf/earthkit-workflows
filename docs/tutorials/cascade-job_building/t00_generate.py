@@ -14,6 +14,6 @@ def generate_data() -> xr.Dataset:
         "precip": np.random.rand(10, 10, 24),
         "temper": np.random.rand(10, 10, 24),
     }
-    return xr.Dataset(
-        {key: xr.DataArray(value, dims=tuple(coords.keys()), coords=coords) for key, value in variables.items()}
-    )
+    return xr.Dataset({
+        key: xr.DataArray(value, dims=tuple(coords.keys()), coords=coords) for key, value in variables.items()
+    })

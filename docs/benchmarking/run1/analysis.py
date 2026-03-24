@@ -178,7 +178,8 @@ analyzeTasks(f4)
 
 
 taskCompareF1F4 = (
-    task_f1.set_index(["task"])[["total"]]
+    task_f1
+    .set_index(["task"])[["total"]]
     .rename(columns={"total": "total1"})
     .join(task_f4.set_index(["task"])[["total"]].rename(columns={"total": "total4"}))
 )

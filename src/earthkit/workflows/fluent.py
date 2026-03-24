@@ -828,7 +828,8 @@ class Action:
                     **backend_kwargs,
                 ).power(2, path=npath)
                 norm = (
-                    action.power(2, path=npath)
+                    action
+                    .power(2, path=npath)
                     .sum(
                         dim=dim,
                         path=npath,

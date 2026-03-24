@@ -60,18 +60,16 @@ def _spawn_troika_singlehost(
         script_path,
         stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
     )
-    return subprocess.Popen(
-        [
-            "troika",
-            "-c",
-            troika_config,
-            "submit",
-            "-o",
-            f"/tmp/output.{job_id}.txt",
-            troika.conn,
-            script_path,
-        ]
-    )
+    return subprocess.Popen([
+        "troika",
+        "-c",
+        troika_config,
+        "submit",
+        "-o",
+        f"/tmp/output.{job_id}.txt",
+        troika.conn,
+        script_path,
+    ])
 
 
 def _spawn_local(

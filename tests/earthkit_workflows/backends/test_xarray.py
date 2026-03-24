@@ -100,15 +100,13 @@ class TestXarrayDataArrayBackend(XarrayBackend):
 class TestXarrayDatasetBackend(XarrayBackend):
     def input_generator(self, number: int, shape=(2, 3)):
         return [
-            xr.Dataset(
-                {
-                    "test": xr.DataArray(
-                        np.random.rand(*shape),
-                        dims=[f"dim{x}" for x in range(len(shape))],
-                        coords={f"dim{x}": range(shape[x]) for x in range(len(shape))},
-                    )
-                }
-            )
+            xr.Dataset({
+                "test": xr.DataArray(
+                    np.random.rand(*shape),
+                    dims=[f"dim{x}" for x in range(len(shape))],
+                    coords={f"dim{x}": range(shape[x]) for x in range(len(shape))},
+                )
+            })
             for _ in range(number)
         ]
 

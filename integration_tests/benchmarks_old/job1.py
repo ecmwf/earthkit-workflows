@@ -48,25 +48,21 @@ payloads = [
     )
     for f in files
 ]
-inputs = from_source(
-    [
-        {
-            "source": "fileset",
-            "location": data_root + "/data_{number}_{step}.grib",
-            "number": list(range(1, NUM_ENSEMBLES + 1)),
-            "step": list(range(0, END_STEP + 1, 3)),
-        }
-    ]
-)
-climatology = from_source(
-    [
-        {
-            "source": "fileset",
-            "location": data_root + "/data_clim_{stepRange}.grib",
-            "stepRange": ["0-24", "24-48"],  # list(range(0, END_STEP - 23, 24)),
-        }
-    ]
-)
+inputs = from_source([
+    {
+        "source": "fileset",
+        "location": data_root + "/data_{number}_{step}.grib",
+        "number": list(range(1, NUM_ENSEMBLES + 1)),
+        "step": list(range(0, END_STEP + 1, 3)),
+    }
+])
+climatology = from_source([
+    {
+        "source": "fileset",
+        "location": data_root + "/data_clim_{stepRange}.grib",
+        "stepRange": ["0-24", "24-48"],  # list(range(0, END_STEP - 23, 24)),
+    }
+])
 
 
 def get_prob():
@@ -74,7 +70,8 @@ def get_prob():
         Range(f"{x}-{x + 120}", list(range(x + 6, x + 121, 6))) for x in range(0, END_STEP - 119, 120)
     ]
     return (
-        inputs.window_operation("min", prob_windows, dim="step", batch_size=2)
+        inputs
+        .window_operation("min", prob_windows, dim="step", batch_size=2)
         .ensemble_operation(
             "threshold_prob",
             comparison="<=",
@@ -93,7 +90,8 @@ def get_ensms():
 def get_efi():
     efi_windows = [Range(f"{x}-{x + 24}", list(range(x + 6, x + 25, 6))) for x in range(0, END_STEP - 23, 24)]
     return (
-        inputs.window_operation("mean", efi_windows, dim="step", batch_size=2)
+        inputs
+        .window_operation("mean", efi_windows, dim="step", batch_size=2)
         .ensemble_extreme(
             "extreme",
             climatology,

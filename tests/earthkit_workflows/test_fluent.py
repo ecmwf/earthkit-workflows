@@ -302,22 +302,18 @@ def test_generators():
 
 def test_split():
     input_action = mock_action((3, 4))
-    branches = input_action.split(
-        {
-            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
-            "/branch2": lambda data: np.where(data > 0, data, np.nan),
-        }
-    )
+    branches = input_action.split({
+        "/branch1": lambda data: np.where(data <= 0, data, np.nan),
+        "/branch2": lambda data: np.where(data > 0, data, np.nan),
+    })
     for npath, narray in nodetree_arrays(branches.nodes):
         assert narray.shape == (3, 4)
         assert "branch" in npath
 
-    subbranches = branches.split(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
+    subbranches = branches.split({
+        "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+        "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+    })
     assert [x[0] for x in nodetree_arrays(subbranches.nodes)] == [
         "/branch2",
         "/branch1/subbranch1",
@@ -329,12 +325,10 @@ def test_split():
 
     with_root = input_action.set_path("/root")
     with pytest.raises(ValueError):
-        with_root.split(
-            {
-                "/branch1": lambda data: np.where(data <= 0, data, np.nan),
-                "/branch2": lambda data: np.where(data > 0, data, np.nan),
-            }
-        )
+        with_root.split({
+            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
+            "/branch2": lambda data: np.where(data > 0, data, np.nan),
+        })
 
 
 @pytest.mark.parametrize(
@@ -354,12 +348,10 @@ def test_select(selection, num_arrays, shapes_or_error):
         branch1=mock_action((3, 4)),
         branch2=mock_action((3, 5)),
     )
-    subbranches = branches.split(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
+    subbranches = branches.split({
+        "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+        "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+    })
     subbranches.nodes["/branch2"].coords["type"] = "A"
     if num_arrays > 0:
         select_dim = subbranches.sel(**selection)
@@ -387,12 +379,10 @@ def test_iselect(selection, num_arrays, shapes_or_error):
         branch1=mock_action((3, 4)),
         branch2=mock_action((3, 5)),
     )
-    subbranches = branches.split(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
+    subbranches = branches.split({
+        "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+        "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+    })
     if num_arrays > 0:
         select_dim = subbranches.isel(**selection)
         assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays

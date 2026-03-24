@@ -30,24 +30,20 @@ def simple_qube():
 @pytest.fixture
 def surface_variables_qube():
     """Create a qube representing surface variables."""
-    return Qube.from_datacube(
-        {
-            "step": [6, 12],
-            "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
-        }
-    )
+    return Qube.from_datacube({
+        "step": [6, 12],
+        "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
+    })
 
 
 @pytest.fixture
 def pressure_level_qube():
     """Create a qube representing pressure level variables."""
-    return Qube.from_datacube(
-        {
-            "step": [6, 12],
-            "param": ["q", "t", "u", "v"],
-            "level": [50, 100, 150, 200, 250],
-        }
-    )
+    return Qube.from_datacube({
+        "step": [6, 12],
+        "param": ["q", "t", "u", "v"],
+        "level": [50, 100, 150, 200, 250],
+    })
 
 
 @pytest.fixture
@@ -63,21 +59,17 @@ def hierarchical_qube():
     After expansion, children should have BOTH step AND their own dims.
     """
     # Create children with step dimension AND their own dimensions
-    surface = Qube.from_datacube(
-        {
-            "step": [6, 12],
-            "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
-        }
-    )
+    surface = Qube.from_datacube({
+        "step": [6, 12],
+        "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
+    })
     surface.add_metadata({"name": "surface"})
 
-    pressure = Qube.from_datacube(
-        {
-            "step": [6, 12],
-            "param": ["q", "t", "u", "v"],
-            "level": [50, 100, 150, 200, 250],
-        }
-    )
+    pressure = Qube.from_datacube({
+        "step": [6, 12],
+        "param": ["q", "t", "u", "v"],
+        "level": [50, 100, 150, 200, 250],
+    })
     pressure.add_metadata({"name": "pressure"})
 
     # Combine: both children have step, so parent will have step
@@ -109,13 +101,11 @@ def multi_level_qube():
 
     child2 = Qube.from_datacube({"step": [1, 2, 3], "param": ["c", "d"], "class": "od"})
 
-    nested = Qube.from_datacube(
-        {
-            "step": [1, 2, 3],
-            "param": ["c", "d"],
-            "level": [100, 200],
-        }
-    )
+    nested = Qube.from_datacube({
+        "step": [1, 2, 3],
+        "param": ["c", "d"],
+        "level": [100, 200],
+    })
 
     # Combine: child2 and nested both have step+param, so child2|nested will have those
     child2_with_nested = child2 | nested
