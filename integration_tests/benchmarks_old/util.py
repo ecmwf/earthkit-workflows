@@ -47,7 +47,7 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
     elif benchmark is not None:
         instance: JobInstance
         if benchmark.startswith("j1"):
-            import benchmarks_old.job1 as job1
+            import benchmarks_old.job1 as job1 # ty:ignore[unresolved-import]
 
             graphs = {
                 "j1.prob": job1.get_prob(),
@@ -60,19 +60,19 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
             graphs["j1.all"] = union("j1.")
             instance = cascade.low.into.graph2job(graphs[benchmark])
         elif benchmark.startswith("generators"):
-            import benchmarks_old.generators as generators
+            import benchmarks_old.generators as generators # ty:ignore[unresolved-import]
 
             instance = generators.get_job()
         elif benchmark.startswith("matmul"):
-            import benchmarks_old.matmul as matmul
+            import benchmarks_old.matmul as matmul # ty:ignore[unresolved-import]
 
             instance = matmul.get_job()
         elif benchmark.startswith("dist"):
-            import benchmarks_old.dist as dist
+            import benchmarks_old.dist as dist # ty:ignore[unresolved-import]
 
             instance = dist.get_job()
         elif benchmark.startswith("dask"):
-            import benchmarks_old.dask as dask
+            import benchmarks_old.dask as dask # ty:ignore[unresolved-import]
 
             instance = dask.get_job(benchmark[len("dask.") :])
         else:

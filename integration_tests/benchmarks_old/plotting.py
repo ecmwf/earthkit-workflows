@@ -16,7 +16,7 @@ import os
 from bokeh.io import curdoc, output_notebook, show
 from bokeh.models import ColumnDataSource, Grid, HBar, LinearAxis, Plot, VSpan
 
-from benchmarks_old.reporting import logParse
+from benchmarks_old.reporting import logParse # ty:ignore[unresolved-import]
 
 output_notebook()
 
