@@ -12,14 +12,11 @@ from .util import CallableInstance, run_test
 
 
 def test_numpy():
-
     def myfunc(l: int) -> float:
         import numpy as np
 
         return np.arange(l).sum()
 
-    ci = CallableInstance(
-        func=myfunc, kwargs={"l": 4}, args=[], env=["numpy"], exp_output=6
-    )
+    ci = CallableInstance(func=myfunc, kwargs={"l": 4}, args=[], env=["numpy"], exp_output=6)
 
     run_test(ci, "numpyTest1", 2)

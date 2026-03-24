@@ -27,9 +27,7 @@ BACKENDS = {
 
 def register(type, backend):
     if type in BACKENDS:
-        logger.warning(
-            f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}."
-        )
+        logger.warning(f"Overwriting backend for {type}. Existing backend {BACKENDS[type]}.")
     BACKENDS[type] = backend
 
 
@@ -88,9 +86,7 @@ def num_args(expect: int, accept_nested: bool = True):
         def check_num_args(*args, **kwargs):
             if accept_nested and len(args) == 1:
                 args = args[0]
-            assert (
-                len(args) == expect
-            ), f"{func.__name__} expects two input arguments, got {len(args)}"
+            assert len(args) == expect, f"{func.__name__} expects two input arguments, got {len(args)}"
             return func(*args, **kwargs)
 
         return check_num_args

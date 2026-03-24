@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from earthkit.workflows.fluent import Action
 
+
 def _convert_num_to_abc(num: int) -> str:
     """Convert a number to its corresponding alphabetical representation.
     0 -> 'a', 1 -> 'b', ..., 25 -> 'z', 26 -> 'aa', etc.
@@ -31,11 +32,13 @@ def _convert_num_to_abc(num: int) -> str:
         num -= 1
     return result
 
+
 def get_name(child: "Qube", index: int) -> str:
     if "name" in child.metadata:
         name_meta = child.metadata["name"]
         return str(np.unique_values(name_meta).flatten()[0])
     return _convert_num_to_abc(index)
+
 
 def expand_as_qube(action: "Action", qube: "Qube") -> "Action":
     """Expand an action according to a qube structure.
@@ -126,9 +129,9 @@ def expand_as_qube(action: "Action", qube: "Qube") -> "Action":
             case _:  # Multiple children, need to split into branches
                 for i, child in enumerate(qube.children):
                     expand_fn(action, child, f"{path}/{get_name(child, i)}")
-                
+
         return fluent.merge(**leaves)
-    
+
     if not qube.children:
         return action
     return expand_fn(action, qube, "")

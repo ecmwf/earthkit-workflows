@@ -28,15 +28,11 @@ dataBegin = "#"
 
 class TaskLifecycle(str, Enum):
     planned = "task_planned"  # controller planned the task to run at a worker
-    enqueued = (
-        "task_enqueued"  # worker received the task and put into its internal queue
-    )
+    enqueued = "task_enqueued"  # worker received the task and put into its internal queue
     started = "task_started"  # a process executing this task is ready and imported
     loaded = "task_loaded"  # all task's inputs are in process memory and deserialized
     computed = "task_computed"  # the task callable itself has finished
-    published = (
-        "task_published"  # the results have been serialized and put to shared memory
-    )
+    published = "task_published"  # the results have been serialized and put to shared memory
     completed = "task_completed"  # the controller marked this task as completed
 
 

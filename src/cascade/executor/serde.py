@@ -52,7 +52,9 @@ class SerdeRegistry:
             des,
         )
 
+
 DefaultSerde = "cloudpickle.loads"
+
 
 def ser_output(v: Any, annotation: str) -> tuple[bytes, str]:
     """Utilizes `custom_ser` attr if present, otherwise defaults to cloudpickle as the most

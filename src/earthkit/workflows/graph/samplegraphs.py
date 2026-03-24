@@ -83,23 +83,16 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
     p0 = Node("process-0", outputs=[f"output{i}" for i in range(nout1)], **p0i)
     p1s = []
     for i in range(2, nout1):
-        p = Node(
-            f"process-{i-1}", input1=p0.output0, input2=p0.get_output(f"output{i}")
-        )
+        p = Node(f"process-{i - 1}", input1=p0.output0, input2=p0.get_output(f"output{i}"))
         p1s.append(p)
     p2 = Node(
-        f"process-{nout1-1}",
+        f"process-{nout1 - 1}",
         outputs=[f"output{i}" for i in range(nout2)],
         input1=p0.output1,
         input2=rs[min(2, nread - 1)],
     )
     _ws = ((inp, out) for out in range(nout2) for inp in p1s)
-    ws: list[Node] = [
-        Node(
-            f"writer-{j}", outputs=[], input1=inp, input2=p2.get_output(f"output{out}")
-        )
-        for j, (inp, out) in enumerate(_ws)
-    ]
+    ws: list[Node] = [Node(f"writer-{j}", outputs=[], input1=inp, input2=p2.get_output(f"output{out}")) for j, (inp, out) in enumerate(_ws)]
     return Graph(ws)
 
 
@@ -128,6 +121,6 @@ def comb(nteeth: int = 5, nproc: int = 0):
         if tip is None:
             tip = tooth
         else:
-            tip = Node(f"join-{i-1}", input1=tip, input2=tooth)
+            tip = Node(f"join-{i - 1}", input1=tip, input2=tooth)
     assert tip is not None
     return Graph([Node("writer", outputs=[], input=tip)])

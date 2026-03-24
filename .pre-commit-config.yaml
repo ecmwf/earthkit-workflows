@@ -8,22 +8,21 @@ repos:
   - id: check-added-large-files
     exclude: |
       (?x)(
-        .*uv.lock|
-        .*pylock.toml
+        .*uv.lock
       )
   - id: check-merge-conflict # Check for files that contain merge conflict
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.12.2
   hooks:
   - id: ruff # better black/flake/isort
-    files: ^src/
+    files: ^(src|tests|integration_tests)/
     args:
     - --select
     - I # isorting
     - --fix
     - --exit-non-zero-on-fix
   - id: ruff-format
-    files: ^backend/
+    files: ^(src|tests|integration_tests)/
 ci:
   autoupdate_schedule: monthly
   autoupdate_commit_msg: "chore(deps): pre-commit.ci autoupdate"

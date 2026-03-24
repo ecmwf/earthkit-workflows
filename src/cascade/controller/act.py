@@ -32,13 +32,9 @@ def act(bridge: Bridge, assignment: Assignment) -> None:
         ds = prep[0]
         source_host = prep[1]
         if assignment.worker.host == source_host:
-            logger.debug(
-                f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op"
-            )
+            logger.debug(f"dataset {ds} should be locally available at {assignment.worker.host}, doing no-op")
             continue
-        logger.debug(
-            f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge"
-        )
+        logger.debug(f"sending transmit ({ds}: {source_host}=>{assignment.worker.host}) to bridge")
         mark(
             {
                 "dataset": repr(ds),
@@ -107,6 +103,7 @@ def flush_queues(bridge: Bridge, state: State, context: JobExecutionContext):
                 bridge.purge(host, ds)
 
     return state
+
 
 def virtual_checkpoint_publish(datasets: Iterable[DatasetId]) -> Iterator[DatasetPublished]:
     """Virtual in the sense of not actually sending any message, but instead simulating

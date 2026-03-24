@@ -11,12 +11,12 @@
 from multiprocessing.shared_memory import SharedMemory
 from typing import Any
 
-from cascade.deployment.logging import DefaultLoggingConfig
 import cascade.executor.runner.entrypoint as entrypoint
 import cascade.executor.runner.memory as memory
 import cascade.executor.serde as serde
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_cli
+from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.executor.msg import DatasetPublished, TaskSequence
 from cascade.executor.runner.packages import PackagesEnv
 from cascade.low.core import (
@@ -48,9 +48,7 @@ def test_runner(monkeypatch):
     purging_tracker = set()
     key2shmid = lambda key: f"test_{key}"
 
-    def _send_command(
-        comm: shm_api.Comm, resp_class: Any, timeout_sec: float = 60.0
-    ) -> Any:
+    def _send_command(comm: shm_api.Comm, resp_class: Any, timeout_sec: float = 60.0) -> Any:
         if isinstance(comm, shm_api.AllocateRequest):
             key = key2shmid(comm.key)
             if key in opened_buffers or key in purging_tracker:
@@ -163,11 +161,7 @@ def test_runner(monkeypatch):
     )
     twoTaskJob = JobInstance(
         tasks={"t3a": t3a, "t3b": t3b},
-        edges=[
-            Task2TaskEdge(
-                source=t3i, sink_task="t3b", sink_input_kw="x", sink_input_ps=None
-            )
-        ],
+        edges=[Task2TaskEdge(source=t3i, sink_task="t3b", sink_input_kw="x", sink_input_ps=None)],
     )
     twoTaskRc = entrypoint.RunnerContext(
         workerId=worker,

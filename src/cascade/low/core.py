@@ -28,7 +28,7 @@ from typing_extensions import Self
 NO_OUTPUT_PLACEHOLDER = "__NO_OUTPUT__"
 
 # name of the output of the task in case the task has exactly one, ie, the callable is not a generator
-DefaultTaskOutput = "0" 
+DefaultTaskOutput = "0"
 
 
 # Definitions
@@ -41,19 +41,13 @@ class TaskDefinition(BaseModel):
         None,
         description="a cloud-pickled callable. Prefered over `entrypoint` if given",
     )
-    environment: list[str] = Field(
-        description="pip-installable packages, as required by entrypoint/func. Version pins supported"
-    )
+    environment: list[str] = Field(description="pip-installable packages, as required by entrypoint/func. Version pins supported")
     # NOTE we could accept eg has_kwargs, has_args, etc... or serialize the whole inspect.signature here?
-    input_schema: dict[str, str] = Field(
-        description="kv of input kw params and their types (fqn of class). Non-kw params not validated"
-    )
+    input_schema: dict[str, str] = Field(description="kv of input kw params and their types (fqn of class). Non-kw params not validated")
     output_schema: list[tuple[str, str]] = Field(
         description="kv of outputs and their types (fqn of class). Assumes listing in func output order"
     )
-    needs_gpu: bool = Field(
-        False
-    )  # NOTE unstable contract, will change. Note we support at most one GPU per task
+    needs_gpu: bool = Field(False)  # NOTE unstable contract, will change. Note we support at most one GPU per task
 
     @staticmethod
     def func_dec(f: str) -> Callable:
@@ -76,7 +70,7 @@ class DatasetId:
         return f"{self.task}.{self.output}"
 
     def ser(self) -> str:
-        pref = len(self.task).to_bytes(length=1, byteorder='big').hex()
+        pref = len(self.task).to_bytes(length=1, byteorder="big").hex()
         # NOTE this raises if the task id is too long, but we dont want to have that long fnames anyway
         # if that poses a problem, we need to switch into short hashes and a lookup file persisted separately
         # NOTE we cant pick any safe separator between task and output, because either can contain any char
@@ -84,8 +78,8 @@ class DatasetId:
 
     @classmethod
     def des(cls, value: str) -> Self:
-        pref, suf = value.split('.', 1)
-        task_len = int.from_bytes(bytes.fromhex(pref), byteorder='big')
+        pref, suf = value.split(".", 1)
+        task_len = int.from_bytes(bytes.fromhex(pref), byteorder="big")
         return cls(task=suf[:task_len], output=suf[task_len:])
 
 
@@ -105,12 +99,8 @@ class JobDefinition(BaseModel):
 # Instances
 class TaskInstance(BaseModel):
     definition: TaskDefinition
-    static_input_kw: dict[str, Any] = Field(
-        description="input parameters for the entrypoint. Must be json/msgpack-serializable"
-    )
-    static_input_ps: dict[str, Any] = Field(
-        description="input parameters for the entrypoint. Must be json/msgpack-serializable"
-    )
+    static_input_kw: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
+    static_input_ps: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
 
 
 # Type can't be json serialized directly -- use these two functions with `serdes` on JobInstance
@@ -145,10 +135,7 @@ class JobInstance(BaseModel):
     )
 
     def outputs_of(self, task_id: TaskId) -> set[DatasetId]:
-        return {
-            DatasetId(task_id, output)
-            for output, _ in self.tasks[task_id].definition.output_schema
-        }
+        return {DatasetId(task_id, output) for output, _ in self.tasks[task_id].definition.output_schema}
 
 
 HostId = str
@@ -189,12 +176,8 @@ class Environment(BaseModel):
 
 class TaskExecutionRecord(BaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds
-    cpuseconds: int = Field(
-        description="as measured from process start to process end, assuming full cpu util"
-    )
-    memory_mb: int = Field(
-        description="observed rss peak held by the process minus sizes of shared memory inputs"
-    )
+    cpuseconds: int = Field(description="as measured from process start to process end, assuming full cpu util")
+    memory_mb: int = Field(description="observed rss peak held by the process minus sizes of shared memory inputs")
 
 
 # possibly made configurable, overridable -- quite job dependent
@@ -203,12 +186,8 @@ no_record_ds = 1
 
 
 class JobExecutionRecord(BaseModel):
-    tasks: dict[TaskId, TaskExecutionRecord] = Field(
-        default_factory=lambda: defaultdict(lambda: no_record_ts)
-    )
-    datasets_mb: dict[DatasetId, int] = Field(
-        default_factory=lambda: defaultdict(lambda: no_record_ds)
-    )  # keyed by (task, output)
+    tasks: dict[TaskId, TaskExecutionRecord] = Field(default_factory=lambda: defaultdict(lambda: no_record_ts))
+    datasets_mb: dict[DatasetId, int] = Field(default_factory=lambda: defaultdict(lambda: no_record_ds))  # keyed by (task, output)
 
     # TODO extend this with some approximation/default from TaskInstance only
 

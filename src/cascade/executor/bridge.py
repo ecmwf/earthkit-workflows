@@ -131,7 +131,7 @@ class Bridge:
 
         if isinstance(shutdown_reason, CascadeError):
             raise shutdown_reason
-        elif isinstance(shutdown_reason, Message) and hasattr(shutdown_reason, 'detail') and isinstance(shutdown_reason.detail, str):
+        elif isinstance(shutdown_reason, Message) and hasattr(shutdown_reason, "detail") and isinstance(shutdown_reason.detail, str):
             raise des(shutdown_reason.detail)
         else:
             # unknown at this stage is assumed to be InfrastructureError

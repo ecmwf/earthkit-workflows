@@ -75,9 +75,7 @@ class Splitter(Transformer, Generic[K]):
         k, node = tnode
         return (k, node.get_output(output))
 
-    def graph(
-        self, graph: Graph, sinks: list[tuple[K, Node]]
-    ) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
+    def graph(self, graph: Graph, sinks: list[tuple[K, Node]]) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
         for k, sink in sinks:
             self.sinks.setdefault(k, []).append(sink)
         return {k: Graph(s) for k, s in self.sinks.items()}, self.cuts
@@ -105,9 +103,7 @@ class Splitter(Transformer, Generic[K]):
 SplitterType = Callable[[KeyFunc[K]], Splitter[K]]
 
 
-def split_graph(
-    key: KeyFunc[K], graph: Graph, splitter: SplitterType[K] = Splitter
-) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
+def split_graph(key: KeyFunc[K], graph: Graph, splitter: SplitterType[K] = Splitter) -> tuple[dict[K, Graph], list[CutEdge[K]]]:
     """Split a graph according to some key
 
     Each sub-graph in the split will consist of nodes with the same key. The key

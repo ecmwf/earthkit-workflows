@@ -1,7 +1,8 @@
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.scheduler.precompute import precompute
+from cascade.low.core import DatasetId, JobInstanceRich
 from cascade.scheduler.checkpoints import trim_with_persisted
-from cascade.low.core import JobInstanceRich, DatasetId
+from cascade.scheduler.precompute import precompute
+
 
 def test_trim_with_checkpoints():
     # we have a graph with
@@ -12,7 +13,8 @@ def test_trim_with_checkpoints():
     # We will checkpoint on the transform, meaning 1 source should be trimmed
 
     jobInstanceOrig = (
-        JobBuilder()
+        (
+            JobBuilder()
             .with_node(
                 "source1",
                 TaskBuilder.from_entrypoint("whatever", {}, "Any"),
@@ -43,11 +45,14 @@ def test_trim_with_checkpoints():
             )
             .with_edge("product1", "sink", "i1")
             .with_edge("product2", "sink", "i2")
-    ).build().get_or_raise()
+        )
+        .build()
+        .get_or_raise()
+    )
     jobRich = JobInstanceRich(jobInstance=jobInstanceOrig, checkpointSpec=None)
     preschedule = precompute(jobRich.jobInstance)
     persisted = {DatasetId(task="transform", output="0")}
 
     jobInstanceNew, preschedule, persisted_valid = trim_with_persisted(jobRich, preschedule, persisted)
     assert persisted_valid == persisted
-    assert set(jobInstanceNew.tasks.keys()) == {'source2', 'transform', 'product1', 'product2', 'sink'}
+    assert set(jobInstanceNew.tasks.keys()) == {"source2", "transform", "product1", "product2", "sink"}

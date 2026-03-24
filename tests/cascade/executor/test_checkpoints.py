@@ -1,11 +1,19 @@
-from cascade.low.core import CheckpointSpec, DatasetId
-from cascade.shm.client import AllocatedBuffer
-from cascade.low.execution_context import VirtualCheckpointHost
-from cascade.executor.checkpoints import build_persist_command, list_persisted_datasets, persist_dataset, build_retrieve_command, retrieve_dataset
-from cascade.executor.serde import DefaultSerde
 import pathlib
 import tempfile
 from unittest.mock import patch
+
+from cascade.executor.checkpoints import (
+    build_persist_command,
+    build_retrieve_command,
+    list_persisted_datasets,
+    persist_dataset,
+    retrieve_dataset,
+)
+from cascade.executor.serde import DefaultSerde
+from cascade.low.core import CheckpointSpec, DatasetId
+from cascade.low.execution_context import VirtualCheckpointHost
+from cascade.shm.client import AllocatedBuffer
+
 
 def test_rw():
     with tempfile.TemporaryDirectory() as td:
@@ -23,7 +31,7 @@ def test_rw():
         # we manually create because we dont have an shm server running
         data = AllocatedBuffer("testCascExecChckptRW_1", 64, True, None, DefaultSerde)
         try:
-            data.view()[:] = b'a' * 64
+            data.view()[:] = b"a" * 64
             persist_dataset(command_persist, data)
 
             assert list_persisted_datasets(spec) == [ds1]
@@ -46,4 +54,3 @@ def test_rw():
             if data.shm is not None:
                 data.shm.unlink()
             data.close()
-

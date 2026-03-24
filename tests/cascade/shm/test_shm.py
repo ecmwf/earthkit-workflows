@@ -23,10 +23,11 @@ from cascade.executor.platform import get_mp_ctx
 # forkserver right away, because the os.environ changes are not reflected after
 # the mp manager gets launched.
 
+
 @pytest.mark.parametrize("shm_addr", [12345, "/tmp/shmport12345"])
 def test_shm_simple(shm_addr):
     api.publish_socket_addr(shm_addr)
-    pref = f"cTi{shm_addr%10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
+    pref = f"cTi{shm_addr % 10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
     serverP = get_mp_ctx("executor-aux").Process(
         target=server.entrypoint,
         kwargs={"logging_config": logging_config, "shm_pref": pref},
@@ -60,7 +61,7 @@ def test_shm_simple(shm_addr):
 @pytest.mark.parametrize("shm_addr", [12346, "/tmp/shmport12346"])
 def test_shm_disk(shm_addr):
     capacity = 4
-    pref = f"cTi{shm_addr%10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
+    pref = f"cTi{shm_addr % 10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
     api.publish_socket_addr(shm_addr)
 
     serverP = get_mp_ctx("executor-aux").Process(

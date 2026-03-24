@@ -18,6 +18,7 @@ import logging
 
 try:
     from cascade.low.core import DefaultTaskOutput
+
     DefaultNodeOutput = DefaultTaskOutput
 except ImportError:
     logger.error("failed to import any execution engine! Defaulting to dummy impl")
