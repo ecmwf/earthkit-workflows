@@ -148,9 +148,7 @@ class Node(BaseNode):
 
         if name is None:
             name = payload.name()
-        name += ":" + custom_hash(
-            f"{payload}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}"
-        )
+        name += ":" + custom_hash(f"{payload}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
 
         super().__init__(
             name,
@@ -444,8 +442,7 @@ class Action:
             if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
                 payload = np.asarray(payload)
                 assert payload.shape == narray.shape, (
-                    f"For unique payloads for each node, payload shape {payload.shape}"
-                    f"must match node array shape {narray.shape}"
+                    f"For unique payloads for each node, payload shape {payload.shape}must match node array shape {narray.shape}"
                 )
 
             # Applies operation to every node, keeping node array structure
@@ -518,9 +515,7 @@ class Action:
                 raise ValueError("Can not batch the execution of a generator")
             if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
                 if not getattr(payload.func, "batchable", False):
-                    raise ValueError(
-                        f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified"
-                    )
+                    raise ValueError(f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified")
 
                 while batch_size < nodetree_array(batched.nodes).sizes[dim]:
                     lst = nodetree_array(batched.nodes).coords[dim].data

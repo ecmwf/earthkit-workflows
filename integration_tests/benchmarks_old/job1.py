@@ -36,11 +36,7 @@ CLIM_DATE = "20241110"
 
 # ** JOB DEFINITIONS ***
 
-files = [
-    f"{data_root}/data_{number}_{step}.grib"
-    for number in range(1, NUM_ENSEMBLES + 1)
-    for step in range(0, END_STEP + 1, 3)
-]
+files = [f"{data_root}/data_{number}_{step}.grib" for number in range(1, NUM_ENSEMBLES + 1) for step in range(0, END_STEP + 1, 3)]
 payloads = [
     Payload(
         lambda f: earthkit.data.from_source("file", f),

@@ -27,10 +27,7 @@ class BackendBase:
     )
     def test_multi_arg(self, num_inputs, input_shape, kwargs, output_shape):
         for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
-            assert (
-                self.shape(getattr(backends, func)(*self.input_generator(num_inputs, input_shape), **kwargs))
-                == output_shape
-            )
+            assert self.shape(getattr(backends, func)(*self.input_generator(num_inputs, input_shape), **kwargs)) == output_shape
 
     @pytest.mark.parametrize(
         ["num_inputs", "input_shape", "output_shape"],

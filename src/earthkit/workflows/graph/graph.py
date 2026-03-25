@@ -134,8 +134,7 @@ class Graph:
         output), or (parent, output name) tuples.
         """
         return {
-            iname: (isrc.parent if isrc.name == Node.DEFAULT_OUTPUT else (isrc.parent, isrc.name))
-            for iname, isrc in node.inputs.items()
+            iname: (isrc.parent if isrc.name == Node.DEFAULT_OUTPUT else (isrc.parent, isrc.name)) for iname, isrc in node.inputs.items()
         }
 
     def get_successors(self, node: Node) -> dict[str, list[tuple[Node, str]]]:

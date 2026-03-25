@@ -149,10 +149,6 @@ def get_job1() -> tuple[JobInstanceRich, JobExecutionRecord]:
 # *** environment builders ***
 def get_env(hosts: int, workers_per_host: int) -> Environment:
     return Environment(
-        workers={
-            WorkerId(f"h{h}", f"w{w}"): Worker(cpu=1, gpu=0, memory_mb=1000)
-            for h in range(hosts)
-            for w in range(workers_per_host)
-        },
+        workers={WorkerId(f"h{h}", f"w{w}"): Worker(cpu=1, gpu=0, memory_mb=1000) for h in range(hosts) for w in range(workers_per_host)},
         host_url_base={f"h{h}": "tcp://localhost" for h in range(hosts)},
     )

@@ -40,9 +40,7 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
                 "j1.ensms": job1.get_ensms(),
                 "j1.efi": job1.get_efi(),
             }
-            union = lambda prefix: deduplicate_nodes(
-                msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph)
-            )
+            union = lambda prefix: deduplicate_nodes(msum((v for k, v in graphs.items() if k.startswith(prefix)), Graph))
             graphs["j1.all"] = union("j1.")
             instance = cascade.low.into.graph2job(graphs[benchmark])
         elif benchmark.startswith("generators"):

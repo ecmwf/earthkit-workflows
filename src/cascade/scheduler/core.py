@@ -23,9 +23,7 @@ class ComponentCore:
     value: TaskValue  # closer to a sink -> higher value
     depth: int  # maximum value
     fusing_opportunities: dict[TaskId, list[TaskId]]
-    gpu_fused_distance: dict[
-        TaskId, int | None
-    ]  # closer to a gpu task -> lower value. Using fusing_opportunities paths only
+    gpu_fused_distance: dict[TaskId, int | None]  # closer to a gpu task -> lower value. Using fusing_opportunities paths only
 
     def weight(self) -> int:
         # TODO eventually replace with runtime sum or smth
@@ -47,9 +45,7 @@ ComponentId = int
 @dataclass
 class GangPreparation:
     ready: list[frozenset[TaskId]]  # used by scheduler to see if any gangs can be assigned/started
-    countdown: dict[
-        frozenset[TaskId], set[TaskId]
-    ]  # used to check after a task completion whether a gang can be moved to ready
+    countdown: dict[frozenset[TaskId], set[TaskId]]  # used to check after a task completion whether a gang can be moved to ready
     lookup: dict[TaskId, list[frozenset[TaskId]]]  # used to decrease countdown after a task completion
 
 

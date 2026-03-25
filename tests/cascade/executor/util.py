@@ -127,9 +127,7 @@ def run_test(callableInstance: CallableInstance, testId: str, max_runtime_sec: i
         end = perf_counter_ns() + max_runtime_sec * int(1e9)
         while perf_counter_ns() < end:
             mess = listener.recv_messages()
-            if mess == [
-                DatasetPublished(origin=WorkerId(host="testHost", worker="testWorker"), ds=output, transmit_idx=None)
-            ]:
+            if mess == [DatasetPublished(origin=WorkerId(host="testHost", worker="testWorker"), ds=output, transmit_idx=None)]:
                 break
             elif not mess:
                 continue

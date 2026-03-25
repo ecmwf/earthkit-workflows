@@ -66,9 +66,7 @@ logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms
 
 # messages from the data server which need to go to controller, but have no additional logic here
-JustForwardToController = (
-    DatasetTransmitFailure | DatasetPersistSuccess | DatasetPersistFailure | DatasetRetrieveFailure
-)
+JustForwardToController = DatasetTransmitFailure | DatasetPersistSuccess | DatasetPersistFailure | DatasetRetrieveFailure
 
 
 def address_of(port: int) -> BackboneAddress:
@@ -257,23 +255,16 @@ class Executor:
                 raise CascadeInternalError(f"process on {k} is not alive")
             elif procFail(e.process.exitcode):
                 # we assume low memory setting or callable issue -> UserError
-                raise CascadeUserError(
-                    f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}"
-                )
+                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
         if procFail(self.shm_process.exitcode):
             # possibly low memory setting but this is system config -> InfrastructureError
-            raise CascadeInfrastructureError(
-                f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}"
-            )
+            raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
         if procFail(self.data_server.exitcode):
             # unknown issue, it failed to report its own -> InfrastructureError
-            raise CascadeInfrastructureError(
-                f"data server {self.data_server.pid} failed with {self.data_server.exitcode}"
-            )
+            raise CascadeInfrastructureError(f"data server {self.data_server.pid} failed with {self.data_server.exitcode}")
         if self.heartbeat_watcher.is_breach() > 0:
             logger.debug(
-                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()}"
-                f" -> sending explicit heartbeat at {self.host}"
+                f"grace elapsed without message by {self.heartbeat_watcher.elapsed_ms()} -> sending explicit heartbeat at {self.host}"
             )
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible

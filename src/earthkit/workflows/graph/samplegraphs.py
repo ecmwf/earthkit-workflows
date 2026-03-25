@@ -92,10 +92,7 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
         input2=rs[min(2, nread - 1)],
     )
     _ws = ((inp, out) for out in range(nout2) for inp in p1s)
-    ws: list[Node] = [
-        Node(f"writer-{j}", outputs=[], input1=inp, input2=p2.get_output(f"output{out}"))
-        for j, (inp, out) in enumerate(_ws)
-    ]
+    ws: list[Node] = [Node(f"writer-{j}", outputs=[], input1=inp, input2=p2.get_output(f"output{out}")) for j, (inp, out) in enumerate(_ws)]
     return Graph(ws)
 
 

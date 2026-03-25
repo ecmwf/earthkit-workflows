@@ -51,8 +51,7 @@ class TaskBuilder(TaskInstance):
         static_input_kw = {
             p.name: p.default
             for p in sig.parameters.values()
-            if p.kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
-            and p.default != inspect.Parameter.empty
+            if p.kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD} and p.default != inspect.Parameter.empty
         }
 
         definition = TaskDefinition(

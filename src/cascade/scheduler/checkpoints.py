@@ -81,9 +81,7 @@ def _discover_component(
     return is_valid
 
 
-def _trim_component(
-    component: ComponentCore, parents: dict[TaskId, set[TaskId]], preserved_tasks: set[TaskId]
-) -> ComponentCore:
+def _trim_component(component: ComponentCore, parents: dict[TaskId, set[TaskId]], preserved_tasks: set[TaskId]) -> ComponentCore:
     """Restricts the component only to preserved tasks."""
     nodes = list(preserved_tasks)
     value = {node: component.value[node] for node in nodes}
@@ -142,11 +140,7 @@ def trim_with_persisted(
 
     job_mod = JobInstance(
         tasks={taskId: taskInstance for taskId, taskInstance in job.tasks.items() if taskId in preserved_tasks_all},
-        edges=[
-            edge
-            for edge in job.edges
-            if edge.source.task in preserved_tasks_all and edge.sink_task in preserved_tasks_all
-        ],
+        edges=[edge for edge in job.edges if edge.source.task in preserved_tasks_all and edge.sink_task in preserved_tasks_all],
         serdes=job.serdes,
         ext_outputs=[dataset for dataset in job.ext_outputs if dataset.task in preserved_tasks_all],
         constraints=[constraint for constraint in job.constraints if set(constraint) <= preserved_tasks_all],

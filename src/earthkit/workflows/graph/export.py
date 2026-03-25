@@ -65,10 +65,7 @@ def deserialise(data: dict, node_factory: NodeFactory = default_node_factory) ->
     given name, outputs, payload and inputs. The default factory will create
     bare `Node` objects
     """
-    deps = {
-        name: [inp if isinstance(inp, str) else inp[0] for inp in node.get("inputs", {}).values()]
-        for name, node in data.items()
-    }
+    deps = {name: [inp if isinstance(inp, str) else inp[0] for inp in node.get("inputs", {}).values()] for name, node in data.items()}
 
     ts = graphlib.TopologicalSorter(deps)
     nodes: dict[str, Any] = {}

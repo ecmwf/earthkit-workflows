@@ -101,14 +101,7 @@ def test_simple():
     # 2-node graph
     task1 = TaskBuilder.from_callable(_payload).with_values(a=1, b=2)
     task2 = TaskBuilder.from_callable(_payload).with_values(a=1)
-    job = (
-        JobBuilder()
-        .with_node("task1", task1)
-        .with_node("task2", task2)
-        .with_edge("task1", "task2", "b")
-        .build()
-        .get_or_raise()
-    )
+    job = JobBuilder().with_node("task1", task1).with_node("task2", task2).with_edge("task1", "task2", "b").build().get_or_raise()
     run_cluster(JobInstanceRich(jobInstance=job, checkpointSpec=None), 12000, 1)
     sleep(1)  # improves stability
 
@@ -236,10 +229,7 @@ def test_checkpoints():
     in a way that recognizes whether it checkpointed or not.
     """
     with tempfile.TemporaryDirectory() as tmp_root, tempfile.TemporaryDirectory() as ckpt_root:
-        sourcetask_code = (
-            f"import pathlib; f = pathlib.Path('{tmp_root}') / 'file.txt';"
-            " f.write_text('ok') if not f.exists() else 1/0;"
-        )
+        sourcetask_code = f"import pathlib; f = pathlib.Path('{tmp_root}') / 'file.txt'; f.write_text('ok') if not f.exists() else 1/0;"
         jobInstance = (
             (
                 JobBuilder()

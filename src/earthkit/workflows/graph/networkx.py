@@ -26,10 +26,7 @@ def to_networkx(graph: Graph, serialise=False) -> nx.MultiDiGraph:
     for node in graph.nodes():
         node_s = node.serialise() if serialise else node
         g.add_node(node.name, node=node_s)
-        g.add_edges_from(
-            (isrc.parent.name, node.name, {"source_out": isrc.name, "dest_in": iname})
-            for iname, isrc in node.inputs.items()
-        )
+        g.add_edges_from((isrc.parent.name, node.name, {"source_out": isrc.name, "dest_in": iname}) for iname, isrc in node.inputs.items())
     return g
 
 
@@ -55,7 +52,6 @@ def draw_graph(
             g,
             pos,
             edge_labels={
-                e: (a["source_out"] if a["source_out"] != Node.DEFAULT_OUTPUT else "") + "->" + a["dest_in"]
-                for e, a in g.edges.items()
+                e: (a["source_out"] if a["source_out"] != Node.DEFAULT_OUTPUT else "") + "->" + a["dest_in"] for e, a in g.edges.items()
             },
         )

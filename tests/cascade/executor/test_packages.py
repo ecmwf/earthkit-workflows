@@ -25,8 +25,7 @@ def test_run_command() -> None:
     with pytest.raises(
         CascadeInternalError,
         match=re.escape(
-            "command failure: [Errno 2] No such file or directory: 'you'"
-            " (caused by FileNotFoundError(2, 'No such file or directory'))"
+            "command failure: [Errno 2] No such file or directory: 'you' (caused by FileNotFoundError(2, 'No such file or directory'))"
         ),
     ):
         run_command(bad1_command)
@@ -84,11 +83,7 @@ def test_postinstall_verify() -> None:
         "Uninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==1.0.0\n"
     )
     issues = _postinstall_verify(baddie)
-    assert issues == [
-        InstallIssue(
-            dist_name="numpy", desired_version=Version("1.0.0"), mod_issues=[("numpy", Version(numpy.__version__))]
-        )
-    ]
+    assert issues == [InstallIssue(dist_name="numpy", desired_version=Version("1.0.0"), mod_issues=[("numpy", Version(numpy.__version__))])]
 
 
 def test_prefer_installed() -> None:

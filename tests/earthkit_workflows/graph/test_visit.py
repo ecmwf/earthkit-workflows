@@ -55,27 +55,21 @@ def test_visit_disc():
     g = disconnected(5)
     names = gnames(g)
     assert len(names) == 5 + 5 + 5
-    assert set(names) == set(
-        [f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(5)] + [f"writer-{i}" for i in range(5)]
-    )
+    assert set(names) == set([f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(5)] + [f"writer-{i}" for i in range(5)])
 
 
 def test_visit_simple():
     g = simple(5, 3)
     names = gnames(g)
     assert len(names) == 5 + 3 + 3
-    assert set(names) == set(
-        [f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(3)] + [f"writer-{i}" for i in range(3)]
-    )
+    assert set(names) == set([f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(3)] + [f"writer-{i}" for i in range(3)])
 
 
 def test_visit_multi():
     g = multi(5, 3, 2)
     names = gnames(g)
     assert len(names) == 5 + 3 + 2 * (3 - 2)
-    assert set(names) == set(
-        [f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(3)] + [f"writer-{i}" for i in range(2)]
-    )
+    assert set(names) == set([f"reader-{i}" for i in range(5)] + [f"process-{i}" for i in range(3)] + [f"writer-{i}" for i in range(2)])
 
 
 class SourceLister(Visitor):

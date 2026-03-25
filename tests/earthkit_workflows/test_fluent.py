@@ -123,9 +123,7 @@ def test_broadcast():
     it = np.nditer(out_array, flags=["multi_index", "refs_ok"])
     for _ in it:
         print(it.multi_index)
-        assert out_array[it.multi_index].item(0).inputs["input0"].parent == nodetree_array(input_action.nodes)[
-            it.multi_index[:2]
-        ].item(0)
+        assert out_array[it.multi_index].item(0).inputs["input0"].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
 
 
 def test_flatten_expand():

@@ -41,13 +41,9 @@ class TaskDefinition(BaseModel):
         None,
         description="a cloud-pickled callable. Prefered over `entrypoint` if given",
     )
-    environment: list[str] = Field(
-        description="pip-installable packages, as required by entrypoint/func. Version pins supported"
-    )
+    environment: list[str] = Field(description="pip-installable packages, as required by entrypoint/func. Version pins supported")
     # NOTE we could accept eg has_kwargs, has_args, etc... or serialize the whole inspect.signature here?
-    input_schema: dict[str, str] = Field(
-        description="kv of input kw params and their types (fqn of class). Non-kw params not validated"
-    )
+    input_schema: dict[str, str] = Field(description="kv of input kw params and their types (fqn of class). Non-kw params not validated")
     output_schema: list[tuple[str, str]] = Field(
         description="kv of outputs and their types (fqn of class). Assumes listing in func output order"
     )
@@ -103,12 +99,8 @@ class JobDefinition(BaseModel):
 # Instances
 class TaskInstance(BaseModel):
     definition: TaskDefinition
-    static_input_kw: dict[str, Any] = Field(
-        description="input parameters for the entrypoint. Must be json/msgpack-serializable"
-    )
-    static_input_ps: dict[str, Any] = Field(
-        description="input parameters for the entrypoint. Must be json/msgpack-serializable"
-    )
+    static_input_kw: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
+    static_input_ps: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
 
 
 # Type can't be json serialized directly -- use these two functions with `serdes` on JobInstance
@@ -131,8 +123,7 @@ class JobInstance(BaseModel):
     edges: list[Task2TaskEdge]
     serdes: dict[str, tuple[str, str]] = Field(
         default_factory=lambda: {},
-        description="for each Type with custom serde, add entry here."
-        " The string is fully qualified name of the ser/des functions",
+        description="for each Type with custom serde, add entry here. The string is fully qualified name of the ser/des functions",
     )
     ext_outputs: list[DatasetId] = Field(
         default_factory=lambda: [],
@@ -196,9 +187,7 @@ no_record_ds = 1
 
 class JobExecutionRecord(BaseModel):
     tasks: dict[TaskId, TaskExecutionRecord] = Field(default_factory=lambda: defaultdict(lambda: no_record_ts))
-    datasets_mb: dict[DatasetId, int] = Field(
-        default_factory=lambda: defaultdict(lambda: no_record_ds)
-    )  # keyed by (task, output)
+    datasets_mb: dict[DatasetId, int] = Field(default_factory=lambda: defaultdict(lambda: no_record_ds))  # keyed by (task, output)
 
     # TODO extend this with some approximation/default from TaskInstance only
 

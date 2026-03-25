@@ -45,10 +45,7 @@ def _get_cuda_count() -> int:
             return visible_count
         gpus = sum(
             1
-            for l in subprocess
-            .run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True)
-            .stdout.decode("ascii")
-            .split("\n")
+            for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True).stdout.decode("ascii").split("\n")
             if "GPU" in l
         )
     except:

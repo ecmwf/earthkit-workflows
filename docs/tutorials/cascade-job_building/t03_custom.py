@@ -145,9 +145,7 @@ class ApplyNumpyReduce(DatasetSubgraph):
                 for i, v in enumerate(target):
                     applyT = TaskBuilder.from_callable(ApplyNumpyReduce._apply).with_values(f=f, over_dims=over_dims)
                     applyN = f"apply_{uuid.uuid4()}"
-                    self.implementation = self.implementation.with_node(applyN, applyT).with_edge(
-                        projectN, applyN, "i", f"{i}"
-                    )
+                    self.implementation = self.implementation.with_node(applyN, applyT).with_edge(projectN, applyN, "i", f"{i}")
                     self.projection[applyN] = {v}
 
 

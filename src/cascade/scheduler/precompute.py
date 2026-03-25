@@ -222,9 +222,7 @@ def precompute(job_instance: JobInstance) -> Preschedule:
 
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
-        f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(
-            plain_component, edge_i_proj, edge_o_proj, needs_gpu, gangs
-        )
+        f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj, needs_gpu, gangs)
         plain_components = (
             plain_component
             for plain_component in timer(_decompose, Microtrace.presched_decompose)(

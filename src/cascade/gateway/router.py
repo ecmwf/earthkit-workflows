@@ -91,9 +91,7 @@ class JobRouter:
         self.maybe_spawn()
         return job_id
 
-    def progress_of(
-        self, job_ids: Iterable[JobId]
-    ) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]], int]:
+    def progress_of(self, job_ids: Iterable[JobId]) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]], int]:
         if not job_ids:
             job_ids = set(self.jobs.keys()).union(self.jobs_queue.keys())
         progresses = {}

@@ -30,9 +30,7 @@ logger = logging.getLogger(__name__)
 local_job_port = 12345
 
 
-def _spawn_troika_singlehost(
-    job_spec: JobSpec, addr: str, job_id: JobId, troika: TroikaSpec, troika_config: str
-) -> subprocess.Popen:
+def _spawn_troika_singlehost(job_spec: JobSpec, addr: str, job_id: JobId, troika: TroikaSpec, troika_config: str) -> subprocess.Popen:
     script = "#!/bin/bash\n"
     script += f"source {troika.venv}\n"
     for k, v in job_spec.envvars.items():

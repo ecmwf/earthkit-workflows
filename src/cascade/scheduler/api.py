@@ -37,9 +37,7 @@ def gang_check_ready(task: TaskId, gang_prep: GangPreparation):
     """
     for gang in gang_prep.lookup[task]:
         if gang not in gang_prep.countdown:
-            raise CascadeInternalError(
-                description=f"after {task=} marked computable, {gang=} not found -- double computable mark?"
-            )
+            raise CascadeInternalError(description=f"after {task=} marked computable, {gang=} not found -- double computable mark?")
         remaining = gang_prep.countdown[gang]
         if task not in remaining:
             raise CascadeInternalError(
@@ -134,11 +132,7 @@ def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignm
         return
 
     # step II: assign remaining workers to new components
-    components = [
-        (component.weight, component_id)
-        for component_id, component in enumerate(schedule.components)
-        if component.weight > 0
-    ]
+    components = [(component.weight, component_id) for component_id, component in enumerate(schedule.components) if component.weight > 0]
     if not components:
         return
 

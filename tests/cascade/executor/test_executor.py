@@ -154,11 +154,7 @@ def test_executor():
             ),
         )
         ms = l.recv_messages()
-        assert (
-            len(ms) == 1
-            and isinstance(ms[0], DatasetTransmitPayload)
-            and ms[0].header.ds == DatasetId(task="sink", output="o")
-        )
+        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task="sink", output="o")
         assert serde.des_output(ms[0].value, "int", ms[0].header.deser_fun)[0] == 3.0
 
         # purge, store, run partial and fetch again

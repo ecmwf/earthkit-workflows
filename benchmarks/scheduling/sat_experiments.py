@@ -129,8 +129,7 @@ def solve(problem: Problem):
             if solver.value(problem.worker2task[(task, worker)]) == 1:
                 target = worker
         print(
-            f"{task=} => from {solver.value(problem.taskIntervals[task][0])}"
-            f" to {solver.value(problem.taskIntervals[task][1])} at {target}"
+            f"{task=} => from {solver.value(problem.taskIntervals[task][0])} to {solver.value(problem.taskIntervals[task][1])} at {target}"
         )
     print(f"end = {solver.value(problem.end)}")
 

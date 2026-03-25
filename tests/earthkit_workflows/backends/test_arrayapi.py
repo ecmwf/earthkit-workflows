@@ -29,9 +29,7 @@ class TestArrayAPIBackend(BackendBase):
     )
     def test_multi_arg_axis(self, num_inputs, input_shape, kwargs, output_shape):
         for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
-            assert (
-                getattr(backends, func)(*self.input_generator(num_inputs, input_shape), **kwargs).shape == output_shape
-            )
+            assert getattr(backends, func)(*self.input_generator(num_inputs, input_shape), **kwargs).shape == output_shape
 
     @pytest.mark.parametrize(
         ["num_inputs", "input_shape", "output_shape"],

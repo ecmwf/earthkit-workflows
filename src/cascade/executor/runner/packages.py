@@ -56,10 +56,7 @@ def run_command(command: list[str]) -> tuple[str, str]:
         # either badly deployed or code bug of calling bad command -> InternalError
         raise CascadeInternalError(f"command failure: {ex}", parent=ex) from ex
     if result.returncode != 0:
-        msg = (
-            f"command failed with {result.returncode}. Stderr: {result.stderr},"
-            f" Stdout: {result.stdout}, Args: {result.args}"
-        )
+        msg = f"command failed with {result.returncode}. Stderr: {result.stderr}, Stdout: {result.stdout}, Args: {result.args}"
         logger.error(msg)
 
         if "was not found in the package registry" in result.stderr:
@@ -144,9 +141,7 @@ def _maybe_module_version(mod_name: str) -> Version | None:
             try:
                 return Version(mod.__version__)
             except Exception as e:
-                logger.warning(
-                    f"failed to parse module {mod_name} version {mod.__version__} due to {repr(e)}-- ignoring!"
-                )
+                logger.warning(f"failed to parse module {mod_name} version {mod.__version__} due to {repr(e)}-- ignoring!")
         else:
             logging.warning(f"Module '{mod_name}' is loaded, but has no __version__ attribute -- ignoring")
 

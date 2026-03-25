@@ -72,9 +72,7 @@ class RunnerContext:
         )
 
 
-def task_sequence_postmortem(
-    ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId
-) -> list[tuple[DatasetId, str]]:
+def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> list[tuple[DatasetId, str]]:
     """Assuming a failure at task Cut, identify which datasets from the beginning of
     the sequence should be additionaly published. Returns datasetid + its type.
     """
@@ -232,12 +230,8 @@ def entrypoint(runnerContextClpkl: bytes):
             elif isinstance(mDes, TaskSequence):
                 if waiting_ts is not None:
                     raise CascadeInternalError(f"double task sequence enqueued: 1/ {waiting_ts}, 2/ {mDes}")
-                required = {
-                    dataset_id for task in mDes.tasks for dataset_id in runnerContext.param_source[task].values()
-                } - {
-                    DatasetId(task, key)
-                    for task in mDes.tasks
-                    for key, _ in runnerContext.job.tasks[task].definition.output_schema
+                required = {dataset_id for task in mDes.tasks for dataset_id in runnerContext.param_source[task].values()} - {
+                    DatasetId(task, key) for task in mDes.tasks for key, _ in runnerContext.job.tasks[task].definition.output_schema
                 }
                 missing_ds = required - availab_ds
                 if Config.pretask_flush:
