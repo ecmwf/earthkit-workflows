@@ -16,9 +16,10 @@ Controlled by env var params: JOB1_{DATA_ROOT, GRID, ...}, see below
 import os
 
 import earthkit.data
-from earthkit.workflows.fluent import Payload
 from earthkit.workflows.plugins.pproc.fluent import from_source  # ty: ignore
 from earthkit.workflows.plugins.pproc.utils.window import Range  # ty: ignore
+
+from earthkit.workflows.fluent import Payload
 
 # *** PARAMS ***
 
