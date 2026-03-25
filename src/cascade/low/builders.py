@@ -169,8 +169,8 @@ class JobBuilder:
                 return
             # TODO replace `issubclass` with a smarter check for self-reg types
             legits = {("grib.earthkit", "grib.mir"), ("grib.mir", "grib.earthkit")}
-            _issubclass = (
-                lambda t1, t2: t2 == "Any"
+            _issubclass = lambda t1, t2: (
+                t2 == "Any"
                 or t1 == t2
                 or (t1, t2) in legits
                 or t1 == "typing.Iterator"  # TODO replace with type extraction *and* check that this is multi-output

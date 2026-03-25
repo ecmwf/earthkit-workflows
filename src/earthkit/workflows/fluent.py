@@ -958,7 +958,7 @@ class Action:
 
     def _squeeze_dimension(self, dim_name: str, drop: bool = False, path: Optional[str] = None):
         new_tree = self.nodes.map_over_datasets(
-            lambda ds: (ds.squeeze(dim_name, drop=drop) if dim_name in ds.dims and len(ds.coords[dim_name]) == 1 else ds)
+            lambda ds: ds.squeeze(dim_name, drop=drop) if dim_name in ds.dims and len(ds.coords[dim_name]) == 1 else ds
         )
         assert isinstance(new_tree, xr.DataTree)
         if path is not None:

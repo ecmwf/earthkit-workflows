@@ -9,9 +9,9 @@
 import numpy as np
 import numpy.random as random
 import pytest
-
 from earthkit.data import FieldList, SimpleFieldList
 from earthkit.data.core.metadata import RawMetadata
+
 from earthkit.workflows import backends
 
 

@@ -10,11 +10,10 @@ import io
 
 import matplotlib.pyplot as plt  # ty: ignore[unresolved-import]
 import numpy as np
-from PIL import Image
-
 from cascade.cascade import Cascade  # ty: ignore[unresolved-import]
 from cascade.fluent import Fluent, Payload  # ty: ignore[unresolved-import]
 from cascade.visualise import visualise  # ty: ignore[unresolved-import]
+from PIL import Image
 
 
 def mandelbrot(c, max_iter):
