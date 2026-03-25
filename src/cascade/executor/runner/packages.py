@@ -205,7 +205,7 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
             parts = re.split(r"([<>=!~].*)", package_spec)
             package = parts[0]
             if package not in installed:
-                yield package
+                yield package_spec
             elif len(parts) == 1:
                 if installed[package] == "--editable" or installed[package] == "--git":
                     continue
