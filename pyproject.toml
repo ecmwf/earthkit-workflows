@@ -68,3 +68,4 @@ addopts = "-n8"
 [tool.ruff]
 line-length = 140
 lint.ignore = [ "E722", "E731", "E741" ]
+lint.select = ["I"]
