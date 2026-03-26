@@ -88,7 +88,7 @@ class Transformer:
 
     def __transform_output(self, node: Any, output: Output) -> Any:
         if hasattr(self, "output"):
-            return self.output(node, output.name)
+            return getattr(self, "output")(node, output.name)
         if isinstance(node, dict):
             return node[output.name]
         try:
@@ -98,5 +98,5 @@ class Transformer:
 
     def __transform_graph(self, graph: Graph, sinks: list[dict[str, Any]]) -> Any:
         if hasattr(self, "graph"):
-            return self.graph(graph, sinks)
+            return getattr(self, "graph")(graph, sinks)
         return sinks

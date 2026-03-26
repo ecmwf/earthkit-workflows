@@ -46,7 +46,7 @@ def render_graph(graph: Graph, **kwargs) -> str:
 
     Keyword arguments are passed to `graphviz.Source.render`.
     """
-    import graphviz
+    import graphviz  # type: ignore[import-untyped]
 
     dot = to_dot(graph)
     src = graphviz.Source(dot)

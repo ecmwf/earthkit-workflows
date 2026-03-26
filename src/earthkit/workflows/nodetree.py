@@ -23,7 +23,7 @@ def nodetree_from_dict(data: dict[str, xr.DataArray] | dict[str, xr.Dataset], *a
             raise ValueError("NodeTree can only be created from dict of xr.DataArray or xr.Dataset")
     tree = xr.DataTree.from_dict(new_data, *args, **kwargs)
     for leaf in tree.leaves:
-        var = list(leaf.dataset.data_vars.keys())[0]
+        var: str = list(leaf.dataset.data_vars.keys())[0]  # type: ignore[assignment]
         if np.any(leaf[var].isnull()):
             raise ValueError(f"Nodes in Action can not contain NaNs. Found NaN in nodeset {leaf.path}, variable {var}")
     if not tree.is_hollow:
@@ -33,7 +33,7 @@ def nodetree_from_dict(data: dict[str, xr.DataArray] | dict[str, xr.Dataset], *a
 
 def nodetree_arrays(nodetree: xr.DataTree) -> Iterable[Tuple[str, xr.DataArray]]:
     for leaf in nodetree.leaves:
-        var = list(leaf.dataset.data_vars.keys())[0]
+        var: str = list(leaf.dataset.data_vars.keys())[0]  # type: ignore[assignment]
         yield leaf.path, leaf[var]
 
 
@@ -46,8 +46,8 @@ def nodetree_array(nodetree: xr.DataTree, path: Optional[str] = None) -> xr.Data
         if path not in nodetree.leaves:
             raise KeyError(f"Path {path} not found in nodetree")
         leaf = nodetree[path]
-    var = list(leaf.dataset.data_vars.keys())[0]
-    return leaf[var]
+    var: str = list(leaf.dataset.data_vars.keys())[0]  # type: ignore[assignment]
+    return leaf[var]  # type: ignore[return-value]
 
 
 def nodetree_size(nodetree: xr.DataTree) -> int:

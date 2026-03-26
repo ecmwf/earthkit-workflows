@@ -75,7 +75,7 @@ class Payload:
         if isinstance(self.func, str):
             return self.func
         if hasattr(self.func, "__name__"):
-            return self.func.__name__
+            return self.func.__name__  # type: ignore[union-attr]
         return ""
 
     def __str__(self) -> str:
@@ -166,7 +166,7 @@ class Node(BaseNode):
         return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
 
     def copy(self) -> "Node":
-        return self.__class__(*self._for_copy)
+        return self.__class__(*self._for_copy)  # type: ignore[arg-type]
 
 
 class Action:
@@ -270,7 +270,7 @@ class Action:
 
     def transform(
         self,
-        func: Callable[["Action", Any], "Action"],
+        func: Callable[..., "Action"],
         params: list,
         dim: str | Coord,
         axis: int = 0,
@@ -350,7 +350,7 @@ class Action:
                     )
             broadcasted_nodes = array.broadcast_like(narray, exclude=exclude)
             new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
-            it = np.nditer(
+            it = np.nditer(  # type: ignore[call-overload]
                 array.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
                 flags=["multi_index", "refs_ok"],
             )
@@ -412,7 +412,7 @@ class Action:
 
     def map(
         self,
-        payload: PayloadFunc | Payload | np.ndarray[Any, Any],
+        payload: PayloadFunc | Payload | np.ndarray[Any, Any] | list,
         yields: Coord | None = None,
         path: Optional[str] = None,
     ) -> "Action":
@@ -448,7 +448,7 @@ class Action:
 
             # Applies operation to every node, keeping node array structure
             new_nodes = np.empty(narray.shape, dtype=object)
-            it = np.nditer(narray, flags=["multi_index", "refs_ok"])
+            it = np.nditer(narray, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
             node_payload = payload
             for node in it:
                 if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
@@ -516,7 +516,9 @@ class Action:
                 raise ValueError("Can not batch the execution of a generator")
             if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
                 if not getattr(payload.func, "batchable", False):
-                    raise ValueError(f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified")
+                    raise ValueError(
+                        f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified"  # type: ignore[union-attr]
+                    )
 
                 while batch_size < nodetree_array(batched.nodes).sizes[dim]:
                     lst = nodetree_array(batched.nodes).coords[dim].data
@@ -536,7 +538,7 @@ class Action:
             new_dims = [x for x in batched_narray.dims if x != dim]
             transposed_nodes = batched_narray.transpose(dim, *new_dims)
             new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
-            it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
+            it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
             for _ in it:
                 inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
                 new_nodes[it.multi_index] = Node(payload, inputs, num_outputs=len(yields[1]) if yields else 1)
@@ -568,6 +570,7 @@ class Action:
         axis: int = 0,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         """Flattens the array of nodes along specified dimension by creating new
         nodes from stacking internal data of nodes along that dimension.
@@ -604,7 +607,7 @@ class Action:
             raise NotImplementedError("Multiple node arrays present, can not set single path")
         return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes)}))
 
-    def split(self, expansion: Optional[dict[str, PayloadFunc | Payload]] = None) -> "Action":
+    def split(self, expansion: dict[str, PayloadFunc | Payload]) -> "Action":
         """Create action containing new node arrays by splitting an existing node array
         by the specified functions in expansion
 
@@ -629,7 +632,7 @@ class Action:
             node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
         return type(self)(nodetree_from_dict(node_arrays))
 
-    def _validate_criteria(cls, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
+    def _validate_criteria(self, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
         keys = list(criteria.keys())
         new_criteria = criteria.copy()
         for key in keys:
@@ -664,7 +667,7 @@ class Action:
 
         nodes = self.nodes if path is None else self.nodes[path]
         new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):
+        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
             valid, new_criteria = self._validate_criteria(narray, crit)
             if valid:
                 try:
@@ -702,7 +705,7 @@ class Action:
 
         nodes = self.nodes if path is None else self.nodes[path]
         new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):
+        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
             valid, new_criteria = self._validate_criteria(narray, crit)
             if valid:
                 try:
@@ -724,6 +727,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return _combine_nodes(self, "concat", dim, batch_size, keep_dim, path, backend_kwargs)
 
@@ -736,6 +740,7 @@ class Action:
         axis: int = 0,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return _combine_nodes(
             self,
@@ -755,6 +760,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.sum, kwargs=backend_kwargs),
@@ -772,6 +778,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         action = self
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
@@ -804,6 +811,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         action = self
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
@@ -844,6 +852,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.max, kwargs=backend_kwargs),
@@ -861,6 +870,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.min, kwargs=backend_kwargs),
@@ -878,6 +888,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.prod, kwargs=backend_kwargs),
@@ -906,6 +917,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.subtract, other, path=path, **backend_kwargs)
 
@@ -915,6 +927,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.divide, other, path=path, **backend_kwargs)
 
@@ -924,6 +937,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.add, other, path=path, **backend_kwargs)
 
@@ -933,6 +947,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.multiply, other, path=path, **backend_kwargs)
 
@@ -942,6 +957,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.pow, other, path=path, **backend_kwargs)
 
@@ -1040,20 +1056,21 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]]),  # values are Callables
+    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]] | list[Any] | PayloadFunc | Payload),  # values are Callables
     yields: Coord | None = None,
     dims: list | None = None,
     coords: dict | None = None,
     action=Action,
 ) -> Action:
-    if not isinstance(payloads_list, dict):
-        payloads_list = {"/": payloads_list}
+    payloads_dict: dict[str, Any] = (  # type: ignore[assignment]
+        payloads_list if isinstance(payloads_list, dict) else {"/": payloads_list}
+    )
 
     node_arrays = {}
-    for nindex, (path, parray) in enumerate(payloads_list.items()):
+    for nindex, (path, parray) in enumerate(payloads_dict.items()):
         payloads = xr.DataArray(parray, dims=dims, coords=coords)
         nodes = xr.DataArray(np.empty(payloads.shape, dtype=object), dims=dims, coords=coords)
-        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
         # Ensure all source nodes have a unique name
         node_names = set()
         for item in it:
