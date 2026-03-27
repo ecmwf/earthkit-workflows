@@ -21,9 +21,11 @@ from cascade.executor.msg import DatasetPublished, TaskSequence
 from cascade.executor.runner.packages import PackagesEnv
 from cascade.low.core import (
     DatasetId,
+    HostId,
     JobInstance,
     Task2TaskEdge,
     TaskDefinition,
+    TaskId,
     TaskInstance,
     WorkerId,
 )
@@ -31,7 +33,7 @@ from cascade.low.views import param_source
 
 
 def test_runner(monkeypatch):
-    worker = WorkerId("h0", "w0")
+    worker = WorkerId(HostId("h0"), "w0")
 
     # monkeypatching
     test_address = "zmq:test"
@@ -112,14 +114,14 @@ def test_runner(monkeypatch):
         static_input_kw={"x": 1},
         static_input_ps={},
     )
-    t2ds = DatasetId("t2", "o")
+    t2ds = DatasetId(TaskId("t2"), "o")
     oneTaskTs = TaskSequence(
         worker=worker,
-        tasks=["t2"],
+        tasks=[TaskId("t2")],
         publish={t2ds},
         extra_env=[],
     )
-    oneTaskJob = JobInstance(tasks={"t2": t2}, edges=[])
+    oneTaskJob = JobInstance(tasks={TaskId("t2"): t2}, edges=[])
     oneTaskRc = entrypoint.RunnerContext(
         workerId=worker,
         workerAttemptCnt=0,
@@ -151,17 +153,17 @@ def test_runner(monkeypatch):
         static_input_kw={},
         static_input_ps={},
     )
-    t3i = DatasetId("t3a", "o")
-    t3o = DatasetId("t3b", "o")
+    t3i = DatasetId(TaskId("t3a"), "o")
+    t3o = DatasetId(TaskId("t3b"), "o")
     twoTaskTs = TaskSequence(
         worker=worker,
-        tasks=["t3a", "t3b"],
+        tasks=[TaskId("t3a"), TaskId("t3b")],
         publish={t3o},
         extra_env=[],
     )
     twoTaskJob = JobInstance(
-        tasks={"t3a": t3a, "t3b": t3b},
-        edges=[Task2TaskEdge(source=t3i, sink_task="t3b", sink_input_kw="x", sink_input_ps=None)],
+        tasks={TaskId("t3a"): t3a, TaskId("t3b"): t3b},
+        edges=[Task2TaskEdge(source=t3i, sink_task=TaskId("t3b"), sink_input_kw="x", sink_input_ps=None)],
     )
     twoTaskRc = entrypoint.RunnerContext(
         workerId=worker,
@@ -207,25 +209,25 @@ def test_runner(monkeypatch):
         static_input_kw={},
         static_input_ps={},
     )
-    t4gOutputs = [DatasetId("t4g", k) for k, _ in gen_definition.output_schema]
+    t4gOutputs = [DatasetId(TaskId("t4g"), k) for k, _ in gen_definition.output_schema]
     t4c = TaskInstance(
         definition=task_definition,
         static_input_kw={},
         static_input_ps={},
     )
-    t4pOutputs = [DatasetId(f"t4c{i}", "o") for i in range(N)]
+    t4pOutputs = [DatasetId(TaskId(f"t4c{i}"), "o") for i in range(N)]
     t4TaskTs = TaskSequence(
         worker=worker,
-        tasks=["t4g"] + [f"t4c{i}" for i in range(N)],
+        tasks=[TaskId("t4g")] + [TaskId(f"t4c{i}") for i in range(N)],
         publish=set(t4pOutputs),
         extra_env=[],
     )
     t4Job = JobInstance(
-        tasks={**{"t4g": t4g}, **{f"t4c{i}": t4c for i in range(N)}},
+        tasks={TaskId("t4g"): t4g, **{TaskId(f"t4c{i}"): t4c for i in range(N)}},
         edges=[
             Task2TaskEdge(
                 source=t4gOutputs[i],
-                sink_task=f"t4c{i}",
+                sink_task=TaskId(f"t4c{i}"),
                 sink_input_kw="x",
                 sink_input_ps=None,
             )

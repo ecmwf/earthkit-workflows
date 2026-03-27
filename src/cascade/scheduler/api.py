@@ -93,7 +93,7 @@ def init_schedule(preschedule: Preschedule, context: JobExecutionContext) -> Sch
         components.append(component)
         computable += len(precomponent.sources)
         for task in precomponent.nodes:
-            ts2component[task] = componentId
+            ts2component[task] = ComponentId(componentId)
 
     if gangs:
         for gang in gangs:
@@ -133,7 +133,9 @@ def assign(schedule: Schedule, context: JobExecutionContext) -> Iterator[Assignm
         return
 
     # step II: assign remaining workers to new components
-    components = [(component.weight, component_id) for component_id, component in enumerate(schedule.components) if component.weight > 0]
+    components = [
+        (component.weight, ComponentId(component_id)) for component_id, component in enumerate(schedule.components) if component.weight > 0
+    ]
     if not components:
         return
 

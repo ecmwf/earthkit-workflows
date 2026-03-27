@@ -21,7 +21,7 @@ from typing import Any
 from dask._task_spec import Alias, DataNode, Task, TaskRef
 
 from cascade.low.builders import TaskBuilder
-from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskInstance
+from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskId, TaskInstance
 from cascade.low.exceptions import CascadeUserError
 
 logger = logging.getLogger(__name__)
@@ -38,8 +38,8 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
     for i, v in enumerate(task.args):
         if isinstance(v, Alias | TaskRef):
             edge = Task2TaskEdge(
-                source=DatasetId(task=daskKeyRepr(v.key), output=DefaultTaskOutput),
-                sink_task=key,
+                source=DatasetId(task=TaskId(daskKeyRepr(v.key)), output=DefaultTaskOutput),
+                sink_task=TaskId(key),
                 sink_input_ps=i,
                 sink_input_kw=None,
             )
@@ -52,8 +52,8 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
     for k, v in task.kwargs.items():
         if isinstance(v, Alias | TaskRef):
             edge = Task2TaskEdge(
-                source=DatasetId(task=daskKeyRepr(v.key), output=DefaultTaskOutput),
-                sink_task=key,
+                source=DatasetId(task=TaskId(daskKeyRepr(v.key)), output=DefaultTaskOutput),
+                sink_task=TaskId(key),
                 sink_input_kw=k,
                 sink_input_ps=None,
             )
@@ -68,7 +68,7 @@ def task2task(key: str, task: Task) -> tuple[TaskInstance, list[Task2TaskEdge]]:
 
 
 def graph2job(dask: dict) -> JobInstance:
-    task_nodes = {}
+    task_nodes: dict[TaskId, TaskInstance] = {}
     edges = []
 
     for node, value in dask.items():
@@ -78,10 +78,10 @@ def graph2job(dask: dict) -> JobInstance:
             def provider() -> Any:
                 return value.value
 
-            task_nodes[key] = TaskBuilder.from_callable(provider)
+            task_nodes[TaskId(key)] = TaskBuilder.from_callable(provider)
         elif isinstance(value, Task):
             node, _edges = task2task(key, value)
-            task_nodes[key] = node
+            task_nodes[TaskId(key)] = node
             edges.extend(_edges)
         elif isinstance(value, list | tuple | set):
             # TODO implement, consult further:

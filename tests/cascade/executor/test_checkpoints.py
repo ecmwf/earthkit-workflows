@@ -10,19 +10,19 @@ from cascade.executor.checkpoints import (
     retrieve_dataset,
 )
 from cascade.executor.serde import DefaultSerde
-from cascade.low.core import CheckpointSpec, DatasetId
+from cascade.low.core import CheckpointSpec, DatasetId, StorageId, TaskId
 from cascade.low.execution_context import VirtualCheckpointHost
 from cascade.shm.client import AllocatedBuffer
 
 
 def test_rw():
     with tempfile.TemporaryDirectory() as td:
-        ds1 = DatasetId(task="1", output="0")
+        ds1 = DatasetId(task=TaskId("1"), output="0")
         spec = CheckpointSpec(
             storage_type="fs",
             storage_params=td,
-            retrieve_id="subfolder",
-            persist_id="subfolder",
+            retrieve_id=StorageId("subfolder"),
+            persist_id=StorageId("subfolder"),
             to_persist=[ds1],
         )
 

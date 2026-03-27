@@ -21,6 +21,7 @@ from cascade.low.core import (
     JobInstance,
     Task2TaskEdge,
     TaskDefinition,
+    TaskId,
     TaskInstance,
 )
 from cascade.low.func import Either
@@ -100,12 +101,12 @@ class JobBuilder:
         return replace(self, nodes=self.nodes.set(name, task))
 
     def with_output(self, task: str, output: str = DefaultTaskOutput) -> Self:
-        return replace(self, outputs=self.outputs.append(DatasetId(task, output)))
+        return replace(self, outputs=self.outputs.append(DatasetId(TaskId(task), output)))
 
     def with_edge(self, source: str, sink: str, into: str | int, frum: str = DefaultTaskOutput) -> Self:
         new_edge = Task2TaskEdge(
-            source=DatasetId(source, frum),
-            sink_task=sink,
+            source=DatasetId(TaskId(source), frum),
+            sink_task=TaskId(sink),
             sink_input_kw=into if isinstance(into, str) else None,
             sink_input_ps=into if isinstance(into, int) else None,
         )
@@ -193,7 +194,7 @@ class JobBuilder:
         else:
             return Either.ok(
                 JobInstance(
-                    tasks=cast(dict[str, TaskInstance], pyrsistent.thaw(self.nodes)),
+                    tasks=cast(dict[TaskId, TaskInstance], pyrsistent.thaw(self.nodes)),
                     edges=pyrsistent.thaw(self.edges),
                     ext_outputs=pyrsistent.thaw(self.outputs),
                 )

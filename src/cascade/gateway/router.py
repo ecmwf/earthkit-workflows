@@ -56,11 +56,11 @@ class JobRouter:
         max_jobs: int | None,
     ):
         self.poller = poller
-        self.jobs: dict[str, Job] = {}
+        self.jobs: dict[JobId, Job] = {}
         self.active_jobs = 0
         self.max_jobs = max_jobs
         self.jobs_queue: OrderedDict[JobId, JobSpec] = OrderedDict()
-        self.procs: dict[str, subprocess.Popen] = {}
+        self.procs: dict[JobId, subprocess.Popen] = {}
         self.loggingConfig = loggingConfig
         self.troika_config = troika_config
 
@@ -85,7 +85,7 @@ class JobRouter:
     def enqueue_job(self, job_spec: JobSpec) -> JobId:
         job_id = next_uuid(
             set(self.jobs.keys()).union(self.jobs_queue.keys()),
-            lambda: str(uuid.uuid4()),
+            lambda: JobId(str(uuid.uuid4())),
         )
         self.jobs_queue[job_id] = job_spec
         self.maybe_spawn()
