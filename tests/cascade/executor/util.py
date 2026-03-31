@@ -30,7 +30,7 @@ from cascade.executor.runner.memory import Memory, ds2shmid
 from cascade.executor.runner.packages import PackagesEnv
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.builders import TaskBuilder
-from cascade.low.core import DatasetId, WorkerId
+from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.shm.server import entrypoint as shm_server
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
         raise ValueError(f"expected 1 task, gotten {len(tasks)}")
     taskId = tasks[0]
     taskInstance = executionContext.tasks[taskId]
-    with Memory(callback, WorkerId(host="testHost", worker="testWorker")) as memory, PackagesEnv() as pckg:
+    with Memory(callback, WorkerId(host=HostId("testHost"), worker="testWorker")) as memory, PackagesEnv() as pckg:
         # for key, value in taskSequence.extra_env.items():
         #    os.environ[key] = value
 
@@ -94,8 +94,8 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
 def callable2ctx(callableInstance: CallableInstance, callback: BackboneAddress) -> ExecutionContext:
     taskInstance = TaskBuilder.from_callable(callableInstance.func, callableInstance.env)
     param_source = {}
-    params = [(key, DatasetId("taskId", f"kwarg.{key}"), value) for key, value in callableInstance.kwargs.items()] + [
-        (key, DatasetId("taskId", f"pos.{key}"), value) for key, value in callableInstance.args
+    params = [(key, DatasetId(TaskId("taskId"), f"kwarg.{key}"), value) for key, value in callableInstance.kwargs.items()] + [
+        (key, DatasetId(TaskId("taskId"), f"pos.{key}"), value) for key, value in callableInstance.args
     ]
     for key, ds_key, value in params:
         raw = cloudpickle.dumps(value)
@@ -106,10 +106,10 @@ def callable2ctx(callableInstance: CallableInstance, callback: BackboneAddress) 
         param_source[key] = (ds_key, "Any")
 
     return ExecutionContext(
-        tasks={"taskId": taskInstance},
-        param_source={"taskId": param_source},
+        tasks={TaskId("taskId"): taskInstance},
+        param_source={TaskId("taskId"): param_source},
         callback=callback,
-        publish={DatasetId("taskId", output) for output, _ in taskInstance.definition.output_schema},
+        publish={DatasetId(TaskId("taskId"), output) for output, _ in taskInstance.definition.output_schema},
     )
 
 
@@ -121,12 +121,12 @@ def run_test(callableInstance: CallableInstance, testId: str, max_runtime_sec: i
         mp_ctx = platform.get_mp_ctx("executor-aux")
         runner = mp_ctx.Process(target=simple_runner, args=(addr, ec_ctx))
         runner.start()
-        output = DatasetId("taskId", "0")
+        output = DatasetId(TaskId("taskId"), "0")
 
         end = perf_counter_ns() + max_runtime_sec * int(1e9)
         while perf_counter_ns() < end:
             mess = listener.recv_messages()
-            if mess == [DatasetPublished(origin=WorkerId(host="testHost", worker="testWorker"), ds=output, transmit_idx=None)]:
+            if mess == [DatasetPublished(origin=WorkerId(host=HostId("testHost"), worker="testWorker"), ds=output, transmit_idx=None)]:
                 break
             elif not mess:
                 continue

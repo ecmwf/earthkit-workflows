@@ -30,7 +30,7 @@ from cascade.executor.config import logging_config
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import CheckpointSpec, DatasetId, JobInstance, JobInstanceRich
+from cascade.low.core import CheckpointSpec, DatasetId, HostId, JobInstance, JobInstanceRich, StorageId, TaskId
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
 
@@ -53,7 +53,7 @@ def launch_executor(
         job_instance,
         controller_address,
         2,
-        f"test_executor{i}",
+        HostId(f"test_executor{i}"),
         portBase,
         None,
         DefaultLoggingConfig,
@@ -169,8 +169,8 @@ def test_para1_persist():
             storage_type="fs",
             storage_params=td,
             retrieve_id=None,
-            persist_id="run1",
-            to_persist=[DatasetId(task="c2i1", output="0")],
+            persist_id=StorageId("run1"),
+            to_persist=[DatasetId(task=TaskId("c2i1"), output="0")],
         )
         job.checkpointSpec = spec
         run_cluster(job, 12600, 1)
@@ -210,13 +210,13 @@ def test_fusing():
         .get_or_raise()
     )
     preschedule = precompute(job)
-    assert preschedule.components[0].fusing_opportunities["source"] == [
-        "source",
-        "m1",
-        "m2",
-        "m3",
-        "m4",
-        "sink",
+    assert preschedule.components[0].fusing_opportunities[TaskId("source")] == [
+        TaskId("source"),
+        TaskId("m1"),
+        TaskId("m2"),
+        TaskId("m3"),
+        TaskId("m4"),
+        TaskId("sink"),
     ]
     # TODO we currently dont check that those actually *got fused* -- fix
     jobInstanceRich = JobInstanceRich(jobInstance=job, checkpointSpec=None)
@@ -249,9 +249,9 @@ def test_checkpoints():
         checkpointSpec = CheckpointSpec(
             storage_type="fs",
             storage_params=ckpt_root,
-            retrieve_id="f1",
-            persist_id="f1",
-            to_persist=[DatasetId(task="source", output="0")],
+            retrieve_id=StorageId("f1"),
+            persist_id=StorageId("f1"),
+            to_persist=[DatasetId(task=TaskId("source"), output="0")],
         )
 
         jobInstanceRich = JobInstanceRich(

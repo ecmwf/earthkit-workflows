@@ -5,7 +5,7 @@ import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.gateway.__main__ import main_cli
 from cascade.low.builders import JobBuilder
-from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskInstance
+from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskId, TaskInstance
 
 init_value = 10
 job_func = lambda i: i * 2
@@ -30,7 +30,7 @@ def get_job_succ() -> JobInstanceRich:
     sii = TaskInstance(definition=sid, static_input_kw={}, static_input_ps={})
 
     ji = JobBuilder().with_node("so", soi).with_node("si", sii).with_edge("so", "si", 0, "o").build().get_or_raise()
-    ji.ext_outputs = [DatasetId("si", "o")]
+    ji.ext_outputs = [DatasetId(TaskId("si"), "o")]
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 

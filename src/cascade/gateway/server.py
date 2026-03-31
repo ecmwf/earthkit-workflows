@@ -18,7 +18,7 @@ from typing import cast
 import zmq
 
 import cascade.gateway.api as api
-from cascade.controller.report import JobProgress, deserialize
+from cascade.controller.report import JobId, JobProgress, deserialize
 from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.executor.comms import get_context
 from cascade.gateway.client import parse_request, serialize_response
@@ -44,7 +44,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
         try:
             progresses, datasets, queue_length = jobs.progress_of(m.job_ids)
             rv = api.JobProgressResponse(
-                progresses=cast(dict[str, JobProgress | None], progresses),
+                progresses=cast(dict[JobId, JobProgress | None], progresses),
                 datasets=datasets,
                 error=None,
                 queue_length=queue_length,

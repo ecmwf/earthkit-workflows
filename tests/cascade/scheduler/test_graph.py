@@ -7,6 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 from collections import defaultdict
+from typing import cast
 
 from cascade.low.core import TaskId
 from cascade.scheduler.precompute import _decompose, _enrich
@@ -23,21 +24,21 @@ def _oedge2iedge(edge_o: dict[TaskId, set[TaskId]]) -> dict[TaskId, set[TaskId]]
 def test_decompose():
     # comp1: v0 -> v1 -> v2 + v3 -> v1
     # comp2: v4 -> v5, v4 -> v6
-    nodes = [f"v{i}" for i in range(7)]
-    edge_o = defaultdict(
-        set,
-        **{
-            "v0": {"v1"},
-            "v1": {"v2"},
-            "v3": {"v1"},
-            "v4": {"v5", "v6"},
-        },
+    nodes = [TaskId(f"v{i}") for i in range(7)]
+    edge_o: dict[TaskId, set[TaskId]] = defaultdict(set)
+    edge_o.update(
+        {
+            TaskId("v0"): {TaskId("v1")},
+            TaskId("v1"): {TaskId("v2")},
+            TaskId("v3"): {TaskId("v1")},
+            TaskId("v4"): {TaskId("v5"), TaskId("v6")},
+        }
     )
     edge_i = _oedge2iedge(edge_o)
 
     expected = {
-        (frozenset({"v0", "v1", "v2", "v3"}), frozenset({"v0", "v3"})),
-        (frozenset({"v4", "v5", "v6"}), frozenset({"v4"})),
+        (frozenset({TaskId("v0"), TaskId("v1"), TaskId("v2"), TaskId("v3")}), frozenset({TaskId("v0"), TaskId("v3")})),
+        (frozenset({TaskId("v4"), TaskId("v5"), TaskId("v6")}), frozenset({TaskId("v4")})),
     }
     for component in _decompose(nodes, edge_i, edge_o):
         e = (frozenset(component[0]), frozenset(component[1]))
@@ -51,41 +52,97 @@ def test_enrich():
     # v3 -> v1
     # v4 -> v5 -> v2
     # v4 -> v6
-    edge_o = defaultdict(
-        set,
-        **{
-            "v0": {"v1"},
-            "v1": {"v2"},
-            "v3": {"v1"},
-            "v4": {"v5", "v6"},
-            "v5": {"v2"},
-        },
+    edge_o: dict[TaskId, set[TaskId]] = defaultdict(set)
+    edge_o.update(
+        {
+            TaskId("v0"): {TaskId("v1")},
+            TaskId("v1"): {TaskId("v2")},
+            TaskId("v3"): {TaskId("v1")},
+            TaskId("v4"): {TaskId("v5"), TaskId("v6")},
+            TaskId("v5"): {TaskId("v2")},
+        }
     )
     edge_i = _oedge2iedge(edge_o)
-    component = (list(set(edge_o.keys()).union(set(edge_i.keys()))), ["v0", "v3", "v4"])
+    component = (list(set(edge_o.keys()).union(set(edge_i.keys()))), [TaskId("v0"), TaskId("v3"), TaskId("v4")])
 
     res = _enrich(component, edge_i, edge_o, set(), set())
 
     assert res.nodes == component[0]
     assert res.sources == component[1]
     assert res.weight() == len(component[0])
-    value = {
-        "v0": 1,
-        "v1": 2,
-        "v2": 3,
-        "v3": 1,
-        "v4": 2,
-        "v5": 2,
-        "v6": 3,
+    value: dict[TaskId, int] = {
+        TaskId("v0"): 1,
+        TaskId("v1"): 2,
+        TaskId("v2"): 3,
+        TaskId("v3"): 1,
+        TaskId("v4"): 2,
+        TaskId("v5"): 2,
+        TaskId("v6"): 3,
     }
     assert res.value == value
-    distance_matrix = {
-        "v0": {"v0": 0, "v1": 1, "v2": 2, "v3": 1, "v4": 2, "v5": 2, "v6": 3},
-        "v1": {"v0": 1, "v1": 0, "v2": 1, "v3": 1, "v4": 2, "v5": 1, "v6": 3},
-        "v2": {"v0": 2, "v1": 1, "v2": 0, "v3": 2, "v4": 2, "v5": 1, "v6": 3},
-        "v3": {"v0": 1, "v1": 1, "v2": 2, "v3": 0, "v4": 2, "v5": 2, "v6": 3},
-        "v4": {"v0": 2, "v1": 2, "v2": 2, "v3": 2, "v4": 0, "v5": 1, "v6": 1},
-        "v5": {"v0": 2, "v1": 1, "v2": 1, "v3": 2, "v4": 1, "v5": 0, "v6": 3},
-        "v6": {"v0": 3, "v1": 3, "v2": 3, "v3": 3, "v4": 1, "v5": 3, "v6": 0},
+    distance_matrix: dict[TaskId, dict[TaskId, int]] = {
+        TaskId("v0"): {
+            TaskId("v0"): 0,
+            TaskId("v1"): 1,
+            TaskId("v2"): 2,
+            TaskId("v3"): 1,
+            TaskId("v4"): 2,
+            TaskId("v5"): 2,
+            TaskId("v6"): 3,
+        },
+        TaskId("v1"): {
+            TaskId("v0"): 1,
+            TaskId("v1"): 0,
+            TaskId("v2"): 1,
+            TaskId("v3"): 1,
+            TaskId("v4"): 2,
+            TaskId("v5"): 1,
+            TaskId("v6"): 3,
+        },
+        TaskId("v2"): {
+            TaskId("v0"): 2,
+            TaskId("v1"): 1,
+            TaskId("v2"): 0,
+            TaskId("v3"): 2,
+            TaskId("v4"): 2,
+            TaskId("v5"): 1,
+            TaskId("v6"): 3,
+        },
+        TaskId("v3"): {
+            TaskId("v0"): 1,
+            TaskId("v1"): 1,
+            TaskId("v2"): 2,
+            TaskId("v3"): 0,
+            TaskId("v4"): 2,
+            TaskId("v5"): 2,
+            TaskId("v6"): 3,
+        },
+        TaskId("v4"): {
+            TaskId("v0"): 2,
+            TaskId("v1"): 2,
+            TaskId("v2"): 2,
+            TaskId("v3"): 2,
+            TaskId("v4"): 0,
+            TaskId("v5"): 1,
+            TaskId("v6"): 1,
+        },
+        TaskId("v5"): {
+            TaskId("v0"): 2,
+            TaskId("v1"): 1,
+            TaskId("v2"): 1,
+            TaskId("v3"): 2,
+            TaskId("v4"): 1,
+            TaskId("v5"): 0,
+            TaskId("v6"): 3,
+        },
+        TaskId("v6"): {
+            TaskId("v0"): 3,
+            TaskId("v1"): 3,
+            TaskId("v2"): 3,
+            TaskId("v3"): 3,
+            TaskId("v4"): 1,
+            TaskId("v5"): 3,
+            TaskId("v6"): 0,
+        },
     }
     assert res.distance_matrix == distance_matrix

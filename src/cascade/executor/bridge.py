@@ -10,6 +10,7 @@
 
 import logging
 import time
+from typing import cast
 
 from cascade.executor.checkpoints import build_persist_command, build_retrieve_command, serialize_params
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender
@@ -72,7 +73,7 @@ class Bridge:
                     logger.warning(f"double registration of {message.host}, suggesting network congestion")
                     continue
                 self.sender.add_host(message.host, message.maddress)
-                self.sender.add_host("data." + message.host, message.daddress)
+                self.sender.add_host(HostId("data." + message.host), message.daddress)
                 for worker in message.workers:
                     self.environment.workers[worker.worker_id] = Worker(cpu=worker.cpu, gpu=worker.gpu, memory_mb=worker.memory_mb)
                 self.environment.host_url_base[message.host] = message.url_base
@@ -97,9 +98,11 @@ class Bridge:
             while (not events) and (not shutdown_reason):
                 # timeout ms matches
                 for message in self.mlistener.recv_messages(timeout_ms=resend_grace_ms):
-                    if hasattr(message, "host") and isinstance((host := message.host), HostId):
+                    if hasattr(message, "host") and isinstance(message.host, str):
+                        host = cast(HostId, message.host)
                         self.heartbeat_checker[host].step()
-                    if hasattr(message, "worker") and isinstance((worker := message.worker), WorkerId):
+                    if hasattr(message, "worker") and isinstance(message.worker, WorkerId):
+                        worker = message.worker
                         self.heartbeat_checker[worker.host].step()
                     if isinstance(message, Event):
                         events.append(message)
@@ -111,7 +114,7 @@ class Bridge:
                         logger.critical(f"received failure {message=}, proceeding with a shutdown")
                         if isinstance(message, ExecutorExit | ExecutorFailure) and message.host in self.sender.hosts:
                             self.sender.hosts.pop(message.host)
-                            self.sender.hosts.pop("data." + message.host)
+                            self.sender.hosts.pop(HostId("data." + message.host))
                         shutdown_reason = message
                     elif isinstance(message, Unsupported):
                         logger.critical(f"received unexpected {message=}, proceeding with a shutdown")
@@ -150,32 +153,32 @@ class Bridge:
     def transmit(self, ds: DatasetId, source: HostId, target: HostId) -> None:
         if source == VirtualCheckpointHost:
             command = build_retrieve_command(self.checkpoint_spec, ds, target)
-            self.sender.send("data." + target, command)
+            self.sender.send(HostId("data." + target), command)
         else:
             m = DatasetTransmitCommand(
                 source=source,
                 target=target,
-                daddress=self.sender.hosts["data." + target][1],
+                daddress=self.sender.hosts[HostId("data." + target)][1],
                 ds=ds,
                 idx=self.transmit_idx_counter,
             )
             self.transmit_idx_counter += 1
-            self.sender.send("data." + source, m)
+            self.sender.send(HostId("data." + source), m)
 
     def persist(self, ds: DatasetId, source: HostId) -> None:
         command = build_persist_command(self.checkpoint_spec, ds, source)
-        self.sender.send("data." + source, command)
+        self.sender.send(HostId("data." + source), command)
 
     def fetch(self, ds: DatasetId, source: HostId) -> None:
         m = DatasetTransmitCommand(
             source=source,
-            target="controller",
+            target=HostId("controller"),
             daddress=self.mlistener.address,
             ds=ds,
             idx=self.transmit_idx_counter,
         )
         self.transmit_idx_counter += 1
-        self.sender.send("data." + source, m)
+        self.sender.send(HostId("data." + source), m)
 
     def shutdown(self) -> None:
         m = ExecutorShutdown()
@@ -189,7 +192,7 @@ class Bridge:
                 if isinstance(message, ExecutorExit | ExecutorFailure):
                     if message.host in self.sender.hosts:
                         self.sender.hosts.pop(message.host)
-                        self.sender.hosts.pop("data." + message.host)
+                        self.sender.hosts.pop(HostId("data." + message.host))
                 else:
                     logger.warning(f"ignoring {type(message)}")
         if self.sender.hosts:

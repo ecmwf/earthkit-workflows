@@ -8,7 +8,7 @@
 
 """Tests calculation of preschedule, state initialize & first assign and plan"""
 
-from cascade.low.core import DatasetId, WorkerId
+from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 from cascade.low.execution_context import TaskStatus, init_context
 from cascade.scheduler.api import assign, init_schedule, plan
 from cascade.scheduler.core import Assignment
@@ -27,22 +27,22 @@ def test_job0():
     preschedule.components[0].fusing_opportunities = {}
 
     h1w1 = get_env(1, 1)
-    h1w1_w = WorkerId("h0", "w0")
+    h1w1_w = WorkerId(HostId("h0"), "w0")
     context = init_context(h1w1, job0, preschedule.edge_o, preschedule.edge_i)
     schedule = init_schedule(preschedule, context)
     assignment = list(assign(schedule, context))
     assert assignment == [
         Assignment(
             worker=h1w1_w,
-            tasks=["source"],
+            tasks=[TaskId("source")],
             prep=[],
-            outputs={DatasetId(task="source", output="0")},
+            outputs={DatasetId(task=TaskId("source"), output="0")},
             extra_env=[],
         )
     ]
 
     plan(schedule, context, assignment)
-    assert context.worker2ts == {h1w1_w: {"source": TaskStatus.enqueued}}
+    assert context.worker2ts == {h1w1_w: {TaskId("source"): TaskStatus.enqueued}}
 
 
 def test_job1():
@@ -52,22 +52,22 @@ def test_job1():
     preschedule.components[0].fusing_opportunities = {}
 
     h1w1 = get_env(1, 1)
-    h1w1_w = WorkerId("h0", "w0")
+    h1w1_w = WorkerId(HostId("h0"), "w0")
     context = init_context(h1w1, job1, preschedule.edge_o, preschedule.edge_i)
     schedule = init_schedule(preschedule, context)
     assignment = list(assign(schedule, context))
     assert assignment == [
         Assignment(
             worker=h1w1_w,
-            tasks=["source"],
+            tasks=[TaskId("source")],
             prep=[],
-            outputs={DatasetId(task="source", output="0")},
+            outputs={DatasetId(task=TaskId("source"), output="0")},
             extra_env=[],
         )
     ]
 
     plan(schedule, context, assignment)
-    assert context.worker2ts == {h1w1_w: {"source": TaskStatus.enqueued}}
+    assert context.worker2ts == {h1w1_w: {TaskId("source"): TaskStatus.enqueued}}
 
 
 # TODO add some multi-source or multi-component job

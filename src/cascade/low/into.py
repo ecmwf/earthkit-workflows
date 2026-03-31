@@ -11,7 +11,7 @@
 import logging
 from typing import Any, Callable, cast
 
-from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskDefinition, TaskInstance
+from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskDefinition, TaskId, TaskInstance
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +55,13 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
     edges = []
     for param, other in node["inputs"].items():
         if isinstance(other, str):
-            source = DatasetId(other, DefaultTaskOutput)
+            source = DatasetId(TaskId(other), DefaultTaskOutput)
         else:
-            source = DatasetId(other[0], other[1])
+            source = DatasetId(TaskId(other[0]), other[1])
         edges.append(
             Task2TaskEdge(
                 source=source,
-                sink_task=name,
+                sink_task=TaskId(name),
                 sink_input_ps=rev_lookup[param],
                 sink_input_kw=None,
             )
@@ -89,9 +89,9 @@ def node2task(name: str, node: dict) -> tuple[TaskInstance, list[Task2TaskEdge]]
 def graph2job(graph: dict) -> JobInstance:
     # graph assumed to be ekw.graph.serialise(ekw.graph.Graph)
     edges = []
-    tasks = {}
+    tasks: dict[TaskId, TaskInstance] = {}
     for node_name, node_val in graph.items():
         task, task_edges = node2task(node_name, node_val)
         edges += task_edges
-        tasks[node_name] = task
+        tasks[TaskId(node_name)] = task
     return JobInstance(tasks=tasks, edges=edges)
