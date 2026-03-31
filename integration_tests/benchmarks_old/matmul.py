@@ -6,7 +6,7 @@ import jax.numpy as jp  # ty: ignore[unresolved-import]
 import jax.random as jr  # ty: ignore[unresolved-import]
 
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance
+from cascade.low.core import JobInstance, TaskId
 
 
 def get_funcs():
@@ -47,7 +47,7 @@ def get_job() -> JobInstance:
         prv = cur
 
     job = job.build().get_or_raise()
-    job.ext_outputs = list(job.outputs_of(cur))
+    job.ext_outputs = list(job.outputs_of(TaskId(cur)))
     return job
 
 

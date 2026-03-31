@@ -39,9 +39,11 @@ from cascade.executor.msg import (
 )
 from cascade.low.core import (
     DatasetId,
+    HostId,
     JobInstance,
     Task2TaskEdge,
     TaskDefinition,
+    TaskId,
     TaskInstance,
     WorkerId,
 )
@@ -55,7 +57,7 @@ def launch_executor(job_instance: JobInstance, controller_address: BackboneAddre
         job_instance,
         controller_address,
         4,
-        "test_executor",
+        HostId("test_executor"),
         portBase,
         None,
         DefaultLoggingConfig,
@@ -81,16 +83,16 @@ def test_executor():
         static_input_kw={"x": np.array([1.0])},
         static_input_ps={},
     )
-    source_o = DatasetId("source", "o")
+    source_o = DatasetId(TaskId("source"), "o")
     sink = TaskInstance(
         definition=task_definition,
         static_input_kw={},
         static_input_ps={},
     )
-    sink_o = DatasetId("sink", "o")
+    sink_o = DatasetId(TaskId("sink"), "o")
     job = JobInstance(
-        tasks={"source": source, "sink": sink},
-        edges=[Task2TaskEdge(source=source_o, sink_task="sink", sink_input_kw="x", sink_input_ps=None)],
+        tasks={TaskId("source"): source, TaskId("sink"): sink},
+        edges=[Task2TaskEdge(source=source_o, sink_task=TaskId("sink"), sink_input_kw="x", sink_input_ps=None)],
     )
 
     # cluster setup
@@ -106,12 +108,12 @@ def test_executor():
         # register
         ms = l.recv_messages(None)
         expected_registration = ExecutorRegistration(
-            host="test_executor",
+            host=HostId("test_executor"),
             maddress=m1,
             daddress=d1,
             workers=[
                 Worker(
-                    worker_id=WorkerId("test_executor", f"w{i}"),
+                    worker_id=WorkerId(HostId("test_executor"), f"w{i}"),
                     cpu=1,
                     gpu=0,
                     memory_mb=1024,
@@ -126,10 +128,10 @@ def test_executor():
             assert m == expected_registration
 
         # submit graph
-        w0 = WorkerId("test_executor", "w0")
+        w0 = WorkerId(HostId("test_executor"), "w0")
         callback(
             m1,
-            TaskSequence(worker=w0, tasks=["source", "sink"], publish={sink_o}, extra_env=[]),
+            TaskSequence(worker=w0, tasks=[TaskId("source"), TaskId("sink")], publish={sink_o}, extra_env=[]),
         )
         # NOTE we need to expect source_o dataset too, because of no finegraining for host-wide and worker-only
         expected = {
@@ -148,13 +150,13 @@ def test_executor():
             DatasetTransmitCommand(
                 ds=sink_o,
                 idx=0,
-                source="test_executor",
-                target="controller",
+                source=HostId("test_executor"),
+                target=HostId("controller"),
                 daddress=c1,
             ),
         )
         ms = l.recv_messages()
-        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task="sink", output="o")
+        assert len(ms) == 1 and isinstance(ms[0], DatasetTransmitPayload) and ms[0].header.ds == DatasetId(task=TaskId("sink"), output="o")
         assert serde.des_output(ms[0].value, "int", ms[0].header.deser_fun)[0] == 3.0
 
         # purge, store, run partial and fetch again
@@ -168,14 +170,14 @@ def test_executor():
         send_data(d1, payload, syn)
         expected = {
             Ack(idx=1),
-            DatasetPublished(origin="test_executor", ds=source_o, transmit_idx=1),
+            DatasetPublished(origin=HostId("test_executor"), ds=source_o, transmit_idx=1),
         }
         while expected:
             ms = l.recv_messages()
             for m in ms:
                 logger.debug(f"about to remove received message {m}")
                 expected.remove(m)
-        callback(m1, TaskSequence(worker=w0, tasks=["sink"], publish={sink_o}, extra_env=[]))
+        callback(m1, TaskSequence(worker=w0, tasks=[TaskId("sink")], publish={sink_o}, extra_env=[]))
         expected = [
             DatasetPublished(w0, ds=sink_o, transmit_idx=None),
         ]
@@ -189,8 +191,8 @@ def test_executor():
             DatasetTransmitCommand(
                 ds=sink_o,
                 idx=2,
-                source="test_executor",
-                target="controller",
+                source=HostId("test_executor"),
+                target=HostId("controller"),
                 daddress=c1,
             ),
         )
@@ -202,7 +204,7 @@ def test_executor():
         # shutdown
         callback(m1, ExecutorShutdown())
         ms = l.recv_messages()
-        assert ExecutorExit(host="test_executor") in ms
+        assert ExecutorExit(host=HostId("test_executor")) in ms
         p.join()
     except:
         if p.is_alive():

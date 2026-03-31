@@ -41,7 +41,7 @@ from cascade.executor.msg import (
     Syn,
 )
 from cascade.executor.runner.memory import ds2shmid
-from cascade.low.core import DatasetId
+from cascade.low.core import DatasetId, HostId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, ser
 from cascade.low.func import assert_never
 from cascade.low.tracing import TransmitLifecycle, label, mark
@@ -54,7 +54,7 @@ class DataServer:
         self,
         maddress: BackboneAddress,
         daddress: BackboneAddress,
-        host: str,
+        host: HostId,
         logging_config: dict,
     ):
         logging.config.dictConfig(logging_config)
@@ -347,7 +347,7 @@ class DataServer:
 def start_data_server(
     maddress: BackboneAddress,
     daddress: BackboneAddress,
-    host: str,
+    host: HostId,
     logging_config: dict,
 ):
     server = DataServer(maddress, daddress, host, logging_config)

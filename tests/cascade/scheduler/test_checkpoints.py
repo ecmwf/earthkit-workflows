@@ -1,5 +1,5 @@
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import DatasetId, JobInstanceRich
+from cascade.low.core import DatasetId, JobInstanceRich, TaskId
 from cascade.scheduler.checkpoints import trim_with_persisted
 from cascade.scheduler.precompute import precompute
 
@@ -51,8 +51,14 @@ def test_trim_with_checkpoints():
     )
     jobRich = JobInstanceRich(jobInstance=jobInstanceOrig, checkpointSpec=None)
     preschedule = precompute(jobRich.jobInstance)
-    persisted = {DatasetId(task="transform", output="0")}
+    persisted = {DatasetId(task=TaskId("transform"), output="0")}
 
     jobInstanceNew, preschedule, persisted_valid = trim_with_persisted(jobRich, preschedule, persisted)
     assert persisted_valid == persisted
-    assert set(jobInstanceNew.tasks.keys()) == {"source2", "transform", "product1", "product2", "sink"}
+    assert set(jobInstanceNew.tasks.keys()) == {
+        TaskId("source2"),
+        TaskId("transform"),
+        TaskId("product1"),
+        TaskId("product2"),
+        TaskId("sink"),
+    }

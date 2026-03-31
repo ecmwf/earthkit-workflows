@@ -42,7 +42,7 @@ class TaskStatus(int, Enum):
     failed = 3  # set by executor
 
 
-VirtualCheckpointHost: HostId = "virtualCheckpointHost"
+VirtualCheckpointHost: HostId = HostId("virtualCheckpointHost")
 
 
 @dataclass

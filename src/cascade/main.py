@@ -28,7 +28,7 @@ from cascade.executor.comms import callback
 from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
+from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
@@ -85,7 +85,7 @@ def launch_executor(
             job.jobInstance,
             controller_address,
             workers_per_host,
-            f"h{i}",
+            HostId(f"h{i}"),
             portBase,
             shm_vol_gb,
             loggingConfig,

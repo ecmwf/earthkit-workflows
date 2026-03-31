@@ -12,7 +12,7 @@ import re
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Optional, Type, cast
+from typing import Any, Callable, Literal, NewType, Optional, Type, cast
 
 import cloudpickle
 from pydantic import BaseModel, Field
@@ -58,7 +58,7 @@ class TaskDefinition(BaseModel):
         return b64encode(cloudpickle.dumps(f)).decode("ascii")
 
 
-TaskId = str
+TaskId = NewType("TaskId", str)
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,7 @@ class DatasetId:
     def des(cls, value: str) -> Self:
         pref, suf = value.split(".", 1)
         task_len = int.from_bytes(bytes.fromhex(pref), byteorder="big")
-        return cls(task=suf[:task_len], output=suf[task_len:])
+        return cls(task=TaskId(suf[:task_len]), output=suf[task_len:])
 
 
 class Task2TaskEdge(BaseModel):
@@ -138,7 +138,7 @@ class JobInstance(BaseModel):
         return {DatasetId(task_id, output) for output, _ in self.tasks[task_id].definition.output_schema}
 
 
-HostId = str
+HostId = NewType("HostId", str)
 
 
 @dataclass(frozen=True)
@@ -152,7 +152,7 @@ class WorkerId:
     @classmethod
     def from_repr(cls, value: str) -> Self:
         host, worker = value.split(".", 1)
-        return cls(host=host, worker=worker)
+        return cls(host=HostId(host), worker=worker)
 
     def worker_num(self) -> int:
         """Used eg for gpu allocation"""
@@ -193,7 +193,7 @@ class JobExecutionRecord(BaseModel):
 
 
 CheckpointStorageType = Literal["fs"]
-StorageId = str
+StorageId = NewType("StorageId", str)
 
 
 class CheckpointSpec(BaseModel):

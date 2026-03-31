@@ -111,7 +111,7 @@ class Executor:
         # NOTE following inits are with potential side effects
         self.mlistener = Listener(address_of(portBase))
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
-        self.sender.add_host("controller", controller_address)
+        self.sender.add_host(HostId("controller"), controller_address)
         # TODO make the shm server params configurable
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
         shm_api.publish_socket_addr(shm_port)
@@ -191,7 +191,7 @@ class Executor:
 
     def to_controller(self, m: Message) -> None:
         self.heartbeat_watcher.step()
-        self.sender.send("controller", m)
+        self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
         ctx = platform.get_mp_ctx("worker")

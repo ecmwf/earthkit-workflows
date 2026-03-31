@@ -12,6 +12,7 @@ import logging
 import pickle
 from dataclasses import dataclass
 from time import monotonic_ns
+from typing import NewType
 
 import zmq
 from typing_extensions import Self
@@ -23,7 +24,7 @@ from cascade.low.execution_context import JobExecutionContext
 
 logger = logging.getLogger(__name__)
 
-JobId = str
+JobId = NewType("JobId", str)
 
 
 @dataclass
@@ -83,7 +84,7 @@ class Reporter:
             return
         address, job_id = report_address.split(",", 1)
         logger.debug(f"initialising reporter with {address=} and {job_id=}")
-        self.job_id = job_id
+        self.job_id = JobId(job_id)
         self.socket = get_context().socket(zmq.PUSH)
         self.socket.connect(address)
 

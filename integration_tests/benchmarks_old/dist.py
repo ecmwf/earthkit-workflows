@@ -15,7 +15,7 @@ There are multiple implementations of that:
 import os
 
 from cascade.low.builders import JobBuilder, TaskBuilder
-from cascade.low.core import JobInstance, SchedulingConstraint
+from cascade.low.core import JobInstance, SchedulingConstraint, TaskId
 
 
 def source_func() -> int:
@@ -112,6 +112,6 @@ def get_job() -> JobInstance:
         job.nodes["sink"].definition.input_schema[f"v{i}"] = "int"  # TODO put some allow_kw into TaskDefinition instead to allow this
 
     job = job.build().get_or_raise()
-    job.ext_outputs = list(job.outputs_of("sink"))
-    job.constraints = [SchedulingConstraint(gang=[f"proc{i}" for i in range(L)])]
+    job.ext_outputs = list(job.outputs_of(TaskId("sink")))
+    job.constraints = [SchedulingConstraint(gang=[TaskId(f"proc{i}") for i in range(L)])]
     return job

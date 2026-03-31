@@ -7,6 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 from dataclasses import dataclass
+from typing import NewType
 
 from cascade.low.core import DatasetId, HostId, TaskId, WorkerId
 
@@ -39,7 +40,7 @@ class Preschedule:
 
 Worker2TaskDistance = dict[WorkerId, dict[TaskId, int]]
 
-ComponentId = int
+ComponentId = NewType("ComponentId", int)
 
 
 @dataclass

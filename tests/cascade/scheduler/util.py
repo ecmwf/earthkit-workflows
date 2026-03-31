@@ -22,10 +22,12 @@ from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import (
     DatasetId,
     Environment,
+    HostId,
     JobExecutionRecord,
     JobInstance,
     JobInstanceRich,
     TaskExecutionRecord,
+    TaskId,
     Worker,
     WorkerId,
 )
@@ -61,8 +63,8 @@ class BuilderGroup:
 
 def add_large_source(builder: BuilderGroup, runtime: int, runmem: int, outsize: int) -> None:
     builder.job = builder.job.with_node("source", TaskBuilder.from_callable(sourceFunc))
-    builder.record.tasks["source"] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
-    builder.record.datasets_mb[DatasetId("source", Node.DEFAULT_OUTPUT)] = outsize
+    builder.record.tasks[TaskId("source")] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
+    builder.record.datasets_mb[DatasetId(TaskId("source"), Node.DEFAULT_OUTPUT)] = outsize
     builder.layers = [1]
 
 
@@ -86,8 +88,8 @@ def add_postproc(
             builder.job = builder.job.with_edge(e1, node, "a")
             builder.job = builder.job.with_edge(e2, node, "b")
             # print(f"adding {node} with edges {e1}, {e2}")
-        builder.record.tasks[node] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
-        builder.record.datasets_mb[DatasetId(node, Node.DEFAULT_OUTPUT)] = outsize
+        builder.record.tasks[TaskId(node)] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
+        builder.record.datasets_mb[DatasetId(TaskId(node), Node.DEFAULT_OUTPUT)] = outsize
     builder.layers.append(n)
 
 
@@ -104,7 +106,7 @@ def add_sink(
     for i in range(builder.layers[from_layer] // frac):
         source = ((i * frac) + 157) % builder.layers[from_layer]
         builder.job = builder.job.with_edge(f"pproc{from_layer}-{source}", node, i)
-    builder.record.tasks[node] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
+    builder.record.tasks[TaskId(node)] = TaskExecutionRecord(cpuseconds=runtime, memory_mb=runmem)
 
 
 def enrich_instance(job: JobInstance) -> JobInstanceRich:
@@ -149,6 +151,8 @@ def get_job1() -> tuple[JobInstanceRich, JobExecutionRecord]:
 ## *** environment builders ***
 def get_env(hosts: int, workers_per_host: int) -> Environment:
     return Environment(
-        workers={WorkerId(f"h{h}", f"w{w}"): Worker(cpu=1, gpu=0, memory_mb=1000) for h in range(hosts) for w in range(workers_per_host)},
-        host_url_base={f"h{h}": "tcp://localhost" for h in range(hosts)},
+        workers={
+            WorkerId(HostId(f"h{h}"), f"w{w}"): Worker(cpu=1, gpu=0, memory_mb=1000) for h in range(hosts) for w in range(workers_per_host)
+        },
+        host_url_base={HostId(f"h{h}"): "tcp://localhost" for h in range(hosts)},
     )
