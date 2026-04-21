@@ -9,3 +9,5 @@
 * prioritize using pydantic.BaseModel or dataclasses.dataclass object for capturing contracts and interfaces.
   * ideally keep them plain, stateless, frozen, without functions -- we end up serializing those objects often over to other python processes or different languages
 * prefer top level imports, ie, dont import inside function bodies, even if for the sake of raising. There are a few exceptions to this rule, such as conditional torch imports, or delayed imports for the sake of not polluting. Those are always marked by *exceptional in-body import* comment
+* do not use fancy unicode or emoji characters when creating text/markdown files
+
