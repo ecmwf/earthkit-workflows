@@ -1,0 +1,19 @@
+from dask._task_spec import DataNode, Task, TaskRef
+
+from cascade.low.core import JobInstanceRich
+from cascade.low.dask import graph2job
+from cascade.main import run_locally
+
+
+def add(x, y):
+    return x + y
+
+
+def test_dask():
+    dask_graph = {"x": (x := DataNode(None, 1)), "y": (y := DataNode(None, 2)), "z": Task("z", add, TaskRef("x"), TaskRef("y"))}
+    outputs = run_locally(
+        JobInstanceRich(jobInstance=graph2job(dask_graph), checkpointSpec=None, ext_outputs=list(cascade_job.outputs_of("'z'"))),
+        workers=2,
+        hosts=1,
+    )
+    assert len(outputs) == 1
