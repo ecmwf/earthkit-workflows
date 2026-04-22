@@ -118,7 +118,7 @@ def expand_as_qube(action: "Action", qube: "Qube") -> "Action":
         """Recursively expand the action based on the qube structure."""
         if not qube.key == "root":  # Skip the root key
             # Expand along the current qube's key and values
-            action = action.expand((qube.key, list(qube.values)), (qube.key, list(qube.values)))
+            action = action.expand((qube.key, list(qube.values)), (qube.key, list(qube.values)), backend_kwargs={"method": "sel"})
 
         match len(qube.children):
             case 0:
