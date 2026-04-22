@@ -11,13 +11,13 @@ from dataclasses import dataclass
 from typing import Any
 
 import cloudpickle
-from pydantic import BaseModel
 
 from cascade.controller.report import JobId, JobProgress
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
 from cascade.low.exceptions import CascadeInternalError
+from cascade.low.func import CascadeBaseModel
 
-CascadeGatewayAPI = BaseModel
+CascadeGatewayAPI = CascadeBaseModel
 
 
 @dataclass

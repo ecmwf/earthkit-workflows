@@ -27,10 +27,14 @@ from typing import (
     runtime_checkable,
 )
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing_extensions import Self
 
 T = TypeVar("T")
+
+
+class CascadeBaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 def maybe_head(v: Iterable[T]) -> Optional[T]:

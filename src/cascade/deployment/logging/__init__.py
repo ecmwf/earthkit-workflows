@@ -37,13 +37,13 @@ import os
 from typing import Literal
 
 import orjson
-from pydantic import BaseModel
 from typing_extensions import Self
 
 import cascade.deployment.logging.defaults as defaults
+from cascade.low.func import CascadeBaseModel
 
 
-class LoggingConfig(BaseModel):
+class LoggingConfig(CascadeBaseModel):
     formatter: Literal["line", "json"]
     """Line is standard python logging, json uses structured logging"""
     path_base: str | None
