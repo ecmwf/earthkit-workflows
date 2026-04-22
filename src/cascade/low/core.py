@@ -15,8 +15,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal, NewType, Optional, Type, cast
 
 import cloudpickle
-from pydantic import BaseModel, Field
+from pydantic import Field
 from typing_extensions import Self
+
+from cascade.low.func import CascadeBaseModel
 
 # NOTE it would be tempting to dict[str|int, ...] at places where we deal with kwargs/args, instead of
 # double field dict[str] and dict[int]. However, that won't survive serde -- you end up with ints being
@@ -32,7 +34,7 @@ DefaultTaskOutput = "0"
 
 
 # Definitions
-class TaskDefinition(BaseModel):
+class TaskDefinition(CascadeBaseModel):
     entrypoint: str = Field(
         "",
         description="fqn of a Callable, eg mymod.submod.function. Ignored if `func` given",
@@ -83,21 +85,21 @@ class DatasetId:
         return cls(task=TaskId(suf[:task_len]), output=suf[task_len:])
 
 
-class Task2TaskEdge(BaseModel):
+class Task2TaskEdge(CascadeBaseModel):
     source: DatasetId
     sink_task: TaskId
     sink_input_kw: Optional[str]
     sink_input_ps: Optional[int]
 
 
-class JobDefinition(BaseModel):
+class JobDefinition(CascadeBaseModel):
     # NOTE may be redundant altogether as not used rn -- or maybe useful with ProductDefinitions
     definitions: dict[TaskId, TaskDefinition]
     edges: list[Task2TaskEdge]
 
 
 # Instances
-class TaskInstance(BaseModel):
+class TaskInstance(CascadeBaseModel):
     definition: TaskDefinition
     static_input_kw: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
     static_input_ps: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
@@ -112,13 +114,13 @@ def type_enc(t: Type) -> str:
     return b64encode(cloudpickle.dumps(t)).decode("ascii")
 
 
-class SchedulingConstraint(BaseModel):
+class SchedulingConstraint(CascadeBaseModel):
     gang: list[TaskId] = Field(
         description="this set of TaskIds must be started at the same time, with ranks and address list as envvar",
     )
 
 
-class JobInstance(BaseModel):
+class JobInstance(CascadeBaseModel):
     tasks: dict[TaskId, TaskInstance]
     edges: list[Task2TaskEdge]
     serdes: dict[str, tuple[str, str]] = Field(
@@ -161,7 +163,7 @@ class WorkerId:
 
 
 # Execution
-class Worker(BaseModel):
+class Worker(CascadeBaseModel):
     # NOTE we may want to extend cpu/gpu over time with more rich information
     # NOTE keep in sync with executor.msg.Worker
     cpu: int
@@ -169,12 +171,12 @@ class Worker(BaseModel):
     memory_mb: int
 
 
-class Environment(BaseModel):
+class Environment(CascadeBaseModel):
     workers: dict[WorkerId, Worker]
     host_url_base: dict[HostId, str]
 
 
-class TaskExecutionRecord(BaseModel):
+class TaskExecutionRecord(CascadeBaseModel):
     # NOTE rather crude -- we may want to granularize cpuseconds
     cpuseconds: int = Field(description="as measured from process start to process end, assuming full cpu util")
     memory_mb: int = Field(description="observed rss peak held by the process minus sizes of shared memory inputs")
@@ -185,7 +187,7 @@ no_record_ts = TaskExecutionRecord(cpuseconds=1, memory_mb=1)
 no_record_ds = 1
 
 
-class JobExecutionRecord(BaseModel):
+class JobExecutionRecord(CascadeBaseModel):
     tasks: dict[TaskId, TaskExecutionRecord] = Field(default_factory=lambda: defaultdict(lambda: no_record_ts))
     datasets_mb: dict[DatasetId, int] = Field(default_factory=lambda: defaultdict(lambda: no_record_ds))  # keyed by (task, output)
 
@@ -196,7 +198,7 @@ CheckpointStorageType = Literal["fs"]
 StorageId = NewType("StorageId", str)
 
 
-class CheckpointSpec(BaseModel):
+class CheckpointSpec(CascadeBaseModel):
     """For configuring storage/retrieval of checkpoints, to allow job restarts
     with some datasets already computed
     """
@@ -210,7 +212,7 @@ class CheckpointSpec(BaseModel):
     to_persist: list[DatasetId]  # ignored if persist_id is None
 
 
-class JobInstanceRich(BaseModel):
+class JobInstanceRich(CascadeBaseModel):
     """Whereas JobInstance is the plain "compute these tasks", this class
     additionally holds execution-related data of more ephemeral nature,
     like CheckpointConfig, ProfilingInformation, etc
