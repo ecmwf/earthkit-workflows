@@ -1,6 +1,6 @@
 from dask._task_spec import DataNode, Task, TaskRef
 
-from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich
+from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich, TaskId
 from cascade.low.dask import graph2job
 from cascade.main import run_locally
 
@@ -17,4 +17,4 @@ def test_dask():
         workers=2,
         hosts=1,
     )
-    assert outputs == {DatasetId("'z'", DefaultTaskOutput): 3}
+    assert outputs == {DatasetId(TaskId("'z'"), DefaultTaskOutput): 3}
