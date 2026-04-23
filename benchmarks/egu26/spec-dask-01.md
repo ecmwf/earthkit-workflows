@@ -11,7 +11,7 @@ The benchmark must be parametrizable by the following:
 - size of the matrix, `N*N`: the dimension N comes from `BENCHMARK_N` envvar,
 - number of children tasks, coming from `BENCHMARK_M` envvar. We want this to be deterministic, so fix an ordering of the child functions, and each child has an index I and computes the function I % `number_of_functions`
 
-The second benchmark showcases "Batch Data Generation". The dask graph should consist of one source node that `yield`s numpy matrices (uniform random) and sleeps for T seconds, a second node that consumes a list of matrices, and for each computes the sum, and a third node which consumes a list of floats and outputs their sum.
+The second benchmark showcases "Batch Data Generation". The dask graph should consist of one source node that `yield`s numpy matrices (uniform random) and sleeps for T seconds, a second node that consumes a list of matrices, and for each computes the SVD and sums the resulting singular values (nuclear norm), and a third node which consumes a list of those floats and outputs their sum.
 This source should be inherently sequential -- so lets say it keep the last yielded matrix, and each time it generates a new one, it actually yields their product.
 There are parameters `BENCHMARK_N` for matrix size and `BENCHMARK_M` for the number of matrices to be yielded, and `T` for the sleeping.
 The baseline implementation is "wasteful" in that it allows no eager concurrency.

@@ -67,9 +67,13 @@ def generate_all_matrices(n: int, m: int, t: float) -> list[np.ndarray]:
     return matrices
 
 
-def per_matrix_sums(matrices: list[np.ndarray]) -> list[float]:
-    """Second node: compute the element-wise sum of each matrix."""
-    return [float(np.sum(mat)) for mat in matrices]
+def per_matrix_svd_sums(matrices: list[np.ndarray]) -> list[float]:
+    """Second node: compute SVD of each matrix and sum its singular values (nuclear norm)."""
+    results = []
+    for mat in matrices:
+        _, s, _ = np.linalg.svd(mat)
+        results.append(float(np.sum(s)))
+    return results
 
 
 def total_sum(values: list[float]) -> float:
@@ -84,7 +88,7 @@ def total_sum(values: list[float]) -> float:
 
 def run_baseline(client: Client, n: int, m: int, t: float) -> float:
     source = client.submit(generate_all_matrices, n, m, t)
-    sums = client.submit(per_matrix_sums, source)
+    sums = client.submit(per_matrix_svd_sums, source)
     result = client.submit(total_sum, sums)
     return result.result()
 
@@ -116,7 +120,8 @@ class MatrixGenerator:
         self._last = new
         if self._t > 0.0:
             time.sleep(self._t)
-        return float(np.sum(new))
+        _, s, _ = np.linalg.svd(new)
+        return float(np.sum(s))
 
 
 def run_actors(client: Client, n: int, m: int, t: float) -> float:
