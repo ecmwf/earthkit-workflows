@@ -12,8 +12,9 @@ The benchmark must be parametrizable by the following:
 - number of children tasks, coming from `BENCHMARK_M` envvar. We want this to be deterministic, so fix an ordering of the child functions, and each child has an index I and computes the function I % `number_of_functions`
 
 The second benchmark showcases "Batch Data Generation". The dask graph should consist of one source node that `yield`s numpy matrices (uniform random) and sleeps for T seconds, a second node that consumes a list of matrices, and for each computes the sum, and a third node which consumes a list of floats and outputs their sum.
+This source should be inherently sequential -- so lets say it keep the last yielded matrix, and each time it generates a new one, it actually yields their product.
 There are parameters `BENCHMARK_N` for matrix size and `BENCHMARK_M` for the number of matrices to be yielded, and `T` for the sleeping.
 The baseline implementation is "wasteful" in that it allows no eager concurrency.
-You can provide a second implementation, that utilizes Dask actors for this.
+You can provide a second implementation, that utilizes Dask actors for this -- however, this must still preserve the sequentiality of the generator.
 
 After you implement the benchmarks, make sure you can run them with some basic values of N and M, like 10 and 10.
