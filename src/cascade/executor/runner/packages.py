@@ -35,8 +35,11 @@ from cascade.low.exceptions import CascadeInternalError, CascadeUserError
 logger = logging.getLogger(__name__)
 
 
+_python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+
 class Commands:
-    venv_command = lambda name: ["uv", "venv", name]
+    venv_command = lambda name: ["uv", "venv", "--python", _python_version, name]
     install_command = lambda name: [
         "uv",
         "pip",
@@ -110,6 +113,7 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
 
 
 def _get_dist_modules(dist_name: str) -> list[str]:
+    """From package name like 'earthkit-workflows' get the top level importible like 'earthkit', 'cascade'"""
     # TODO presumably cacheable
     try:
         handle = importlib.metadata.distribution(dist_name)
@@ -124,6 +128,17 @@ def _get_dist_modules(dist_name: str) -> list[str]:
     except Exception as e:
         logging.warning(f"Could not find metadata for installed package: {dist_name} due to {repr(e)} -- ignoring")
         return []
+
+
+def _maybe_module_dist(module_name: str) -> str | None:
+    """From a module name like 'cascade' get the pip installable like 'earthkit-workflows'"""
+    # TODO cacheable, but will need to handle growth
+    lookup = importlib.metadata.packages_distributions()
+    maybe = lookup.get(module_name, [])
+    if len(maybe) >= 1:
+        return maybe[0]
+    else:
+        return None
 
 
 def _maybe_module_version(mod_name: str) -> Version | None:
@@ -153,8 +168,7 @@ class PostinstallException(BaseException):
         self.issues = issues
 
     def __str__(self) -> str:
-        msg = repr(self.issues)
-        return f"failed to install correctly: {msg[:1024]}{'...' if len(msg) > 1024 else ''}"
+        return f"failed to install correctly: {repr(self.issue)}"
 
 
 def _postinstall_verify(pip_output) -> list[InstallIssue]:
@@ -180,8 +194,13 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
     we will inspect pip freeze to see if it is already installed, and inject
     the pin otherwise. This is default `uv` behaviour, but remember we
     override --prefix, thus uv has no way of knowing. We thus have to explicate.
+
+    Furthermore, we will extend the list with already-imported packages. This
+    moves some PostInstall verify issues into the Install phase, and importantly,
+    for fresh workers and unavoidable dependencies (like orjson or pydantic),
+    forces a pin to prevent unbound resolution infinite loops.
     """
-    # NOTE this does not work for transitive dependencies. We may
+    # NOTE the pip-freeze thing doesnt work for transitive dependencies. We may
     # decide to drop the whole --prefix business, and completely switch
     # over to the new venv even before doing any install
 
@@ -227,6 +246,24 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
             logger.warning(f"failed to discern preference for package {package} -- continuing")
             yield package
 
+    def _is_ignorable(top_level: str):
+        is_stdlib = top_level in sys.stdlib_module_names
+        is_local = top_level.startswith("_")  # for __main__, __editable, _distutils_hack, etc
+        return is_stdlib or is_local
+
+    imported = set(name.split(".")[0] for name in sys.modules)
+    for name in imported:
+        if not _is_ignorable(name):
+            maybe_version = _maybe_module_version(name)
+            maybe_dist = _maybe_module_dist(name)
+            if maybe_version is None or maybe_dist is None:
+                logger.warning(f"failed to provide install pin for imported: {name=}, {maybe_dist=}, {maybe_version=}")
+            else:
+                # NOTE we do base_version for like torch 2.11.0+cu130 -> 2.11.0
+                # That way, we still resolve to the installed package, and if
+                # we didnt it would actually fail to be resolved
+                yield f"{maybe_dist}=={maybe_version.base_version}"
+
 
 class PackagesEnv(AbstractContextManager):
     def __init__(self) -> None:
@@ -251,11 +288,14 @@ class PackagesEnv(AbstractContextManager):
         _, install_output = run_command(install_command)
         logger.debug(f"install result: {install_output}")
 
-        # NOTE this is wrong because we would need to reliably unload modules, but that apparently aint possible in python
-        # importlib.invalidate_caches()
         install_issues = _postinstall_verify(install_output)
         if install_issues:
             raise PostinstallException(install_issues)
+
+        # NOTE do *not* invalidate caches before postinstall verify, that could
+        # hide some issues. But afterwards this is important to actually allow
+        # importing the modules
+        importlib.invalidate_caches()
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
         sys.path = [p for p in sys.path if self.td is None or not p.startswith(self.td.name)]

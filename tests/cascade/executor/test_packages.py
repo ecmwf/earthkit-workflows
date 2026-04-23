@@ -80,14 +80,18 @@ def test_postinstall_verify() -> None:
 
 def test_prefer_installed() -> None:
     import numpy
+    import packaging
+    import pytest
 
-    assert list(_prefer_installed(["numpy"])) == [f"numpy=={numpy.__version__}"], (
-        "unrestricted spec of installed pkg didnt resolve to installed pkg"
-    )
-    assert list(_prefer_installed(["numpy==1.0.0"])) == ["numpy==1.0.0"], (
+    assert set(_prefer_installed(["numpy"])) >= {
+        f"numpy=={numpy.__version__}",
+        f"packaging=={packaging.__version__}",
+        f"pytest=={pytest.__version__}",
+    }, "unrestricted spec of installed pkg didnt resolve to installed pkg"
+    assert set(_prefer_installed(["numpy==1.0.0"])) >= {"numpy==1.0.0"}, (
         "exact pin spec of installed pkg which is compatible didnt match installed version"
     )
-    assert list(_prefer_installed([f"numpy>={numpy.__version__}"])) == [f"numpy=={numpy.__version__}"], (
+    assert set(_prefer_installed([f"numpy>={numpy.__version__}"])) >= {f"numpy=={numpy.__version__}"}, (
         "range spec of installed pkg which is compatible didnt match installed version"
     )
-    assert list(_prefer_installed(["grumpy==42.0.0"])) == ["grumpy==42.0.0"], "spec of uninstalled package got dropped"
+    assert set(_prefer_installed(["grumpy==42.0.0"])) >= {"grumpy==42.0.0"}, "spec of uninstalled package got dropped"
