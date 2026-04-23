@@ -8,6 +8,10 @@
 
 """Benchmark: Batch Data Generation (BDG)
 
+The source generator is inherently sequential: it keeps the last yielded
+matrix, and each new matrix is the element-wise product of a fresh random
+matrix with that previous one.
+
 Two implementations are provided:
 
   baseline  -- "wasteful": the source generates all M matrices sequentially
@@ -15,9 +19,10 @@ Two implementations are provided:
                 to the summation stage.  No overlap between generation and
                 computation.
 
-  actors    -- uses a Dask actor as an accumulator so that each matrix is
-                summed eagerly as it is produced, overlapping generation and
-                computation.
+  actors    -- uses a Dask actor as the generator.  Actor method calls are
+                serialized on a single worker, preserving sequentiality, while
+                the downstream sum tasks can start eagerly as each matrix
+                becomes available.
 
 Graph shape (both variants):
   source  ->  per_matrix_sums  ->  total_sum
@@ -35,7 +40,7 @@ import time
 import traceback
 
 import numpy as np
-from dask.distributed import Client, LocalCluster, get_client
+from dask.distributed import Client, LocalCluster
 
 
 # --------------------------------------------------------------------------- #
@@ -44,10 +49,19 @@ from dask.distributed import Client, LocalCluster, get_client
 
 
 def generate_all_matrices(n: int, m: int, t: float) -> list[np.ndarray]:
-    """Source node: yield M random N*N matrices with T-second pauses between."""
-    matrices = []
+    """Source node: generate M matrices sequentially with T-second pauses.
+
+    Each matrix is the element-wise product of a fresh random matrix and the
+    previously generated one, making the sequence inherently serial.
+    """
+    matrices: list[np.ndarray] = []
+    last: np.ndarray | None = None
     for _ in range(m):
-        matrices.append(np.random.uniform(0.0, 1.0, (n, n)))
+        new = np.random.uniform(0.0, 1.0, (n, n))
+        if last is not None:
+            new = new * last
+        last = new
+        matrices.append(new)
         if t > 0.0:
             time.sleep(t)
     return matrices
@@ -80,38 +94,41 @@ def run_baseline(client: Client, n: int, m: int, t: float) -> float:
 # --------------------------------------------------------------------------- #
 
 
-class SumAccumulator:
-    """Dask actor that eagerly accumulates per-matrix sums."""
+class MatrixGenerator:
+    """Dask actor that generates matrices and computes their sums sequentially.
 
-    def __init__(self) -> None:
-        self._values: list[float] = []
+    Actor method calls are serialized on a single worker, so the dependency
+    chain (each matrix is the product of a random matrix and the previous one)
+    is preserved even when all next_sum() calls are submitted at once.
+    Returning floats (rather than arrays) avoids actor-future serialization
+    issues when feeding results into regular client.submit tasks.
+    """
 
-    def add(self, value: float) -> None:
-        self._values.append(value)
+    def __init__(self, n: int, t: float) -> None:
+        self._n = n
+        self._t = t
+        self._last: np.ndarray | None = None
 
-    def total(self) -> float:
-        return sum(self._values)
-
-
-def generate_and_submit_matrix(n: int, t: float, accumulator: SumAccumulator) -> None:
-    """Generate one matrix, compute its sum, and push to the accumulator actor."""
-    matrix = np.random.uniform(0.0, 1.0, (n, n))
-    if t > 0.0:
-        time.sleep(t)
-    value = float(np.sum(matrix))
-    # Actor method calls return futures; fire-and-forget here is intentional
-    accumulator.add(value).result()
+    def next_sum(self) -> float:
+        new = np.random.uniform(0.0, 1.0, (self._n, self._n))
+        if self._last is not None:
+            new = new * self._last
+        self._last = new
+        if self._t > 0.0:
+            time.sleep(self._t)
+        return float(np.sum(new))
 
 
 def run_actors(client: Client, n: int, m: int, t: float) -> float:
-    accumulator = client.submit(SumAccumulator, actor=True).result()
+    generator = client.submit(MatrixGenerator, n, t, actor=True).result()
 
-    futures = [
-        client.submit(generate_and_submit_matrix, n, t, accumulator) for _ in range(m)
-    ]
-    client.gather(futures)
+    # Submit all M calls immediately; the actor serialises them in submission
+    # order, preserving the sequential dependency between matrices.
+    # The actor worker starts computing right away while the client collects results.
+    sum_futures = [generator.next_sum() for _ in range(m)]
 
-    return accumulator.total().result()
+    sums: list[float] = [f.result() for f in sum_futures]
+    return total_sum(sums)
 
 
 # --------------------------------------------------------------------------- #
