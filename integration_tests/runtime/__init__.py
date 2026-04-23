@@ -29,3 +29,13 @@ def sink_file(data, fname: str) -> None:
     import pathlib
 
     pathlib.Path(fname).write_text(str(data))
+
+
+def source_tensor() -> "torch.Tensor":
+    import torch
+
+    return torch.tensor([1, 2, 3])
+
+
+def transform_tensorsum(t: "torch.Tensor") -> int:
+    return int(t.sum())

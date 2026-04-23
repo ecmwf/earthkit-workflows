@@ -18,4 +18,5 @@ val:
 fmt:
     uv run prek --all-files
 integration testname:
+    # testname is the importible module, so eg job_ekwTrivial
     cd integration_tests && uv run python harness.py {{testname}}
