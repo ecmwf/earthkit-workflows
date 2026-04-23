@@ -99,13 +99,12 @@ def run_baseline(client: Client, n: int, m: int, t: float) -> float:
 
 
 class MatrixGenerator:
-    """Dask actor that generates matrices and computes their sums sequentially.
+    """Dask actor whose sole job is sequential matrix generation.
 
-    Actor method calls are serialized on a single worker, so the dependency
-    chain (each matrix is the product of a random matrix and the previous one)
-    is preserved even when all next_sum() calls are submitted at once.
-    Returning floats (rather than arrays) avoids actor-future serialization
-    issues when feeding results into regular client.submit tasks.
+    Calling next_matrix() generates a new random matrix, multiplies it by the
+    previous one (maintaining the dependency chain), sleeps T seconds, then
+    returns the matrix.  Because actor method calls are serialised on one worker,
+    the state is always correct regardless of which task calls in.
     """
 
     def __init__(self, n: int, t: float) -> None:
@@ -113,26 +112,38 @@ class MatrixGenerator:
         self._t = t
         self._last: np.ndarray | None = None
 
-    def next_sum(self) -> float:
+    def next_matrix(self) -> np.ndarray:
         new = np.random.uniform(0.0, 1.0, (self._n, self._n))
         if self._last is not None:
             new = new * self._last
         self._last = new
         if self._t > 0.0:
             time.sleep(self._t)
-        _, s, _ = np.linalg.svd(new)
-        return float(np.sum(s))
+        return new
+
+
+def generate_and_svd(generator: MatrixGenerator) -> float:
+    """Fetch the next matrix from the actor, then compute its SVD nuclear norm.
+
+    The SVD runs on a regular worker, not inside the actor.  Because M of these
+    tasks are submitted concurrently, they queue at the actor one-by-one; as
+    each task exits the actor it computes SVD on its worker while the next task
+    is already sleeping inside the actor -- that is the concurrency gain.
+    """
+    matrix = generator.next_matrix().result()
+    _, s, _ = np.linalg.svd(matrix)
+    return float(np.sum(s))
 
 
 def run_actors(client: Client, n: int, m: int, t: float) -> float:
     generator = client.submit(MatrixGenerator, n, t, actor=True).result()
 
-    # Submit all M calls immediately; the actor serialises them in submission
-    # order, preserving the sequential dependency between matrices.
-    # The actor worker starts computing right away while the client collects results.
-    sum_futures = [generator.next_sum() for _ in range(m)]
+    # All M tasks are submitted before any run.  They compete to enter the actor
+    # serially (preserving the matrix chain), but SVD runs in parallel with the
+    # next task's sleep inside the actor.
+    futures = [client.submit(generate_and_svd, generator) for _ in range(m)]
 
-    sums: list[float] = [f.result() for f in sum_futures]
+    sums: list[float] = client.gather(futures)
     return total_sum(sums)
 
 
