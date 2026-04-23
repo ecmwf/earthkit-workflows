@@ -51,6 +51,7 @@ class MatrixGenerator:
             new = new * self._last
         self._last = new
         if self._t > 0.0:
+            print("sleeping")
             time.sleep(self._t)
         return new
 
@@ -73,7 +74,9 @@ def main() -> None:
 
     with LocalCluster(n_workers=w) as cluster, Client(cluster) as client:
         generator = client.submit(MatrixGenerator, n, t, actor=True).result()
-        futures = [client.submit(generate_and_svd, generator) for _ in range(m)]
+        # pure=False prevents Dask from deduplicating tasks that share the same
+        # function + arguments -- without it, all M submissions collapse into one.
+        futures = [client.submit(generate_and_svd, generator, pure=False) for _ in range(m)]
         sums: list[float] = client.gather(futures)
         result = total_sum(sums)
 
