@@ -71,6 +71,7 @@ def graph2job(dask: dict) -> JobInstance:
     task_nodes: dict[TaskId, TaskInstance] = {}
     edges = []
 
+    ext_outputs = set()
     for node, value in dask.items():
         key = daskKeyRepr(node)
         if isinstance(value, DataNode):
@@ -79,10 +80,14 @@ def graph2job(dask: dict) -> JobInstance:
                 return value.value
 
             task_nodes[TaskId(key)] = TaskBuilder.from_callable(provider)
+            ext_outputs.add(DatasetId(task=TaskId(key), output=DefaultTaskOutput))
         elif isinstance(value, Task):
             node, _edges = task2task(key, value)
             task_nodes[TaskId(key)] = node
             edges.extend(_edges)
+            ext_outputs.add(DatasetId(task=TaskId(key), output=DefaultTaskOutput))
+            for edge in _edges:
+                ext_outputs.discard(edge.source)
         elif isinstance(value, list | tuple | set):
             # TODO implement, consult further:
             # https://docs.dask.org/en/stable/spec.html
@@ -96,4 +101,5 @@ def graph2job(dask: dict) -> JobInstance:
     return JobInstance(
         tasks=task_nodes,
         edges=edges,
+        ext_outputs=list(ext_outputs),
     )
