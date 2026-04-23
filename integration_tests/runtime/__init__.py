@@ -31,11 +31,11 @@ def sink_file(data, fname: str) -> None:
     pathlib.Path(fname).write_text(str(data))
 
 
-def source_tensor() -> "torch.Tensor":
-    import torch
+def source_tensor() -> "torch.Tensor":  # ty: ignore
+    import torch  # ty: ignore
 
     return torch.tensor([1, 2, 3])
 
 
-def transform_tensorsum(t: "torch.Tensor") -> int:
+def transform_tensorsum(t: "torch.Tensor") -> int:  # ty: ignore
     return int(t.sum())
