@@ -343,6 +343,7 @@ class Executor:
                         self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt + 1, m.remainder)
                         self.to_controller(m)
                     elif isinstance(m, TaskFailure):
+                        logger.debug(f"Forwarding task failure {m}")
                         self.to_controller(m)
                     elif isinstance(m, DatasetPublished):
                         for worker in self.workers:

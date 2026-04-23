@@ -33,10 +33,10 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.memory import Memory
-from cascade.executor.runner.packages import PackagesEnv, PostinstallException
+from cascade.executor.runner.packages import PackagesEnv, PkgInstallException
 from cascade.executor.runner.runner import ExecutionContext, run
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, ser
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import label
 
 logger = logging.getLogger(__name__)
@@ -155,8 +155,15 @@ def execute_sequence(
             # NOTE we should in principle restore the previous value, but we dont expect collisions
             del os.environ[key]
         return True
-    except PostinstallException as e:
-        logger.error(f"postinstall validation failed, will send RunnerRestartRequest: {repr(e)}")
+    except PkgInstallException as e:
+        if e.was_clean:
+            logger.error(f"pkg install failed on a clean env, crashing with user error")
+            callback(
+                runnerContext.callback,
+                TaskFailure(worker=taskSequence.worker, task=taskId, detail=ser(CascadeUserError(repr(e)))),
+            )
+            return False
+        logger.error(f"pkg install failed, will send RunnerRestartRequest: {repr(e)}")
         if not taskId:
             raise CascadeInternalError("Postinstall should not have been raised in the absence of active task")
         additionalPublish = task_sequence_postmortem(runnerContext, taskSequence, taskId)
