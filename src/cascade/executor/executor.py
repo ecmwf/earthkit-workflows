@@ -323,11 +323,15 @@ class Executor:
                         if not m.worker in self.worker_awaits:
                             logger.warning(f"unexpectedly gotten WorkerReady from {m.worker}, assuming double send")
                         else:
+                            handle = self.workers[m.worker]
+                            if handle is None:
+                                raise CascadeInternalError(f"worker {m.worker} is alive but has no handle")
+                            for ds in self.datasets:
+                                # populate worker with all available datasets
+                                dsm = DatasetPublished(ds=ds, origin=self.host, transmit_idx=None)
+                                callback(worker_address(m.worker, handle.attempt_cnt), dsm)
                             maybe_seq = self.worker_awaits.pop(m.worker)
                             if maybe_seq is not None:
-                                handle = self.workers[m.worker]
-                                if handle is None:
-                                    raise CascadeInternalError(f"worker {m.worker} is alive but has no handle")
                                 address = worker_address(m.worker, handle.attempt_cnt)
                                 logger.debug(f"worker {m.worker} ready, sending task sequence {maybe_seq} to {address}")
                                 callback(address, maybe_seq)

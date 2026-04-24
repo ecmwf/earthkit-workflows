@@ -41,7 +41,15 @@ class Memory(AbstractContextManager):
         self.callback = callback
         self.worker = worker
 
-    def _publish(self, outputId: DatasetId, outputSchema: str, outputValue: Any):
+    def _build_publish_message(self, outputId: DatasetId, isTaskCompletion: bool) -> DatasetPublished:
+        # TODO we should fine-grain host-wide
+        # and worker-only publishes at the `controller.notify` level, to not cause
+        # incorrect shm.purge calls at worklow end, which log an annoying key error
+        # In the case of local publishes due to runner restart during a task sequence,
+        # we even need to hotfix transmit_idx=-1 to not *crash* the controller with a double completion!
+        return DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None if isTaskCompletion else -1)
+
+    def _publish(self, outputId: DatasetId, outputSchema: str, outputValue: Any, isTaskCompletion: bool):
         logger.debug(f"publishing {outputId}")
         shmid = ds2shmid(outputId)
         result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
@@ -49,17 +57,14 @@ class Memory(AbstractContextManager):
         rbuf = shm_client.allocate(shmid, l, deser_fun)
         rbuf.view()[:l] = result_ser
         rbuf.close()
-        callback(
-            self.callback,
-            DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
-        )
+        callback(self.callback, self._build_publish_message(outputId, isTaskCompletion))
 
     def additional_publish_local(self, outputIds: Iterable[tuple[DatasetId, str]]):
         # if eg due to a runner crash we need to interrupt a task sequence, it may
         # trigger a publish of datasets which originally were not published
         for outputId, outputSchema in outputIds:
             outputValue = self.local[outputId]  # KeyError here is *not* expected
-            self._publish(outputId, outputSchema, outputValue)
+            self._publish(outputId, outputSchema, outputValue, False)
 
     def handle(self, outputId: DatasetId, outputSchema: str, outputValue: Any, isPublish: bool) -> None:
         if outputId == NO_OUTPUT_PLACEHOLDER:
@@ -72,19 +77,14 @@ class Memory(AbstractContextManager):
         self.local[outputId] = outputValue
 
         if isPublish:
-            self._publish(outputId, outputSchema, outputValue)
+            self._publish(outputId, outputSchema, outputValue, True)
         else:
             # NOTE even if its not actually published, we send the message to allow for
             # marking the task itself as completed -- its odd, but arguably better than
-            # introducing a TaskCompleted message. TODO we should fine-grain host-wide
-            # and worker-only publishes at the `controller.notify` level, to not cause
-            # incorrect shm.purge calls at worklow end, which log an annoying key error
+            # introducing a TaskCompleted message.
             logger.debug(f"fake publish of {outputId} for the sake of task completion")
             shmid = ds2shmid(outputId)
-            callback(
-                self.callback,
-                DatasetPublished(ds=outputId, origin=self.worker, transmit_idx=None),
-            )
+            callback(self.callback, self._build_publish_message(outputId, True))
 
     def provide(self, inputId: DatasetId, annotation: str) -> Any:
         if inputId not in self.local:
