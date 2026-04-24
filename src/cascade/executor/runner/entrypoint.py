@@ -238,6 +238,7 @@ def entrypoint(runnerContextClpkl: bytes):
                     DatasetId(task, key) for task in mDes.tasks for key, _ in runnerContext.job.tasks[task].definition.output_schema
                 }
                 missing_ds = required - availab_ds
+                logger.debug(f"received task sequence {mDes}, and missing {missing_ds}")
                 if Config.pretask_flush:
                     extraneous_ds = availab_ds - required
                     memory.flush(extraneous_ds)

@@ -39,3 +39,13 @@ def source_tensor() -> "torch.Tensor":  # ty: ignore
 
 def transform_tensorsum(t: "torch.Tensor") -> int:  # ty: ignore
     return int(t.sum())
+
+
+def source_numpy() -> "numpy.ndarray":  # ty: ignore
+    import numpy
+
+    return numpy.array([1])
+
+
+def transform_numpy(a: "numpy.ndarray") -> "numpy.ndarray":  # ty: ignore
+    return a + 1
