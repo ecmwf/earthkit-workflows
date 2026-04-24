@@ -197,8 +197,20 @@ def _maybe_module_dist(module_name: str) -> str | None:
 
 
 def _maybe_module_version(mod_name: str) -> Version | None:
+    # NOTE do *not* rely on importlib.metadat.version, because that
+    # reports what pip installed recently, not what is imported!
     # TODO presumably cacheable, unless None
     if mod_name in sys.modules:
+        if mod_name in ("eccodes", "gribapi"):
+            # the eccodes/gribapi __version__ is wrong, reporting that of eccodes
+            # we must go to the importlib. This *invalidates* the post install
+            # check -- TODO after eccodes wheel fixed, remove this
+            dist_name = _maybe_module_dist(mod_name)
+            if dist_name is not None:
+                try:
+                    return Version(importlib.metadata.version(dist_name))
+                except importlib.metadata.PackageNotFoundError:
+                    pass
         mod = sys.modules[mod_name]
         if hasattr(mod, "__version__"):
             try:
