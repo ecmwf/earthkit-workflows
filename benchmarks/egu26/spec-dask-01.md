@@ -15,6 +15,6 @@ The second benchmark showcases "Batch Data Generation". The dask graph should co
 This source should be inherently sequential -- so lets say it keep the last yielded matrix, and each time it generates a new one, it actually yields their product.
 There are parameters `BENCHMARK_N` for matrix size and `BENCHMARK_M` for the number of matrices to be yielded, and `T` for the sleeping.
 The baseline implementation is "wasteful" in that it allows no eager concurrency.
-You can provide a second implementation, that utilizes Dask actors for this -- however, this must still preserve the sequentiality of the generator.
+You can provide a second implementation, that utilizes Dask actors for this -- however, this must still preserve the sequentiality of the generator. Two non-obvious pitfalls: (1) the SVD must be computed outside the actor (in a regular submitted task), otherwise the actor worker is busy with SVD and no pipeline overlap happens; (2) `client.submit` deduplicates by default when function and arguments are identical, so submitting the same actor-calling function M times collapses to one task -- pass `pure=False` to prevent this.
 
 After you implement the benchmarks, make sure you can run them with some basic values of N and M, like 10 and 10.
