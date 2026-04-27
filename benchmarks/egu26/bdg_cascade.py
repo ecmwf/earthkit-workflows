@@ -26,6 +26,7 @@ import os
 import sys
 import traceback
 
+from cascade.deployment.logging import LoggingConfig
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import JobInstanceRich, TaskDefinition, TaskInstance
 from cascade.main import run_locally
@@ -61,7 +62,7 @@ def main() -> None:
     ji = builder.build().get_or_raise()
     job = JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
-    results = run_locally(job=job, hosts=1, workers=w)
+    results = run_locally(job=job, hosts=1, workers=w, loggingConfigSer=LoggingConfig(disable=True).ser_cliparam())
     total = sum(float(v) for v in results.values())
 
     print(f"SUCCESS: N={n} M={m} T={t} W={w} total_sum={total:.4f}")
