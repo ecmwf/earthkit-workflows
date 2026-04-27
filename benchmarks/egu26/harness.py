@@ -20,10 +20,7 @@ this into OMP/OPENBLAS/MKL_NUM_THREADS; Dask entrypoints use it as
 threads_per_worker.
 
 BENCHMARK_N, BENCHMARK_M, and BENCHMARK_T are inherited from the caller's
-environment; defaults are applied if unset:
-    BENCHMARK_N = 100
-    BENCHMARK_M = 10
-    BENCHMARK_T = 0
+environment; defaults are applied if unset.
 """
 
 import os
@@ -57,8 +54,8 @@ SCALES: dict[str, int] = {
 # bdg: sequential generation with expensive SVD and sleep -- moderate N and M,
 #      non-zero T so the actor vs baseline difference is visible.
 DEFAULTS: dict[str, dict[str, str]] = {
-    "sdmi": {"BENCHMARK_N": "200", "BENCHMARK_M": "20", "BENCHMARK_T": "0"},
-    "bdg":  {"BENCHMARK_N": "200", "BENCHMARK_M": "10", "BENCHMARK_T": "0.5"},
+    "sdmi": {"BENCHMARK_N": "1000", "BENCHMARK_M": "16", "BENCHMARK_T": "0"},
+    "bdg":  {"BENCHMARK_N": "1000", "BENCHMARK_M": "16", "BENCHMARK_T": "0"},
 }
 
 

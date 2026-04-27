@@ -76,7 +76,7 @@ OPERATIONS = [
 
 def multiply_and_svd(i: int, matrix: np.ndarray) -> float:
     """Scale matrix by i then return SVD nuclear norm.  O(n^3), result unique per i."""
-    _, s, _ = np.linalg.svd(matrix * i)
+    _, s, _ = np.linalg.svd(matrix * (i + 1))
     return float(np.sum(s))
 
 
