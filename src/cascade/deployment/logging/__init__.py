@@ -44,11 +44,12 @@ from cascade.low.func import CascadeBaseModel
 
 
 class LoggingConfig(CascadeBaseModel):
-    formatter: Literal["line", "json"]
+    formatter: Literal["line", "json"] = "line"
     """Line is standard python logging, json uses structured logging"""
-    path_base: str | None
+    path_base: str | None = None
     """If None log to stdout, otherwise log into files in path_base directory, with each process having its own files.
     Expected to have been created beforehand"""
+    disable: bool = False
 
     def ser_cliparam(self) -> str:
         return base64.b64encode(self.model_dump_json().encode("utf-8")).decode("utf-8")
@@ -62,10 +63,12 @@ class LoggingConfig(CascadeBaseModel):
             return self
 
 
-DefaultLoggingConfig = LoggingConfig(formatter="line", path_base=None)
+DefaultLoggingConfig = LoggingConfig()
 
 
 def as_dict_config(loggingConfig: LoggingConfig, hostAndRole: str) -> dict:
+    if loggingConfig.disable:
+        return {"version": 1, "disable_existing_loggers": True}
     if loggingConfig.path_base:
         filename = f"{loggingConfig.path_base}{hostAndRole}.txt"
         handler = defaults.handlers["filename"](filename)  # ty:ignore[call-non-callable] # sloppy typing on my side
