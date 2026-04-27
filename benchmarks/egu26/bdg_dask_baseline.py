@@ -34,7 +34,7 @@ def main() -> None:
     t = float(os.environ.get("BENCHMARK_T", "0"))
     w = int(os.environ.get("BENCHMARK_W", "4"))
 
-    with LocalCluster(n_workers=w) as cluster, Client(cluster) as client:
+    with LocalCluster(n_workers=w, threads_per_worker=1) as cluster, Client(cluster) as client:
         source = client.submit(generate_all_matrices, n, m, t)
         sums = client.submit(per_matrix_svd_sums, source)
         result = client.submit(total_sum, sums)

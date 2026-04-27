@@ -32,7 +32,7 @@ def main() -> None:
     m = int(os.environ["BENCHMARK_M"])
     w = int(os.environ.get("BENCHMARK_W", "4"))
 
-    with LocalCluster(n_workers=w) as cluster, Client(cluster) as client:
+    with LocalCluster(n_workers=w, threads_per_worker=1) as cluster, Client(cluster) as client:
         source = client.submit(generate_matrix, n)
         children = [
             client.submit(OPERATIONS[i % len(OPERATIONS)], source) for i in range(m)

@@ -51,7 +51,6 @@ class MatrixGenerator:
             new = new * self._last
         self._last = new
         if self._t > 0.0:
-            print("sleeping")
             time.sleep(self._t)
         return new
 
@@ -72,7 +71,7 @@ def main() -> None:
     t = float(os.environ.get("BENCHMARK_T", "0"))
     w = int(os.environ.get("BENCHMARK_W", "4"))
 
-    with LocalCluster(n_workers=w) as cluster, Client(cluster) as client:
+    with LocalCluster(n_workers=w, threads_per_worker=1) as cluster, Client(cluster) as client:
         generator = client.submit(MatrixGenerator, n, t, actor=True).result()
         # pure=False prevents Dask from deduplicating tasks that share the same
         # function + arguments -- without it, all M submissions collapse into one.
