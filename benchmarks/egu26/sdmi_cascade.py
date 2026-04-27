@@ -35,7 +35,7 @@ from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import JobInstanceRich
 from cascade.main import run_locally
 
-from sdmi_runtime import OPERATIONS, generate_matrix
+from sdmi_runtime import get_operation, generate_matrix
 
 
 def main() -> None:
@@ -48,7 +48,7 @@ def main() -> None:
         "source", TaskBuilder.from_callable(generate_matrix).with_values(n=n)
     )
     for i in range(m):
-        op = OPERATIONS[i % len(OPERATIONS)]
+        op = get_operation(i)
         builder = builder.with_node(f"child_{i}", TaskBuilder.from_callable(op))
         builder = builder.with_edge("source", f"child_{i}", "matrix")
         builder = builder.with_output(f"child_{i}")

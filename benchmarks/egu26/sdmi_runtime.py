@@ -72,3 +72,21 @@ OPERATIONS = [
     op_det,
     op_eigenvalues,
 ]
+
+
+def multiply_and_svd(i: int, matrix: np.ndarray) -> float:
+    """Scale matrix by i then return SVD nuclear norm.  O(n^3), result unique per i."""
+    _, s, _ = np.linalg.svd(matrix * i)
+    return float(np.sum(s))
+
+
+def get_operation(i: int):  # ty:ignore[missing-return-type]
+    """Return the child operation for index i.
+
+    Each child multiplies the shared matrix by its own index and then computes
+    the SVD nuclear norm -- making the work O(n^3) and numerically distinct per
+    child while remaining deterministic.
+
+    The original OPERATIONS list is kept for reference / alternative use.
+    """
+    return lambda matrix: multiply_and_svd(i, matrix)

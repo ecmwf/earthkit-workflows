@@ -25,7 +25,7 @@ import traceback
 
 from dask.distributed import Client, LocalCluster
 
-from sdmi_runtime import OPERATIONS, generate_matrix
+from sdmi_runtime import get_operation, generate_matrix
 
 
 def main() -> None:
@@ -37,7 +37,7 @@ def main() -> None:
     with LocalCluster(n_workers=w, threads_per_worker=npt) as cluster, Client(cluster) as client:
         source = client.submit(generate_matrix, n)
         children = [
-            client.submit(OPERATIONS[i % len(OPERATIONS)], source) for i in range(m)
+            client.submit(get_operation(i), source) for i in range(m)
         ]
         client.gather(children)
 
