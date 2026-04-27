@@ -9,7 +9,7 @@
 """Benchmark harness for EGU26: runs each benchmark as a cold subprocess and reports timing.
 
 Usage:
-    python harness.py <scenario> <scale>
+    uv run --with matplotlib harness.py <scenario> <scale>
 
 Arguments:
     scenario  -- bdg | sdmi | all
@@ -17,10 +17,16 @@ Arguments:
 
 The harness always sets BENCHMARK_NPTHREAD=1.  Cascade entrypoints translate
 this into OMP/OPENBLAS/MKL_NUM_THREADS; Dask entrypoints use it as
-threads_per_worker.
+threads_per_worker; vanilla entrypoints set the same env vars before importing
+numpy.
 
 BENCHMARK_N, BENCHMARK_M, and BENCHMARK_T are inherited from the caller's
 environment; defaults are applied if unset.
+
+After all runs finish the harness writes one plot per scenario to the current
+directory (benchmark_sdmi.png, benchmark_bdg.png).  Plotting requires
+matplotlib; if it is not available a warning is printed and the harness exits
+without generating images.
 """
 
 import os
@@ -31,6 +37,7 @@ from pathlib import Path
 
 BENCH_DIR = Path(__file__).parent
 
+# Scaled entrypoints: run once per worker count.
 SCENARIOS: dict[str, list[str]] = {
     "sdmi": [
         "sdmi_dask.py",
@@ -41,6 +48,30 @@ SCENARIOS: dict[str, list[str]] = {
         "bdg_dask_actors.py",
         "bdg_cascade.py",
     ],
+}
+
+# Vanilla entrypoints: no concept of workers -- run exactly once.
+VANILLA: dict[str, str] = {
+    "sdmi": "sdmi_vanilla.py",
+    "bdg": "bdg_vanilla.py",
+}
+
+SCRIPT_LABEL: dict[str, str] = {
+    "sdmi_dask.py": "dask",
+    "sdmi_cascade.py": "cascade",
+    "sdmi_vanilla.py": "vanilla",
+    "bdg_dask_baseline.py": "dask-baseline",
+    "bdg_dask_actors.py": "dask-actors",
+    "bdg_cascade.py": "cascade",
+    "bdg_vanilla.py": "vanilla",
+}
+
+LABEL_COLOR: dict[str, str] = {
+    "dask": "tab:blue",
+    "dask-baseline": "tab:blue",
+    "dask-actors": "tab:orange",
+    "cascade": "tab:green",
+    "vanilla": "tab:red",
 }
 
 SCALES: dict[str, int] = {
@@ -97,7 +128,8 @@ def main() -> None:
     scenarios = list(SCENARIOS) if scenario_arg == "all" else [scenario_arg]
     scales = list(SCALES) if scale_arg == "all" else [scale_arg]
 
-    rows: list[tuple[str, str, int, float, str]] = []
+    # (scenario, script, scale_label, workers, elapsed_s, status)
+    rows: list[tuple[str, str, str, int, float, str]] = []
 
     for scenario in scenarios:
         scenario_env: dict[str, str] = {
@@ -107,22 +139,78 @@ def main() -> None:
         for key, val in DEFAULTS[scenario].items():
             scenario_env.setdefault(key, val)
 
+        # Scaled entrypoints
         for scale in scales:
             workers = SCALES[scale]
             for script in SCENARIOS[scenario]:
                 print(f"  running {script} w={workers} ...", flush=True)
                 elapsed, ok, detail = run_one(script, workers, scenario_env)
                 status = "OK" if ok else "FAIL"
-                rows.append((script, scale, workers, elapsed, status, detail))
+                rows.append((scenario, script, scale, workers, elapsed, status))
                 print(f"    -> {status} {elapsed:.2f}s", flush=True)
 
+        # Vanilla: run once, no worker concept
+        vanilla_script = VANILLA[scenario]
+        print(f"  running {vanilla_script} (vanilla) ...", flush=True)
+        elapsed, ok, detail = run_one(vanilla_script, 1, scenario_env)
+        status = "OK" if ok else "FAIL"
+        rows.append((scenario, vanilla_script, "1w", 1, elapsed, status))
+        print(f"    -> {status} {elapsed:.2f}s", flush=True)
+
     # print results table
-    name_w = max(len(r[0]) for r in rows)
+    name_w = max(len(r[1]) for r in rows)
     print()
     print(f"{'script':<{name_w}}  {'scale':<5}  {'workers':<7}  {'time(s)':<9}  result")
     print("-" * (name_w + 5 + 7 + 9 + 10))
-    for script, scale, workers, elapsed, status, detail in rows:
+    for scenario, script, scale, workers, elapsed, status in rows:
         print(f"{script:<{name_w}}  {scale:<5}  {workers:<7}  {elapsed:<9.2f}  {status}")
+
+    generate_plots(rows, scenarios)
+
+
+def generate_plots(rows: list[tuple[str, str, str, int, float, str]], scenarios: list[str]) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("\nNote: matplotlib not available -- skipping plot generation.")
+        print("Re-run with:  uv run --with matplotlib harness.py ...")
+        return
+
+    worker_ticks = list(SCALES.values())
+
+    for scenario in scenarios:
+        fig, ax = plt.subplots(figsize=(7, 4))
+
+        # collect labels in insertion order (preserves a consistent legend)
+        seen_labels: dict[str, None] = {}
+        for r in rows:
+            if r[0] == scenario:
+                seen_labels[SCRIPT_LABEL[r[1]]] = None
+        labels = list(seen_labels)
+
+        for label in labels:
+            label_rows = [r for r in rows if r[0] == scenario and SCRIPT_LABEL[r[1]] == label]
+            label_rows.sort(key=lambda r: r[3])
+            xs = [r[3] for r in label_rows]
+            ys = [r[4] for r in label_rows]
+            color = LABEL_COLOR[label]
+
+            if label == "vanilla":
+                ax.scatter(xs, ys, color=color, label=label, zorder=5, s=80)
+            else:
+                ax.plot(xs, ys, marker="o", color=color, label=label)
+
+        ax.set_xlabel("workers")
+        ax.set_ylabel("time (s)")
+        ax.set_title(f"Scaling benchmark: {scenario.upper()}")
+        ax.set_xticks(worker_ticks)
+        ax.legend()
+        fig.tight_layout()
+
+        fname = f"benchmark_{scenario}.png"
+        fig.savefig(fname, dpi=150)
+        print(f"Plot saved: {fname}")
+        plt.close(fig)
 
 
 if __name__ == "__main__":
