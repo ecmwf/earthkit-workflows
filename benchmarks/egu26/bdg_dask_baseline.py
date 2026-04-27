@@ -13,10 +13,11 @@ with T-second pauses and product dependency), then a second task computes SVD
 nuclear norm for each, and a third returns the total.
 
 Environment variables:
-  BENCHMARK_N     -- matrix dimension (N x N)
-  BENCHMARK_M     -- number of matrices
-  BENCHMARK_T     -- seconds to sleep between generations (default: 0)
-  BENCHMARK_W     -- number of Dask worker processes (default: 4)
+  BENCHMARK_N        -- matrix dimension (N x N)
+  BENCHMARK_M        -- number of matrices
+  BENCHMARK_T        -- seconds to sleep between generations (default: 0)
+  BENCHMARK_W        -- number of Dask worker processes (default: 4)
+  BENCHMARK_NPTHREAD -- threads per worker (default: 1)
 """
 
 import os
@@ -33,8 +34,9 @@ def main() -> None:
     m = int(os.environ["BENCHMARK_M"])
     t = float(os.environ.get("BENCHMARK_T", "0"))
     w = int(os.environ.get("BENCHMARK_W", "4"))
+    npt = int(os.environ.get("BENCHMARK_NPTHREAD", "1"))
 
-    with LocalCluster(n_workers=w, threads_per_worker=1) as cluster, Client(cluster) as client:
+    with LocalCluster(n_workers=w, threads_per_worker=npt) as cluster, Client(cluster) as client:
         source = client.submit(generate_all_matrices, n, m, t)
         sums = client.submit(per_matrix_svd_sums, source)
         result = client.submit(total_sum, sums)

@@ -13,9 +13,10 @@ a different mathematical operation (selected by index % num_ops), returning a
 float summary.
 
 Environment variables:
-  BENCHMARK_N  -- matrix dimension (N x N)
-  BENCHMARK_M  -- number of child tasks
-  BENCHMARK_W  -- number of Dask worker processes (default: 4)
+  BENCHMARK_N        -- matrix dimension (N x N)
+  BENCHMARK_M        -- number of child tasks
+  BENCHMARK_W        -- number of Dask worker processes (default: 4)
+  BENCHMARK_NPTHREAD -- threads per worker (default: 1)
 """
 
 import os
@@ -31,8 +32,9 @@ def main() -> None:
     n = int(os.environ["BENCHMARK_N"])
     m = int(os.environ["BENCHMARK_M"])
     w = int(os.environ.get("BENCHMARK_W", "4"))
+    npt = int(os.environ.get("BENCHMARK_NPTHREAD", "1"))
 
-    with LocalCluster(n_workers=w, threads_per_worker=1) as cluster, Client(cluster) as client:
+    with LocalCluster(n_workers=w, threads_per_worker=npt) as cluster, Client(cluster) as client:
         source = client.submit(generate_matrix, n)
         children = [
             client.submit(OPERATIONS[i % len(OPERATIONS)], source) for i in range(m)

@@ -32,6 +32,7 @@ from dask.distributed import Client, LocalCluster
 from bdg_runtime import svd_nuclear_norm, total_sum
 
 
+
 class MatrixGenerator:
     """Dask actor: sequential matrix generator with product dependency.
 
@@ -70,8 +71,9 @@ def main() -> None:
     m = int(os.environ["BENCHMARK_M"])
     t = float(os.environ.get("BENCHMARK_T", "0"))
     w = int(os.environ.get("BENCHMARK_W", "4"))
+    npt = int(os.environ.get("BENCHMARK_NPTHREAD", "1"))
 
-    with LocalCluster(n_workers=w, threads_per_worker=1) as cluster, Client(cluster) as client:
+    with LocalCluster(n_workers=w, threads_per_worker=npt) as cluster, Client(cluster) as client:
         generator = client.submit(MatrixGenerator, n, t, actor=True).result()
         # pure=False prevents Dask from deduplicating tasks that share the same
         # function + arguments -- without it, all M submissions collapse into one.

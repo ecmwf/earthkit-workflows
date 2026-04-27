@@ -24,6 +24,13 @@ Environment variables:
 
 import os
 import sys
+
+# Set BLAS/OpenMP thread count before numpy is imported (numpy reads these at init time).
+_npt = os.environ.get("BENCHMARK_NPTHREAD", "1")
+os.environ.setdefault("OMP_NUM_THREADS", _npt)
+os.environ.setdefault("OPENBLAS_NUM_THREADS", _npt)
+os.environ.setdefault("MKL_NUM_THREADS", _npt)
+
 import traceback
 
 from cascade.deployment.logging import LoggingConfig
