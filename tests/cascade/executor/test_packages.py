@@ -6,7 +6,7 @@ from packaging.version import Version
 from cascade.executor.runner.packages import (
     PostverifyIssue,
     _get_dist_modules,
-    _maybe_module_version,
+    _maybe_imported_version,
     _parse_pip_install,
     _postinstall_verify,
     _prefer_installed,
@@ -55,18 +55,18 @@ def test_get_dist_modules() -> None:
     assert sorted(_get_dist_modules("earthkit-workflows")) == sorted(["cascade", "earthkit"])
 
 
-def test_maybe_module_version() -> None:
+def test_maybe_imported_version() -> None:
     import numpy
 
-    assert _maybe_module_version("numpy") == Version(numpy.__version__)
+    assert _maybe_imported_version("numpy") == Version(numpy.__version__)
     import cascade
 
-    assert _maybe_module_version("cascade") == None  # whoopsie, we dont declare __version__ on cascade
+    assert _maybe_imported_version("cascade") == None  # whoopsie, we dont declare __version__ on cascade
     import earthkit.workflows
 
     if not hasattr(earthkit.workflows, "__version__"):
         assert False  # just to satisfy ty
-    assert _maybe_module_version("earthkit.workflows") == Version(earthkit.workflows.__version__)
+    assert _maybe_imported_version("earthkit.workflows") == Version(earthkit.workflows.__version__)
 
 
 def test_postinstall_verify() -> None:
