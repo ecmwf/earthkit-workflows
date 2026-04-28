@@ -185,32 +185,34 @@ def _get_dist_modules(dist_name: str) -> list[str]:
         return []
 
 
-def _maybe_module_dist(module_name: str) -> str | None:
-    """From a module name like 'cascade' get the pip installable like 'earthkit-workflows'"""
-    # TODO cacheable, but will need to handle growth
+def _maybe_module_dist(module_name: str) -> tuple[str, Version] | None:
+    """From a module name like 'cascade' get the pip installable like 'earthkit-workflows' and version"""
+    # TODO presumably cacheable, unless None
+    # NOTE we dont rely on __version__, eg:
+    # - for torch it adds the +cu310
+    # - for mir it drops the fourth version
+    # and neither leads to an installable wheel.
+    # NOTE that because of the 4-number version of ecmwf libs, we dont use the base_version here
     lookup = importlib.metadata.packages_distributions()
     maybe = lookup.get(module_name, [])
     if len(maybe) >= 1:
-        return maybe[0]
+        distName = maybe[0]
+        try:
+            return distName, Version(importlib.metadata.version(distName))
+        except importlib.metadata.PackageNotFoundError:
+            return None
     else:
         return None
 
 
-def _maybe_module_version(mod_name: str) -> Version | None:
-    # NOTE do *not* rely on importlib.metadat.version, because that
-    # reports what pip installed recently, not what is imported!
+def _maybe_imported_version(mod_name: str) -> Version | None:
     # TODO presumably cacheable, unless None
+    if mod_name in ("eccodes", "gribapi"):
+        # the eccodes/gribapi __version__ is wrong, reporting that of eccodeslib
+        # => we must go to the importlib. This *invalidates* the post install
+        # check -- TODO after eccodes wheel fixed, remove this
+        return None
     if mod_name in sys.modules:
-        if mod_name in ("eccodes", "gribapi"):
-            # the eccodes/gribapi __version__ is wrong, reporting that of eccodes
-            # we must go to the importlib. This *invalidates* the post install
-            # check -- TODO after eccodes wheel fixed, remove this
-            dist_name = _maybe_module_dist(mod_name)
-            if dist_name is not None:
-                try:
-                    return Version(importlib.metadata.version(dist_name))
-                except importlib.metadata.PackageNotFoundError:
-                    pass
         mod = sys.modules[mod_name]
         if hasattr(mod, "__version__"):
             try:
@@ -227,11 +229,13 @@ def _postinstall_verify(pip_output) -> list[PostverifyIssue]:
 
     for dist_name, desired_version in installed_packages.items():
         modules = _get_dist_modules(dist_name)
-        versions = [(m, _maybe_module_version(m)) for m in modules]
+        versions = [(m, _maybe_imported_version(m)) for m in modules]
         # NOTE eg torch is a bit of an issue here:
         # pip reports + torch==2.7.1, but torch module version declares 2.7.1+cu126
         # we have no real means of deciding whether this is correct or not -- but we make the assumption
         # that checkpoints et cetera won't ever depend on this particular build discriminator => .base_version
+        # For ecmwf libs, this hides the 4th version which is the build counter -- but that is presumably
+        # legitimate as well, as it means the api of the underlying library being the same
         mod_issues = [(m, v) for m, v in versions if v and v.base_version != desired_version.base_version]
         if mod_issues:
             rv.append(PostverifyIssue(dist_name=dist_name, desired_version=desired_version, mod_issues=mod_issues))
@@ -304,15 +308,15 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
     imported = set(name.split(".")[0] for name in sys.modules)
     for name in imported:
         if not _is_ignorable(name):
-            maybe_version = _maybe_module_version(name)
-            maybe_dist = _maybe_module_dist(name)
-            if maybe_version is None or maybe_dist is None:
-                logger.debug(f"failed to provide install pin for imported: {name=}, {maybe_dist=}, {maybe_version=}")
+            maybe_dist_version = _maybe_module_dist(name)
+            if maybe_dist_version is None:
+                logger.debug(f"failed to provide install pin for imported: {name=}, {maybe_dist_version=}")
             else:
-                # NOTE we do base_version for like torch 2.11.0+cu130 -> 2.11.0
-                # That way, we still resolve to the installed package, and if
-                # we didnt it would actually fail to be resolved
-                yield f"{maybe_dist}=={maybe_version.base_version}"
+                dist, version = maybe_dist_version
+                # editable/local installs such as that of cascade itself should not be put to
+                # the pip command as that wont be resolvable! We need to rely on caching here
+                if not version.dev:
+                    yield f"{dist}=={version}"
 
 
 class PackagesEnv(AbstractContextManager):
