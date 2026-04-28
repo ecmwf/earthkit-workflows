@@ -300,22 +300,32 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
             logger.warning(f"failed to discern preference for package {package} -- continuing")
             yield package
 
-    def _is_ignorable(top_level: str):
+    def _is_ignorable_module(top_level: str):
         is_stdlib = top_level in sys.stdlib_module_names
         is_local = top_level.startswith("_")  # for __main__, __editable, _distutils_hack, etc
         return is_stdlib or is_local
 
+    def _is_ignorable_dist(distName: str, distVersion: Version) -> bool:
+        # editable/local installs such as that of cascade itself should not be put to
+        # the pip command as that wont be resolvable! We need to rely on caching here
+        if distVersion.dev or distVersion.local:
+            return True
+        if distVersion == Version("0.0.0"):
+            return True
+        origin = importlib.metadata.distribution(distName)
+        if origin is not None and hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
+            return True
+        return False
+
     imported = set(name.split(".")[0] for name in sys.modules)
     for name in imported:
-        if not _is_ignorable(name):
+        if not _is_ignorable_module(name):
             maybe_dist_version = _maybe_module_dist(name)
             if maybe_dist_version is None:
                 logger.debug(f"failed to provide install pin for imported: {name=}, {maybe_dist_version=}")
             else:
                 dist, version = maybe_dist_version
-                # editable/local installs such as that of cascade itself should not be put to
-                # the pip command as that wont be resolvable! We need to rely on caching here
-                if not version.dev:
+                if not _is_ignorable_dist(dist, version):
                     yield f"{dist}=={version}"
 
 
