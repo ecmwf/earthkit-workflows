@@ -117,3 +117,14 @@ overhead from actor coordination.  Cascade matches actors at 2 workers and
 pulls ahead at 4, while requiring no special API.
 
 ![BDG scaling](benchmark_bdg.png)
+
+## Note on Memory Consumption
+
+One needs to be careful when assessing memory consumption of Cascade.
+We are storing all datasets (execept when tasks are being fused) in shared memory.
+However, RSS accounts shared memory per process, meaning a simple sum of RSS of all cascade processes tells an overly pessimistic story.
+
+What we instead did for the benchmarking purpose was utilizing a cgroup and running tasks in a memory-constrained environment.
+For a specific setting of matrix size 500, 8 workers, and 64 subtasks, we had `dask` peaking at about .57G (and indeed crashing in a .5G environment), whereas `cascade` peaked at .32G (and indeed survived in a .5G environment).
+
+Note this does not imply a better memory efficiency of `cascade` compared to `dask` in general, this only shows that **if** your workflow requires multiple workers accessing the same dataset independently, **then** using shared memory has real benefits in terms of actual memory requirements.
