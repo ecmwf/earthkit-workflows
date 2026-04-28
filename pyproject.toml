@@ -35,6 +35,7 @@ dependencies = [
     "fire",
     "orjson",
     "qubed>=0.3.0",
+    "dask[distributed]>=2026.1.2",
 ]
 # version provided via setuptools_scm module, which derives it from git tag
 dynamic = ["version"]
