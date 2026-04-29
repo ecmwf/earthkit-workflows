@@ -97,7 +97,7 @@ def callback(address: BackboneAddress, msg: Message):
 def send_data(address: BackboneAddress, data: DatasetTransmitPayload, syn: Syn) -> None:
     socket = get_socket(address)
     byt = (ser_message(syn), pickle.dumps(data.header), data.value)
-    socket.send_multipart(byt)
+    socket.send_multipart(byt, copy=False)
 
 
 class Listener:
