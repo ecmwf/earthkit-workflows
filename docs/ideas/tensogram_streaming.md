@@ -26,6 +26,17 @@ extends the scheduler state machine accordingly; the user-facing API is unchange
 
 ---
 
+## Phase 0: Adopt dedicated Tensogram serde
+
+In executor/runner/entrypoint.py, in the SerdeRegistry registration (or even better at
+the default constructor), include registration of tensogram serdes, conditioned on try-wrapped
+tensogram import. The functions should live in a cascade module, like
+"executor.serde.contrib.tensogram", and consist of:
+ - for tensogram.Message: `tensogram.message_to_bytes(v)`, `tensogram.decode(b)`
+ - for tensogram.RawMessage: `cast(RawMessage, v)._raw`, `RawMessage(b)`
+
+---
+
 ## Phase 1: Stable API, existing data path
 
 The goal of this phase is a fully functional end-to-end streaming implementation that an
