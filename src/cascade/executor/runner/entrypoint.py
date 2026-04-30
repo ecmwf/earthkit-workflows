@@ -184,7 +184,7 @@ def execute_sequence(
         return False
 
 
-def entrypoint(runnerContextClpkl: bytes):
+def entrypoint(runnerContextClpkl: bytes) -> None:
     """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
     runnerContext = cloudpickle.loads(runnerContextClpkl)
     init_from_obj(runnerContext.loggingConfig, f"worker_{runnerContext.workerId.worker}")
@@ -250,3 +250,13 @@ def entrypoint(runnerContextClpkl: bytes):
                     isTerminating = not execute_sequence(mDes, memory, pckg, runnerContext)
             else:
                 raise CascadeInternalError(f"unexpected message received: {type(mDes)}")
+
+
+if __name__ == "__main__":
+    import base64
+
+    from cascade.executor.runner.setup import CONTEXT_ENVVAR
+
+    _encoded = os.environ[CONTEXT_ENVVAR]
+    _runnerContextClpkl = base64.b64decode(_encoded)
+    entrypoint(_runnerContextClpkl)

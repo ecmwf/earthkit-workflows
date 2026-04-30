@@ -16,16 +16,19 @@ the tasks themselves.
 # have their own zmq server as well as run the callables themselves
 
 import atexit
+import base64
 import logging
 import os
+import subprocess
+import tempfile
 import uuid
 from dataclasses import dataclass
-from multiprocessing.process import BaseProcess
 from typing import Iterable
 
 import cloudpickle
 
 import cascade.executor.platform as platform
+import cascade.executor.runner.setup as runner_setup
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 from cascade.deployment.logging import LoggingConfig, as_dict_config
@@ -56,7 +59,7 @@ from cascade.executor.msg import (
     WorkerReady,
     WorkerShutdown,
 )
-from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
+from cascade.executor.runner.entrypoint import RunnerContext, worker_address
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import TaskLifecycle, mark
@@ -76,8 +79,9 @@ def address_of(port: int) -> BackboneAddress:
 
 @dataclass
 class WorkerHandle:
-    process: BaseProcess
+    process: subprocess.Popen[bytes]
     attempt_cnt: int
+    venv_dir: tempfile.TemporaryDirectory[str]
 
 
 class Executor:
@@ -100,7 +104,7 @@ class Executor:
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
         self.worker_awaits: dict[WorkerId, None | TaskSequence] = {}
         self.loggingConfig = loggingConfig
-        self.old_processes: list[BaseProcess] = []
+        self.old_workers: list[tuple[subprocess.Popen[bytes], tempfile.TemporaryDirectory[str]]] = []
 
         self.datasets: set[DatasetId] = set()
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
@@ -171,15 +175,20 @@ class Executor:
             try:
                 if (handle := self.workers[worker]) is not None:
                     callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
-                    handle.process.join()
+                    handle.process.wait()
+                    try:
+                        handle.venv_dir.cleanup()
+                    except Exception as e:
+                        logger.warning(f"failed to cleanup venv for {worker}: {repr(e)}")
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {worker}")
-        for proc in self.old_processes:
+        for proc, venv in self.old_workers:
             logger.debug(f"cleanup old process {proc.pid}")
             try:
-                proc.join()
+                proc.wait()
+                venv.cleanup()
             except Exception as e:
-                logger.warning(f"gotten {repr(e)} when shutting down {proc.pid}")
+                logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
         if hasattr(self, "shm_process") and self.shm_process is not None and self.shm_process.is_alive():
             try:
                 shm_client.shutdown()
@@ -194,7 +203,6 @@ class Executor:
         self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
-        ctx = platform.get_mp_ctx("worker")
         runnerContext = RunnerContext(
             workerId=worker,
             workerAttemptCnt=attempt_cnt,
@@ -205,15 +213,18 @@ class Executor:
             schema_lookup=self.schema_lookup,
         )
         # NOTE we need to cloudpickle because runnerContext contains some lambdas
-        p = ctx.Process(
-            target=entrypoint,
-            kwargs={"runnerContextClpkl": cloudpickle.dumps(runnerContext)},
+        runnerContextClpkl = cloudpickle.dumps(runnerContext)
+        encoded = base64.b64encode(runnerContextClpkl).decode()
+        venv_td = runner_setup.create_venv()
+        p = runner_setup.launch_in_venv(
+            "cascade.executor.runner.entrypoint",
+            venv_td.name,
+            {runner_setup.CONTEXT_ENVVAR: encoded},
         )
-        p.start()
         if worker in self.worker_awaits:
             raise CascadeInternalError(f"{worker=} was already awaiting")
         self.worker_awaits[worker] = seq
-        return WorkerHandle(process=p, attempt_cnt=attempt_cnt)
+        return WorkerHandle(process=p, attempt_cnt=attempt_cnt, venv_dir=venv_td)
 
     def start_workers(self, workers: Iterable[WorkerId]) -> None:
         # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
@@ -254,9 +265,9 @@ class Executor:
             if e is None:
                 # this should not really be happening -> InternalError
                 raise CascadeInternalError(f"process on {k} is not alive")
-            elif procFail(e.process.exitcode):
+            elif procFail(e.process.poll()):
                 # we assume low memory setting or callable issue -> UserError
-                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
+                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.poll()}")
         if procFail(self.shm_process.exitcode):
             # possibly low memory setting but this is system config -> InfrastructureError
             raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
@@ -270,10 +281,14 @@ class Executor:
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
-        if self.old_processes and not self.old_processes[0].is_alive():
+        if self.old_workers and self.old_workers[0][0].poll() is not None:
             # we check just the first one for simplicity
-            self.old_processes[0].join()
-            self.old_processes.pop(0)
+            proc, venv = self.old_workers.pop(0)
+            proc.wait()
+            try:
+                venv.cleanup()
+            except Exception as e:
+                logger.warning(f"failed to cleanup old worker venv: {repr(e)}")
 
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
@@ -292,7 +307,7 @@ class Executor:
                                 }
                             )
                         handle = self.workers[m.worker]
-                        if handle is None or handle.process.exitcode is not None:
+                        if handle is None or handle.process.poll() is not None:
                             # unexpected exit -> InfrastructureError
                             raise CascadeInfrastructureError(f"worker process {m.worker} is not alive")
                         if m.worker in self.worker_awaits:
@@ -342,7 +357,7 @@ class Executor:
                         if handle is None:
                             raise CascadeInternalError("unexpected restart from worker without handle")
                         callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
-                        self.old_processes.append(handle.process)
+                        self.old_workers.append((handle.process, handle.venv_dir))
                         logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt + 1}")
                         self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt + 1, m.remainder)
                         self.to_controller(m)
