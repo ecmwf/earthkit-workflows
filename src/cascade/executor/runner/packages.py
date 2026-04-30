@@ -207,7 +207,7 @@ def _maybe_module_dist(module_name: str) -> tuple[str, Version] | None:
 
 def _maybe_imported_version(mod_name: str) -> Version | None:
     # TODO presumably cacheable, unless None
-    if mod_name in ("eccodes", "gribapi"):
+    if mod_name in ("eccodes", "gribapi", "mir-python"):
         # the eccodes/gribapi __version__ is wrong, reporting that of eccodeslib
         # => we must go to the importlib. This *invalidates* the post install
         # check -- TODO after eccodes wheel fixed, remove this
