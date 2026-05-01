@@ -16,5 +16,6 @@ def test_dask():
         JobInstanceRich(jobInstance=cascade_job, checkpointSpec=None),
         workers=2,
         hosts=1,
+        portBase=32345,
     )
     assert outputs == {DatasetId(TaskId("'z'"), DefaultTaskOutput): 3}
