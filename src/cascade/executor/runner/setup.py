@@ -27,6 +27,10 @@ from cascade.executor.runner.packages import check_run_result, run_command
 logger = logging.getLogger(__name__)
 
 CONTEXT_ENVVAR = "CASCADE_RUNNER_CONTEXT"
+# NOTE on some systems, default /tmp can be mounted with noexec, leading to issues at runtime
+# like 'failed to map segment from shared object' for binary dependencies like zmq
+# Thus override this envvar to some exec-mounted filesystem
+venv_root = os.environ.get("CASCADE_VENV_ROOT", None)
 
 _python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
@@ -55,8 +59,8 @@ def _earthkit_install_spec() -> str:
 
 def create_venv() -> tempfile.TemporaryDirectory:  # type: ignore[type-arg]
     """Creates a new temporary venv with earthkit-workflows installed at the same version as the parent process."""
-    logger.debug("creating a new worker venv")
-    td: tempfile.TemporaryDirectory = tempfile.TemporaryDirectory(prefix="cascade_worker_venv_")  # type: ignore[type-arg]
+    td = tempfile.TemporaryDirectory(prefix="cascade_worker_venv_", dir=venv_root)
+    logger.debug(f"creating a new worker venv at {td}")
     run_command(["uv", "venv", "--python", _python_version, td.name], check_run_result)
     python = _venv_python(td.name)
     install_spec = _earthkit_install_spec()
@@ -92,7 +96,7 @@ def launch_in_venv(module: str, venv_dir: str, envvars: dict[str, str]) -> "subp
     return subprocess.Popen([python, "-m", module], env=env)
 
 
-def terminate_worker(process: "subprocess.Popen[bytes]", venv_dir: "tempfile.TemporaryDirectory[str]") -> None:
+def terminate_worker(process: subprocess.Popen[bytes], venv_dir: tempfile.TemporaryDirectory[str]) -> None:
     """Terminates the worker process and cleans up its venv directory."""
     if process.poll() is None:
         process.terminate()

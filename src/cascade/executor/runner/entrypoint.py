@@ -39,7 +39,7 @@ from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import label
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__ if __name__ != "__main__" else "cascade.executor.runner.entrypoint")
 
 
 @dataclass(frozen=True, slots=True)
