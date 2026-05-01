@@ -175,8 +175,9 @@ def test_executor():
         while expected:
             ms = l.recv_messages()
             for m in ms:
-                logger.debug(f"about to remove received message {m}")
-                expected.remove(m)
+                if not isinstance(m, ExecutorRegistration):  # there may be extra due to retries
+                    logger.debug(f"about to remove received message {m}")
+                    expected.remove(m)
         callback(m1, TaskSequence(worker=w0, tasks=[TaskId("sink")], publish={sink_o}, extra_env=[]))
         expected = [
             DatasetPublished(w0, ds=sink_o, transmit_idx=None),

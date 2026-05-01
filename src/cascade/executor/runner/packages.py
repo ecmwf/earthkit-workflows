@@ -19,10 +19,8 @@ import importlib.metadata
 import logging
 import os
 import re
-import site
 import subprocess
 import sys
-import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Callable, Iterator, Literal, cast
@@ -41,12 +39,10 @@ _python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.versi
 
 class Commands:
     venv_command = lambda name: ["uv", "venv", "--python", _python_version, name]
-    install_command = lambda name: [
+    install_command = [
         "uv",
         "pip",
         "install",
-        "--prefix",
-        name,
         "--prerelease",
         "explicit",
     ]
@@ -124,27 +120,6 @@ def check_install_result(result: subprocess.CompletedProcess, was_clean: bool) -
         else:
             # no idea -> InternalError
             raise CascadeInternalError(msg)
-
-
-def new_venv() -> tempfile.TemporaryDirectory:
-    """1. Creates a new temporary directory with a venv inside.
-    2. Extends sys.path so that packages in that venv can be imported.
-    """
-    logger.debug("creating a new venv")
-    td = tempfile.TemporaryDirectory(prefix="cascade_runner_venv_")
-    # NOTE we create a venv instead of just plain directory, because some of the packages create files
-    # outside of site-packages. Thus we then install with --prefix, not with --target
-    run_command(Commands.venv_command(td.name), check_run_result)
-
-    # NOTE not sure if getsitepackages was intended for this -- if issues, attempt replacing
-    # with something like f"{td.name}/lib/python*/site-packages" + globbing
-    extra_sp = site.getsitepackages(prefixes=[td.name])
-    # NOTE this makes the explicit packages go first, in case of a different version
-    logger.debug(f"extending sys.path with {extra_sp}")
-    sys.path = extra_sp + sys.path
-    logger.debug(f"new sys.path: {sys.path}")
-
-    return td
 
 
 def _parse_pip_install(pip_output: str) -> dict[str, Version]:
@@ -331,19 +306,16 @@ def _prefer_installed(packages: list[str]) -> Iterator[str]:
 
 class PackagesEnv(AbstractContextManager):
     def __init__(self) -> None:
-        self.td: tempfile.TemporaryDirectory | None = None
         self.clean = True
 
     def extend(self, packages: list[str]) -> None:
         if not packages:
             return
-        if self.td is None:
-            self.td = new_venv()
         packages = list(_prefer_installed(packages))
 
         logger.debug(f"installing {len(packages)} packages")
         logger.debug(f"installing packages: {','.join(packages)}")
-        install_command = Commands.install_command(self.td.name)
+        install_command = list(Commands.install_command)
         if os.environ.get("VENV_OFFLINE", "") == "YES":
             install_command += ["--offline"]
         if cache_dir := os.environ.get("VENV_CACHE", ""):
@@ -365,7 +337,4 @@ class PackagesEnv(AbstractContextManager):
         self.clean = False
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
-        sys.path = [p for p in sys.path if self.td is None or not p.startswith(self.td.name)]
-        if self.td is not None:
-            self.td.cleanup()
         return False
