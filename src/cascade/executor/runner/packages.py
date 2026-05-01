@@ -23,7 +23,7 @@ import subprocess
 import sys
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Callable, Iterator, Literal, cast
+from typing import Callable, Literal, cast
 
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -46,7 +46,6 @@ class Commands:
         "--prerelease",
         "explicit",
     ]
-    freeze_command = ["uv", "pip", "freeze"]
 
 
 @dataclass
@@ -144,7 +143,6 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
 
 def _get_dist_modules(dist_name: str) -> list[str]:
     """From package name like 'earthkit-workflows' get the top level importible like 'earthkit', 'cascade'"""
-    # TODO presumably cacheable
     try:
         handle = importlib.metadata.distribution(dist_name)
         top_level = handle.read_text("top_level.txt")
@@ -160,28 +158,7 @@ def _get_dist_modules(dist_name: str) -> list[str]:
         return []
 
 
-def _maybe_module_dist(module_name: str) -> tuple[str, Version] | None:
-    """From a module name like 'cascade' get the pip installable like 'earthkit-workflows' and version"""
-    # TODO presumably cacheable, unless None
-    # NOTE we dont rely on __version__, eg:
-    # - for torch it adds the +cu310
-    # - for mir it drops the fourth version
-    # and neither leads to an installable wheel.
-    # NOTE that because of the 4-number version of ecmwf libs, we dont use the base_version here
-    lookup = importlib.metadata.packages_distributions()
-    maybe = lookup.get(module_name, [])
-    if len(maybe) >= 1:
-        distName = maybe[0]
-        try:
-            return distName, Version(importlib.metadata.version(distName))
-        except importlib.metadata.PackageNotFoundError:
-            return None
-    else:
-        return None
-
-
 def _maybe_imported_version(mod_name: str) -> Version | None:
-    # TODO presumably cacheable, unless None
     if mod_name in ("eccodes", "gribapi"):
         # the eccodes/gribapi __version__ is wrong, reporting that of eccodeslib
         # => we must go to the importlib. This *invalidates* the post install
@@ -196,122 +173,220 @@ def _maybe_imported_version(mod_name: str) -> Version | None:
                 logger.debug(f"failed to parse module {mod_name} version {mod.__version__} due to {repr(e)}-- ignoring!")
         else:
             logging.debug(f"Module '{mod_name}' is loaded, but has no __version__ attribute -- ignoring")
+    return None
 
 
-def _postinstall_verify(pip_output) -> list[PostverifyIssue]:
-    installed_packages = _parse_pip_install(pip_output)
-    rv = []
-
-    for dist_name, desired_version in installed_packages.items():
-        modules = _get_dist_modules(dist_name)
-        versions = [(m, _maybe_imported_version(m)) for m in modules]
-        # NOTE eg torch is a bit of an issue here:
-        # pip reports + torch==2.7.1, but torch module version declares 2.7.1+cu126
-        # we have no real means of deciding whether this is correct or not -- but we make the assumption
-        # that checkpoints et cetera won't ever depend on this particular build discriminator => .base_version
-        # For ecmwf libs, this hides the 4th version which is the build counter -- but that is presumably
-        # legitimate as well, as it means the api of the underlying library being the same
-        mod_issues = [(m, v) for m, v in versions if v and v.base_version != desired_version.base_version]
-        if mod_issues:
-            rv.append(PostverifyIssue(dist_name=dist_name, desired_version=desired_version, mod_issues=mod_issues))
-
-    return rv
+def _is_ignorable_module(top_level: str) -> bool:
+    # stdlib modules and private/internal modules (eg __main__, _distutils_hack)
+    return top_level in sys.stdlib_module_names or top_level.startswith("_")
 
 
-def _prefer_installed(packages: list[str]) -> Iterator[str]:
-    """If a package is desired to be installed but is not exactly pinned,
-    we will inspect pip freeze to see if it is already installed, and inject
-    the pin otherwise. This is default `uv` behaviour, but remember we
-    override --prefix, thus uv has no way of knowing. We thus have to explicate.
-
-    Furthermore, we will extend the list with already-imported packages. This
-    moves some PostInstall verify issues into the Install phase, and importantly,
-    for fresh workers and unavoidable dependencies (like orjson or pydantic),
-    forces a pin to prevent unbound resolution infinite loops.
-    """
-    # NOTE the pip-freeze thing doesnt work for transitive dependencies. We may
-    # decide to drop the whole --prefix business, and completely switch
-    # over to the new venv even before doing any install
-
-    installed_raw = run_command(Commands.freeze_command, check_run_result).stdout
-
-    def maybe_tuple(kv: str) -> None | tuple[str, str]:
-        if kv.startswith("-e"):
-            return kv.rsplit("/", 1)[1], "--editable"
-        elif "@ git" in kv:
-            return kv.split("@", 1)[0], "--git"
-        elif "==" in kv:
-            return cast(tuple[str, str], kv.split("==", 1))
-        else:
-            logger.warning(f"unable to discern package install {kv}")
-            return None
-
-    _installed = (maybe_tuple(kv) for kv in installed_raw.splitlines() if kv)
-    installed = dict(tup_or_none for tup_or_none in _installed if tup_or_none)
-    for package_spec in packages:
-        try:
-            parts = re.split(r"([<>=!~].*)", package_spec)
-            package = parts[0]
-            if package not in installed:
-                yield package_spec
-            elif len(parts) == 1:
-                if installed[package] == "--editable" or installed[package] == "--git":
-                    continue
-                yield f"{package}=={installed[package]}"
-            else:
-                specifier = SpecifierSet(parts[1].strip())
-                # NOTE in case of mismatch we just warn because we dont know if the module was imported already
-                # NOTE we dont check for import because we need to after install *anyway*
-                # NOTE for editable + explicit constraint, we leave it to uv -- imo unclear
-                if installed[package] == "--editable" or installed[package] == "--git":
-                    logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
-                    yield package_spec
-                elif Version(installed[package]) in specifier:
-                    yield f"{package}=={installed[package]}"
-                else:
-                    logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
-                    yield package_spec
-        except Exception as e:
-            logger.warning(f"failed to discern preference for package {package} -- continuing")
-            yield package
-
-    def _is_ignorable_module(top_level: str):
-        is_stdlib = top_level in sys.stdlib_module_names
-        is_local = top_level.startswith("_")  # for __main__, __editable, _distutils_hack, etc
-        return is_stdlib or is_local
-
-    def _is_ignorable_dist(distName: str, distVersion: Version) -> bool:
-        # editable/local installs such as that of cascade itself should not be put to
-        # the pip command as that wont be resolvable! We need to rely on caching here
-        if distVersion.dev or distVersion.local:
+def _is_ignorable_dist(dist_name: str, dist_version: Version) -> bool:
+    # editable/local installs such as that of cascade itself should not be put to
+    # the pip command as that wont be resolvable! We need to rely on caching here
+    if dist_version.dev is not None or dist_version.local is not None:
+        return True
+    if dist_version == Version("0.0.0"):
+        return True
+    try:
+        origin = importlib.metadata.distribution(dist_name)
+        if hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
             return True
-        if distVersion == Version("0.0.0"):
-            return True
-        origin = importlib.metadata.distribution(distName)
-        if origin is not None and hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
-            return True
-        return False
-
-    imported = set(name.split(".")[0] for name in sys.modules)
-    for name in imported:
-        if not _is_ignorable_module(name):
-            maybe_dist_version = _maybe_module_dist(name)
-            if maybe_dist_version is None:
-                logger.debug(f"failed to provide install pin for imported: {name=}, {maybe_dist_version=}")
-            else:
-                dist, version = maybe_dist_version
-                if not _is_ignorable_dist(dist, version):
-                    yield f"{dist}=={version}"
+    except Exception:
+        pass
+    return False
 
 
 class PackagesEnv(AbstractContextManager):
+    """Context manager responsible for runtime pip installs.
+
+    Tracks what we install and caches the module->dist_name mapping for imported
+    modules. This avoids repeated expensive packages_distributions() scans and
+    eliminates the need for a `pip freeze` call on every extend().
+
+    We only protect already-imported modules from version changes: those are the
+    only modules that cannot be safely re-loaded in a running process. Non-imported
+    packages can be freely changed by pip.
+    """
+
     def __init__(self) -> None:
         self.clean = True
+        # dist_name -> version, accumulated from parsed pip output of each extend() call
+        self._installed: dict[str, Version] = {}
+        # module_name -> dist_name (or None if no dist found), permanently cached per module.
+        # None entries are cleared after each install in case a new dist now provides them.
+        self._dist_name_cache: dict[str, str | None] = {}
+
+    def _populate_dist_cache(self, mod_names: set[str]) -> None:
+        """Batch-populate the dist_name cache for a set of module names.
+
+        Calls packages_distributions() once for all uncached modules, avoiding
+        repeated expensive metadata scans.
+        """
+        new_mods = {m for m in mod_names if m not in self._dist_name_cache and not _is_ignorable_module(m)}
+        if not new_mods:
+            return
+        pkg_dist = importlib.metadata.packages_distributions()
+        for mod in new_mods:
+            maybe = pkg_dist.get(mod, [])
+            self._dist_name_cache[mod] = maybe[0] if maybe else None
+
+    def _import_pins(self) -> dict[str, Version]:
+        """Return {dist_name: version} for all currently imported top-level modules.
+
+        Version is fetched fresh from importlib.metadata (not from __version__),
+        which gives the installed dist version rather than the potentially-decorated
+        __version__ (eg torch adds +cu126, ecmwf libs add a 4th build counter).
+        """
+        imported = set(name.split(".")[0] for name in sys.modules)
+        self._populate_dist_cache(imported)
+
+        pins: dict[str, Version] = {}
+        for name in imported:
+            if _is_ignorable_module(name):
+                continue
+            dist_name = self._dist_name_cache.get(name)
+            if dist_name is None:
+                logger.debug(f"failed to provide install pin for imported: {name!r}")
+                continue
+            try:
+                version = Version(importlib.metadata.version(dist_name))
+            except importlib.metadata.PackageNotFoundError:
+                continue
+            if not _is_ignorable_dist(dist_name, version):
+                pins[dist_name] = version
+        return pins
+
+    def _prefer_installed(self, packages: list[str]) -> list[str]:
+        """Pin user-requested packages to their currently-imported version where
+        compatible, and append pins for all other imported distributions.
+
+        This replaces the old `uv pip freeze` approach. We only protect imported
+        modules because those are the only ones that cannot be safely changed in a
+        running process.
+        """
+        import_pins = self._import_pins()
+        result: list[str] = []
+
+        for package_spec in packages:
+            try:
+                parts = re.split(r"([<>=!~].*)", package_spec)
+                package = parts[0]
+                if package in import_pins:
+                    pin_version = import_pins[package]
+                    if len(parts) == 1:
+                        # bare name with no constraint -> pin to imported version
+                        result.append(f"{package}=={pin_version}")
+                    else:
+                        specifier = SpecifierSet(parts[1].strip())
+                        if pin_version in specifier:
+                            # constraint is compatible -> pin to imported version
+                            result.append(f"{package}=={pin_version}")
+                        else:
+                            # constraint conflicts with imported version -> pass through and let
+                            # _check_conflicts or post-install verify catch it
+                            logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
+                            result.append(package_spec)
+                else:
+                    result.append(package_spec)
+            except Exception:
+                logger.warning(f"failed to discern preference for package {package_spec} -- continuing")
+                result.append(package_spec)
+
+        # Append pins for all imported distributions not already covered above.
+        # This prevents pip from silently downgrading or upgrading loaded modules
+        # when resolving transitive dependencies.
+        for dist, version in import_pins.items():
+            result.append(f"{dist}=={version}")
+
+        return result
+
+    def _check_conflicts(self, packages: list[str]) -> list[ResolutionIssue]:
+        """Pre-pip conflict detection.
+
+        Groups package specs by name and checks whether any exact == pin is
+        incompatible with another spec for the same package. Emits at most one
+        ResolutionIssue per conflicting package name.
+        """
+        specs: dict[str, list[SpecifierSet]] = {}
+        for pkg in packages:
+            try:
+                parts = re.split(r"([<>=!~].*)", pkg)
+                name = parts[0]
+                spec = SpecifierSet(parts[1].strip()) if len(parts) > 1 else SpecifierSet("")
+                specs.setdefault(name, []).append(spec)
+            except Exception:
+                continue
+
+        issues: list[ResolutionIssue] = []
+        for name, specsets in specs.items():
+            if len(specsets) <= 1:
+                continue
+            conflict: str | None = None
+            for i, si in enumerate(specsets):
+                for spec_item in si:
+                    if spec_item.operator == "==":
+                        try:
+                            pin_ver = Version(spec_item.version)
+                            for j, sj in enumerate(specsets):
+                                if j != i and str(sj) and pin_ver not in sj:
+                                    conflict = f"{name} pinned to {pin_ver} but {sj} also required"
+                                    break
+                        except Exception:
+                            pass
+                    if conflict:
+                        break
+                if conflict:
+                    break
+            if conflict:
+                issues.append(ResolutionIssue(conflict))
+
+        return issues
+
+    def _postinstall_verify(self, pip_output: str) -> list[PostverifyIssue]:
+        """Check that no already-imported module has a version mismatch with what pip just installed.
+
+        Uses the dist_name cache (populated by _prefer_installed -> _import_pins) to
+        map module names to distributions without an extra _get_dist_modules() call.
+
+        We compare base_version (stripping local/build parts like +cu126) because pip
+        reports the base wheel version while __version__ may include build discriminators.
+        """
+        installed_packages = _parse_pip_install(pip_output)
+        if not installed_packages:
+            return []
+
+        imported = set(name.split(".")[0] for name in sys.modules)
+        self._populate_dist_cache(imported)
+
+        dist_to_issues: dict[str, list[tuple[str, Version]]] = {}
+        for mod_name in imported:
+            if _is_ignorable_module(mod_name):
+                continue
+            dist_name = self._dist_name_cache.get(mod_name)
+            if dist_name is None or dist_name not in installed_packages:
+                continue
+            desired_version = installed_packages[dist_name]
+            mod_ver = _maybe_imported_version(mod_name)
+            if mod_ver is None:
+                continue
+            if mod_ver.base_version != desired_version.base_version:
+                dist_to_issues.setdefault(dist_name, []).append((mod_name, mod_ver))
+
+        return [
+            PostverifyIssue(dist_name=dist_name, desired_version=installed_packages[dist_name], mod_issues=mod_issues)
+            for dist_name, mod_issues in dist_to_issues.items()
+        ]
 
     def extend(self, packages: list[str]) -> None:
         if not packages:
             return
-        packages = list(_prefer_installed(packages))
+
+        packages = list(self._prefer_installed(packages))
+
+        conflicts = self._check_conflicts(packages)
+        if conflicts:
+            raise PkgInstallException(cast(list[PostverifyIssue | ResolutionIssue], conflicts), self.clean)
 
         logger.debug(f"installing {len(packages)} packages")
         logger.debug(f"installing packages: {','.join(packages)}")
@@ -325,10 +400,17 @@ class PackagesEnv(AbstractContextManager):
         install_output = run_command(install_command, lambda r: check_install_result(r, self.clean)).stderr
         logger.debug(f"install result: {install_output}")
 
-        install_issues = _postinstall_verify(install_output)
+        newly_installed = _parse_pip_install(install_output)
+        self._installed.update(newly_installed)
+
+        # Clear None cache entries for modules that might now be provided by newly
+        # installed packages. Non-None entries are permanent (dist names don't change).
+        if newly_installed:
+            self._dist_name_cache = {k: v for k, v in self._dist_name_cache.items() if v is not None}
+
+        install_issues = self._postinstall_verify(install_output)
         if install_issues:
-            install_issues = cast(list[PostverifyIssue | ResolutionIssue], install_issues)
-            raise PkgInstallException(install_issues, self.clean)
+            raise PkgInstallException(cast(list[PostverifyIssue | ResolutionIssue], install_issues), self.clean)
 
         # NOTE do *not* invalidate caches before postinstall verify, that could
         # hide some issues. But afterwards this is important to actually allow
