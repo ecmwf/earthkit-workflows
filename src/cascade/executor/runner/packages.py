@@ -31,7 +31,7 @@ import subprocess
 import sys
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Callable, Literal, cast
+from typing import Callable, Iterable, Literal, cast
 
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -250,12 +250,17 @@ class PackagesEnv(AbstractContextManager):
         # modules without a dist are typically oddities and gaining a dist post-install
         # is not a realistic scenario we need to handle.
         self._dist_name_cache: dict[str, str | None] = {}
+        # Pre-populate cache for the initially installed packages so that packages_distributions()
+        # is not needed for those modules when they are later imported.
+        self._cache_dist_modules(self._installed)
 
     def _populate_dist_cache(self, mod_names: set[str]) -> None:
         """Batch-populate the dist_name cache for a set of module names.
 
-        Calls packages_distributions() once for all uncached modules, avoiding
-        repeated expensive metadata scans.
+        Falls back to packages_distributions() for modules not already cached by
+        _cache_dist_modules(). packages_distributions() rescans all installed package
+        metadata (~130ms on a typical venv) so we only call it when there are truly
+        uncached modules that need lookup.
         """
         new_mods = {m for m in mod_names if m not in self._dist_name_cache and not _is_ignorable_module(m)}
         if not new_mods:
@@ -264,6 +269,32 @@ class PackagesEnv(AbstractContextManager):
         for mod in new_mods:
             maybe = pkg_dist.get(mod, [])
             self._dist_name_cache[mod] = maybe[0] if maybe else None
+
+    def _cache_dist_modules(self, dist_names: Iterable[str]) -> None:
+        """Pre-populate the dist_name cache from the dist->modules direction.
+
+        Cheaper than packages_distributions() when only a few dists are known:
+        each individual dist lookup takes ~0.5ms vs ~130ms for a full scan.
+        Called after each install for the newly installed dists, and at __init__
+        for the initially installed packages. This way, when those modules are later
+        imported and _populate_dist_cache() is called, they are already cached and
+        packages_distributions() is not invoked for them.
+        """
+        for dist_name in dist_names:
+            try:
+                handle = importlib.metadata.distribution(dist_name)
+                top_level = handle.read_text("top_level.txt")
+                if top_level:
+                    modules = top_level.split()
+                elif handle.files:
+                    modules = list({path.parts[0] for path in handle.files if path.suffix == ".py"})
+                else:
+                    modules = []
+                for mod in modules:
+                    if not _is_ignorable_module(mod):
+                        self._dist_name_cache[mod] = dist_name
+            except Exception:
+                pass
 
     def _import_pins(self) -> dict[str, Version]:
         """Return {dist_name: version} for all currently imported top-level modules.
@@ -437,6 +468,7 @@ class PackagesEnv(AbstractContextManager):
 
         newly_installed = _parse_pip_install(install_output)
         self._installed.update(newly_installed)
+        self._cache_dist_modules(newly_installed)
 
         install_issues = self._postinstall_verify(install_output)
         if install_issues:
