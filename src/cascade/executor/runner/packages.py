@@ -6,16 +6,24 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Extending venv with packages required by the executed job
+"""Runtime package management for worker processes.
 
-Note that venv itself is left untouched after the run finishes -- we extend sys path
-with a temporary directory and install in there
+Each worker runs in its own dedicated venv, created initially with earthkit-workflows
+installed. PackagesEnv manages additional runtime pip installs into that venv as
+requested by executed jobs.
 
-When extending, we check that none of the actually installed packages was not imported
-already with a different version
+The central challenge is that if a module is already imported in the process, a pip
+install of a different version of that same module cannot take effect (the old version
+stays loaded). PackagesEnv handles this in two ways:
+
+1. Prevention: before calling pip, it pins already-imported modules to their current
+   versions, and checks for spec conflicts up-front.
+2. Detection: after pip completes, it verifies that no imported module ended up at a
+   mismatched version.
 """
 
 import importlib.metadata
+import json
 import logging
 import os
 import re
@@ -141,23 +149,6 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
     return rv
 
 
-def _get_dist_modules(dist_name: str) -> list[str]:
-    """From package name like 'earthkit-workflows' get the top level importible like 'earthkit', 'cascade'"""
-    try:
-        handle = importlib.metadata.distribution(dist_name)
-        top_level = handle.read_text("top_level.txt")
-        if top_level:
-            return top_level.split()
-        elif handle.files:
-            return list({path.parts[0] for path in handle.files if path.suffix == ".py"})
-        else:
-            logger.warning(f"neither files nor top level for {dist_name} -- ignoring")
-            return []
-    except Exception as e:
-        logging.warning(f"Could not find metadata for installed package: {dist_name} due to {repr(e)} -- ignoring")
-        return []
-
-
 def _maybe_imported_version(mod_name: str) -> Version | None:
     if mod_name in ("eccodes", "gribapi"):
         # the eccodes/gribapi __version__ is wrong, reporting that of eccodeslib
@@ -174,6 +165,37 @@ def _maybe_imported_version(mod_name: str) -> Version | None:
         else:
             logging.debug(f"Module '{mod_name}' is loaded, but has no __version__ attribute -- ignoring")
     return None
+
+
+def _earthkit_install_spec() -> str:
+    """Returns the install spec for earthkit-workflows suitable for uv pip install.
+
+    For editable/source installs (dev mode), uses the local source path directly.
+    Otherwise, pins to the currently installed version.
+    """
+    ek_version = importlib.metadata.version("earthkit-workflows")
+    try:
+        dist = importlib.metadata.distribution("earthkit-workflows")
+        direct_url_text = dist.read_text("direct_url.json")
+        if direct_url_text:
+            info = json.loads(direct_url_text)
+            url = info.get("url", "")
+            if url.startswith("file://") and info.get("dir_info", {}).get("editable", False):
+                path = url[len("file://") :]
+                logger.debug(f"earthkit-workflows is an editable install at {path}")
+                return path
+    except Exception as e:
+        logger.debug(f"could not read direct_url.json for earthkit-workflows: {repr(e)}")
+    return f"earthkit-workflows=={ek_version}"
+
+
+def initial_venv_packages() -> list[str]:
+    """Returns the list of packages to install into a fresh worker venv.
+
+    Used by setup.py to create the initial venv, and by PackagesEnv to
+    pre-populate its installed-packages state.
+    """
+    return [_earthkit_install_spec()]
 
 
 def _is_ignorable_module(top_level: str) -> bool:
@@ -200,9 +222,10 @@ def _is_ignorable_dist(dist_name: str, dist_version: Version) -> bool:
 class PackagesEnv(AbstractContextManager):
     """Context manager responsible for runtime pip installs.
 
-    Tracks what we install and caches the module->dist_name mapping for imported
-    modules. This avoids repeated expensive packages_distributions() scans and
-    eliminates the need for a `pip freeze` call on every extend().
+    Tracks installed packages and caches the module->dist_name mapping for imported
+    modules. importlib.metadata.packages_distributions() is not cached by Python
+    itself (it rescans all package metadata on every call), so we maintain our own
+    permanent per-module cache to avoid repeated scans.
 
     We only protect already-imported modules from version changes: those are the
     only modules that cannot be safely re-loaded in a running process. Non-imported
@@ -211,10 +234,21 @@ class PackagesEnv(AbstractContextManager):
 
     def __init__(self) -> None:
         self.clean = True
-        # dist_name -> version, accumulated from parsed pip output of each extend() call
+        # dist_name -> version, tracks what has been installed into this venv
+        # (pre-populated with the initial earthkit-workflows install from venv creation)
         self._installed: dict[str, Version] = {}
-        # module_name -> dist_name (or None if no dist found), permanently cached per module.
-        # None entries are cleared after each install in case a new dist now provides them.
+        for spec in initial_venv_packages():
+            # parse "name==version" style specs; skip paths (editable installs have no "==")
+            if "==" in spec:
+                name, _, ver_str = spec.partition("==")
+                try:
+                    self._installed[name.strip()] = Version(ver_str.strip())
+                except Exception:
+                    pass
+        # module_name -> dist_name (or None if no dist found).
+        # Populated lazily via _populate_dist_cache(). None entries are kept permanently:
+        # modules without a dist are typically oddities and gaining a dist post-install
+        # is not a realistic scenario we need to handle.
         self._dist_name_cache: dict[str, str | None] = {}
 
     def _populate_dist_cache(self, mod_names: set[str]) -> None:
@@ -234,9 +268,11 @@ class PackagesEnv(AbstractContextManager):
     def _import_pins(self) -> dict[str, Version]:
         """Return {dist_name: version} for all currently imported top-level modules.
 
-        Version is fetched fresh from importlib.metadata (not from __version__),
-        which gives the installed dist version rather than the potentially-decorated
-        __version__ (eg torch adds +cu126, ecmwf libs add a 4th build counter).
+        Version is fetched from importlib.metadata rather than module.__version__,
+        because importlib.metadata gives the pip-installable dist version:
+        - for torch, __version__ adds a local +cu126 tag that is not in the wheel name
+        - for ecmwf libs, __version__ omits the 4th build counter that IS in the wheel name
+        Using importlib.metadata gives us the correct installable version in both cases.
         """
         imported = set(name.split(".")[0] for name in sys.modules)
         self._populate_dist_cache(imported)
@@ -261,9 +297,8 @@ class PackagesEnv(AbstractContextManager):
         """Pin user-requested packages to their currently-imported version where
         compatible, and append pins for all other imported distributions.
 
-        This replaces the old `uv pip freeze` approach. We only protect imported
-        modules because those are the only ones that cannot be safely changed in a
-        running process.
+        We only protect imported modules because those are the only ones that cannot
+        be safely changed in a running process.
         """
         import_pins = self._import_pins()
         result: list[str] = []
@@ -346,8 +381,8 @@ class PackagesEnv(AbstractContextManager):
     def _postinstall_verify(self, pip_output: str) -> list[PostverifyIssue]:
         """Check that no already-imported module has a version mismatch with what pip just installed.
 
-        Uses the dist_name cache (populated by _prefer_installed -> _import_pins) to
-        map module names to distributions without an extra _get_dist_modules() call.
+        Uses the dist_name cache to map module names to distributions, iterating
+        in the import->dist direction (rather than dist->modules) for efficiency.
 
         We compare base_version (stripping local/build parts like +cu126) because pip
         reports the base wheel version while __version__ may include build discriminators.
@@ -402,11 +437,6 @@ class PackagesEnv(AbstractContextManager):
 
         newly_installed = _parse_pip_install(install_output)
         self._installed.update(newly_installed)
-
-        # Clear None cache entries for modules that might now be provided by newly
-        # installed packages. Non-None entries are permanent (dist names don't change).
-        if newly_installed:
-            self._dist_name_cache = {k: v for k, v in self._dist_name_cache.items() if v is not None}
 
         install_issues = self._postinstall_verify(install_output)
         if install_issues:

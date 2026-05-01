@@ -7,7 +7,6 @@ from cascade.executor.runner.packages import (
     PackagesEnv,
     PostverifyIssue,
     ResolutionIssue,
-    _get_dist_modules,
     _is_ignorable_dist,
     _is_ignorable_module,
     _maybe_imported_version,
@@ -50,11 +49,6 @@ def test_parse_pip_install() -> None:
     expected = {}
     assert _parse_pip_install(actual) == expected, "failed to parse actual uv output"
     # TODO it would be nice to actually do some pip install here, but im reluctant to do that in a unit test. Some for test_postinstall_verify
-
-
-def test_get_dist_modules() -> None:
-    assert _get_dist_modules("numpy") == ["numpy"]
-    assert sorted(_get_dist_modules("earthkit-workflows")) == sorted(["cascade", "earthkit"])
 
 
 def test_maybe_imported_version() -> None:
