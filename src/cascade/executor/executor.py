@@ -377,6 +377,7 @@ class Executor:
                         for worker, handle in self.workers.items():
                             if handle is not None:
                                 callback(worker_address(worker, handle.attempt_cnt), availability_notification)
+                        self.datasets.add(m.ds)
                         self.to_controller(m)
                     elif isinstance(m, JustForwardToController):
                         self.to_controller(m)
