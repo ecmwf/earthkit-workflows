@@ -15,6 +15,7 @@ from logging.config import dictConfig
 from multiprocessing import Process
 
 import numpy as np
+import pytest
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
@@ -67,6 +68,7 @@ def launch_executor(job_instance: JobInstance, controller_address: BackboneAddre
     executor.recv_loop()
 
 
+@pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_executor():
     # job
     def test_func(x: np.ndarray) -> np.ndarray:

@@ -65,6 +65,7 @@ log_cli = true
 log_cli_level = "DEBUG"
 testpaths = ["tests/"]
 addopts = "-n8"
+markers = ["concurrency_filelock"]
 
 [tool.ruff]
 line-length = 140

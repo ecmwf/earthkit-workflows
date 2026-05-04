@@ -1,6 +1,8 @@
 import time
 from multiprocessing import Process
 
+import pytest
+
 import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.gateway.__main__ import main_cli
@@ -16,14 +18,14 @@ tries_limit = 32
 def get_job_succ() -> JobInstanceRich:
     sod = TaskDefinition(
         func=TaskDefinition.func_enc(lambda: init_value),
-        environment=[],
+        environment=["pytest"],
         input_schema={},
         output_schema=[("o", "int")],
     )
     soi = TaskInstance(definition=sod, static_input_kw={}, static_input_ps={})
     sid = TaskDefinition(
         func=TaskDefinition.func_enc(job_func),
-        environment=[],
+        environment=["pytest"],
         input_schema={},  # TODO add 0: int once supported
         output_schema=[("o", "int")],
     )
@@ -66,6 +68,7 @@ def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
     return url, p
 
 
+@pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
     url, gw = spawn_gateway(1)
     try:

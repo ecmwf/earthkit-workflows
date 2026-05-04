@@ -1,14 +1,14 @@
+import pytest
 from dask._task_spec import DataNode, Task, TaskRef
 
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich, TaskId
 from cascade.low.dask import graph2job
 from cascade.main import run_locally
 
-
-def add(x, y):
-    return x + y
+from ._runtime import add
 
 
+@pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_dask():
     dask_graph = {"x": (x := DataNode(None, 1)), "y": (y := DataNode(None, 2)), "z": Task("z", add, TaskRef("x"), TaskRef("y"))}
     cascade_job = graph2job(dask_graph)
