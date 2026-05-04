@@ -61,6 +61,7 @@ from cascade.executor.runner.entrypoint import worker_address
 from cascade.executor.runner.setup import RunnerContext
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
+from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
@@ -160,7 +161,8 @@ class Executor:
         # Build the shared RunnerContext and save it to POSIX shared memory.
         # All workers on this executor share this object; only per-worker identity (WorkerSetup)
         # is passed per-process via envvar.
-        self.runner_ctx_shm_key = f"sCascRnrCtx{host}"
+        # The key is host-unique, but quick restarts are problematic on mac, and we cant have too long key for mac
+        self.runner_ctx_shm_key = md5hash24(f"sCascRnrCtx{host}" + str(uuid.uuid4()))
         runner_ctx = RunnerContext(
             job=self.job_instance,
             callback=self.mlistener.address,

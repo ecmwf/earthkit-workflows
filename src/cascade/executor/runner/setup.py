@@ -23,6 +23,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from multiprocessing.shared_memory import SharedMemory
 from typing import Any
@@ -60,7 +61,7 @@ else:
 
 @dataclass(frozen=True)
 class WorkerSetup:
-    """Per-worker identity: what is factored out of RunnerContext and passed via envvar."""
+    """Per-worker identity: together with RunnerContext below, forms complete worker startup config"""
 
     workerId: WorkerId
     workerAttemptCnt: int
@@ -121,10 +122,13 @@ def save_runner_ctx_to_shm(ctx: RunnerContext, key: str) -> SharedMemory:
     try:
         shm = SharedMemory(key, create=True, size=size, **_shm_kwargs)
     except FileExistsError:
+        # this should not happen thanks to uuid, but if it does we handle gracefully
         logger.error(f"runner ctx shm {key!r} already existed; deleting and recreating")
         _old = SharedMemory(key, create=False, **_shm_kwargs)
         _old.close()
         _old.unlink()
+        if sys.platform == "darwin":
+            time.sleep(1)  # on mac, create right after unlink leads to not found
         shm = SharedMemory(key, create=True, size=size, **_shm_kwargs)
     if _is_unregister:
         multiprocessing.resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
