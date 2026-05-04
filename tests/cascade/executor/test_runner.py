@@ -19,6 +19,7 @@ import cascade.shm.client as shm_cli
 from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.executor.msg import DatasetPublished, TaskSequence
 from cascade.executor.runner.packages import PackagesEnv
+from cascade.executor.runner.setup import RunnerContext
 from cascade.low.core import (
     DatasetId,
     HostId,
@@ -83,14 +84,12 @@ def test_runner(monkeypatch):
         extra_env=[],
     )
     job = JobInstance(tasks={}, edges=[])
-    emptyRc = entrypoint.RunnerContext(
-        workerId=worker,
-        workerAttemptCnt=0,
+    emptyRc = RunnerContext(
         callback=test_address,
         job=job,
         param_source={},
         loggingConfig=DefaultLoggingConfig,
-        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(job),
+        schema_lookup=RunnerContext.build_schema_lookup(job),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -122,14 +121,12 @@ def test_runner(monkeypatch):
         extra_env=[],
     )
     oneTaskJob = JobInstance(tasks={TaskId("t2"): t2}, edges=[])
-    oneTaskRc = entrypoint.RunnerContext(
-        workerId=worker,
-        workerAttemptCnt=0,
+    oneTaskRc = RunnerContext(
         callback=test_address,
         job=oneTaskJob,
         param_source=param_source(oneTaskJob.edges),
         loggingConfig=DefaultLoggingConfig,
-        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(oneTaskJob),
+        schema_lookup=RunnerContext.build_schema_lookup(oneTaskJob),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -165,14 +162,12 @@ def test_runner(monkeypatch):
         tasks={TaskId("t3a"): t3a, TaskId("t3b"): t3b},
         edges=[Task2TaskEdge(source=t3i, sink_task=TaskId("t3b"), sink_input_kw="x", sink_input_ps=None)],
     )
-    twoTaskRc = entrypoint.RunnerContext(
-        workerId=worker,
-        workerAttemptCnt=0,
+    twoTaskRc = RunnerContext(
         callback=test_address,
         job=twoTaskJob,
         param_source=param_source(twoTaskJob.edges),
         loggingConfig=DefaultLoggingConfig,
-        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(twoTaskJob),
+        schema_lookup=RunnerContext.build_schema_lookup(twoTaskJob),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
@@ -234,14 +229,12 @@ def test_runner(monkeypatch):
             for i in range(N)
         ],
     )
-    t4Rc = entrypoint.RunnerContext(
-        workerId=worker,
-        workerAttemptCnt=0,
+    t4Rc = RunnerContext(
         callback=test_address,
         job=t4Job,
         param_source=param_source(t4Job.edges),
         loggingConfig=DefaultLoggingConfig,
-        schema_lookup=entrypoint.RunnerContext.build_schema_lookup(t4Job),
+        schema_lookup=RunnerContext.build_schema_lookup(t4Job),
     )
 
     with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:

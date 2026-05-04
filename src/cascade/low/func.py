@@ -8,6 +8,7 @@
 
 """Things."""
 
+import hashlib
 import importlib
 from abc import abstractmethod
 from typing import (
@@ -199,3 +200,9 @@ def pydantic_recursive_collect(base: BaseModel | Iterable, attr: str, prefix: st
         if isinstance(v, BaseModel) or isinstance(v, Iterable):
             results.extend(pydantic_recursive_collect(v, attr, prefix + formatter(k)))
     return results
+
+
+def md5hash24(i: str) -> str:
+    h = hashlib.new("md5", usedforsecurity=False)
+    h.update(i.encode())
+    return h.hexdigest()[:24]
