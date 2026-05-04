@@ -104,7 +104,18 @@ class Listener:
     def __init__(self, address: BackboneAddress):
         self.address = address
         self.socket = get_context().socket(zmq.PULL)
-        self.socket.bind(address)
+        attempts = 3
+        while attempts > 0:
+            try:
+                self.socket.bind(address)
+            except zmq.error.ZMQError as e:
+                if attempts == 0:
+                    raise
+                logger.warning(f"got {repr(e)}, half a sec nap")
+                attempts -= 1
+                time.sleep(0.5)
+                continue
+            break
         self.poller = zmq.Poller()
         self.poller.register(self.socket, flags=zmq.POLLIN)
         self.acked: set[Syn] = set()  # TODO eventually pop things from here (timestamp lapse?) to prevent mem growth

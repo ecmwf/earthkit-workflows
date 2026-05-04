@@ -14,15 +14,13 @@ Each worker owns its own temporary venv. This module handles:
  - cleanup/termination of both the process and the venv directory
 """
 
-import importlib.metadata
-import json
 import logging
 import os
 import subprocess
 import sys
 import tempfile
 
-from cascade.executor.runner.packages import check_run_result, run_command
+from cascade.executor.runner.packages import check_run_result, initial_venv_packages, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -35,40 +33,18 @@ venv_root = os.environ.get("CASCADE_VENV_ROOT", None)
 _python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
-def _earthkit_install_spec() -> str:
-    """Returns the install spec for earthkit-workflows suitable for uv pip install.
-
-    For editable/source installs (dev mode), uses the local source path directly.
-    Otherwise, pins to the currently installed version.
-    """
-    ek_version = importlib.metadata.version("earthkit-workflows")
-    try:
-        dist = importlib.metadata.distribution("earthkit-workflows")
-        direct_url_text = dist.read_text("direct_url.json")
-        if direct_url_text:
-            info = json.loads(direct_url_text)
-            url = info.get("url", "")
-            if url.startswith("file://") and info.get("dir_info", {}).get("editable", False):
-                path = url[len("file://") :]
-                logger.debug(f"earthkit-workflows is an editable install at {path}")
-                return path
-    except Exception as e:
-        logger.debug(f"could not read direct_url.json for earthkit-workflows: {repr(e)}")
-    return f"earthkit-workflows=={ek_version}"
-
-
 def create_venv() -> tempfile.TemporaryDirectory:  # type: ignore[type-arg]
     """Creates a new temporary venv with earthkit-workflows installed at the same version as the parent process."""
     td = tempfile.TemporaryDirectory(prefix="cascade_worker_venv_", dir=venv_root)
     logger.debug(f"creating a new worker venv at {td}")
     run_command(["uv", "venv", "--python", _python_version, td.name], check_run_result)
     python = _venv_python(td.name)
-    install_spec = _earthkit_install_spec()
-    logger.debug(f"installing {install_spec} into worker venv")
-    run_command(
-        ["uv", "pip", "install", "--python", python, install_spec],
-        check_run_result,
-    )
+    for install_spec in initial_venv_packages():
+        logger.debug(f"installing {install_spec} into worker venv")
+        run_command(
+            ["uv", "pip", "install", "--python", python, install_spec],
+            check_run_result,
+        )
     return td
 
 

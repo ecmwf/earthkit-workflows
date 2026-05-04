@@ -4,12 +4,13 @@ import pytest
 from packaging.version import Version
 
 from cascade.executor.runner.packages import (
+    PackagesEnv,
     PostverifyIssue,
-    _get_dist_modules,
+    ResolutionIssue,
+    _is_ignorable_dist,
+    _is_ignorable_module,
     _maybe_imported_version,
     _parse_pip_install,
-    _postinstall_verify,
-    _prefer_installed,
     check_install_result,
     check_run_result,
     run_command,
@@ -50,11 +51,6 @@ def test_parse_pip_install() -> None:
     # TODO it would be nice to actually do some pip install here, but im reluctant to do that in a unit test. Some for test_postinstall_verify
 
 
-def test_get_dist_modules() -> None:
-    assert _get_dist_modules("numpy") == ["numpy"]
-    assert sorted(_get_dist_modules("earthkit-workflows")) == sorted(["cascade", "earthkit"])
-
-
 def test_maybe_imported_version() -> None:
     import numpy
 
@@ -72,11 +68,12 @@ def test_maybe_imported_version() -> None:
 def test_postinstall_verify() -> None:
     import numpy
 
+    env = PackagesEnv()
     goodie = "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy=={numpy.__version__}\n"
-    issues = _postinstall_verify(goodie)
+    issues = env._postinstall_verify(goodie)
     assert not issues
     baddie = "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==1.0.0\n"
-    issues = _postinstall_verify(baddie)
+    issues = env._postinstall_verify(baddie)
     assert issues == [
         PostverifyIssue(dist_name="numpy", desired_version=Version("1.0.0"), mod_issues=[("numpy", Version(numpy.__version__))])
     ]
@@ -87,15 +84,92 @@ def test_prefer_installed() -> None:
     import packaging
     import pytest
 
-    assert set(_prefer_installed(["numpy"])) >= {
+    env = PackagesEnv()
+    assert set(env._prefer_installed(["numpy"])) >= {
         f"numpy=={numpy.__version__}",
         f"packaging=={packaging.__version__}",
         f"pytest=={pytest.__version__}",
     }, "unrestricted spec of installed pkg didnt resolve to installed pkg"
-    assert set(_prefer_installed(["numpy==1.0.0"])) >= {"numpy==1.0.0"}, (
+    assert set(env._prefer_installed(["numpy==1.0.0"])) >= {"numpy==1.0.0"}, (
         "exact pin spec of installed pkg which is compatible didnt match installed version"
     )
-    assert set(_prefer_installed([f"numpy>={numpy.__version__}"])) >= {f"numpy=={numpy.__version__}"}, (
+    assert set(env._prefer_installed([f"numpy>={numpy.__version__}"])) >= {f"numpy=={numpy.__version__}"}, (
         "range spec of installed pkg which is compatible didnt match installed version"
     )
-    assert set(_prefer_installed(["grumpy==42.0.0"])) >= {"grumpy==42.0.0"}, "spec of uninstalled package got dropped"
+    assert set(env._prefer_installed(["grumpy==42.0.0"])) >= {"grumpy==42.0.0"}, "spec of uninstalled package got dropped"
+
+
+def test_check_conflicts() -> None:
+    import numpy
+
+    env = PackagesEnv()
+
+    # No conflict: single package
+    assert env._check_conflicts([f"numpy=={numpy.__version__}"]) == []
+
+    # No conflict: two compatible specs for the same package
+    assert env._check_conflicts([f"numpy=={numpy.__version__}", f"numpy>={numpy.__version__}"]) == []
+
+    # Conflict: two different exact pins
+    issues = env._check_conflicts(["numpy==1.0.0", "numpy==2.0.0"])
+    assert len(issues) == 1
+    assert isinstance(issues[0], ResolutionIssue)
+    assert "numpy" in issues[0].because
+
+    # Conflict: import pin vs incompatible user request
+    issues = env._check_conflicts([f"numpy=={numpy.__version__}", "numpy==1.0.0"])
+    assert len(issues) == 1
+    assert "numpy" in issues[0].because
+
+    # No conflict: different packages
+    assert env._check_conflicts(["numpy==1.0.0", "packaging==21.0"]) == []
+
+    # No conflict: unconstrained spec does not trigger
+    assert env._check_conflicts(["numpy", f"numpy=={numpy.__version__}"]) == []
+
+
+def test_is_ignorable_module() -> None:
+    assert _is_ignorable_module("os")
+    assert _is_ignorable_module("sys")
+    assert _is_ignorable_module("_pytest")
+    assert _is_ignorable_module("__main__")
+    assert not _is_ignorable_module("numpy")
+    assert not _is_ignorable_module("packaging")
+
+
+def test_is_ignorable_dist() -> None:
+    # A normal published package should not be ignorable
+    assert not _is_ignorable_dist("numpy", Version("2.4.1"))
+    # dev/local versions (like our own editable installs) should be ignorable
+    assert _is_ignorable_dist("earthkit-workflows", Version("0.0.0.dev0"))
+    assert _is_ignorable_dist("something", Version("1.0.0+local"))
+    assert _is_ignorable_dist("something", Version("0.0.0"))
+
+
+def test_import_pins_includes_imported_modules() -> None:
+    import numpy
+    import packaging
+
+    env = PackagesEnv()
+    pins = env._import_pins()
+
+    assert "numpy" in pins
+    assert pins["numpy"] == Version(str(pins["numpy"]))  # is a valid Version
+    assert "packaging" in pins
+
+    # Our own editable install should be excluded (dev/local version)
+    assert "earthkit-workflows" not in pins
+
+
+def test_dist_name_cache_is_populated() -> None:
+    import numpy
+
+    env = PackagesEnv()
+    # Before any call, cache is empty
+    assert "numpy" not in env._dist_name_cache
+
+    env._import_pins()
+
+    # After _import_pins, numpy should be cached
+    assert "numpy" in env._dist_name_cache
+    assert env._dist_name_cache["numpy"] == "numpy"

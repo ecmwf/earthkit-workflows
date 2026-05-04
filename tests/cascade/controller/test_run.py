@@ -47,13 +47,14 @@ def launch_executor(
     controller_address: BackboneAddress,
     portBase: int,
     i: int,
+    test_name: str,  # used to derive executor address, must be unique
 ):
     dictConfig(logging_config)
     executor = Executor(
         job_instance,
         controller_address,
         2,
-        HostId(f"test_executor{i}"),
+        HostId(f"{test_name}executor{i}"),
         portBase,
         None,
         DefaultLoggingConfig,
@@ -67,6 +68,7 @@ def run_cluster(
     job: JobInstanceRich,
     portBase: int,
     executors: int,
+    test_name: str,  # used to derive executor address, must be unique
     preschedule: Preschedule | None = None,
 ):
     # TODO rework the port assignemnt in this whole file -- we waste a lot. Note if there
@@ -78,7 +80,7 @@ def run_cluster(
     m = f"tcp://localhost:{portBase + 1}"
     ps = []
     for i, executor in enumerate(range(executors)):
-        p = Process(target=launch_executor, args=(job.jobInstance, c, portBase + 1 + i * 10, i))
+        p = Process(target=launch_executor, args=(job.jobInstance, c, portBase + 1 + i * 10, i, test_name))
         p.start()
         ps.append(p)
     try:
@@ -102,7 +104,7 @@ def test_simple():
     task1 = TaskBuilder.from_callable(_payload).with_values(a=1, b=2)
     task2 = TaskBuilder.from_callable(_payload).with_values(a=1)
     job = JobBuilder().with_node("task1", task1).with_node("task2", task2).with_edge("task1", "task2", "b").build().get_or_raise()
-    run_cluster(JobInstanceRich(jobInstance=job, checkpointSpec=None), 12000, 1)
+    run_cluster(JobInstanceRich(jobInstance=job, checkpointSpec=None), 12000, 1, "controllerSimple")
     sleep(1)  # improves stability
 
 
@@ -148,7 +150,7 @@ def test_para2():
     if not run_all_tests:
         return
     job = get_job()
-    run_cluster(job, 12200, 2)
+    run_cluster(job, 12200, 2, "controllerPara2")
     sleep(1)  # improves stability
 
 
@@ -156,7 +158,7 @@ def test_para4():
     if not run_all_tests:
         return
     job = get_job()
-    run_cluster(job, 12400, 4)
+    run_cluster(job, 12400, 4, "controllerPara4")
     sleep(1)  # improves stability
 
 
@@ -173,7 +175,7 @@ def test_para1_persist():
             to_persist=[DatasetId(task=TaskId("c2i1"), output="0")],
         )
         job.checkpointSpec = spec
-        run_cluster(job, 12600, 1)
+        run_cluster(job, 12600, 1, "controllerPara1Persist")
 
         root = pathlib.Path(td)
         run1 = root / "run1"
@@ -220,7 +222,7 @@ def test_fusing():
     ]
     # TODO we currently dont check that those actually *got fused* -- fix
     jobInstanceRich = JobInstanceRich(jobInstance=job, checkpointSpec=None)
-    run_cluster(jobInstanceRich, 12800, 2, preschedule)
+    run_cluster(jobInstanceRich, 12800, 2, "controllerFusing", preschedule)
     sleep(1)  # improves stability
 
 
@@ -259,7 +261,7 @@ def test_checkpoints():
             checkpointSpec=checkpointSpec,
         )
 
-        run_cluster(jobInstanceRich, 13200, 2, preschedule)
+        run_cluster(jobInstanceRich, 13200, 2, "ctrlCkpt1", preschedule)
         sleep(1)  # improves stability
-        run_cluster(jobInstanceRich, 13300, 2, preschedule)
+        run_cluster(jobInstanceRich, 13300, 2, "ctrlCkpt2", preschedule)
         sleep(1)  # improves stability
