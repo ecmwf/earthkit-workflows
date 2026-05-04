@@ -16,16 +16,14 @@ the tasks themselves.
 # have their own zmq server as well as run the callables themselves
 
 import atexit
-import base64
 import logging
 import os
 import subprocess
 import tempfile
 import uuid
 from dataclasses import dataclass
+from multiprocessing.shared_memory import SharedMemory
 from typing import Iterable
-
-import cloudpickle
 
 import cascade.executor.platform as platform
 import cascade.executor.runner.setup as runner_setup
@@ -59,7 +57,8 @@ from cascade.executor.msg import (
     WorkerReady,
     WorkerShutdown,
 )
-from cascade.executor.runner.entrypoint import RunnerContext, worker_address
+from cascade.executor.runner.entrypoint import worker_address
+from cascade.executor.runner.setup import RunnerContext
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import TaskLifecycle, mark
@@ -158,6 +157,18 @@ class Executor:
             ],
             url_base=url_base,
         )
+        # Build the shared RunnerContext and save it to POSIX shared memory.
+        # All workers on this executor share this object; only per-worker identity (WorkerSetup)
+        # is passed per-process via envvar.
+        self.runner_ctx_shm_key = f"sCascRnrCtx{host}"
+        runner_ctx = RunnerContext(
+            job=self.job_instance,
+            callback=self.mlistener.address,
+            param_source=self.param_source,
+            loggingConfig=self.loggingConfig,
+            schema_lookup=self.schema_lookup,
+        )
+        self.runner_ctx_shm: SharedMemory = runner_setup.save_runner_ctx_to_shm(runner_ctx, self.runner_ctx_shm_key)
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
@@ -189,6 +200,12 @@ class Executor:
                 venv.cleanup()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
+        if hasattr(self, "runner_ctx_shm") and self.runner_ctx_shm is not None:
+            try:
+                self.runner_ctx_shm.close()
+                self.runner_ctx_shm.unlink()
+            except Exception as e:
+                logger.warning(f"failed to free runner ctx shm: {repr(e)}")
         if hasattr(self, "shm_process") and self.shm_process is not None and self.shm_process.is_alive():
             try:
                 shm_client.shutdown()
@@ -203,23 +220,16 @@ class Executor:
         self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
-        runnerContext = RunnerContext(
+        worker_setup = runner_setup.WorkerSetup(
             workerId=worker,
             workerAttemptCnt=attempt_cnt,
-            job=self.job_instance,
-            param_source=self.param_source,
-            callback=self.mlistener.address,
-            loggingConfig=self.loggingConfig,
-            schema_lookup=self.schema_lookup,
+            shm_key=self.runner_ctx_shm_key,
         )
-        # NOTE we need to cloudpickle because runnerContext contains some lambdas
-        runnerContextClpkl = cloudpickle.dumps(runnerContext)
-        encoded = base64.b64encode(runnerContextClpkl).decode()
         venv_td = runner_setup.create_venv()
         p = runner_setup.launch_in_venv(
             "cascade.executor.runner.entrypoint",
             venv_td.name,
-            {runner_setup.CONTEXT_ENVVAR: encoded},
+            {runner_setup.WORKER_SETUP_ENVVAR: worker_setup.to_str()},
         )
         if worker in self.worker_awaits:
             raise CascadeInternalError(f"{worker=} was already awaiting")
@@ -248,8 +258,12 @@ class Executor:
             self.start_workers(self.workers.keys())
             logger.debug(f"about to send register message from {self.host}")
             self.to_controller(self.registration)
-        except:
+        except Exception as e:
             logger.exception("failed during register")
+            try:
+                self.to_controller(ExecutorFailure(self.host, ser(e)))
+            except Exception:
+                logger.exception("failed to send ExecutorFailure to controller after register failure")
             self.terminate()
         # NOTE we don't mind this registration message being lost -- if that happens, we send it
         # during next heartbeat. But we may want to introduce a check that if no message,
