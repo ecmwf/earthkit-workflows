@@ -11,6 +11,8 @@ from __future__ import annotations
 import functools
 import hashlib
 import os
+import threading
+import types
 from typing import (
     Any,
     Callable,
@@ -32,6 +34,50 @@ from .graph import Node as BaseNode
 from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict
 
 PayloadFunc = Callable | str
+
+_payload_context = threading.local()
+
+
+def _get_context_stack() -> list[dict[str, Any]]:
+    if not hasattr(_payload_context, "earthkit_workflow_payload_metadata_stack"):
+        _payload_context.earthkit_workflow_payload_metadata_stack = []
+    return _payload_context.earthkit_workflow_payload_metadata_stack  # type: ignore[return-value]
+
+
+def _get_context_metadata() -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for frame in _get_context_stack():
+        result.update(frame)
+    return result
+
+
+class PayloadBuildingContext:
+    """Context manager that injects metadata into every Payload created within it.
+
+    Contexts can be nested; inner values override outer ones on key collision.
+    Metadata passed directly to Payload() overrides any context-provided metadata.
+
+    Example
+    -------
+    with PayloadBuildingContext(key1="value1"):
+        action1 = from_source(...)
+        action2 = action1.map(some_func)
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        self._metadata = kwargs
+
+    def __enter__(self) -> "PayloadBuildingContext":
+        _get_context_stack().append(self._metadata)
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        _get_context_stack().pop()
 
 
 class Payload:
@@ -57,6 +103,7 @@ class Payload:
             self.kwargs = kwargs or {}
 
         self.metadata = getattr(self.func, "_cascade", {})
+        self.metadata.update(_get_context_metadata())
         self.metadata.update(metadata or {})
 
     def to_tuple(self) -> tuple:
@@ -1110,6 +1157,7 @@ Action.register("default", Action)
 __all__ = [
     "Action",
     "Payload",
+    "PayloadBuildingContext",
     "Node",
     "from_source",
     "merge",
