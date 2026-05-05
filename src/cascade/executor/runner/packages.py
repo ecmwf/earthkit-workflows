@@ -33,6 +33,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Callable, Iterable, Literal, cast
 
+from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 from typing_extensions import Self
@@ -488,8 +489,40 @@ class PackagesEnv(AbstractContextManager):
             for dist_name, mod_issues in dist_to_issues.items()
         ]
 
+    def _is_already_satisfied(self, packages: list[str]) -> bool:
+        """Return True if every specifier in packages is satisfied by an already-installed package.
+
+        Checks self._installed (fast, in-memory) then falls back to importlib.metadata for
+        packages installed in the venv but not tracked in the cache. Returns False
+        conservatively for any specifier that cannot be verified, so that pip is still invoked.
+        """
+        for pkg_spec in packages:
+            try:
+                req = Requirement(pkg_spec)
+                name = req.name
+
+                installed_version = self._installed.get(name)
+                if installed_version is None:
+                    try:
+                        installed_version = Version(importlib.metadata.version(name))
+                    except importlib.metadata.PackageNotFoundError:
+                        logger.debug(f"package {name!r} not found in installed metadata, will run pip")
+                        return False
+
+                if installed_version not in req.specifier:
+                    logger.debug(f"installed {name}=={installed_version} does not satisfy {req.specifier!r}, will run pip")
+                    return False
+            except Exception:
+                logger.debug(f"could not verify satisfaction for {pkg_spec!r}, will run pip")
+                return False
+        return True
+
     def extend(self, packages: list[str]) -> None:
         if not packages:
+            return
+
+        if self._is_already_satisfied(packages):
+            logger.debug(f"all {len(packages)} requested packages already satisfied, skipping pip")
             return
 
         packages = list(self._prefer_installed(packages))
