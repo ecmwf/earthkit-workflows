@@ -277,25 +277,12 @@ class PackagesEnv(AbstractContextManager):
     packages can be freely changed by pip.
     """
 
-    def __init__(self, initial_installed: dict[str, Version] | None = None) -> None:
+    def __init__(self, initial_installed: dict[str, Version]) -> None:
         self.clean = True
         # dist_name -> version, tracks what has been installed into this venv.
-        # When initial_installed is provided (production path) it contains the full set of
-        # packages present in the venv at worker startup, parsed from the pip output of
-        # create_venv().  When omitted (tests / legacy callers) we fall back to parsing
-        # initial_venv_packages() which only covers earthkit-workflows itself.
-        if initial_installed is not None:
-            self._installed: dict[str, Version] = dict(initial_installed)
-        else:
-            self._installed = {}
-            for spec in initial_venv_packages():
-                # parse "name==version" style specs; skip paths (editable installs have no "==")
-                if "==" in spec:
-                    name, _, ver_str = spec.partition("==")
-                    try:
-                        self._installed[name.strip()] = Version(ver_str.strip())
-                    except Exception:
-                        pass
+        # Seeded from the pip output of create_venv() so that all transitive deps
+        # are known upfront and _is_already_satisfied can be a pure dict lookup.
+        self._installed: dict[str, Version] = dict(initial_installed)
         # module_name -> dist_name (or None if no dist found).
         # Populated lazily via _populate_dist_cache(). None entries are kept permanently:
         # modules without a dist are typically oddities and gaining a dist post-install

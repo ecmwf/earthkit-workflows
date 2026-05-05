@@ -17,7 +17,6 @@ Each worker owns its own temporary venv. This module handles:
  - save/load helpers for the shared RunnerContext in POSIX shared memory
 """
 
-import json
 import logging
 import multiprocessing.resource_tracker
 import os
@@ -30,6 +29,7 @@ from multiprocessing.shared_memory import SharedMemory
 from typing import Any
 
 import cloudpickle
+import orjson
 from packaging.version import Version
 from typing_extensions import Self
 
@@ -73,7 +73,7 @@ class WorkerSetup:
     initial_installed: dict[str, str]
 
     def to_str(self) -> str:
-        installed_json = json.dumps(self.initial_installed)
+        installed_json = orjson.dumps(self.initial_installed).decode()
         return f"{repr(self.workerId)}|{self.workerAttemptCnt}|{self.shm_key}|{installed_json}"
 
     @classmethod
@@ -83,7 +83,7 @@ class WorkerSetup:
             workerId=WorkerId.from_repr(worker_repr),
             workerAttemptCnt=int(attempt_str),
             shm_key=shm_key,
-            initial_installed=json.loads(installed_json),
+            initial_installed=orjson.loads(installed_json),
         )
 
 

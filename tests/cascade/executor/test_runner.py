@@ -92,7 +92,7 @@ def test_runner(monkeypatch):
         schema_lookup=RunnerContext.build_schema_lookup(job),
     )
 
-    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv({}) as pckg:
         entrypoint.execute_sequence(emptyTs, memoryInstance, pckg, emptyRc)
     assert msgs == []
 
@@ -129,7 +129,7 @@ def test_runner(monkeypatch):
         schema_lookup=RunnerContext.build_schema_lookup(oneTaskJob),
     )
 
-    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv({}) as pckg:
         entrypoint.execute_sequence(oneTaskTs, memoryInstance, pckg, oneTaskRc)
     assert msgs == [DatasetPublished(origin=worker, ds=t2ds, transmit_idx=None)]
     msgs = []
@@ -170,7 +170,7 @@ def test_runner(monkeypatch):
         schema_lookup=RunnerContext.build_schema_lookup(twoTaskJob),
     )
 
-    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv({}) as pckg:
         entrypoint.execute_sequence(twoTaskTs, memoryInstance, pckg, twoTaskRc)
     # NOTE we assert for both messages even though *only* t3o has been specified in `publish`
     # this is because there is no fine-graining yet to distingiush between worker-mem-only
@@ -237,7 +237,7 @@ def test_runner(monkeypatch):
         schema_lookup=RunnerContext.build_schema_lookup(t4Job),
     )
 
-    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv() as pckg:
+    with memory.Memory(test_address, worker) as memoryInstance, PackagesEnv({}) as pckg:
         entrypoint.execute_sequence(t4TaskTs, memoryInstance, pckg, t4Rc)
 
     # NOTE as above, we want to ignore the initial worker-mem-only publishes
