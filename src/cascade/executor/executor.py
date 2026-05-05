@@ -222,12 +222,13 @@ class Executor:
         self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
+        venv_td, initial_installed = runner_setup.create_venv()
         worker_setup = runner_setup.WorkerSetup(
             workerId=worker,
             workerAttemptCnt=attempt_cnt,
             shm_key=self.runner_ctx_shm_key,
+            initial_installed=initial_installed,
         )
-        venv_td = runner_setup.create_venv()
         p = runner_setup.launch_in_venv(
             "cascade.executor.runner.entrypoint",
             venv_td.name,

@@ -1,4 +1,5 @@
 import re
+from unittest.mock import patch
 
 import pytest
 from packaging.version import Version
@@ -68,7 +69,7 @@ def test_maybe_imported_version() -> None:
 def test_postinstall_verify() -> None:
     import numpy
 
-    env = PackagesEnv()
+    env = PackagesEnv({})
     goodie = "Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy=={numpy.__version__}\n"
     issues = env._postinstall_verify(goodie)
     assert not issues
@@ -84,7 +85,7 @@ def test_prefer_installed() -> None:
     import packaging
     import pytest
 
-    env = PackagesEnv()
+    env = PackagesEnv({})
     assert set(env._prefer_installed(["numpy"])) >= {
         f"numpy=={numpy.__version__}",
         f"packaging=={packaging.__version__}",
@@ -102,7 +103,7 @@ def test_prefer_installed() -> None:
 def test_check_conflicts() -> None:
     import numpy
 
-    env = PackagesEnv()
+    env = PackagesEnv({})
 
     # No conflict: single package
     assert env._check_conflicts([f"numpy=={numpy.__version__}"]) == []
@@ -150,7 +151,7 @@ def test_import_pins_includes_imported_modules() -> None:
     import numpy
     import packaging
 
-    env = PackagesEnv()
+    env = PackagesEnv({})
     pins = env._import_pins()
 
     assert "numpy" in pins
@@ -164,7 +165,7 @@ def test_import_pins_includes_imported_modules() -> None:
 def test_dist_name_cache_is_populated() -> None:
     import numpy
 
-    env = PackagesEnv()
+    env = PackagesEnv({})
     # Before any call, cache is empty
     assert "numpy" not in env._dist_name_cache
 
@@ -173,3 +174,114 @@ def test_dist_name_cache_is_populated() -> None:
     # After _import_pins, numpy should be cached
     assert "numpy" in env._dist_name_cache
     assert env._dist_name_cache["numpy"] == "numpy"
+
+
+# ---------------------------------------------------------------------------
+# Tests for the _is_already_satisfied fast-path and the extend() skip logic
+# ---------------------------------------------------------------------------
+
+
+def _make_env_with_cache(*specs: tuple[str, str]) -> PackagesEnv:
+    """Create a PackagesEnv whose _installed cache is pre-populated with (name, version) pairs."""
+    env = PackagesEnv({})
+    for name, ver in specs:
+        env._installed[name] = Version(ver)
+    return env
+
+
+def test_is_already_satisfied_bare_name_in_cache() -> None:
+    env = _make_env_with_cache(("mylib", "1.2.3"))
+    # Bare name with no constraint - should be satisfied by anything installed
+    assert env._is_already_satisfied(["mylib"])
+
+
+def test_is_already_satisfied_exact_pin_matches() -> None:
+    env = _make_env_with_cache(("mylib", "1.2.3"))
+    assert env._is_already_satisfied(["mylib==1.2.3"])
+
+
+def test_is_already_satisfied_exact_pin_mismatches() -> None:
+    env = _make_env_with_cache(("mylib", "1.2.3"))
+    assert not env._is_already_satisfied(["mylib==1.0.0"])
+
+
+def test_is_already_satisfied_range_satisfied() -> None:
+    env = _make_env_with_cache(("mylib", "1.2.3"))
+    assert env._is_already_satisfied(["mylib>=1.0.0"])
+    assert env._is_already_satisfied(["mylib>=1.0.0,<2.0.0"])
+
+
+def test_is_already_satisfied_range_not_satisfied() -> None:
+    env = _make_env_with_cache(("mylib", "1.2.3"))
+    assert not env._is_already_satisfied(["mylib>=2.0.0"])
+    assert not env._is_already_satisfied(["mylib<1.0.0"])
+
+
+def test_is_already_satisfied_multiple_all_satisfied() -> None:
+    env = _make_env_with_cache(("aaa", "1.0.0"), ("bbb", "2.5.0"))
+    assert env._is_already_satisfied(["aaa==1.0.0", "bbb>=2.0"])
+
+
+def test_is_already_satisfied_multiple_one_fails() -> None:
+    env = _make_env_with_cache(("aaa", "1.0.0"), ("bbb", "2.5.0"))
+    # bbb is satisfied but aaa is not
+    assert not env._is_already_satisfied(["aaa==9.9.9", "bbb>=2.0"])
+
+
+def test_is_already_satisfied_not_installed() -> None:
+    env = PackagesEnv({})
+    # A package that almost certainly does not exist in this venv
+    assert not env._is_already_satisfied(["totally-nonexistent-xyz-package"])
+
+
+def test_is_already_satisfied_not_in_cache_returns_false() -> None:
+    """Packages not in _installed are not satisfied — no importlib fallback."""
+    import numpy
+
+    env = PackagesEnv({})
+    # numpy is NOT in env._installed (we did not add it manually)
+    assert "numpy" not in env._installed
+    # Without the importlib fallback, _is_already_satisfied returns False for anything not cached
+    assert not env._is_already_satisfied([f"numpy=={numpy.__version__}"])
+    assert not env._is_already_satisfied(["numpy"])
+
+
+def test_extend_skips_pip_when_already_satisfied() -> None:
+    """When every requested spec is already installed, extend() must not invoke pip."""
+    import numpy
+
+    env = _make_env_with_cache(("numpy", numpy.__version__))
+    with patch("cascade.executor.runner.packages.run_command") as mock_run:
+        env.extend([f"numpy=={numpy.__version__}"])
+        mock_run.assert_not_called()
+
+
+def test_extend_calls_pip_when_not_satisfied() -> None:
+    """When a spec is NOT satisfied, extend() must still invoke pip (and may fail)."""
+    env = PackagesEnv({})
+    with patch("cascade.executor.runner.packages.run_command") as mock_run:
+        # Simulate pip returning empty stderr (no-op install) so extend() completes cleanly
+        mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
+        env.extend(["totally-nonexistent-xyz==999.0.0"])
+        mock_run.assert_called_once()
+
+
+def test_extend_backfills_installed_after_noop_pip() -> None:
+    """After a no-op pip run, the requested package should be added to _installed."""
+    import numpy
+
+    env = PackagesEnv({})
+    assert "numpy" not in env._installed
+
+    with patch("cascade.executor.runner.packages.run_command") as mock_run:
+        mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
+        env.extend([f"numpy=={numpy.__version__}"])
+
+    # Back-fill: numpy should now be in _installed even though pip reported no changes
+    assert "numpy" in env._installed
+    assert env._installed["numpy"] == Version(numpy.__version__)
+
+    # Subsequent call should skip pip entirely
+    with patch("cascade.executor.runner.packages.run_command") as mock_run2:
+        env.extend([f"numpy=={numpy.__version__}"])
+        mock_run2.assert_not_called()

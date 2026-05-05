@@ -82,7 +82,7 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
         raise ValueError(f"expected 1 task, gotten {len(tasks)}")
     taskId = tasks[0]
     taskInstance = executionContext.tasks[taskId]
-    with Memory(callback, WorkerId(host=HostId("testHost"), worker="testWorker")) as memory, PackagesEnv() as pckg:
+    with Memory(callback, WorkerId(host=HostId("testHost"), worker="testWorker")) as memory, PackagesEnv({}) as pckg:
         # for key, value in taskSequence.extra_env.items():
         #    os.environ[key] = value
 
