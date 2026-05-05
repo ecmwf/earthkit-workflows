@@ -198,17 +198,26 @@ def initial_venv_packages() -> list[str]:
     return [_earthkit_install_spec()]
 
 
-def _extract_editable_paths(packages: list[str]) -> list[str]:
-    """Extract directory paths from -e (editable) install specs in the package list.
+def _parse_editable_paths_from_pip_output(pip_output: str) -> list[str]:
+    """Extract local source paths for editable installs from pip/uv install output.
 
-    Each editable spec is a single string of the form '-e /path/to/pkg'.
+    We do this post-install rather than pre-install (e.g. scanning the -e specs) because
+    uv may satisfy transitive dependencies via local file:// paths too -- for example when
+    a workspace package declares another workspace package as a dependency, uv resolves it
+    as an editable install without an explicit -e flag in our request.  Parsing the output
+    captures all such recursive editable installs that we would otherwise miss.
+
+    Matches lines like:
+      + fiab-plugin-test==0.1.0 (from file:///home/.../fiab-plugin-test)
     """
     paths: list[str] = []
-    for pkg in packages:
-        if pkg.startswith("-e"):
-            path = pkg[2:].lstrip()
-            if path:
-                paths.append(path)
+    for line in pip_output.splitlines():
+        clean_line = line.strip()
+        if not clean_line.startswith("+"):
+            continue
+        match = re.search(r"\(from file://([^)]+)\)", clean_line)
+        if match:
+            paths.append(match.group(1))
     return paths
 
 
@@ -481,7 +490,6 @@ class PackagesEnv(AbstractContextManager):
         if not packages:
             return
 
-        editable_paths = _extract_editable_paths(packages)
         packages = list(self._prefer_installed(packages))
 
         conflicts = self._check_conflicts(packages)
@@ -512,6 +520,7 @@ class PackagesEnv(AbstractContextManager):
         # hide some issues. But afterwards this is important to actually allow
         # importing the modules
         importlib.invalidate_caches()
+        editable_paths = _parse_editable_paths_from_pip_output(install_output)
         if editable_paths:
             _extend_sys_path_for_editables(editable_paths)
         self.clean = False
