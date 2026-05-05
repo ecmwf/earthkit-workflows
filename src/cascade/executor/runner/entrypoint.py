@@ -13,6 +13,7 @@ import logging.config
 import os
 
 import zmq
+from packaging.version import Version
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
@@ -159,7 +160,7 @@ def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     callback(runnerContext.callback, WorkerReady(workerSetup.workerId))
     with (
         Memory(runnerContext.callback, workerSetup.workerId) as memory,
-        PackagesEnv() as pckg,
+        PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}) as pckg,
     ):
         label("worker", repr(workerSetup.workerId))
         worker_num = workerSetup.workerId.worker_num()

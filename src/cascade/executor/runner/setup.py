@@ -17,6 +17,7 @@ Each worker owns its own temporary venv. This module handles:
  - save/load helpers for the shared RunnerContext in POSIX shared memory
 """
 
+import json
 import logging
 import multiprocessing.resource_tracker
 import os
@@ -29,11 +30,12 @@ from multiprocessing.shared_memory import SharedMemory
 from typing import Any
 
 import cloudpickle
+from packaging.version import Version
 from typing_extensions import Self
 
 from cascade.deployment.logging import LoggingConfig
 from cascade.executor.msg import BackboneAddress
-from cascade.executor.runner.packages import check_run_result, initial_venv_packages, run_command
+from cascade.executor.runner.packages import _parse_pip_install, check_run_result, initial_venv_packages, run_command
 from cascade.executor.runner.runner import ExecutionContext
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeInternalError
@@ -66,17 +68,22 @@ class WorkerSetup:
     workerId: WorkerId
     workerAttemptCnt: int
     shm_key: str
+    # Packages installed in the worker venv at creation time, as {dist_name: version_str}.
+    # Pre-populates PackagesEnv._installed so it can skip pip for already-present packages.
+    initial_installed: dict[str, str]
 
     def to_str(self) -> str:
-        return f"{repr(self.workerId)}|{self.workerAttemptCnt}|{self.shm_key}"
+        installed_json = json.dumps(self.initial_installed)
+        return f"{repr(self.workerId)}|{self.workerAttemptCnt}|{self.shm_key}|{installed_json}"
 
     @classmethod
     def from_str(cls, s: str) -> Self:
-        worker_repr, attempt_str, shm_key = s.split("|", 2)
+        worker_repr, attempt_str, shm_key, installed_json = s.split("|", 3)
         return cls(
             workerId=WorkerId.from_repr(worker_repr),
             workerAttemptCnt=int(attempt_str),
             shm_key=shm_key,
+            initial_installed=json.loads(installed_json),
         )
 
 
@@ -151,19 +158,26 @@ def load_runner_ctx_from_shm(key: str) -> RunnerContext:
     return cloudpickle.loads(data)
 
 
-def create_venv() -> tempfile.TemporaryDirectory:  # type: ignore[type-arg]
-    """Creates a new temporary venv with earthkit-workflows installed at the same version as the parent process."""
+def create_venv() -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:
+    """Creates a new temporary venv with earthkit-workflows installed at the same version as the parent process.
+
+    Returns the TemporaryDirectory for the venv and a {dist_name: version_str} dict of every
+    package pip reported as installed, so callers can pre-populate PackagesEnv._installed.
+    """
     td = tempfile.TemporaryDirectory(prefix="cascade_worker_venv_", dir=venv_root)
     logger.debug(f"creating a new worker venv at {td}")
     run_command(["uv", "venv", "--python", _python_version, td.name], check_run_result)
     python = _venv_python(td.name)
+    installed: dict[str, str] = {}
     for install_spec in initial_venv_packages():
         logger.debug(f"installing {install_spec} into worker venv")
-        run_command(
+        result = run_command(
             ["uv", "pip", "install", "--python", python, install_spec],
             check_run_result,
         )
-    return td
+        for dist_name, version in _parse_pip_install(result.stderr).items():
+            installed[dist_name] = str(version)
+    return td, installed
 
 
 def _venv_python(venv_dir: str) -> str:

@@ -277,19 +277,25 @@ class PackagesEnv(AbstractContextManager):
     packages can be freely changed by pip.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, initial_installed: dict[str, Version] | None = None) -> None:
         self.clean = True
-        # dist_name -> version, tracks what has been installed into this venv
-        # (pre-populated with the initial earthkit-workflows install from venv creation)
-        self._installed: dict[str, Version] = {}
-        for spec in initial_venv_packages():
-            # parse "name==version" style specs; skip paths (editable installs have no "==")
-            if "==" in spec:
-                name, _, ver_str = spec.partition("==")
-                try:
-                    self._installed[name.strip()] = Version(ver_str.strip())
-                except Exception:
-                    pass
+        # dist_name -> version, tracks what has been installed into this venv.
+        # When initial_installed is provided (production path) it contains the full set of
+        # packages present in the venv at worker startup, parsed from the pip output of
+        # create_venv().  When omitted (tests / legacy callers) we fall back to parsing
+        # initial_venv_packages() which only covers earthkit-workflows itself.
+        if initial_installed is not None:
+            self._installed: dict[str, Version] = dict(initial_installed)
+        else:
+            self._installed = {}
+            for spec in initial_venv_packages():
+                # parse "name==version" style specs; skip paths (editable installs have no "==")
+                if "==" in spec:
+                    name, _, ver_str = spec.partition("==")
+                    try:
+                        self._installed[name.strip()] = Version(ver_str.strip())
+                    except Exception:
+                        pass
         # module_name -> dist_name (or None if no dist found).
         # Populated lazily via _populate_dist_cache(). None entries are kept permanently:
         # modules without a dist are typically oddities and gaining a dist post-install
@@ -492,9 +498,13 @@ class PackagesEnv(AbstractContextManager):
     def _is_already_satisfied(self, packages: list[str]) -> bool:
         """Return True if every specifier in packages is satisfied by an already-installed package.
 
-        Checks self._installed (fast, in-memory) then falls back to importlib.metadata for
-        packages installed in the venv but not tracked in the cache. Returns False
+        Performs a pure in-memory lookup against self._installed.  Returns False
         conservatively for any specifier that cannot be verified, so that pip is still invoked.
+
+        self._installed is pre-populated from the venv creation pip output (covering all
+        transitive deps) and updated after every extend() call.  Packages outside that set
+        (e.g. installed by uv venv itself rather than pip) will cause a single no-op pip
+        invocation, after which extend() back-fills their entry so subsequent calls are free.
         """
         for pkg_spec in packages:
             try:
@@ -503,11 +513,8 @@ class PackagesEnv(AbstractContextManager):
 
                 installed_version = self._installed.get(name)
                 if installed_version is None:
-                    try:
-                        installed_version = Version(importlib.metadata.version(name))
-                    except importlib.metadata.PackageNotFoundError:
-                        logger.debug(f"package {name!r} not found in installed metadata, will run pip")
-                        return False
+                    logger.debug(f"package {name!r} not in installed cache, will run pip")
+                    return False
 
                 if installed_version not in req.specifier:
                     logger.debug(f"installed {name}=={installed_version} does not satisfy {req.specifier!r}, will run pip")
@@ -524,6 +531,11 @@ class PackagesEnv(AbstractContextManager):
         if self._is_already_satisfied(packages):
             logger.debug(f"all {len(packages)} requested packages already satisfied, skipping pip")
             return
+
+        # Save the user-requested packages before _prefer_installed expands them, so we can
+        # back-fill _installed for any packages pip treated as no-ops (already installed but
+        # not yet tracked — e.g. packages installed by uv venv rather than by pip).
+        user_packages = packages
 
         packages = list(self._prefer_installed(packages))
 
@@ -546,6 +558,17 @@ class PackagesEnv(AbstractContextManager):
         newly_installed = _parse_pip_install(install_output)
         self._installed.update(newly_installed)
         self._cache_dist_modules(newly_installed)
+
+        # Back-fill _installed for packages that pip reported as already satisfied (no + line).
+        # Without this, packages that exist in the venv but were never seen by _parse_pip_install
+        # would cause a no-op pip invocation on every subsequent extend() call for the same spec.
+        for pkg_spec in user_packages:
+            try:
+                req = Requirement(pkg_spec)
+                if req.name not in self._installed:
+                    self._installed[req.name] = Version(importlib.metadata.version(req.name))
+            except Exception:
+                pass
 
         install_issues = self._postinstall_verify(install_output)
         if install_issues:

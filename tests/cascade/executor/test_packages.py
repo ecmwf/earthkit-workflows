@@ -234,23 +234,23 @@ def test_is_already_satisfied_not_installed() -> None:
     assert not env._is_already_satisfied(["totally-nonexistent-xyz-package"])
 
 
-def test_is_already_satisfied_falls_back_to_importlib() -> None:
-    """Packages not in _installed but present in the venv should be found via importlib."""
+def test_is_already_satisfied_not_in_cache_returns_false() -> None:
+    """Packages not in _installed are not satisfied — no importlib fallback."""
     import numpy
 
     env = PackagesEnv()
     # numpy is NOT in env._installed (we did not add it manually)
     assert "numpy" not in env._installed
-    # but it IS installed in the venv, so _is_already_satisfied should pick it up
-    assert env._is_already_satisfied([f"numpy=={numpy.__version__}"])
-    assert env._is_already_satisfied(["numpy"])
+    # Without the importlib fallback, _is_already_satisfied returns False for anything not cached
+    assert not env._is_already_satisfied([f"numpy=={numpy.__version__}"])
+    assert not env._is_already_satisfied(["numpy"])
 
 
 def test_extend_skips_pip_when_already_satisfied() -> None:
     """When every requested spec is already installed, extend() must not invoke pip."""
     import numpy
 
-    env = PackagesEnv()
+    env = _make_env_with_cache(("numpy", numpy.__version__))
     with patch("cascade.executor.runner.packages.run_command") as mock_run:
         env.extend([f"numpy=={numpy.__version__}"])
         mock_run.assert_not_called()
@@ -264,3 +264,24 @@ def test_extend_calls_pip_when_not_satisfied() -> None:
         mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
         env.extend(["totally-nonexistent-xyz==999.0.0"])
         mock_run.assert_called_once()
+
+
+def test_extend_backfills_installed_after_noop_pip() -> None:
+    """After a no-op pip run, the requested package should be added to _installed."""
+    import numpy
+
+    env = PackagesEnv()
+    assert "numpy" not in env._installed
+
+    with patch("cascade.executor.runner.packages.run_command") as mock_run:
+        mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
+        env.extend([f"numpy=={numpy.__version__}"])
+
+    # Back-fill: numpy should now be in _installed even though pip reported no changes
+    assert "numpy" in env._installed
+    assert env._installed["numpy"] == Version(numpy.__version__)
+
+    # Subsequent call should skip pip entirely
+    with patch("cascade.executor.runner.packages.run_command") as mock_run2:
+        env.extend([f"numpy=={numpy.__version__}"])
+        mock_run2.assert_not_called()
