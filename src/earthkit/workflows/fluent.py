@@ -44,11 +44,34 @@ def _get_context_stack() -> list[dict[str, Any]]:
     return _payload_context.earthkit_workflow_payload_metadata_stack  # type: ignore[return-value]
 
 
+def _metadata_update(dInto: dict, dFrom: dict) -> None:
+    for key, value in dFrom.items():
+        if key == "environment":
+            if "environment" not in dInto:
+                dInto["environment"] = []
+            dInto["environment"] = list(set(dFrom["environment"] + dInto["environment"]))
+        else:
+            dInto[key] = value
+
+
+def _invalidate_context_cache() -> None:
+    if hasattr(_payload_context, "earthkit_workflow_payload_metadata_resolved"):
+        del _payload_context.earthkit_workflow_payload_metadata_resolved
+
+
 def _get_context_metadata() -> dict[str, Any]:
+    if hasattr(_payload_context, "earthkit_workflow_payload_metadata_resolved"):
+        return _payload_context.earthkit_workflow_payload_metadata_resolved
     result: dict[str, Any] = {}
     for frame in _get_context_stack():
-        result.update(frame)
+        _metadata_update(result, frame)
+    _payload_context.earthkit_workflow_payload_metadata_resolved = result
     return result
+
+
+def _pop_context_stack() -> None:
+    _invalidate_context_cache()
+    _get_context_stack().pop()
 
 
 class PayloadBuildingContext:
@@ -56,6 +79,7 @@ class PayloadBuildingContext:
 
     Contexts can be nested; inner values override outer ones on key collision.
     Metadata passed directly to Payload() overrides any context-provided metadata.
+    But for 'environment' types, instead of override we append, as that makes more sense.
 
     Example
     -------
@@ -69,6 +93,7 @@ class PayloadBuildingContext:
 
     def __enter__(self) -> "PayloadBuildingContext":
         _get_context_stack().append(self._metadata)
+        _invalidate_context_cache()
         return self
 
     def __exit__(
@@ -77,7 +102,7 @@ class PayloadBuildingContext:
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        _get_context_stack().pop()
+        _pop_context_stack()
 
 
 class Payload:
@@ -90,6 +115,9 @@ class Payload:
         kwargs: dict | None = None,
         metadata: dict[str, Any] | None = None,
     ):
+        """Metadata is proccessed in addition to what comes from PayloadBuildingContexts.
+        Note that for 'environment' metadata, we always append, not override. If you
+        need to override, modify *afterwards* on the instance directly"""
         self.args: list
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
@@ -103,8 +131,8 @@ class Payload:
             self.kwargs = kwargs or {}
 
         self.metadata = getattr(self.func, "_cascade", {})
-        self.metadata.update(_get_context_metadata())
-        self.metadata.update(metadata or {})
+        _metadata_update(self.metadata, _get_context_metadata())
+        _metadata_update(self.metadata, metadata or {})
 
     def to_tuple(self) -> tuple:
         """Return
