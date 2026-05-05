@@ -170,6 +170,17 @@ def _venv_python(venv_dir: str) -> str:
     return os.path.join(venv_dir, "bin", "python")
 
 
+def _propagate_sysprefix(env: dict[str, str]) -> None:
+    # Upserts PYTHONPATH in the env to capture all sys.prefix extra values.
+    # If there was an editable install in the parent venv, this propagates it
+    parent_venv = sys.prefix
+    extra_paths = [p for p in sys.path if p and not p.startswith(parent_venv)]
+    pythonpath = os.pathsep.join(extra_paths)
+    if pythonpath:
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{pythonpath}{os.pathsep}{existing}" if existing else pythonpath
+
+
 def launch_in_venv(module: str, venv_dir: str, envvars: dict[str, str]) -> "subprocess.Popen[bytes]":
     """Launches `python -m module` inside the given venv with the provided environment variables.
 
@@ -178,14 +189,10 @@ def launch_in_venv(module: str, venv_dir: str, envvars: dict[str, str]) -> "subp
     editable source trees) can be unpickled in the worker.
     """
     python = _venv_python(venv_dir)
-    # Forward non-venv paths so cloudpickle can resolve module references from the parent
-    parent_venv = sys.prefix
-    extra_paths = [p for p in sys.path if p and not p.startswith(parent_venv)]
-    pythonpath = os.pathsep.join(extra_paths)
     env = {**os.environ, **envvars, "VIRTUAL_ENV": venv_dir}
-    if pythonpath:
-        existing = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = f"{pythonpath}{os.pathsep}{existing}" if existing else pythonpath
+    # NOTE we currentnly disable this call -- it does propagate editable installs finely, but
+    # it propagates *all* of them without actually installing their prereqs, which is unhealthy
+    # _propagate_sysprefix(env)
     logger.debug(f"launching {module} in {venv_dir}")
     try:
         return subprocess.Popen([python, "-m", module], env=env)
