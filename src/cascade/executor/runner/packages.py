@@ -253,9 +253,11 @@ def _is_ignorable_dist(dist_name: str, dist_version: Version) -> bool:
     if dist_version == Version("0.0.0"):
         return True
     try:
-        origin = importlib.metadata.distribution(dist_name)
-        if hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
-            return True
+        distribution = importlib.metadata.distribution(dist_name)
+        if hasattr(distribution, "origin"):
+            origin = distribution.origin
+            if hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
+                return True
     except Exception:
         pass
     return False
