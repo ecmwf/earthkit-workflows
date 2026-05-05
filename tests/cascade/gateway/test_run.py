@@ -97,8 +97,8 @@ def test_job():
             assert job_progress_res.error is None
             is_computed = job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]
             is_datasets = ji.jobInstance.ext_outputs[0] in job_progress_res.datasets[job_id]
-            has_failure = job_progress_res.progresses[job_id].failure is not None
-            assert not has_failure, f"the job {job_id} has failed with {job_progress_res.progresses[job_id].failure}"
+            has_failure = job_progress_res.progresses[job_id].failure is not None  # ty: ignore[possibly-missing-attribute]
+            assert not has_failure, f"the job {job_id} has failed with {job_progress_res.progresses[job_id].failure}"  # ty: ignore[possibly-missing-attribute]
             if is_computed and is_datasets:
                 break
             else:
