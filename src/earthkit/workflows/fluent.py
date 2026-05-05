@@ -44,10 +44,18 @@ def _get_context_stack() -> list[dict[str, Any]]:
     return _payload_context.earthkit_workflow_payload_metadata_stack  # type: ignore[return-value]
 
 
+def _listappending_update(dInto: dict, dFrom: dict) -> None:
+    for key, value in dFrom.items():
+        if key in dInto and isinstance(dInto[key], list) and isinstance(value, list):
+            dInto[key].extend(value)
+        else:
+            dInto[key] = value
+
+
 def _get_context_metadata() -> dict[str, Any]:
     result: dict[str, Any] = {}
     for frame in _get_context_stack():
-        result.update(frame)
+        _listappending_update(result, frame)
     return result
 
 
@@ -56,6 +64,8 @@ class PayloadBuildingContext:
 
     Contexts can be nested; inner values override outer ones on key collision.
     Metadata passed directly to Payload() overrides any context-provided metadata.
+    But for list types, instead of override we append -- so that the `environment`
+    metadata key is gathered.
 
     Example
     -------
@@ -90,6 +100,9 @@ class Payload:
         kwargs: dict | None = None,
         metadata: dict[str, Any] | None = None,
     ):
+        """Metadata is proccessed in addition to what comes from PayloadBuildingContexts.
+        Note that for metadata of type *list*, we always append, not override. If you
+        need to override, modify *afterwards* on the instance directly"""
         self.args: list
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
@@ -103,8 +116,8 @@ class Payload:
             self.kwargs = kwargs or {}
 
         self.metadata = getattr(self.func, "_cascade", {})
-        self.metadata.update(_get_context_metadata())
-        self.metadata.update(metadata or {})
+        _listappending_update(self.metadata, _get_context_metadata())
+        _listappending_update(self.metadata, metadata or {})
 
     def to_tuple(self) -> tuple:
         """Return
