@@ -198,6 +198,39 @@ def initial_venv_packages() -> list[str]:
     return [_earthkit_install_spec()]
 
 
+def _extract_editable_paths(packages: list[str]) -> list[str]:
+    """Extract directory paths from -e (editable) install specs in the package list.
+
+    Each editable spec is a single string of the form '-e /path/to/pkg'.
+    """
+    paths: list[str] = []
+    for pkg in packages:
+        if pkg.startswith("-e"):
+            path = pkg[2:].lstrip()
+            if path:
+                paths.append(path)
+    return paths
+
+
+def _extend_sys_path_for_editables(editable_paths: list[str]) -> None:
+    """Extend sys.path with the src/ subdirectory of each editable install path.
+
+    NOTE: This assumes the src-layout convention (PEP 517) where package code lives
+    in <editable_path>/src/. The flat layout (code directly in <editable_path>/) is
+    not handled. To support it, one could inspect the editable package's pyproject.toml
+    for the [tool.setuptools.package-dir] / [tool.hatch.build.targets.wheel] source
+    root setting, or fall back to <editable_path>/ itself when no src/ subdirectory
+    is present.
+    """
+    for path in editable_paths:
+        src_path = os.path.join(path, "src")
+        if src_path not in sys.path:
+            logger.debug(f"extending sys.path with editable install src path: {src_path}")
+            sys.path.insert(0, src_path)
+        else:
+            logger.debug(f"editable install src path already in sys.path: {src_path}")
+
+
 def _is_ignorable_module(top_level: str) -> bool:
     # stdlib modules and private/internal modules (eg __main__, _distutils_hack)
     return top_level in sys.stdlib_module_names or top_level.startswith("_")
@@ -448,6 +481,7 @@ class PackagesEnv(AbstractContextManager):
         if not packages:
             return
 
+        editable_paths = _extract_editable_paths(packages)
         packages = list(self._prefer_installed(packages))
 
         conflicts = self._check_conflicts(packages)
@@ -478,6 +512,8 @@ class PackagesEnv(AbstractContextManager):
         # hide some issues. But afterwards this is important to actually allow
         # importing the modules
         importlib.invalidate_caches()
+        if editable_paths:
+            _extend_sys_path_for_editables(editable_paths)
         self.clean = False
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
