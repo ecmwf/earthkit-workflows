@@ -1,3 +1,5 @@
+# ! TODO reformulate as a development guideline
+
 In the src/cascade module, we `raise` exceptions at many places. They are of the following categories:
  - code has reached an unexpected state, such as encountering unexpected enum value, internal invariant not upheld, etc. This suggests a programmer error. Neither re-run, nor change of user config, are likely to help, and instead upgrade of the cascade library must happen
  - underlying infrastructure problem -- os exceptions, network exceptions, lack of memory in shm, etc. This suggests that a re-run, perhaps with a different configuration (allocated memory, chunking size, ...), may help
