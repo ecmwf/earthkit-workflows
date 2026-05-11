@@ -7,6 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 from dataclasses import dataclass
+from typing import BinaryIO
 
 import pytest
 
@@ -35,6 +36,8 @@ def test_get_new_worker_method_defaults_by_platform(monkeypatch) -> None:
 class _FakePopen:
     args: list[str]
     env: dict[str, str]
+    stdout: BinaryIO | None = None
+    stderr: BinaryIO | None = None
     alive: bool = True
     killed: bool = False
     terminated: bool = False
@@ -65,12 +68,16 @@ class _FakePopen:
 def test_launch_in_venv_popen(monkeypatch) -> None:
     captured_args: list[str] | None = None
     captured_env: dict[str, str] | None = None
+    captured_stdout: BinaryIO | None = None
+    captured_stderr: BinaryIO | None = None
 
-    def fake_popen(args, env):  # type: ignore[no-untyped-def]
-        nonlocal captured_args, captured_env
+    def fake_popen(args, env, stdout=None, stderr=None):  # type: ignore[no-untyped-def]
+        nonlocal captured_args, captured_env, captured_stdout, captured_stderr
         captured_args = list(args)
         captured_env = dict(env)
-        return _FakePopen(args=list(args), env=dict(env))
+        captured_stdout = stdout
+        captured_stderr = stderr
+        return _FakePopen(args=list(args), env=dict(env), stdout=stdout, stderr=stderr)
 
     monkeypatch.setattr(setup.subprocess, "Popen", fake_popen)
 
@@ -83,7 +90,36 @@ def test_launch_in_venv_popen(monkeypatch) -> None:
     assert captured_env["VIRTUAL_ENV"] == "/tmp/demo-venv"
     assert captured_env["X_TEST"] == "1"
     assert captured_env["PATH"].startswith("/tmp/demo-venv/bin")
+    assert captured_stdout is None
+    assert captured_stderr is None
     assert handle.pid == 1234
+
+
+def test_launch_in_venv_popen_redirects_stdio(tmp_path, monkeypatch) -> None:
+    captured_stdout_name: str | None = None
+    captured_stderr_name: str | None = None
+
+    def fake_popen(args, env, stdout=None, stderr=None):  # type: ignore[no-untyped-def]
+        nonlocal captured_stdout_name, captured_stderr_name
+        captured_stdout_name = None if stdout is None else stdout.name
+        captured_stderr_name = None if stderr is None else stderr.name
+        return _FakePopen(args=list(args), env=dict(env), stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(setup.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("CASCADE_NEW_WORKER_METHOD", "popen")
+
+    stdout_path = str(tmp_path / "worker.stdout.txt")
+    stderr_path = str(tmp_path / "worker.stderr.txt")
+    setup.launch_in_venv(
+        "demo.module",
+        "/tmp/demo-venv",
+        {"X_TEST": "1"},
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
+
+    assert captured_stdout_name == stdout_path
+    assert captured_stderr_name == stderr_path
 
 
 class _FakeProcess:
@@ -135,7 +171,7 @@ def test_launch_in_venv_multiprocessing(monkeypatch) -> None:
 
     assert isinstance(handle, setup.MpWorkerProcessHandle)
     assert fake_process.started
-    assert fake_process.args == ("demo.module", "/tmp/demo-venv", {"X_TEST": "1"})
+    assert fake_process.args == ("demo.module", "/tmp/demo-venv", {"X_TEST": "1"}, None, None)
     assert fake_process.target is setup._launch_worker_module
     assert handle.pid == 4321
     assert handle.poll() is None
@@ -144,6 +180,34 @@ def test_launch_in_venv_multiprocessing(monkeypatch) -> None:
     assert fake_process.terminated
     assert handle.poll() == -15
     assert handle.wait() == -15
+
+
+def test_launch_in_venv_multiprocessing_redirects_stdio(monkeypatch) -> None:
+    fake_process = _FakeProcess()
+
+    class _FakeContext:
+        def Process(self, target, args):  # type: ignore[no-untyped-def]
+            fake_process.target = target
+            fake_process.args = tuple(args)
+            return fake_process
+
+    monkeypatch.setattr(setup.mp, "get_context", lambda method: _FakeContext())
+    monkeypatch.setenv("CASCADE_NEW_WORKER_METHOD", "multiprocessing")
+
+    setup.launch_in_venv(
+        "demo.module",
+        "/tmp/demo-venv",
+        {"X_TEST": "1"},
+        stdout_path="/tmp/worker.stdout.txt",
+        stderr_path="/tmp/worker.stderr.txt",
+    )
+    assert fake_process.args == (
+        "demo.module",
+        "/tmp/demo-venv",
+        {"X_TEST": "1"},
+        "/tmp/worker.stdout.txt",
+        "/tmp/worker.stderr.txt",
+    )
 
 
 def test_terminate_worker_grace_period(tmp_path) -> None:

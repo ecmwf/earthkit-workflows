@@ -28,7 +28,7 @@ import cascade.executor.platform as platform
 import cascade.executor.runner.setup as runner_setup
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
-from cascade.deployment.logging import LoggingConfig, as_dict_config
+from cascade.deployment.logging import LoggingConfig, as_dict_config, process_log_paths
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
@@ -228,10 +228,13 @@ class Executor:
             shm_key=self.runner_ctx_shm_key,
             initial_installed=initial_installed,
         )
+        worker_log_paths = process_log_paths(self.loggingConfig, f"worker_{worker.worker}")
         p = runner_setup.launch_in_venv(
             "cascade.executor.runner.entrypoint",
             venv_td.name,
             {runner_setup.WORKER_SETUP_ENVVAR: worker_setup.to_str()},
+            stdout_path=worker_log_paths.stdout if worker_log_paths is not None else None,
+            stderr_path=worker_log_paths.stderr if worker_log_paths is not None else None,
         )
         if worker in self.worker_awaits:
             raise CascadeInternalError(f"{worker=} was already awaiting")

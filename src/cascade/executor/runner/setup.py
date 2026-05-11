@@ -30,6 +30,7 @@ import sysconfig
 import tempfile
 import time
 from abc import ABC, abstractmethod
+from contextlib import ExitStack
 from dataclasses import dataclass
 from multiprocessing.process import BaseProcess
 from multiprocessing.shared_memory import SharedMemory
@@ -302,36 +303,77 @@ def _activate_worker_venv(venv_dir: str, envvars: dict[str, str]) -> None:
     importlib.invalidate_caches()
 
 
-def _launch_worker_module(module: str, venv_dir: str, envvars: dict[str, str]) -> None:
+def _redirect_standard_streams(stdout_path: str | None, stderr_path: str | None) -> None:
+    if stdout_path:
+        sys.stdout.flush()
+        stdout_fd = os.open(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        os.dup2(stdout_fd, 1)
+        os.close(stdout_fd)
+    if stderr_path:
+        sys.stderr.flush()
+        stderr_fd = os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        os.dup2(stderr_fd, 2)
+        os.close(stderr_fd)
+
+
+def _launch_worker_module(
+    module: str,
+    venv_dir: str,
+    envvars: dict[str, str],
+    stdout_path: str | None,
+    stderr_path: str | None,
+) -> None:
+    _redirect_standard_streams(stdout_path, stderr_path)
     _activate_worker_venv(venv_dir, envvars)
     runpy.run_module(module, run_name="__main__", alter_sys=True)
 
 
-def _launch_via_popen(module: str, venv_dir: str, envvars: dict[str, str]) -> WorkerProcessHandle:
+def _launch_via_popen(
+    module: str,
+    venv_dir: str,
+    envvars: dict[str, str],
+    stdout_path: str | None,
+    stderr_path: str | None,
+) -> WorkerProcessHandle:
     python = _venv_python(venv_dir)
     env = _build_worker_env(venv_dir, envvars)
     logger.debug(f"launching {module} in {venv_dir} via popen")
     try:
-        process = subprocess.Popen([python, "-m", module], env=env)
+        with ExitStack() as stack:
+            stdout = stack.enter_context(open(stdout_path, "ab")) if stdout_path is not None else None
+            stderr = stack.enter_context(open(stderr_path, "ab")) if stderr_path is not None else None
+            process = subprocess.Popen([python, "-m", module], env=env, stdout=stdout, stderr=stderr)
     except OSError as e:
         raise CascadeInternalError(f"failed to launch worker process (env may be too large): {repr(e)}", parent=e) from e
     return PopenWorkerProcessHandle(process)
 
 
-def _launch_via_multiprocessing(module: str, venv_dir: str, envvars: dict[str, str]) -> WorkerProcessHandle:
+def _launch_via_multiprocessing(
+    module: str,
+    venv_dir: str,
+    envvars: dict[str, str],
+    stdout_path: str | None,
+    stderr_path: str | None,
+) -> WorkerProcessHandle:
     ctx = platform.get_mp_ctx("worker")
-    process = ctx.Process(target=_launch_worker_module, args=(module, venv_dir, envvars))
+    process = ctx.Process(target=_launch_worker_module, args=(module, venv_dir, envvars, stdout_path, stderr_path))
     logger.debug(f"launching {module} in {venv_dir} via multiprocessing")
     process.start()
     return MpWorkerProcessHandle(process)
 
 
-def launch_in_venv(module: str, venv_dir: str, envvars: dict[str, str]) -> WorkerProcessHandle:
+def launch_in_venv(
+    module: str,
+    venv_dir: str,
+    envvars: dict[str, str],
+    stdout_path: str | None = None,
+    stderr_path: str | None = None,
+) -> WorkerProcessHandle:
     """Launches `python -m module` inside the given venv with the provided environment variables."""
     method = platform.get_new_worker_method()
     if method == "popen":
-        return _launch_via_popen(module, venv_dir, envvars)
-    return _launch_via_multiprocessing(module, venv_dir, envvars)
+        return _launch_via_popen(module, venv_dir, envvars, stdout_path, stderr_path)
+    return _launch_via_multiprocessing(module, venv_dir, envvars, stdout_path, stderr_path)
 
 
 def terminate_worker(process: WorkerProcessHandle, venv_dir: tempfile.TemporaryDirectory[str]) -> None:
