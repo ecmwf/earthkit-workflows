@@ -10,21 +10,28 @@
 
 Each worker owns its own temporary venv. This module handles:
  - creation of a temporary venv with the same Python version and an initial earthkit-workflows install
- - launching a Python module as a subprocess inside that venv
+ - launching a Python module inside that venv
  - cleanup/termination of both the process and the venv directory
  - RunnerContext: the shared per-executor context passed to all workers via shared memory
  - WorkerSetup: the per-worker identity passed via environment variable
  - save/load helpers for the shared RunnerContext in POSIX shared memory
 """
 
+import importlib
 import logging
-import multiprocessing.resource_tracker
+import multiprocessing as mp
+import multiprocessing.resource_tracker as resource_tracker
 import os
+import runpy
+import site
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from multiprocessing.process import BaseProcess
 from multiprocessing.shared_memory import SharedMemory
 from typing import Any
 
@@ -33,6 +40,7 @@ import orjson
 from packaging.version import Version
 from typing_extensions import Self
 
+import cascade.executor.platform as platform
 from cascade.deployment.logging import LoggingConfig
 from cascade.executor.msg import BackboneAddress
 from cascade.executor.runner.packages import _parse_pip_install, check_run_result, initial_venv_packages, run_command
@@ -59,6 +67,84 @@ if (sys.version_info.major, sys.version_info.minor) >= (3, 13):
 else:
     _is_unregister = True
     _shm_kwargs = {}
+
+
+class WorkerProcessHandle(ABC):
+    @property
+    @abstractmethod
+    def pid(self) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def poll(self) -> int | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_alive(self) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def wait(self, timeout: float | None = None) -> int | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def terminate(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def kill(self) -> None:
+        raise NotImplementedError
+
+
+@dataclass
+class PopenWorkerProcessHandle(WorkerProcessHandle):
+    process: subprocess.Popen[bytes]
+
+    @property
+    def pid(self) -> int:
+        assert self.process.pid is not None
+        return self.process.pid
+
+    def poll(self) -> int | None:
+        return self.process.poll()
+
+    def is_alive(self) -> bool:
+        return self.process.poll() is None
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        return self.process.wait(timeout=timeout)
+
+    def terminate(self) -> None:
+        self.process.terminate()
+
+    def kill(self) -> None:
+        self.process.kill()
+
+
+@dataclass
+class MpWorkerProcessHandle(WorkerProcessHandle):
+    process: BaseProcess
+
+    @property
+    def pid(self) -> int:
+        assert self.process.pid is not None
+        return self.process.pid
+
+    def poll(self) -> int | None:
+        return self.process.exitcode if not self.process.is_alive() else None
+
+    def is_alive(self) -> bool:
+        return self.process.is_alive()
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        self.process.join(timeout)
+        return self.process.exitcode if not self.process.is_alive() else None
+
+    def terminate(self) -> None:
+        self.process.terminate()
+
+    def kill(self) -> None:
+        self.process.kill()
 
 
 @dataclass(frozen=True)
@@ -138,7 +224,7 @@ def save_runner_ctx_to_shm(ctx: RunnerContext, key: str) -> SharedMemory:
             time.sleep(1)  # on mac, create right after unlink leads to not found
         shm = SharedMemory(key, create=True, size=size, **_shm_kwargs)
     if _is_unregister:
-        multiprocessing.resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
+        resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
     assert shm.buf is not None
     shm.buf[:size] = data
     return shm
@@ -151,7 +237,7 @@ def load_runner_ctx_from_shm(key: str) -> RunnerContext:
     """
     shm = SharedMemory(key, create=False, **_shm_kwargs)
     if _is_unregister:
-        multiprocessing.resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
+        resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
     assert shm.buf is not None
     data = bytes(shm.buf[: shm.size])
     shm.close()
@@ -184,45 +270,84 @@ def _venv_python(venv_dir: str) -> str:
     return os.path.join(venv_dir, "bin", "python")
 
 
-def _propagate_sysprefix(env: dict[str, str]) -> None:
-    # Upserts PYTHONPATH in the env to capture all sys.prefix extra values.
-    # If there was an editable install in the parent venv, this propagates it
-    parent_venv = sys.prefix
-    extra_paths = [p for p in sys.path if p and not p.startswith(parent_venv)]
-    pythonpath = os.pathsep.join(extra_paths)
-    if pythonpath:
-        existing = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = f"{pythonpath}{os.pathsep}{existing}" if existing else pythonpath
+def _venv_site_paths(venv_dir: str) -> list[str]:
+    paths = sysconfig.get_paths(vars={"base": venv_dir, "platbase": venv_dir})
+    result: list[str] = []
+    for key in ("purelib", "platlib"):
+        path = paths.get(key)
+        if path and path not in result:
+            result.append(path)
+    return result
 
 
-def launch_in_venv(module: str, venv_dir: str, envvars: dict[str, str]) -> "subprocess.Popen[bytes]":
-    """Launches `python -m module` inside the given venv with the provided environment variables.
-
-    The parent process's non-venv sys.path entries are forwarded via PYTHONPATH so that
-    cloudpickle-serialized callables referencing caller-side modules (e.g. test modules,
-    editable source trees) can be unpickled in the worker.
-    """
+def _build_worker_env(venv_dir: str, envvars: dict[str, str]) -> dict[str, str]:
     python = _venv_python(venv_dir)
     env = {**os.environ, **envvars, "VIRTUAL_ENV": venv_dir}
-    # NOTE we currentnly disable this call -- it does propagate editable installs finely, but
-    # it propagates *all* of them without actually installing their prereqs, which is unhealthy
-    # _propagate_sysprefix(env)
-    logger.debug(f"launching {module} in {venv_dir}")
+    env["PATH"] = f"{os.path.dirname(python)}{os.pathsep}{env.get('PATH', '')}"
+    return env
+
+
+def _activate_worker_venv(venv_dir: str, envvars: dict[str, str]) -> None:
+    env = _build_worker_env(venv_dir, envvars)
+    os.environ.clear()
+    os.environ.update(env)
+    sys.executable = _venv_python(venv_dir)
+    sys.prefix = venv_dir
+    sys.exec_prefix = venv_dir
+    for site_path in reversed(_venv_site_paths(venv_dir)):
+        site.addsitedir(site_path)
+        while site_path in sys.path:
+            sys.path.remove(site_path)
+        sys.path.insert(0, site_path)
+    importlib.invalidate_caches()
+
+
+def _launch_worker_module(module: str, venv_dir: str, envvars: dict[str, str]) -> None:
+    _activate_worker_venv(venv_dir, envvars)
+    runpy.run_module(module, run_name="__main__", alter_sys=True)
+
+
+def _launch_via_popen(module: str, venv_dir: str, envvars: dict[str, str]) -> WorkerProcessHandle:
+    python = _venv_python(venv_dir)
+    env = _build_worker_env(venv_dir, envvars)
+    logger.debug(f"launching {module} in {venv_dir} via popen")
     try:
-        return subprocess.Popen([python, "-m", module], env=env)
+        process = subprocess.Popen([python, "-m", module], env=env)
     except OSError as e:
         raise CascadeInternalError(f"failed to launch worker process (env may be too large): {repr(e)}", parent=e) from e
+    return PopenWorkerProcessHandle(process)
 
 
-def terminate_worker(process: subprocess.Popen[bytes], venv_dir: tempfile.TemporaryDirectory[str]) -> None:
+def _launch_via_multiprocessing(module: str, venv_dir: str, envvars: dict[str, str]) -> WorkerProcessHandle:
+    ctx = platform.get_mp_ctx("worker")
+    process = ctx.Process(target=_launch_worker_module, args=(module, venv_dir, envvars))
+    logger.debug(f"launching {module} in {venv_dir} via multiprocessing")
+    process.start()
+    return MpWorkerProcessHandle(process)
+
+
+def launch_in_venv(module: str, venv_dir: str, envvars: dict[str, str]) -> WorkerProcessHandle:
+    """Launches `python -m module` inside the given venv with the provided environment variables."""
+    method = platform.get_new_worker_method()
+    if method == "popen":
+        return _launch_via_popen(module, venv_dir, envvars)
+    return _launch_via_multiprocessing(module, venv_dir, envvars)
+
+
+def terminate_worker(process: WorkerProcessHandle, venv_dir: tempfile.TemporaryDirectory[str]) -> None:
     """Terminates the worker process and cleans up its venv directory."""
-    if process.poll() is None:
+    if process.is_alive():
         process.terminate()
         try:
             process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
+        except Exception:
+            logger.debug("worker did not exit cleanly during graceful shutdown wait", exc_info=True)
+        if process.is_alive():
             process.kill()
+        try:
             process.wait()
+        except Exception:
+            logger.debug("worker wait after shutdown raised", exc_info=True)
     try:
         venv_dir.cleanup()
     except Exception as e:

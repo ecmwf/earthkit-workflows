@@ -18,7 +18,6 @@ the tasks themselves.
 import atexit
 import logging
 import os
-import subprocess
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -58,7 +57,7 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.entrypoint import worker_address
-from cascade.executor.runner.setup import RunnerContext
+from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.func import md5hash24
@@ -79,7 +78,7 @@ def address_of(port: int) -> BackboneAddress:
 
 @dataclass
 class WorkerHandle:
-    process: subprocess.Popen[bytes]
+    process: WorkerProcessHandle
     attempt_cnt: int
     venv_dir: tempfile.TemporaryDirectory[str]
 
@@ -104,7 +103,7 @@ class Executor:
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
         self.worker_awaits: dict[WorkerId, None | TaskSequence] = {}
         self.loggingConfig = loggingConfig
-        self.old_workers: list[tuple[subprocess.Popen[bytes], tempfile.TemporaryDirectory[str]]] = []
+        self.old_workers: list[tuple[WorkerProcessHandle, tempfile.TemporaryDirectory[str]]] = []
 
         self.datasets: set[DatasetId] = set()
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
