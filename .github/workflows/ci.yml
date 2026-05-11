@@ -1,4 +1,4 @@
-name: CI # TODO rename the file in a standalone PR, its not macos-test, but ci
+name: CI
 
 on:
   # Trigger the workflow manually
