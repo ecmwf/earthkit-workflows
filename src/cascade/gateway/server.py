@@ -19,9 +19,7 @@ import zmq
 import cascade.gateway.api as api
 from cascade.controller.report import deserialize
 from cascade.deployment.logging import LoggingConfig, init_from_obj
-from cascade.executor.comms import callback, get_context
-from cascade.executor.msg import Ack, Syn
-from cascade.executor.serde import des_message
+from cascade.executor.comms import get_context, receive_and_ack
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
 from cascade.low.exceptions import CascadeInternalError
@@ -72,23 +70,10 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
     return isinstance(rv, api.ShutdownResponse)
 
 
-def handle_controller(socket: zmq.Socket, jobs: JobRouter, seen_syns: set[Syn]) -> None:
-    frames = socket.recv_multipart()
-    if len(frames) == 0:
-        raise CascadeInternalError("unexpected empty report message")
-    maybe_syn = des_message(frames[0])
-    if isinstance(maybe_syn, Syn):
-        callback(maybe_syn.addr, Ack(idx=maybe_syn.idx))
-        if maybe_syn in seen_syns:
-            return
-        seen_syns.add(maybe_syn)
-        if len(frames) != 2:
-            raise CascadeInternalError(f"expected report payload after Syn, got {len(frames)=}")
-        raw_report = frames[1]
-    elif len(frames) == 1:
-        raw_report = frames[0]
-    else:
-        raise CascadeInternalError("unexpected multipart report without Syn preamble")
+def handle_controller(socket: zmq.Socket, jobs: JobRouter, seen_syns: set[tuple[int, str]]) -> None:
+    raw_report = receive_and_ack(socket, seen_syns)
+    if raw_report is None:
+        return
     report = deserialize(raw_report)
     logger.debug(f"received controller message {report}")
     jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
@@ -109,7 +94,7 @@ def serve(
     fe.bind(url)
     poller.register(fe, flags=zmq.POLLIN)
     jobs = JobRouter(poller, loggingConfig, troika_config, max_jobs)
-    seen_syns: set[Syn] = set()
+    seen_syns: set[tuple[int, str]] = set()
 
     logger.debug("entering recv loop")
     is_break = False

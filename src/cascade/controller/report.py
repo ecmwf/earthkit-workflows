@@ -77,14 +77,8 @@ def serialize(report: ControllerReport) -> bytes:
     return pickle.dumps(report)
 
 
-class Reporter:
-    def __init__(self, report_address: str | None) -> None:
-        self.sender: ReliableSender | None = None
-        self.ack_socket: zmq.Socket | None = None
-        self.ack_poller: zmq.Poller | None = None
-        self.job_id: JobId | None = None
-        if report_address is None:
-            return
+class ReporterChannel:
+    def __init__(self, report_address: str) -> None:
         address, job_id = report_address.split(",", 1)
         logger.debug(f"initialising reporter with {address=} and {job_id=}")
         self.job_id = JobId(job_id)
@@ -97,9 +91,7 @@ class Reporter:
         self.sender = ReliableSender(ack_address, default_message_resend_ms)
         self.sender.add_host(HostId("gateway"), address)
 
-    def _send(self, report: ControllerReport) -> None:
-        if self.sender is None or self.ack_poller is None or self.ack_socket is None:
-            return
+    def send(self, report: ControllerReport) -> None:
         self.sender.send_raw(HostId("gateway"), serialize(report), "ControllerReport")
         while self.sender.inflight:
             for socket, _ in self.ack_poller.poll(default_message_resend_ms):
@@ -115,48 +107,47 @@ class Reporter:
                     raise CascadeInternalError(f"expected Ack on report channel, got {type(ack)}")
             self.sender.maybe_retry()
 
+
+class Reporter:
+    def __init__(self, report_address: str | None) -> None:
+        self.channel = ReporterChannel(report_address) if report_address is not None else None
+
+    def _send(self, report: ControllerReport) -> None:
+        if self.channel is not None:
+            self.channel.send(report)
+
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
-        if self.sender is None:
+        if self.channel is None:
             return
-        if self.job_id is None:
-            raise CascadeInternalError("missing job id on report sender")
         pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
-        report = ControllerReport(self.job_id, JobProgress.progressed(pct), monotonic_ns(), [], completed_task)
+        report = ControllerReport(self.channel.job_id, JobProgress.progressed(pct), monotonic_ns(), [], completed_task)
         self._send(report)
 
     def send_tasks_planned(self, task_ids: set[TaskId]) -> None:
-        if self.sender is None:
+        if self.channel is None:
             return
-        if self.job_id is None:
-            raise CascadeInternalError("missing job id on report sender")
         logger.debug(f"reporting planned tasks {task_ids=}")
-        report = ControllerReport(self.job_id, None, monotonic_ns(), [], None, task_ids)
+        report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [], None, task_ids)
         self._send(report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:
-        if self.sender is None:
+        if self.channel is None:
             return
-        if self.job_id is None:
-            raise CascadeInternalError("missing job id on report sender")
         logger.debug(f"uploading result {dataset=}")
-        report = ControllerReport(self.job_id, None, monotonic_ns(), [(dataset, result)])
+        report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [(dataset, result)])
         self._send(report)
 
     def send_failure(self, failure: str) -> None:
-        if self.sender is None:
+        if self.channel is None:
             return
-        if self.job_id is None:
-            raise CascadeInternalError("missing job id on report sender")
         logger.debug(f"reporting failure {failure=}")
-        report = ControllerReport(self.job_id, JobProgress.failed(failure), monotonic_ns(), [])
+        report = ControllerReport(self.channel.job_id, JobProgress.failed(failure), monotonic_ns(), [])
         self._send(report)
 
     def success(self) -> None:
-        if self.sender is None:
+        if self.channel is None:
             return
-        if self.job_id is None:
-            raise CascadeInternalError("missing job id on report sender")
         logger.debug("reporter sending shutdown")
-        report = ControllerReport(self.job_id, JobProgress.succeeded(), monotonic_ns(), [])
+        report = ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), [])
         self._send(report)
