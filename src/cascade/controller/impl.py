@@ -65,7 +65,7 @@ def run(
             assignments = []
             if schedule.has_computable():
                 for assignment in assign(schedule, context):
-                    timer(act, Microtrace.ctrl_act)(bridge, assignment)
+                    timer(act, Microtrace.ctrl_act)(bridge, assignment, reporter)
                     assignments.append(assignment)
 
             mark({"action": ControllerPhases.plan})

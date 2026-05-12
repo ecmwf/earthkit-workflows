@@ -13,12 +13,11 @@ here we just match the right method of `gateway.router` based on what message we
 import base64
 import datetime as dt
 import logging
-from typing import cast
 
 import zmq
 
 import cascade.gateway.api as api
-from cascade.controller.report import JobId, JobProgress, deserialize
+from cascade.controller.report import deserialize
 from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.executor.comms import get_context
 from cascade.gateway.client import parse_request, serialize_response
@@ -42,14 +41,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
             rv = api.SubmitJobResponse(job_id=None, error=repr(e))
     elif isinstance(m, api.JobProgressRequest):
         try:
-            progresses, datasets, queue_length, completed_task_ids = jobs.progress_of(m.job_ids, m.detailed_report)
-            rv = api.JobProgressResponse(
-                progresses=cast(dict[JobId, JobProgress | None], progresses),
-                datasets=datasets,
-                error=None,
-                queue_length=queue_length,
-                completed_task_ids=completed_task_ids,
-            )
+            rv = jobs.progress_of(m.job_ids, m.detailed_report)
         except Exception as e:
             logger.exception(f"failed to get progress of: {m}")
             rv = api.JobProgressResponse(progresses={}, datasets={}, error=repr(e), queue_length=-1)
@@ -82,7 +74,7 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
     raw = socket.recv()
     report = deserialize(raw)
     logger.debug(f"received controller message {report}")
-    jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task)
+    jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
     for dataset_id, result in report.results:
         jobs.put_result(report.job_id, dataset_id, result)
 

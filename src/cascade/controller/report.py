@@ -59,6 +59,7 @@ class ControllerReport:
     timestamp: int
     results: list[tuple[DatasetId, bytes]]
     completed_task: TaskId | None = None
+    planned_tasks: set[TaskId] | None = None
 
 
 def deserialize(raw: bytes) -> ControllerReport:
@@ -89,12 +90,19 @@ class Reporter:
         self.socket = get_context().socket(zmq.PUSH)
         self.socket.connect(address)
 
-    def send_progress(self, context: JobExecutionContext, completed_task: TaskId | None = None) -> None:
+    def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.socket is None:
             return
         pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
         report = ControllerReport(self.job_id, JobProgress.progressed(pct), monotonic_ns(), [], completed_task)
+        _send(self.socket, report)
+
+    def send_tasks_planned(self, task_ids: set[TaskId]) -> None:
+        if self.socket is None:
+            return
+        logger.debug(f"reporting planned tasks {task_ids=}")
+        report = ControllerReport(self.job_id, None, monotonic_ns(), [], None, task_ids)
         _send(self.socket, report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:

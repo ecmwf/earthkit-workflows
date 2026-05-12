@@ -122,6 +122,8 @@ def test_job():
         assert detailed_progress_res.error is None
         assert detailed_progress_res.completed_task_ids is not None
         assert len(detailed_progress_res.completed_task_ids[job_id]) == len(ji.jobInstance.tasks)
+        assert detailed_progress_res.planned_task_ids is not None
+        assert len(detailed_progress_res.planned_task_ids[job_id]) == 0
 
         result_deletion_req = api.ResultDeletionRequest(datasets={job_id: [ji.jobInstance.ext_outputs[0]]})
         result_deletion_res = client.request_response(result_deletion_req, url)

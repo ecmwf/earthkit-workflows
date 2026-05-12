@@ -64,6 +64,7 @@ class JobProgressResponse(CascadeGatewayAPI):
     queue_length: int
     error: str | None  # top level error
     completed_task_ids: dict[JobId, list[TaskId]] | None = None
+    planned_task_ids: dict[JobId, list[TaskId]] | None = None
 
 
 class ResultRetrievalRequest(CascadeGatewayAPI):

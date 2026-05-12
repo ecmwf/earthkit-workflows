@@ -127,7 +127,7 @@ def notify(
                     context.task_done_at(task, worker)
                 else:
                     context.task_done(task)
-                reporter.send_progress(context, task)
+                reporter.send_task_completed(context, task)
         elif isinstance(event, DatasetTransmitPayload):
             state.receive_payload(event.header.ds, event.value, event.header.deser_fun)
             reporter.send_result(event.header.ds, event.value)

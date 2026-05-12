@@ -23,6 +23,7 @@ from typing import Iterable
 import zmq
 
 import cascade.executor.platform as platform
+import cascade.gateway.api as api
 from cascade.controller.report import (
     JobId,
     JobProgress,
@@ -31,7 +32,6 @@ from cascade.controller.report import (
 )
 from cascade.deployment.logging import LoggingConfig
 from cascade.executor.comms import get_context
-from cascade.gateway.api import JobSpec
 from cascade.gateway.spawning import spawn_subprocess
 from cascade.low.core import DatasetId, TaskId
 from cascade.low.func import next_uuid
@@ -46,6 +46,7 @@ class Job:
     last_seen: int
     results: dict[DatasetId, bytes]
     completed_task_ids: set[TaskId]
+    planned_task_ids: set[TaskId]
 
 
 class JobRouter:
@@ -60,7 +61,7 @@ class JobRouter:
         self.jobs: dict[JobId, Job] = {}
         self.active_jobs = 0
         self.max_jobs = max_jobs
-        self.jobs_queue: OrderedDict[JobId, JobSpec] = OrderedDict()
+        self.jobs_queue: OrderedDict[JobId, api.JobSpec] = OrderedDict()
         self.procs: dict[JobId, subprocess.Popen] = {}
         self.loggingConfig = loggingConfig
         self.troika_config = troika_config
@@ -79,11 +80,11 @@ class JobRouter:
         full_addr = f"{base_addr}:{port}"
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
         self.poller.register(socket, flags=zmq.POLLIN)
-        self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {}, set())
+        self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {}, set(), set())
         self.procs[job_id] = spawn_subprocess(job_spec, full_addr, job_id, self.loggingConfig, self.troika_config)
         self.active_jobs += 1
 
-    def enqueue_job(self, job_spec: JobSpec) -> JobId:
+    def enqueue_job(self, job_spec: api.JobSpec) -> JobId:
         job_id = next_uuid(
             set(self.jobs.keys()).union(self.jobs_queue.keys()),
             lambda: JobId(str(uuid.uuid4())),
@@ -92,9 +93,7 @@ class JobRouter:
         self.maybe_spawn()
         return job_id
 
-    def progress_of(
-        self, job_ids: Iterable[JobId], detailed_report: bool = False
-    ) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]], int, dict[JobId, list[TaskId]] | None]:
+    def progress_of(self, job_ids: Iterable[JobId], detailed_report: bool = False) -> api.JobProgressResponse:
         if not job_ids:
             job_ids = set(self.jobs.keys()).union(self.jobs_queue.keys())
         progresses = {}
@@ -107,19 +106,38 @@ class JobRouter:
                 progresses[job_id] = None
         datasets = {job_id: list(self.jobs[job_id].results.keys()) for job_id in job_ids if job_id in self.jobs}
         completed_task_ids: dict[JobId, list[TaskId]] | None = None
+        planned_task_ids: dict[JobId, list[TaskId]] | None = None
         if detailed_report:
             completed_task_ids = {job_id: list(self.jobs[job_id].completed_task_ids) for job_id in job_ids if job_id in self.jobs}
-        return progresses, datasets, len(self.jobs_queue), completed_task_ids
+            planned_task_ids = {job_id: list(self.jobs[job_id].planned_task_ids) for job_id in job_ids if job_id in self.jobs}
+        return api.JobProgressResponse(
+            progresses=progresses,
+            datasets=datasets,
+            queue_length=len(self.jobs_queue),
+            error=None,
+            completed_task_ids=completed_task_ids,
+            planned_task_ids=planned_task_ids,
+        )
 
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
         return self.jobs[job_id].results[dataset_id]
 
-    def maybe_update(self, job_id: JobId, progress: JobProgress | None, timestamp: int, completed_task: TaskId | None = None) -> None:
-        if progress is None and completed_task is None:
+    def maybe_update(
+        self,
+        job_id: JobId,
+        progress: JobProgress | None,
+        timestamp: int,
+        completed_task: TaskId | None = None,
+        planned_tasks: set[TaskId] | None = None,
+    ) -> None:
+        if progress is None and completed_task is None and not planned_tasks:
             return
         job = self.jobs[job_id]
         if completed_task is not None:
+            job.planned_task_ids.discard(completed_task)
             job.completed_task_ids.add(completed_task)
+        if planned_tasks:
+            job.planned_task_ids.update(planned_tasks - job.completed_task_ids)
         if progress is None:
             return
         if progress.completed:
