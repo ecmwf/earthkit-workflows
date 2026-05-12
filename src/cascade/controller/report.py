@@ -112,42 +112,38 @@ class Reporter:
     def __init__(self, report_address: str | None) -> None:
         self.channel = ReporterChannel(report_address) if report_address is not None else None
 
-    def _send(self, report: ControllerReport) -> None:
-        if self.channel is not None:
-            self.channel.send(report)
-
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.channel is None:
             return
         pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
         report = ControllerReport(self.channel.job_id, JobProgress.progressed(pct), monotonic_ns(), [], completed_task)
-        self._send(report)
+        self.channel.send(report)
 
     def send_tasks_planned(self, task_ids: set[TaskId]) -> None:
         if self.channel is None:
             return
         logger.debug(f"reporting planned tasks {task_ids=}")
         report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [], None, task_ids)
-        self._send(report)
+        self.channel.send(report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:
         if self.channel is None:
             return
         logger.debug(f"uploading result {dataset=}")
         report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [(dataset, result)])
-        self._send(report)
+        self.channel.send(report)
 
     def send_failure(self, failure: str) -> None:
         if self.channel is None:
             return
         logger.debug(f"reporting failure {failure=}")
         report = ControllerReport(self.channel.job_id, JobProgress.failed(failure), monotonic_ns(), [])
-        self._send(report)
+        self.channel.send(report)
 
     def success(self) -> None:
         if self.channel is None:
             return
         logger.debug("reporter sending shutdown")
         report = ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), [])
-        self._send(report)
+        self.channel.send(report)
