@@ -140,19 +140,23 @@ class JobRouter:
             job.planned_task_ids.update(planned_tasks - job.completed_task_ids)
         if progress is None:
             return
-        if progress.completed:
+        if timestamp <= job.last_seen:
+            return
+        job.last_seen = timestamp
+        if progress.completed and not job.progress.completed:
             self.poller.unregister(job.socket)
             self.active_jobs -= 1
             self.maybe_spawn()
         if progress.failure is not None and job.progress.failure is None:
             job.progress = progress
-        elif job.last_seen >= timestamp or job.progress.failure is not None:
+        elif job.progress.failure is not None:
             pass
         elif progress.pct is not None:
             job.progress = progress
 
     def put_result(self, job_id: JobId, dataset_id: DatasetId, result: bytes) -> None:
-        self.jobs[job_id].results[dataset_id] = result
+        if dataset_id not in self.jobs[job_id].results:
+            self.jobs[job_id].results[dataset_id] = result
 
     def delete_results(self, delete_map: dict[JobId, list[DatasetId]]) -> list[str]:
         if not delete_map:

@@ -213,12 +213,15 @@ class ReliableSender:
 
     def send(self, host: HostId, m: Message) -> None:
         raw = ser_message(m)
+        self.send_raw(host, raw, type(m).__name__)
+
+    def send_raw(self, host: HostId, raw: bytes, clazz: str) -> None:
         syn = ser_message(Syn(idx=self.idx, addr=self.address))
         self.inflight[self.idx] = _InFlightRecord(
             host=host,
             message=(syn, raw),
             at=time.time_ns(),
-            clazz=type(m).__name__,
+            clazz=clazz,
             remaining=max_retries_per_message,
         )
         self.hosts[host][0].send_multipart((syn, raw))

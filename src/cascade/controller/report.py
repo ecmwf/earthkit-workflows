@@ -17,8 +17,11 @@ from typing import NewType
 import zmq
 from typing_extensions import Self
 
-from cascade.executor.comms import get_context
-from cascade.low.core import DatasetId, TaskId
+import cascade.executor.platform as platform
+from cascade.executor.comms import ReliableSender, default_message_resend_ms, get_context
+from cascade.executor.msg import Ack
+from cascade.executor.serde import des_message
+from cascade.low.core import DatasetId, HostId, TaskId
 from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext
 
@@ -74,54 +77,86 @@ def serialize(report: ControllerReport) -> bytes:
     return pickle.dumps(report)
 
 
-def _send(socket: zmq.Socket, report: ControllerReport) -> None:
-    # TODO we need to make sure sending is reliable, ie, retries and acks from gateway
-    socket.send(serialize(report))
-
-
 class Reporter:
     def __init__(self, report_address: str | None) -> None:
+        self.sender: ReliableSender | None = None
+        self.ack_socket: zmq.Socket | None = None
+        self.ack_poller: zmq.Poller | None = None
+        self.job_id: JobId | None = None
         if report_address is None:
-            self.socket = None
             return
         address, job_id = report_address.split(",", 1)
         logger.debug(f"initialising reporter with {address=} and {job_id=}")
         self.job_id = JobId(job_id)
-        self.socket = get_context().socket(zmq.PUSH)
-        self.socket.connect(address)
+        self.ack_socket = get_context().socket(zmq.PULL)
+        ack_base = f"tcp://{platform.get_bindabble_self()}"
+        ack_port = self.ack_socket.bind_to_random_port(ack_base)
+        ack_address = f"{ack_base}:{ack_port}"
+        self.ack_poller = zmq.Poller()
+        self.ack_poller.register(self.ack_socket, flags=zmq.POLLIN)
+        self.sender = ReliableSender(ack_address, default_message_resend_ms)
+        self.sender.add_host(HostId("gateway"), address)
+
+    def _send(self, report: ControllerReport) -> None:
+        if self.sender is None or self.ack_poller is None or self.ack_socket is None:
+            return
+        self.sender.send_raw(HostId("gateway"), serialize(report), "ControllerReport")
+        while self.sender.inflight:
+            for socket, _ in self.ack_poller.poll(default_message_resend_ms):
+                if socket is not self.ack_socket:
+                    continue
+                msg_frames = self.ack_socket.recv_multipart()
+                if len(msg_frames) != 1:
+                    raise CascadeInternalError(f"expected single-frame Ack on report channel, got {len(msg_frames)=}")
+                ack = des_message(msg_frames[0])
+                if isinstance(ack, Ack):
+                    self.sender.ack(ack.idx)
+                else:
+                    raise CascadeInternalError(f"expected Ack on report channel, got {type(ack)}")
+            self.sender.maybe_retry()
 
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
-        if self.socket is None:
+        if self.sender is None:
             return
+        if self.job_id is None:
+            raise CascadeInternalError("missing job id on report sender")
         pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
         report = ControllerReport(self.job_id, JobProgress.progressed(pct), monotonic_ns(), [], completed_task)
-        _send(self.socket, report)
+        self._send(report)
 
     def send_tasks_planned(self, task_ids: set[TaskId]) -> None:
-        if self.socket is None:
+        if self.sender is None:
             return
+        if self.job_id is None:
+            raise CascadeInternalError("missing job id on report sender")
         logger.debug(f"reporting planned tasks {task_ids=}")
         report = ControllerReport(self.job_id, None, monotonic_ns(), [], None, task_ids)
-        _send(self.socket, report)
+        self._send(report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:
-        if self.socket is None:
+        if self.sender is None:
             return
+        if self.job_id is None:
+            raise CascadeInternalError("missing job id on report sender")
         logger.debug(f"uploading result {dataset=}")
         report = ControllerReport(self.job_id, None, monotonic_ns(), [(dataset, result)])
-        _send(self.socket, report)
+        self._send(report)
 
     def send_failure(self, failure: str) -> None:
-        if self.socket is None:
+        if self.sender is None:
             return
+        if self.job_id is None:
+            raise CascadeInternalError("missing job id on report sender")
         logger.debug(f"reporting failure {failure=}")
         report = ControllerReport(self.job_id, JobProgress.failed(failure), monotonic_ns(), [])
-        _send(self.socket, report)
+        self._send(report)
 
     def success(self) -> None:
-        if self.socket is None:
+        if self.sender is None:
             return
+        if self.job_id is None:
+            raise CascadeInternalError("missing job id on report sender")
         logger.debug("reporter sending shutdown")
         report = ControllerReport(self.job_id, JobProgress.succeeded(), monotonic_ns(), [])
-        _send(self.socket, report)
+        self._send(report)
