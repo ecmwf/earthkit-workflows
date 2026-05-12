@@ -12,6 +12,7 @@ import logging
 from typing import Iterable, Iterator, cast
 
 from cascade.controller.core import State
+from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge
 from cascade.executor.checkpoints import build_retrieve_command, possible_repersist, retrieve_dataset
 from cascade.executor.msg import DatasetPublished, TaskSequence
@@ -23,7 +24,7 @@ from cascade.scheduler.core import Assignment
 logger = logging.getLogger(__name__)
 
 
-def act(bridge: Bridge, assignment: Assignment) -> None:
+def act(bridge: Bridge, assignment: Assignment, reporter: Reporter) -> None:
     """Converts an assignment to one or more actions which are sent to the bridge, and returned
     for tracing/updating purposes. Does *not* mutate State, but executors behind the Bridge *are* mutated.
     """
@@ -62,6 +63,7 @@ def act(bridge: Bridge, assignment: Assignment) -> None:
                 "host": "controller",
             }
         )
+    reporter.send_tasks_planned(set(assignment.tasks))
     logger.debug(f"sending {task_sequence} to bridge")
     bridge.task_sequence(task_sequence)
 

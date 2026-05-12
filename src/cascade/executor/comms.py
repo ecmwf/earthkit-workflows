@@ -100,6 +100,25 @@ def send_data(address: BackboneAddress, data: DatasetTransmitPayload, syn: Syn) 
     socket.send_multipart(byt, copy=False)
 
 
+def receive_and_ack(socket: zmq.Socket, seen_syns: set[tuple[int, BackboneAddress]]) -> bytes | None:
+    frames = socket.recv_multipart()
+    if len(frames) == 0:
+        raise CascadeInternalError("unexpected empty message")
+    maybe_syn = des_message(frames[0])
+    if isinstance(maybe_syn, Syn):
+        callback(maybe_syn.addr, Ack(idx=maybe_syn.idx))
+        key = (maybe_syn.idx, maybe_syn.addr)
+        if key in seen_syns:
+            return None
+        seen_syns.add(key)
+        if len(frames) != 2:
+            raise CascadeInternalError(f"expected payload after Syn, got {len(frames)=}")
+        return frames[1]
+    if len(frames) != 1:
+        raise CascadeInternalError("unexpected multipart message without Syn preamble")
+    return frames[0]
+
+
 class Listener:
     def __init__(self, address: BackboneAddress):
         self.address = address
@@ -213,12 +232,15 @@ class ReliableSender:
 
     def send(self, host: HostId, m: Message) -> None:
         raw = ser_message(m)
+        self.send_raw(host, raw, type(m).__name__)
+
+    def send_raw(self, host: HostId, raw: bytes, clazz: str) -> None:
         syn = ser_message(Syn(idx=self.idx, addr=self.address))
         self.inflight[self.idx] = _InFlightRecord(
             host=host,
             message=(syn, raw),
             at=time.time_ns(),
-            clazz=type(m).__name__,
+            clazz=clazz,
             remaining=max_retries_per_message,
         )
         self.hosts[host][0].send_multipart((syn, raw))
