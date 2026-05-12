@@ -116,6 +116,13 @@ def test_job():
         deser = api.decoded_result(result_retrieval_res, ji.jobInstance)
         assert deser == job_func(init_value)
 
+        detailed_progress_req = api.JobProgressRequest(job_ids=[job_id], detailed_report=True)
+        detailed_progress_res = client.request_response(detailed_progress_req, url)
+        assert isinstance(detailed_progress_res, api.JobProgressResponse)
+        assert detailed_progress_res.error is None
+        assert detailed_progress_res.completed_task_ids is not None
+        assert len(detailed_progress_res.completed_task_ids[job_id]) == len(ji.jobInstance.tasks)
+
         result_deletion_req = api.ResultDeletionRequest(datasets={job_id: [ji.jobInstance.ext_outputs[0]]})
         result_deletion_res = client.request_response(result_deletion_req, url)
         assert isinstance(result_deletion_res, api.ResultDeletionResponse)

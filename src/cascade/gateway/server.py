@@ -42,12 +42,13 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
             rv = api.SubmitJobResponse(job_id=None, error=repr(e))
     elif isinstance(m, api.JobProgressRequest):
         try:
-            progresses, datasets, queue_length = jobs.progress_of(m.job_ids)
+            progresses, datasets, queue_length, completed_task_ids = jobs.progress_of(m.job_ids, m.detailed_report)
             rv = api.JobProgressResponse(
                 progresses=cast(dict[JobId, JobProgress | None], progresses),
                 datasets=datasets,
                 error=None,
                 queue_length=queue_length,
+                completed_task_ids=completed_task_ids,
             )
         except Exception as e:
             logger.exception(f"failed to get progress of: {m}")
@@ -81,7 +82,7 @@ def handle_controller(socket: zmq.Socket, jobs: JobRouter) -> None:
     raw = socket.recv()
     report = deserialize(raw)
     logger.debug(f"received controller message {report}")
-    jobs.maybe_update(report.job_id, report.current_status, report.timestamp)
+    jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task)
     for dataset_id, result in report.results:
         jobs.put_result(report.job_id, dataset_id, result)
 

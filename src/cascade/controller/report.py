@@ -18,7 +18,7 @@ import zmq
 from typing_extensions import Self
 
 from cascade.executor.comms import get_context
-from cascade.low.core import DatasetId
+from cascade.low.core import DatasetId, TaskId
 from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext
 
@@ -58,6 +58,7 @@ class ControllerReport:
     current_status: JobProgress | None
     timestamp: int
     results: list[tuple[DatasetId, bytes]]
+    completed_task: TaskId | None = None
 
 
 def deserialize(raw: bytes) -> ControllerReport:
@@ -88,12 +89,12 @@ class Reporter:
         self.socket = get_context().socket(zmq.PUSH)
         self.socket.connect(address)
 
-    def send_progress(self, context: JobExecutionContext) -> None:
+    def send_progress(self, context: JobExecutionContext, completed_task: TaskId | None = None) -> None:
         if self.socket is None:
             return
         pct = 1.0 - context.remaining / context.total
         logger.debug(f"reporting progress {pct=}")
-        report = ControllerReport(self.job_id, JobProgress.progressed(pct), monotonic_ns(), [])
+        report = ControllerReport(self.job_id, JobProgress.progressed(pct), monotonic_ns(), [], completed_task)
         _send(self.socket, report)
 
     def send_result(self, dataset: DatasetId, result: bytes) -> None:

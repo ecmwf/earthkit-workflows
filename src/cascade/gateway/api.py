@@ -13,7 +13,7 @@ from typing import Any
 import cloudpickle
 
 from cascade.controller.report import JobId, JobProgress
-from cascade.low.core import DatasetId, JobInstance, JobInstanceRich
+from cascade.low.core import DatasetId, JobInstance, JobInstanceRich, TaskId
 from cascade.low.exceptions import CascadeInternalError
 from cascade.low.func import CascadeBaseModel
 
@@ -55,6 +55,7 @@ class SubmitJobResponse(CascadeGatewayAPI):
 
 class JobProgressRequest(CascadeGatewayAPI):
     job_ids: list[JobId]  # on empty list, return all
+    detailed_report: bool = False
 
 
 class JobProgressResponse(CascadeGatewayAPI):
@@ -62,6 +63,7 @@ class JobProgressResponse(CascadeGatewayAPI):
     datasets: dict[JobId, list[DatasetId]]
     queue_length: int
     error: str | None  # top level error
+    completed_task_ids: dict[JobId, list[TaskId]] | None = None
 
 
 class ResultRetrievalRequest(CascadeGatewayAPI):

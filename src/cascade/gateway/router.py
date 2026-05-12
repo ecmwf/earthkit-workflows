@@ -33,7 +33,7 @@ from cascade.deployment.logging import LoggingConfig
 from cascade.executor.comms import get_context
 from cascade.gateway.api import JobSpec
 from cascade.gateway.spawning import spawn_subprocess
-from cascade.low.core import DatasetId
+from cascade.low.core import DatasetId, TaskId
 from cascade.low.func import next_uuid
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ class Job:
     progress: JobProgress
     last_seen: int
     results: dict[DatasetId, bytes]
+    completed_task_ids: set[TaskId]
 
 
 class JobRouter:
@@ -78,7 +79,7 @@ class JobRouter:
         full_addr = f"{base_addr}:{port}"
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
         self.poller.register(socket, flags=zmq.POLLIN)
-        self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {})
+        self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {}, set())
         self.procs[job_id] = spawn_subprocess(job_spec, full_addr, job_id, self.loggingConfig, self.troika_config)
         self.active_jobs += 1
 
@@ -91,7 +92,9 @@ class JobRouter:
         self.maybe_spawn()
         return job_id
 
-    def progress_of(self, job_ids: Iterable[JobId]) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]], int]:
+    def progress_of(
+        self, job_ids: Iterable[JobId], detailed_report: bool = False
+    ) -> tuple[dict[JobId, JobProgress], dict[JobId, list[DatasetId]], int, dict[JobId, list[TaskId]] | None]:
         if not job_ids:
             job_ids = set(self.jobs.keys()).union(self.jobs_queue.keys())
         progresses = {}
@@ -103,15 +106,22 @@ class JobRouter:
             else:
                 progresses[job_id] = None
         datasets = {job_id: list(self.jobs[job_id].results.keys()) for job_id in job_ids if job_id in self.jobs}
-        return progresses, datasets, len(self.jobs_queue)
+        completed_task_ids: dict[JobId, list[TaskId]] | None = None
+        if detailed_report:
+            completed_task_ids = {job_id: list(self.jobs[job_id].completed_task_ids) for job_id in job_ids if job_id in self.jobs}
+        return progresses, datasets, len(self.jobs_queue), completed_task_ids
 
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
         return self.jobs[job_id].results[dataset_id]
 
-    def maybe_update(self, job_id: JobId, progress: JobProgress | None, timestamp: int) -> None:
-        if progress is None:
+    def maybe_update(self, job_id: JobId, progress: JobProgress | None, timestamp: int, completed_task: TaskId | None = None) -> None:
+        if progress is None and completed_task is None:
             return
         job = self.jobs[job_id]
+        if completed_task is not None:
+            job.completed_task_ids.add(completed_task)
+        if progress is None:
+            return
         if progress.completed:
             self.poller.unregister(job.socket)
             self.active_jobs -= 1
