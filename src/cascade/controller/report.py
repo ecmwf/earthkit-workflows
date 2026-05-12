@@ -93,8 +93,8 @@ class ReporterChannel:
 
     def send(self, report: ControllerReport) -> None:
         self.sender.send_raw(HostId("gateway"), serialize(report), "ControllerReport")
-        while self.sender.inflight:
-            for socket, _ in self.ack_poller.poll(default_message_resend_ms):
+        if self.sender.inflight:
+            for socket, _ in self.ack_poller.poll(0):
                 if socket is not self.ack_socket:
                     continue
                 msg_frames = self.ack_socket.recv_multipart()
