@@ -14,11 +14,12 @@ from cascade.ygg.protocol import Ack, Syn, parse_envelope, serialize_ack, serial
 from cascade.ygg.registry import HostRegistry
 from cascade.ygg.reliability import DedupCache, InflightMessage, RetryPlanner
 from cascade.ygg.transport import MultiLaneListener, OutboundTransport
-from cascade.ygg.types import HostEndpoints, HostId, IncomingMessage, Lane, YggConfig
+from cascade.ygg.types import Delivery, HostEndpoints, HostId, IncomingMessage, Lane, YggConfig
 
 
 class YggNode:
     def __init__(self, control_bind_address: str, bulk_bind_address: str | None = None, config: YggConfig = YggConfig()) -> None:
+        self._config = config
         bind_addresses: dict[Lane, str] = {"control": control_bind_address}
         if bulk_bind_address is not None:
             bind_addresses["bulk"] = bulk_bind_address
@@ -38,11 +39,21 @@ class YggNode:
     def unregister_host(self, host_id: str) -> None:
         self._registry.unregister(HostId(host_id))
 
-    def send_message_to_host(self, host_id: str, payload: bytes, lane: Lane = "control") -> int:
-        idx = self._next_idx
-        self._next_idx += 1
+    def send_message_to_host(
+        self,
+        host_id: str,
+        payload: bytes,
+        lane: Lane = "control",
+        delivery: Delivery | None = None,
+    ) -> int | None:
         host = HostId(host_id)
         address = self._registry.resolve(host, lane)
+        resolved_delivery = self._resolve_delivery(lane=lane, delivery=delivery)
+        if resolved_delivery == "best_effort":
+            self._outbound.send_single(address=address, frame=payload)
+            return None
+        idx = self._next_idx
+        self._next_idx += 1
         record = InflightMessage(
             idx=idx,
             host=host,
@@ -55,14 +66,27 @@ class YggNode:
         self._send_record(record)
         return idx
 
-    def send_large_message_to_host(self, host_id: str, payload: bytes) -> int:
-        return self.send_message_to_host(host_id=host_id, payload=payload, lane="bulk")
+    def send_large_message_to_host(self, host_id: str, payload: bytes, delivery: Delivery | None = None) -> int | None:
+        return self.send_message_to_host(host_id=host_id, payload=payload, lane="bulk", delivery=delivery)
 
-    def broadcast(self, payload: bytes, lane: Lane = "control", hosts: Iterable[str] | None = None) -> list[int]:
+    def broadcast(
+        self,
+        payload: bytes,
+        lane: Lane = "control",
+        hosts: Iterable[str] | None = None,
+        delivery: Delivery | None = None,
+    ) -> list[int | None]:
         target_hosts = hosts if hosts is not None else self._registry.hosts()
-        sent: list[int] = []
+        sent: list[int | None] = []
         for host in target_hosts:
-            sent.append(self.send_message_to_host(host_id=str(host), payload=payload, lane=lane))
+            sent.append(
+                self.send_message_to_host(
+                    host_id=str(host),
+                    payload=payload,
+                    lane=lane,
+                    delivery=delivery,
+                )
+            )
         return sent
 
     def acknowledge(self, idx: int) -> bool:
@@ -103,6 +127,11 @@ class YggNode:
         self._outbound.send_multipart(record.address, (record.syn_frame, record.payload_frame), copy=copy)
         record.attempts += 1
         record.sent_at_ns = time.time_ns()
+
+    def _resolve_delivery(self, lane: Lane, delivery: Delivery | None) -> Delivery:
+        if delivery is not None:
+            return delivery
+        return self._config.delivery_for(lane)
 
     def _handle_incoming(self, lane: Lane, frames: list[bytes]) -> IncomingMessage | None:
         if not frames:

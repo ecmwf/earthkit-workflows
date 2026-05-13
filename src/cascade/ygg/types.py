@@ -9,6 +9,7 @@
 from dataclasses import dataclass
 from typing import Literal, NewType
 
+Delivery = Literal["reliable", "best_effort"]
 Lane = Literal["control", "bulk"]
 HostId = NewType("HostId", str)
 
@@ -29,6 +30,8 @@ class RetryPolicy:
 class YggConfig:
     control: RetryPolicy = RetryPolicy(retry_interval_ms=800, max_retries=20)
     bulk: RetryPolicy = RetryPolicy(retry_interval_ms=4_000, max_retries=10)
+    control_delivery: Delivery = "reliable"
+    bulk_delivery: Delivery = "reliable"
     dedup_ttl_ms: int = 60_000
     linger_ms: int = 1_000
 
@@ -36,6 +39,11 @@ class YggConfig:
         if lane == "control":
             return self.control
         return self.bulk
+
+    def delivery_for(self, lane: Lane) -> Delivery:
+        if lane == "control":
+            return self.control_delivery
+        return self.bulk_delivery
 
 
 @dataclass(frozen=True)

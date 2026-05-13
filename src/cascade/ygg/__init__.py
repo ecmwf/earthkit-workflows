@@ -8,10 +8,11 @@
 
 from cascade.ygg.api import YggNode
 from cascade.ygg.protocol import Ack, Syn
-from cascade.ygg.types import HostEndpoints, IncomingMessage, Lane, RetryPolicy, YggConfig
+from cascade.ygg.types import Delivery, HostEndpoints, IncomingMessage, Lane, RetryPolicy, YggConfig
 
 __all__ = [
     "Ack",
+    "Delivery",
     "HostEndpoints",
     "IncomingMessage",
     "Lane",
