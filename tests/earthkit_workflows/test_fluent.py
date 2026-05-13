@@ -129,18 +129,20 @@ def test_broadcast():
 def test_flatten_expand():
     input_action = mock_action((2, 3))
 
-    with pytest.raises(Exception):
-        input_action.flatten(dim="dim_2")
-
-    action1 = input_action.flatten(dim="dim_1")
+    with pytest.raises(ValueError):
+        input_action.flatten(keep_dims=["dim_2"])
+    action1 = input_action.flatten(keep_dims=["dim_0"])
     action1_array = nodetree_array(action1.nodes)
     assert action1_array.shape == (2,)
     assert len(action1_array.data.item(0).inputs) == 3
 
-    action2 = action1.flatten(dim="dim_0")
+    action2 = action1.flatten(method="stack")
     assert len(nodetree_array(action2.nodes).data.item(0).inputs) == 2
 
-    with pytest.raises(Exception):
+    flatten_all = input_action.flatten()
+    assert flatten_all.nodes == action2.nodes
+
+    with pytest.raises(ValueError):
         action2.flatten()
 
     action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
@@ -298,9 +300,9 @@ def test_generators():
     serialise(graph)
 
 
-def test_split():
+def test_branches():
     input_action = mock_action((3, 4))
-    branches = input_action.split(
+    branches = input_action.create_branches(
         {
             "/branch1": lambda data: np.where(data <= 0, data, np.nan),
             "/branch2": lambda data: np.where(data > 0, data, np.nan),
@@ -309,8 +311,12 @@ def test_split():
     for npath, narray in nodetree_arrays(branches.nodes):
         assert narray.shape == (3, 4)
         assert "branch" in npath
+    recombined = branches.combine_branches(dim="dim_0")
+    for path, array in nodetree_arrays(recombined.nodes):
+        assert path == "/"
+        assert array.shape == (6, 4)
 
-    subbranches = branches.split(
+    subbranches = branches.create_branches(
         {
             "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
             "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
@@ -321,18 +327,25 @@ def test_split():
         "/branch1/subbranch1",
         "/branch1/subbranch2",
     ]
+    for path, array in nodetree_arrays(subbranches.combine_branches(dim="dim_new").nodes):
+        assert path == "/"
+        assert array.shape == (3, 3, 4)
 
     with pytest.raises(NotImplementedError):
         branches.set_path("/new_root")
 
     with_root = input_action.set_path("/root")
     with pytest.raises(ValueError):
-        with_root.split(
+        with_root.create_branches(
             {
                 "/branch1": lambda data: np.where(data <= 0, data, np.nan),
                 "/branch2": lambda data: np.where(data > 0, data, np.nan),
             }
         )
+
+    reduced = subbranches.sum(path="/branch1/subbranch1")
+    with pytest.raises(ValueError):
+        reduced.combine_branches("dim_1")
 
 
 @pytest.mark.parametrize(
@@ -352,7 +365,7 @@ def test_select(selection, num_arrays, shapes_or_error):
         branch1=mock_action((3, 4)),
         branch2=mock_action((3, 5)),
     )
-    subbranches = branches.split(
+    subbranches = branches.create_branches(
         {
             "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
             "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
@@ -385,7 +398,7 @@ def test_iselect(selection, num_arrays, shapes_or_error):
         branch1=mock_action((3, 4)),
         branch2=mock_action((3, 5)),
     )
-    subbranches = branches.split(
+    subbranches = branches.create_branches(
         {
             "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
             "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),

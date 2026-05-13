@@ -641,19 +641,20 @@ class Action:
     @capture_payload_metadata
     def flatten(
         self,
-        dim: str = "",
-        axis: int = 0,
+        keep_dims: list[str] = [],
         path: Optional[str] = None,
+        method: str = "concat",
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> "Action":
-        """Flattens the array of nodes along specified dimension by creating new
-        nodes from stacking internal data of nodes along that dimension.
+        """Flattens the array of nodes along all dims, except keep_sims, for node arrays
+        along path. Internal data in nodes is combined either by stacking for concatenating,
+        specified by method
 
         Parameters
         ----------
-        dim: str, name of dimension to flatten along
-        axis: int, axis of new dimension in internal data
+        keep_dims: str, name of dimensions not to flatten
+        method: str, either concat or stack
         path: str, path to select subset of nodes to operate on, if provided
         backend_kwargs: dict, kwargs for the underlying array module stack method
 
@@ -661,11 +662,18 @@ class Action:
         ------
         Action
         """
-        return self.reduce(
-            Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}),
-            dim=dim,
-            path=path,
-        )
+        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
+            if narray.size == 1:
+                raise ValueError("Can not flatten array containing single node")
+            diff = set(keep_dims).difference(narray.dims)
+            if len(diff) > 0:
+                raise ValueError(f"Dimensions {diff} not in array at {npath}")
+            stack_dims = [x for x in narray.dims if x not in keep_dims]
+            node_arrays[npath] = narray.stack(**{"**tempindex**": stack_dims}).reset_index(stack_dims, drop=True)
+
+        action = type(self)(nodetree_from_dict(node_arrays))
+        return _combine_nodes(action, method, dim="**tempindex**", batch_size=0, keep_dim=False, path=path, backend_kwargs=backend_kwargs)
 
     def set_path(self, path: str) -> "Action":
         """Create path for current node array
@@ -682,7 +690,7 @@ class Action:
             raise NotImplementedError("Multiple node arrays present, can not set single path")
         return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes)}))
 
-    def split(self, expansion: dict[str, PayloadFunc | Payload]) -> "Action":
+    def create_branches(self, expansion: dict[str, PayloadFunc | Payload]) -> "Action":
         """Create action containing new node arrays by splitting an existing node array
         by the specified functions in expansion
 
@@ -705,6 +713,31 @@ class Action:
         action = self.select(path=parent)
         for path, func in expansion.items():
             node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
+        return type(self)(nodetree_from_dict(node_arrays))
+    
+    def combine_branches(self, dim: str, path: Optional[str] = None) -> "Action":
+        """Combine node arrays for leaves along path into a single node array
+
+        Parameters
+        ----------
+        dim: str, dimension to concatenate arrays along. Either existing or new dimension
+        path: str, path along which leaf nodes will be concatenated into single array
+
+        Return
+        ------
+        Action
+
+        Raises
+        ------
+        ValueError if arrays along leaves are not compatible
+        """
+        action = self.select(path=path)
+        new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim)
+        if path:
+            node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}
+            node_arrays[path] = new_array
+        else:
+            node_arrays = {"/": new_array}
         return type(self)(nodetree_from_dict(node_arrays))
 
     def _validate_criteria(self, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
@@ -1121,6 +1154,8 @@ def _combine_nodes(
         if not keep_dim:
             action._squeeze_dimension(dim, path=path)
         return action
+    if backend_method not in ["stack", "concat"]:
+        raise ValueError(f"Unknown method {backend_method} for combining nodes")
     return action.reduce(
         Payload(getattr(backends, backend_method), kwargs=backend_kwargs),
         dim=dim,
