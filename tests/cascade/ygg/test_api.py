@@ -233,3 +233,34 @@ def test_close_logs_remaining_inflight_on_timeout(monkeypatch: pytest.MonkeyPatc
         assert warnings == [("ygg close timed out with %d inflight messages", 1)]
     finally:
         receiver.close()
+
+
+def test_close_polls_then_retries_until_inflight_clears(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = YggConfig(
+        control=RetryPolicy(retry_interval_ms=25, max_retries=3),
+        bulk=RetryPolicy(retry_interval_ms=25, max_retries=3),
+    )
+    sender = YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config)
+    poll_timeouts: list[int | None] = []
+    retry_calls = 0
+
+    def fake_poll_messages(timeout_ms: int | None = 0) -> list[object]:
+        poll_timeouts.append(timeout_ms)
+        return []
+
+    def fake_retry_outstanding() -> None:
+        nonlocal retry_calls
+        retry_calls += 1
+        sender._inflight.clear()
+
+    monkeypatch.setattr(sender, "poll_messages", fake_poll_messages)
+    monkeypatch.setattr(sender, "retry_outstanding", fake_retry_outstanding)
+    try:
+        sender._inflight[1] = object()  # type: ignore[assignment]
+        sender.close(timeout_ms=100, wait_for_all_acks=True)
+
+        assert retry_calls == 1
+        assert poll_timeouts == [25]
+    finally:
+        sender._outbound.close()
+        sender._listener.close()

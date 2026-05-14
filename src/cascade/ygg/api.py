@@ -155,7 +155,9 @@ class YggNode:
                 remaining_ns = deadline_ns - time.monotonic_ns()
                 if remaining_ns <= 0:
                     break
-                self.poll_messages(timeout_ms=remaining_ns // 1_000_000)
+                poll_timeout_ms = min(remaining_ns // 1_000_000, self._config.control.retry_interval_ms)
+                self.poll_messages(timeout_ms=poll_timeout_ms)
+                self.retry_outstanding()
             if self._inflight:
                 logger.warning("ygg close timed out with %d inflight messages", len(self._inflight))
         self._outbound.close()
