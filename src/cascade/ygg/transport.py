@@ -22,7 +22,7 @@ _local = threading.local()
 
 def get_context() -> zmq.Context:
     if not hasattr(_local, "context"):
-        _local.context = zmq.Context.instance()
+        _local.context = zmq.Context()
     return _local.context
 
 
@@ -30,6 +30,7 @@ class OutboundTransport:
     def __init__(self, linger_ms: int) -> None:
         self._linger_ms = linger_ms
         self._sockets: dict[str, zmq.Socket] = {}
+        self.should_monitor = True
 
     def _socket_for(self, address: str) -> zmq.Socket:
         socket = self._sockets.get(address)
@@ -45,7 +46,23 @@ class OutboundTransport:
         return {address: _describe_socket(socket) for address, socket in self._sockets.items()}
 
     def send_multipart(self, address: str, frames: tuple[bytes, ...], copy: bool = True) -> None:
+        logger.debug(f"will send a message to {address=}")
+        if self.should_monitor:
+            monitor = self._socket_for(address).get_monitor_socket()
         self._socket_for(address).send_multipart(frames, copy=copy)
+        if not self.should_monitor:
+            return
+        logger.debug(f"will monitor a message to {address=}")
+        from zmq.utils.monitor import parse_monitor_message, recv_monitor_message
+
+        if monitor.poll(1000):
+            while monitor.poll(100):
+                evt = recv_monitor_message(monitor)
+                event_id = evt["event"]
+                logger.debug(f"message to {address=} got {event_id=} and {evt=}")
+        logger.debug("monitor close")
+        monitor.close()
+        self.should_monitor = False
 
     def send_single(self, address: str, frame: bytes) -> None:
         self._socket_for(address).send(frame)

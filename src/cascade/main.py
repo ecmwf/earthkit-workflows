@@ -262,9 +262,4 @@ if __name__ == "__main__":
                 continue
     print("------------------------------------------", file=sys.stderr)
 
-    import zmq
-
-    ctx = zmq.Context.instance()
-    ctx.term()
-
     fire.Fire({"local": main_local, "dist": main_dist})

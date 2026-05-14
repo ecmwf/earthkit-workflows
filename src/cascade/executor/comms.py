@@ -73,7 +73,7 @@ class GraceWatcher:
 def get_context() -> zmq.Context:
     local = threading.local()
     if not hasattr(local, "context"):
-        local.context = zmq.Context.instance()
+        local.context = zmq.Context()
     return local.context
 
 
