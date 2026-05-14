@@ -300,7 +300,46 @@ def test_generators():
     serialise(graph)
 
 
-def test_branches():
+@pytest.mark.parametrize(
+    "branch_config",
+    [
+        {
+            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
+            "/branch2": lambda data: np.where(data > 0, data, np.nan),
+        },
+        {
+            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+            "/branch2": lambda data: np.where(data == 0, data, np.nan),
+        },
+    ],
+    ids=["branches", "subranches"],
+)
+@pytest.mark.parametrize(
+    "combine_dim",
+    [
+        "dim_0",
+        "dim_new",
+    ],
+    ids=["existing-dim", "new-dim"],
+)
+def test_branches(branch_config, combine_dim):
+    input_action = mock_action((3, 4))
+    branches = input_action.create_branches(branch_config)
+    assert set(x[0] for x in nodetree_arrays(branches.nodes)) == set(branch_config.keys())
+    for npath, narray in nodetree_arrays(branches.nodes):
+        assert narray.shape == (3, 4)
+        assert "branch" in npath
+    recombined = branches.combine_branches(dim=combine_dim)
+    for path, array in nodetree_arrays(recombined.nodes):
+        assert path == "/"
+        if combine_dim == "dim_new":
+            assert array.shape == ((len(branch_config)), 3, 4)
+        else:
+            assert array.shape == ((len(branch_config)) * 3, 4)
+
+
+def test_invalid_branches():
     input_action = mock_action((3, 4))
     branches = input_action.create_branches(
         {
@@ -308,29 +347,6 @@ def test_branches():
             "/branch2": lambda data: np.where(data > 0, data, np.nan),
         }
     )
-    for npath, narray in nodetree_arrays(branches.nodes):
-        assert narray.shape == (3, 4)
-        assert "branch" in npath
-    recombined = branches.combine_branches(dim="dim_0")
-    for path, array in nodetree_arrays(recombined.nodes):
-        assert path == "/"
-        assert array.shape == (6, 4)
-
-    subbranches = branches.create_branches(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
-    assert [x[0] for x in nodetree_arrays(subbranches.nodes)] == [
-        "/branch2",
-        "/branch1/subbranch1",
-        "/branch1/subbranch2",
-    ]
-    for path, array in nodetree_arrays(subbranches.combine_branches(dim="dim_new").nodes):
-        assert path == "/"
-        assert array.shape == (3, 3, 4)
-
     with pytest.raises(NotImplementedError):
         branches.set_path("/new_root")
 
@@ -343,12 +359,26 @@ def test_branches():
             }
         )
 
-    reduced = subbranches.sum(path="/branch1/subbranch1")
+
+def test_combine_branches():
+    input_action = mock_action((3, 4))
+    branches = input_action.create_branches(
+        {
+            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+            "/branch2": lambda data: np.where(data == 0, data, np.nan),
+        }
+    )
+    reduced = branches.sum(path="/branch1/subbranch1")
+    reduced.nodes["/branch2"].coords["dim_2"] = 1
+    reduced.nodes["/branch1/subbranch1"].coords["dim_2"] = 2
+    reduced.nodes["/branch1/subbranch2"].coords["dim_2"] = 2
     with pytest.raises(ValueError):
         reduced.combine_branches("dim_1")
-    force = reduced.combine_branches(dim="dim_new", force=True)
-    for path, array in nodetree_arrays(force.nodes):
-        assert array.shape == (3, 4)
+    force = reduced.combine_branches(dim="dim_1", force=True)
+    for _, array in nodetree_arrays(force.nodes):
+        assert array.shape == (12,)
+    force.flatten()
 
 
 @pytest.mark.parametrize(

@@ -677,7 +677,9 @@ class Action:
                 raise ValueError(f"Dimensions {diff} not in array at {npath}")
             stack_dims = [x for x in narray.dims if x not in keep_dims]
             if len(stack_dims) > 0:
-                node_arrays[npath] = narray.stack(**{"**tempindex**": stack_dims}).reset_index(stack_dims, drop=True)
+                node_arrays[npath] = (
+                    narray.stack(**{"**tempindex**": stack_dims}).reset_index(stack_dims, drop=True).reset_coords(drop=True)
+                )
 
         action = type(self)(nodetree_from_dict(node_arrays))
         return _combine_nodes(action, method, dim="**tempindex**", batch_size=0, keep_dim=False, path=path, backend_kwargs=backend_kwargs)
@@ -741,9 +743,9 @@ class Action:
         action = self.select(path=path)
         narrays = {apath: array for apath, array in nodetree_arrays(action.nodes)}
         if force:
-            common_coords = set.intersection(*[set(x.coords) for x in narrays.values()])
+            common_dims = set.intersection(*[set(x.dims) for x in narrays.values()])
             for apath in narrays.keys():
-                action = action.flatten(keep_dims=common_coords, path=apath)
+                action = action.flatten(keep_dims=common_dims, path=apath)
         new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim)
         if path:
             node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}
