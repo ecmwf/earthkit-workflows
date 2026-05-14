@@ -140,6 +140,7 @@ class YggNode:
             record = self._inflight[idx]
             self._retry.assert_not_exhausted(record, now_ns=now)
             if self._retry.is_due(record, now_ns=now):
+                logger.debug(f"retrying message {idx=}")
                 self._send_record(record)
 
     def close(self, timeout_ms: int = 1000, wait_for_all_acks: bool = True) -> None:
