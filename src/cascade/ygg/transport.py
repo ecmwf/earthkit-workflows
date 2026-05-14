@@ -22,7 +22,7 @@ _local = threading.local()
 
 def get_context() -> zmq.Context:
     if not hasattr(_local, "context"):
-        _local.context = zmq.Context()
+        _local.context = zmq.Context.instance()
     return _local.context
 
 
