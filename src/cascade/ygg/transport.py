@@ -26,6 +26,19 @@ def get_context() -> zmq.Context:
     return _local.context
 
 
+def destroy_context() -> None:
+    if hasattr(_local, "context"):
+        _local.context.destroy(linger=0)
+        del _local.context
+        logger.debug("context destroyed")
+        import time
+
+        time.sleep(0.5)
+        logger.debug("proceeding after destroy")
+    else:
+        logger.debug("no context to destroy")
+
+
 class OutboundTransport:
     def __init__(self, linger_ms: int) -> None:
         self._linger_ms = linger_ms

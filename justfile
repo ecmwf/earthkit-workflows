@@ -10,12 +10,11 @@
 set dotenv-path := ".env"
 
 val:
-    # uv run ty check src/cascade
-    # uv run ty check tests/cascade
-    # uv run ty check integration_tests
+    uv run ty check src/cascade
+    uv run ty check tests/cascade
+    uv run ty check integration_tests
     # TODO eventually broaden type coverage to ekw as well
-    # uv run pytest -n8 tests
-    uv run pytest -s -n0 tests/cascade/
+    uv run pytest -n8 -s tests
 fmt:
     uv run prek --all-files
 integration testname:

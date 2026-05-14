@@ -34,3 +34,23 @@ def lock_resource(request, tmp_path_factory):
         finally:
             # LOCK_UN: Unlock
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def nuke_zmq_context():
+    """
+    Ensures no ZMQ state leaks between tests by destroying the context
+    and clearing the thread-local storage after every test.
+    """
+    yield  # Let the test run
+
+    # --- Post-test Cleanup ---
+    try:
+        import cascade.executor.comms as t2
+        import cascade.ygg.transport as t1
+
+        t1.destroy_context()
+
+    except Exception as e:
+        # We don't want the cleanup to crash the whole suite if already dead
+        print(f"\n[ZMQ Nuke Warning]: Cleanup failed: {repr(e)}")
