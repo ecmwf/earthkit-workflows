@@ -30,5 +30,11 @@ class HostRegistry:
             raise CascadeInternalError(f"host {host} has no bulk endpoint in ygg registry")
         return endpoints.bulk
 
+    def resolve_endpoints(self, host: HostId) -> HostEndpoints:
+        endpoints = self._hosts.get(host)
+        if endpoints is None:
+            raise CascadeInternalError(f"host not registered in ygg registry: {host}")
+        return endpoints
+
     def hosts(self) -> tuple[HostId, ...]:
         return tuple(self._hosts.keys())

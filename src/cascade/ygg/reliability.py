@@ -45,6 +45,18 @@ class DedupCache:
         self._seen[key] = now
         return False
 
+    def purge_from(self, address: str) -> None:
+        """Remove all dedup cache entries from a specific sender address.
+
+        This is useful when a sender finishes and you want to reclaim memory
+        without waiting for TTL expiration. Particularly valuable for one-way
+        communication patterns (e.g., multiple controllers → single gateway)
+        with large dedup TTLs.
+        """
+        stale = [key for key in self._seen if key[1] == address]
+        for key in stale:
+            self._seen.pop(key, None)
+
 
 class RetryPlanner:
     def __init__(self, config: YggConfig) -> None:

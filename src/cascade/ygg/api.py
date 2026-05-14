@@ -37,7 +37,21 @@ class YggNode:
         self._registry.register(HostId(host_id), endpoints)
 
     def unregister_host(self, host_id: str) -> None:
+        endpoints = self._registry.resolve_endpoints(HostId(host_id))
         self._registry.unregister(HostId(host_id))
+        for address in [endpoints.control, endpoints.bulk]:
+            if address is not None:
+                self._dedup.purge_from(address)
+
+    def forget_sender(self, address: str) -> None:
+        """Explicitly purge dedup cache entries from a sender address.
+
+        Use this when a particular sender finishes sending and you want to
+        reclaim dedup cache memory without waiting for TTL expiration.
+
+        This is called automatically by unregister_host for the host's endpoints.
+        """
+        self._dedup.purge_from(address)
 
     def send_message_to_host(
         self,

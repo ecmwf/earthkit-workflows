@@ -16,10 +16,40 @@ def test_registry_resolve_and_bulk_validation() -> None:
         registry.resolve(HostId("worker-a"), "bulk")
 
 
+def test_registry_resolve_endpoints() -> None:
+    registry = HostRegistry()
+    endpoints = HostEndpoints(control="tcp://127.0.0.1:1001", bulk="tcp://127.0.0.1:2001")
+    registry.register(HostId("worker-a"), endpoints)
+    resolved = registry.resolve_endpoints(HostId("worker-a"))
+    assert resolved.control == "tcp://127.0.0.1:1001"
+    assert resolved.bulk == "tcp://127.0.0.1:2001"
+    # unregistered host raises
+    with pytest.raises(CascadeInternalError):
+        registry.resolve_endpoints(HostId("worker-b"))
+
+
 def test_dedup_cache_marks_duplicates() -> None:
     dedup = DedupCache(ttl_ms=5_000)
     assert dedup.is_duplicate(3, "tcp://source:1") is False
     assert dedup.is_duplicate(3, "tcp://source:1") is True
+
+
+def test_dedup_cache_purge_from() -> None:
+    dedup = DedupCache(ttl_ms=5_000)
+    # Add entries from multiple sources
+    assert dedup.is_duplicate(1, "tcp://source-a:1001") is False
+    assert dedup.is_duplicate(2, "tcp://source-a:1001") is False
+    assert dedup.is_duplicate(3, "tcp://source-b:2001") is False
+    # Verify duplicates
+    assert dedup.is_duplicate(1, "tcp://source-a:1001") is True
+    assert dedup.is_duplicate(3, "tcp://source-b:2001") is True
+    # Purge from source-a
+    dedup.purge_from("tcp://source-a:1001")
+    # source-a entries should no longer be duplicates
+    assert dedup.is_duplicate(1, "tcp://source-a:1001") is False
+    assert dedup.is_duplicate(2, "tcp://source-a:1001") is False
+    # source-b entry should still be duplicate
+    assert dedup.is_duplicate(3, "tcp://source-b:2001") is True
 
 
 def test_retry_planner_exhaustion() -> None:

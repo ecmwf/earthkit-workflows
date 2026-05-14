@@ -63,6 +63,23 @@ Per-lane override should be supported:
 4. Drop duplicates after ack.
 5. Emit payload to caller only for first-seen messages.
 
+### Dedup cache lifecycle
+
+The dedup cache stores seen (message_id, source_address) pairs to prevent duplicate delivery
+on retries. Entries are retained for a configurable TTL (e.g., 60 seconds) to allow late-arriving
+retries to be properly de-duplicated.
+
+For one-way communication patterns (e.g., many controllers → single gateway with no replies),
+the cache can grow unbounded even with TTL if the TTL is set large to handle slow/flaky networks.
+Two mechanisms manage dedup memory:
+
+1. **Automatic TTL expiration:** entries older than `dedup_ttl_ms` are purged on `is_duplicate()` calls.
+2. **Explicit purge by sender:** call `forget_sender(address)` when a sender is known to have finished,
+   or `unregister_host(host_id)` (which automatically purges both control and bulk endpoints).
+
+Choosing per-lane TTL and using explicit forget/unregister calls prevents unbounded growth in
+high-volume one-way patterns while preserving replay protection across retries.
+
 ## Large vs regular message handling
 
 Support both through one API with lane semantics:

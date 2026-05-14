@@ -64,6 +64,23 @@ Sender-side delivery is customizable:
 
 Example: for executor↔worker (low-latency local), set `control_delivery="best_effort"` in config to avoid Syn/Ack overhead.
 
+## Lifecycle management and dedup memory
+
+The dedup cache retains (message_id, sender_address) pairs for a configurable TTL to enable
+replay protection across retries. By default, cache entries expire based on TTL, but for
+one-way communication patterns (e.g., multiple controllers reporting to a single gateway),
+you can reclaim dedup memory explicitly:
+
+- **`unregister_host(host_id)`:** removes host from registry and purges all dedup entries
+  for that host's control and bulk addresses. Use this when a host is known to be done
+  communicating.
+- **`forget_sender(address)`:** purges dedup entries only from a specific address without
+  affecting the host registry. Use this for fine-grained memory management.
+
+In high-volume one-way patterns with large dedup TTLs (to tolerate network latency),
+consider calling `forget_sender(address)` at natural completion points (e.g., when a
+controller batch finishes) to avoid unbounded cache growth.
+
 ## Behavior parity checklist
 
 For each migrated region, ensure:

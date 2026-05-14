@@ -17,6 +17,7 @@ The top-level API should be operational and routing-focused, for example:
 
 - `register_host(host_id, endpoints)`
 - `unregister_host(host_id)`
+- `forget_sender(address)` (explicit dedup cache purge)
 - `send_message_to_host(host_id, payload, lane=...)`
 - `broadcast(payload, lane=..., hosts=...)`
 - `poll_messages(timeout_ms=...)`
