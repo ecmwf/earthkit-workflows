@@ -346,6 +346,9 @@ def test_branches():
     reduced = subbranches.sum(path="/branch1/subbranch1")
     with pytest.raises(ValueError):
         reduced.combine_branches("dim_1")
+    force = reduced.combine_branches(dim="dim_new", force=True)
+    for path, array in nodetree_arrays(force.nodes):
+        assert array.shape == (3, 4)
 
 
 @pytest.mark.parametrize(

@@ -582,6 +582,12 @@ class Action:
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
             if len(dim) == 0:
                 dim = str(narray.dims[0])
+            if dim not in narray.sizes:
+                continue
+            if narray.sizes[dim] == 1:
+                if not keep_dim:
+                    node_arrays[npath] = narray.squeeze(dim)
+                continue
 
             batched = self.select(path=npath)
             level = 0
@@ -636,7 +642,7 @@ class Action:
 
         new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
         new_nodes.update(node_arrays)
-        return type(batched)(nodetree_from_dict(new_nodes), yields)
+        return type(self)(nodetree_from_dict(new_nodes), yields)
 
     @capture_payload_metadata
     def flatten(
@@ -670,7 +676,8 @@ class Action:
             if len(diff) > 0:
                 raise ValueError(f"Dimensions {diff} not in array at {npath}")
             stack_dims = [x for x in narray.dims if x not in keep_dims]
-            node_arrays[npath] = narray.stack(**{"**tempindex**": stack_dims}).reset_index(stack_dims, drop=True)
+            if len(stack_dims) > 0:
+                node_arrays[npath] = narray.stack(**{"**tempindex**": stack_dims}).reset_index(stack_dims, drop=True)
 
         action = type(self)(nodetree_from_dict(node_arrays))
         return _combine_nodes(action, method, dim="**tempindex**", batch_size=0, keep_dim=False, path=path, backend_kwargs=backend_kwargs)
@@ -714,8 +721,8 @@ class Action:
         for path, func in expansion.items():
             node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
         return type(self)(nodetree_from_dict(node_arrays))
-    
-    def combine_branches(self, dim: str, path: Optional[str] = None) -> "Action":
+
+    def combine_branches(self, dim: str, path: Optional[str] = None, force: bool = False) -> "Action":
         """Combine node arrays for leaves along path into a single node array
 
         Parameters
@@ -732,6 +739,11 @@ class Action:
         ValueError if arrays along leaves are not compatible
         """
         action = self.select(path=path)
+        narrays = {apath: array for apath, array in nodetree_arrays(action.nodes)}
+        if force:
+            common_coords = set.intersection(*[set(x.coords) for x in narrays.values()])
+            for apath in narrays.keys():
+                action = action.flatten(keep_dims=common_coords, path=apath)
         new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim)
         if path:
             node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}
@@ -1149,11 +1161,6 @@ def _combine_nodes(
     path: Optional[str] = None,
     backend_kwargs: dict = {},
 ) -> Action:
-    if action.nodes.sizes[dim] == 1:
-        # no-op
-        if not keep_dim:
-            action._squeeze_dimension(dim, path=path)
-        return action
     if backend_method not in ["stack", "concat"]:
         raise ValueError(f"Unknown method {backend_method} for combining nodes")
     return action.reduce(
