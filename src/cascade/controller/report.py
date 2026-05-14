@@ -14,16 +14,14 @@ from dataclasses import dataclass
 from time import monotonic_ns
 from typing import NewType
 
-import zmq
 from typing_extensions import Self
 
 import cascade.executor.platform as platform
-from cascade.executor.comms import ReliableSender, default_message_resend_ms, get_context
-from cascade.executor.msg import Ack
-from cascade.executor.serde import des_message
-from cascade.low.core import DatasetId, HostId, TaskId
+from cascade.low.core import DatasetId, TaskId
 from cascade.low.exceptions import CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext
+from cascade.ygg.api import YggNode
+from cascade.ygg.types import HostEndpoints
 
 logger = logging.getLogger(__name__)
 
@@ -82,35 +80,27 @@ class ReporterChannel:
         address, job_id = report_address.split(",", 1)
         logger.debug(f"initialising reporter with {address=} and {job_id=}")
         self.job_id = JobId(job_id)
-        self.ack_socket = get_context().socket(zmq.PULL)
-        ack_base = f"tcp://{platform.get_bindabble_self()}"
-        ack_port = self.ack_socket.bind_to_random_port(ack_base)
-        ack_address = f"{ack_base}:{ack_port}"
-        self.ack_poller = zmq.Poller()
-        self.ack_poller.register(self.ack_socket, flags=zmq.POLLIN)
-        self.sender = ReliableSender(ack_address, default_message_resend_ms)
-        self.sender.add_host(HostId("gateway"), address)
+        bind_base = f"tcp://{platform.get_bindabble_self()}"
+        self._ygg = YggNode(f"{bind_base}:*")
+        self._ygg.register_host("gateway", HostEndpoints(control=address))
 
     def send(self, report: ControllerReport) -> None:
-        self.sender.send_raw(HostId("gateway"), serialize(report), "ControllerReport")
-        if self.sender.inflight:
-            for socket, _ in self.ack_poller.poll(0):
-                if socket is not self.ack_socket:
-                    continue
-                msg_frames = self.ack_socket.recv_multipart()
-                if len(msg_frames) != 1:
-                    raise CascadeInternalError(f"expected single-frame Ack on report channel, got {len(msg_frames)=}")
-                ack = des_message(msg_frames[0])
-                if isinstance(ack, Ack):
-                    self.sender.ack(ack.idx)
-                else:
-                    raise CascadeInternalError(f"expected Ack on report channel, got {type(ack)}")
-            self.sender.maybe_retry()
+        self._ygg.send_message_to_host("gateway", serialize(report), lane="control")
+        self._ygg.poll_messages(timeout_ms=0)
+        self._ygg.retry_outstanding()
+
+    def close(self) -> None:
+        # NOTE we really want to get these acked from gw, otherwise completion is never reported
+        self._ygg.close(timeout_ms=5000, wait_for_all_acks=True)
 
 
 class Reporter:
     def __init__(self, report_address: str | None) -> None:
         self.channel = ReporterChannel(report_address) if report_address is not None else None
+
+    def close(self) -> None:
+        if self.channel is not None:
+            self.channel.close()
 
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.channel is None:

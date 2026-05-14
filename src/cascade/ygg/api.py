@@ -6,6 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import logging
 import time
 from typing import Iterable
 
@@ -15,6 +16,8 @@ from cascade.ygg.registry import HostRegistry
 from cascade.ygg.reliability import DedupCache, InflightMessage, RetryPlanner
 from cascade.ygg.transport import MultiLaneListener, OutboundTransport
 from cascade.ygg.types import Delivery, HostEndpoints, HostId, IncomingMessage, Lane, YggConfig
+
+logger = logging.getLogger(__name__)
 
 
 class YggNode:
@@ -126,7 +129,16 @@ class YggNode:
             if self._retry.is_due(record, now_ns=now):
                 self._send_record(record)
 
-    def close(self) -> None:
+    def close(self, timeout_ms: int = 1000, wait_for_all_acks: bool = True) -> None:
+        if wait_for_all_acks:
+            deadline_ns = time.monotonic_ns() + timeout_ms * 1_000_000
+            while self._inflight:
+                remaining_ns = deadline_ns - time.monotonic_ns()
+                if remaining_ns <= 0:
+                    break
+                self.poll_messages(timeout_ms=remaining_ns // 1_000_000)
+            if self._inflight:
+                logger.warning("ygg close timed out with %d inflight messages", len(self._inflight))
         self._outbound.close()
         self._listener.close()
 

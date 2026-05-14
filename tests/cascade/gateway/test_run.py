@@ -63,7 +63,7 @@ def get_job_slow() -> JobInstanceRich:
 
 def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=main_cli, args=(url,), kwargs={"max_jobs": max_jobs})
+    p = Process(target=main_cli, args=(url,), kwargs={"max_jobs": max_jobs, "report_transport": "ipc"})
     p.start()
     return url, p
 

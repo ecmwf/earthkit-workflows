@@ -20,9 +20,6 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Iterable
 
-import zmq
-
-import cascade.executor.platform as platform
 import cascade.gateway.api as api
 from cascade.controller.report import (
     JobId,
@@ -31,17 +28,16 @@ from cascade.controller.report import (
     JobProgressStarted,
 )
 from cascade.deployment.logging import LoggingConfig
-from cascade.executor.comms import get_context
 from cascade.gateway.spawning import spawn_subprocess
 from cascade.low.core import DatasetId, TaskId
 from cascade.low.func import next_uuid
+from cascade.ygg.api import YggNode
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class Job:
-    socket: zmq.Socket
     progress: JobProgress
     last_seen: int
     results: dict[DatasetId, bytes]
@@ -52,12 +48,12 @@ class Job:
 class JobRouter:
     def __init__(
         self,
-        poller: zmq.Poller,
+        ygg: YggNode,
         loggingConfig: LoggingConfig,
         troika_config: str | None,
         max_jobs: int | None,
     ):
-        self.poller = poller
+        self._ygg = ygg
         self.jobs: dict[JobId, Job] = {}
         self.active_jobs = 0
         self.max_jobs = max_jobs
@@ -74,13 +70,9 @@ class JobRouter:
             return
 
         job_id, job_spec = self.jobs_queue.popitem(False)
-        base_addr = f"tcp://{platform.get_bindabble_self()}"
-        socket = get_context().socket(zmq.PULL)
-        port = socket.bind_to_random_port(base_addr)
-        full_addr = f"{base_addr}:{port}"
+        full_addr = self._ygg.control_address
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
-        self.poller.register(socket, flags=zmq.POLLIN)
-        self.jobs[job_id] = Job(socket, JobProgressStarted, -1, {}, set(), set())
+        self.jobs[job_id] = Job(JobProgressStarted, -1, {}, set(), set())
         self.procs[job_id] = spawn_subprocess(job_spec, full_addr, job_id, self.loggingConfig, self.troika_config)
         self.active_jobs += 1
 
@@ -144,7 +136,10 @@ class JobRouter:
             return
         job.last_seen = timestamp
         if progress.completed and not job.progress.completed:
-            self.poller.unregister(job.socket)
+            # NOTE we could call forget_sender here to flush cache early,
+            # assuming we passed the msg.source_address from the caller. But that
+            # could lead to some double processings of completed/planned messages,
+            # so probably not worth it
             self.active_jobs -= 1
             self.maybe_spawn()
         if progress.failure is not None and job.progress.failure is None:

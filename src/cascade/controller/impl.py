@@ -93,4 +93,5 @@ def run(
         mark({"action": ControllerPhases.shutdown})
         logger.debug("shutting down executors")
         bridge.shutdown()
+        reporter.close()
     return state

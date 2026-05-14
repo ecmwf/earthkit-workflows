@@ -186,3 +186,50 @@ def test_unregister_host_purges_dedup_for_both_lanes() -> None:
         # Verify sender is no longer in registry
         with pytest.raises(CascadeInternalError):
             receiver._registry.resolve_endpoints(HostId("sender"))
+
+
+def test_close_waits_for_pending_ack() -> None:
+    config = YggConfig(
+        control=RetryPolicy(retry_interval_ms=10, max_retries=3),
+        bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
+    )
+    sender = YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config)
+    receiver = YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config)
+    try:
+        sender.register_host("receiver", HostEndpoints(control=receiver.control_address, bulk=receiver.bulk_address))
+        receiver.register_host("sender", HostEndpoints(control=sender.control_address, bulk=sender.bulk_address))
+
+        idx = sender.send_message_to_host("receiver", b"close-waits", lane="control")
+        incoming = receiver.poll_messages(timeout_ms=250)
+        assert len(incoming) == 1
+        assert incoming[0].message_id == idx
+
+        sender.close(timeout_ms=250)
+        assert sender.pending_message_ids() == set()
+    finally:
+        receiver.close()
+
+
+def test_close_logs_remaining_inflight_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = YggConfig(
+        control=RetryPolicy(retry_interval_ms=10, max_retries=3),
+        bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
+    )
+    sender = YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config)
+    receiver = YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config)
+    warnings: list[tuple[str, int]] = []
+
+    def capture_warning(message: str, count: int) -> None:
+        warnings.append((message, count))
+
+    monkeypatch.setattr("cascade.ygg.api.logger.warning", capture_warning)
+    try:
+        sender.register_host("receiver", HostEndpoints(control=receiver.control_address, bulk=receiver.bulk_address))
+        receiver.register_host("sender", HostEndpoints(control=sender.control_address, bulk=sender.bulk_address))
+
+        sender.send_message_to_host("receiver", b"close-timeout", lane="control")
+        sender.close(timeout_ms=1)
+
+        assert warnings == [("ygg close timed out with %d inflight messages", 1)]
+    finally:
+        receiver.close()
