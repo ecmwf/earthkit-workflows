@@ -35,6 +35,7 @@ class YggNode:
         self._next_idx = 0
         self.control_address = self._listener.address_for("control")
         self.bulk_address = self._listener.address_for("bulk") if bulk_bind_address is not None else None
+        logger.debug("ygg node initialised: %s", self.describe_state())
 
     def register_host(self, host_id: str, endpoints: HostEndpoints) -> None:
         self._registry.register(HostId(host_id), endpoints)
@@ -67,6 +68,7 @@ class YggNode:
         address = self._registry.resolve(host, lane)
         resolved_delivery = self._resolve_delivery(lane=lane, delivery=delivery)
         if resolved_delivery == "best_effort":
+            logger.debug("ygg best-effort send: host=%s lane=%s state=%s", host, lane, self.describe_state())
             self._outbound.send_single(address=address, frame=payload)
             return None
         idx = self._next_idx
@@ -80,6 +82,14 @@ class YggNode:
             payload_frame=payload,
         )
         self._inflight[idx] = record
+        logger.debug(
+            "ygg queue send: host=%s lane=%s idx=%s address=%s state=%s",
+            host,
+            lane,
+            idx,
+            address,
+            self.describe_state(),
+        )
         self._send_record(record)
         return idx
 
@@ -115,10 +125,13 @@ class YggNode:
         Does NOT automatically call retry_outstanding. Callers should manage retries explicitly.
         """
         messages: list[IncomingMessage] = []
+        logger.debug("ygg poll: timeout_ms=%s state=%s", timeout_ms, self.describe_state())
         for lane, frames in self._listener.poll(timeout_ms=timeout_ms):
             incoming = self._handle_incoming(lane, frames)
             if incoming is not None:
                 messages.append(incoming)
+        if messages:
+            logger.debug("ygg poll received %d message(s): state=%s", len(messages), self.describe_state())
         return messages
 
     def retry_outstanding(self) -> None:
@@ -130,6 +143,12 @@ class YggNode:
                 self._send_record(record)
 
     def close(self, timeout_ms: int = 1000, wait_for_all_acks: bool = True) -> None:
+        logger.debug(
+            "ygg close start: timeout_ms=%s wait_for_all_acks=%s state=%s",
+            timeout_ms,
+            wait_for_all_acks,
+            self.describe_state(),
+        )
         if wait_for_all_acks:
             deadline_ns = time.monotonic_ns() + timeout_ms * 1_000_000
             while self._inflight:
@@ -141,6 +160,7 @@ class YggNode:
                 logger.warning("ygg close timed out with %d inflight messages", len(self._inflight))
         self._outbound.close()
         self._listener.close()
+        logger.debug("ygg close complete")
 
     def __enter__(self) -> "YggNode":
         return self
@@ -167,14 +187,39 @@ class YggNode:
             if len(frames) != 1:
                 raise CascadeInternalError("unexpected payload frame with ygg Ack")
             self.acknowledge(envelope.idx)
+            logger.debug("ygg ack received: idx=%s lane=%s state=%s", envelope.idx, lane, self.describe_state())
             return None
         if isinstance(envelope, Syn):
             if len(frames) != 2:
                 raise CascadeInternalError("expected single payload frame after ygg Syn")
             self._outbound.send_single(envelope.ack_address, serialize_ack(Ack(idx=envelope.idx)))
             if self._dedup.is_duplicate(envelope.idx, envelope.ack_address):
+                logger.debug(
+                    "ygg syn duplicate dropped: idx=%s lane=%s source=%s state=%s",
+                    envelope.idx,
+                    lane,
+                    envelope.ack_address,
+                    self.describe_state(),
+                )
                 return None
+            logger.debug(
+                "ygg syn received: idx=%s lane=%s source=%s state=%s",
+                envelope.idx,
+                lane,
+                envelope.ack_address,
+                self.describe_state(),
+            )
             return IncomingMessage(payload=frames[1], lane=lane, source_address=envelope.ack_address, message_id=envelope.idx)
         if len(frames) != 1:
             raise CascadeInternalError("unexpected multipart ygg message without envelope")
         return IncomingMessage(payload=frames[0], lane=lane, source_address=None, message_id=None)
+
+    def describe_state(self) -> dict[str, object]:
+        return {
+            "control_address": self.control_address,
+            "bulk_address": self.bulk_address,
+            "pending": len(self._inflight),
+            "pending_ids": sorted(self._inflight.keys()),
+            "listener": self._listener.describe_state(),
+            "outbound": self._outbound.describe_state(),
+        }

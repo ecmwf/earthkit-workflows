@@ -83,15 +83,20 @@ class ReporterChannel:
         bind_base = f"tcp://{platform.get_bindabble_self()}"
         self._ygg = YggNode(f"{bind_base}:*")
         self._ygg.register_host("gateway", HostEndpoints(control=address))
+        logger.debug("reporter channel initialized: %s", self._ygg.describe_state())
 
     def send(self, report: ControllerReport) -> None:
+        logger.debug("reporter send start: job_id=%s state=%s", self.job_id, self._ygg.describe_state())
         self._ygg.send_message_to_host("gateway", serialize(report), lane="control")
         self._ygg.poll_messages(timeout_ms=0)
         self._ygg.retry_outstanding()
+        logger.debug("reporter send done: job_id=%s state=%s", self.job_id, self._ygg.describe_state())
 
     def close(self) -> None:
         # NOTE we really want to get these acked from gw, otherwise completion is never reported
+        logger.debug("reporter close start: job_id=%s state=%s", self.job_id, self._ygg.describe_state())
         self._ygg.close(timeout_ms=5000, wait_for_all_acks=True)
+        logger.debug("reporter close complete: job_id=%s", self.job_id)
 
 
 class Reporter:
