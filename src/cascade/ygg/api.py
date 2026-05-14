@@ -66,9 +66,6 @@ class YggNode:
         self._send_record(record)
         return idx
 
-    def send_large_message_to_host(self, host_id: str, payload: bytes, delivery: Delivery | None = None) -> int | None:
-        return self.send_message_to_host(host_id=host_id, payload=payload, lane="bulk", delivery=delivery)
-
     def broadcast(
         self,
         payload: bytes,
@@ -96,12 +93,15 @@ class YggNode:
         return set(self._inflight.keys())
 
     def poll_messages(self, timeout_ms: int | None = 0) -> list[IncomingMessage]:
+        """Poll for incoming messages on registered lanes.
+
+        Does NOT automatically call retry_outstanding. Callers should manage retries explicitly.
+        """
         messages: list[IncomingMessage] = []
         for lane, frames in self._listener.poll(timeout_ms=timeout_ms):
             incoming = self._handle_incoming(lane, frames)
             if incoming is not None:
                 messages.append(incoming)
-        self.retry_outstanding()
         return messages
 
     def retry_outstanding(self) -> None:

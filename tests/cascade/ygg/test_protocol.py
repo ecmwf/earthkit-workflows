@@ -1,6 +1,3 @@
-import pytest
-
-from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.protocol import Ack, Syn, parse_envelope, serialize_ack, serialize_syn
 
 
@@ -15,6 +12,7 @@ def test_protocol_non_envelope_frame_returns_none() -> None:
     assert parse_envelope(b"raw-payload") is None
 
 
-def test_protocol_rejects_malformed_frame() -> None:
-    with pytest.raises(CascadeInternalError):
-        parse_envelope(b"YGG1A\x00")
+def test_protocol_malformed_frame_returns_none() -> None:
+    assert parse_envelope(b"YGG1A\x00") is None
+    assert parse_envelope(b"YGG1S") is None
+    assert parse_envelope(b"YGG1X\x00\x00\x00\x00\x00\x00\x00\x00") is None

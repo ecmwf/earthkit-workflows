@@ -36,23 +36,30 @@ def serialize_ack(value: Ack) -> bytes:
 
 
 def parse_envelope(frame: bytes) -> Syn | Ack | None:
-    if not frame.startswith(_MAGIC):
+    """Parse frame as ygg Syn/Ack envelope. Returns None for non-envelope or malformed data.
+
+    Never raises -- malformed frames are silently treated as plain payloads.
+    """
+    try:
+        if not frame.startswith(_MAGIC):
+            return None
+        if len(frame) < len(_MAGIC) + 1:
+            return None
+        tag = frame[len(_MAGIC) : len(_MAGIC) + 1]
+        body = frame[len(_MAGIC) + 1 :]
+        if tag == _TAG_ACK:
+            if len(body) != 8:
+                return None
+            return Ack(idx=int.from_bytes(body, "big", signed=False))
+        if tag == _TAG_SYN:
+            if len(body) < 12:
+                return None
+            idx = int.from_bytes(body[:8], "big", signed=False)
+            length = int.from_bytes(body[8:12], "big", signed=False)
+            ack_raw = body[12:]
+            if len(ack_raw) != length:
+                return None
+            return Syn(idx=idx, ack_address=ack_raw.decode("utf-8"))
         return None
-    if len(frame) < len(_MAGIC) + 1:
-        raise CascadeInternalError("malformed ygg envelope: missing tag")
-    tag = frame[len(_MAGIC) : len(_MAGIC) + 1]
-    body = frame[len(_MAGIC) + 1 :]
-    if tag == _TAG_ACK:
-        if len(body) != 8:
-            raise CascadeInternalError("malformed ygg Ack envelope")
-        return Ack(idx=int.from_bytes(body, "big", signed=False))
-    if tag == _TAG_SYN:
-        if len(body) < 12:
-            raise CascadeInternalError("malformed ygg Syn envelope")
-        idx = int.from_bytes(body[:8], "big", signed=False)
-        length = int.from_bytes(body[8:12], "big", signed=False)
-        ack_raw = body[12:]
-        if len(ack_raw) != length:
-            raise CascadeInternalError("malformed ygg Syn envelope: invalid ack address length")
-        return Syn(idx=idx, ack_address=ack_raw.decode("utf-8"))
-    raise CascadeInternalError("malformed ygg envelope: unknown tag")
+    except Exception:
+        return None

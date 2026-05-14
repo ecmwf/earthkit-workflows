@@ -43,6 +43,27 @@ Choose lane by communication intent:
 
 If a call site currently uses a dedicated large-message path, map it to bulk lane explicitly.
 
+## Retry handling
+
+`poll_messages()` does NOT automatically call `retry_outstanding()`. Callers must explicitly call `retry_outstanding()` in their poll loops if they want delivery retries. This separation keeps retry logic explicit and testable.
+
+Example poll loop pattern:
+```python
+while True:
+    messages = node.poll_messages(timeout_ms=1000)
+    # process messages...
+    node.retry_outstanding()  # explicit retry for reliable messages
+```
+
+## Delivery mode guidance
+
+Sender-side delivery is customizable:
+
+- **reliable** (default): Syn/Ack handshake + inflight tracking + retry on timeout
+- **best_effort**: raw send, no ack/tracking (suitable for local comms where reliability is handled at a lower level)
+
+Example: for executor↔worker (low-latency local), set `control_delivery="best_effort"` in config to avoid Syn/Ack overhead.
+
 ## Behavior parity checklist
 
 For each migrated region, ensure:
@@ -52,6 +73,7 @@ For each migrated region, ensure:
 - duplicate delivery handling is still correct
 - timeout/failure propagation remains explicit
 - shutdown/cleanup paths still close resources cleanly
+- retry logic is explicitly called where needed
 
 ## Testing guidance for migrated regions
 
@@ -70,5 +92,6 @@ A region is considered migrated when:
 
 - it no longer creates/manages transport sockets directly for ygg-managed flows
 - it no longer owns bespoke ack/retry/dedup logic already provided by ygg
-- it uses ygg host registration and send/poll APIs
+- it uses ygg host registration and send/poll/retry APIs
 - region tests pass with ygg-backed transport behavior
+

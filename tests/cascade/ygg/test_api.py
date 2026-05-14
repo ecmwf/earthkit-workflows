@@ -5,7 +5,10 @@ from cascade.ygg.types import HostEndpoints, RetryPolicy, YggConfig
 
 
 def test_control_send_receive_ack() -> None:
-    config = YggConfig(control=RetryPolicy(retry_interval_ms=10, max_retries=3), bulk=RetryPolicy(retry_interval_ms=10, max_retries=3))
+    config = YggConfig(
+        control=RetryPolicy(retry_interval_ms=10, max_retries=3),
+        bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
+    )
     with (
         YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config) as sender,
         YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config) as receiver,
@@ -20,12 +23,17 @@ def test_control_send_receive_ack() -> None:
         assert incoming[0].lane == "control"
         assert incoming[0].message_id == idx
 
+        receiver.poll_messages(timeout_ms=250)
+        sender.retry_outstanding()
         sender.poll_messages(timeout_ms=250)
         assert sender.pending_message_ids() == set()
 
 
 def test_bulk_send_receive() -> None:
-    config = YggConfig(control=RetryPolicy(retry_interval_ms=10, max_retries=3), bulk=RetryPolicy(retry_interval_ms=10, max_retries=3))
+    config = YggConfig(
+        control=RetryPolicy(retry_interval_ms=10, max_retries=3),
+        bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
+    )
     payload = b"x" * 256_000
     with (
         YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config) as sender,
@@ -34,13 +42,15 @@ def test_bulk_send_receive() -> None:
         sender.register_host("receiver", HostEndpoints(control=receiver.control_address, bulk=receiver.bulk_address))
         receiver.register_host("sender", HostEndpoints(control=sender.control_address, bulk=sender.bulk_address))
 
-        idx = sender.send_large_message_to_host("receiver", payload)
+        idx = sender.send_message_to_host("receiver", payload, lane="bulk")
         incoming = receiver.poll_messages(timeout_ms=250)
         assert len(incoming) == 1
         assert incoming[0].payload == payload
         assert incoming[0].lane == "bulk"
         assert incoming[0].message_id == idx
 
+        receiver.poll_messages(timeout_ms=250)
+        sender.retry_outstanding()
         sender.poll_messages(timeout_ms=250)
         assert sender.pending_message_ids() == set()
 
@@ -95,7 +105,10 @@ def test_control_default_delivery_from_config_best_effort() -> None:
 
 
 def test_deduplicates_retries_for_same_syn() -> None:
-    config = YggConfig(control=RetryPolicy(retry_interval_ms=5, max_retries=4), bulk=RetryPolicy(retry_interval_ms=5, max_retries=2))
+    config = YggConfig(
+        control=RetryPolicy(retry_interval_ms=5, max_retries=4),
+        bulk=RetryPolicy(retry_interval_ms=5, max_retries=2),
+    )
     with (
         YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config) as sender,
         YggNode("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", config=config) as receiver,
@@ -112,5 +125,7 @@ def test_deduplicates_retries_for_same_syn() -> None:
         assert len(incoming) == 1
         assert incoming[0].payload == b"hello-retry"
 
+        receiver.poll_messages(timeout_ms=250)
+        sender.retry_outstanding()
         sender.poll_messages(timeout_ms=250)
         assert sender.pending_message_ids() == set()
