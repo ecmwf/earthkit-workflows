@@ -48,7 +48,7 @@ from cascade.low.core import (
     TaskInstance,
     WorkerId,
 )
-from cascade.ygg.transport import has_context
+from cascade.ygg.transport import destroy_context, has_context
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int, test_name: str):
     dictConfig(logging_config)
     logging.getLogger("cascade.executor.testHarness").debug(f"at executor launch: {has_context()=}")
+    destroy_context()
     executor = Executor(
         job_instance,
         controller_address,

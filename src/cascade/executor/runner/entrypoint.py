@@ -153,6 +153,7 @@ def execute_sequence(
 def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     """Main runner loop for a worker process."""
     init_from_obj(runnerContext.loggingConfig, f"worker_{workerSetup.workerId.worker}")
+    destroy_context()
     ctx = get_context()
     socket = ctx.socket(zmq.PULL)
     address = worker_address(workerSetup.workerId, workerSetup.workerAttemptCnt)

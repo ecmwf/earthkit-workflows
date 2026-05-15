@@ -43,7 +43,7 @@ def destroy_context() -> None:
         logger.debug("context destroyed")
         import time
 
-        time.sleep(0.5)
+        # time.sleep(0.5)
         logger.debug("proceeding after destroy")
     else:
         logger.debug("no context to destroy")

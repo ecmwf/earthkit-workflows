@@ -8,6 +8,7 @@ import cascade.gateway.client as client
 from cascade.gateway.__main__ import main_cli
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskId, TaskInstance
+from cascade.ygg.transport import destroy_context, has_context
 
 init_value = 10
 job_func = lambda i: i * 2
@@ -70,6 +71,7 @@ def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
 
 @pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
+    destroy_context()
     url, gw = spawn_gateway(1)
     try:
         # succ job

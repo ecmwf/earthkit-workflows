@@ -48,7 +48,7 @@ def nuke_zmq_context():
     try:
         import cascade.ygg.transport as t1
 
-        t1.destroy_context()
+        # t1.destroy_context()
 
     except Exception as e:
         # We don't want the cleanup to crash the whole suite if already dead

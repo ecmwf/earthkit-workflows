@@ -4,10 +4,12 @@ import pytest
 
 from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.api import YggNode
+from cascade.ygg.transport import destroy_context, has_context
 from cascade.ygg.types import HostEndpoints, RetryPolicy, YggConfig
 
 
 def test_control_send_receive_ack() -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -33,6 +35,7 @@ def test_control_send_receive_ack() -> None:
 
 
 def test_bulk_send_receive() -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -59,6 +62,7 @@ def test_bulk_send_receive() -> None:
 
 
 def test_control_best_effort_no_syn_ack() -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -84,6 +88,7 @@ def test_control_best_effort_no_syn_ack() -> None:
 
 
 def test_control_default_delivery_from_config_best_effort() -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -108,6 +113,7 @@ def test_control_default_delivery_from_config_best_effort() -> None:
 
 
 def test_deduplicates_retries_for_same_syn() -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=5, max_retries=4),
         bulk=RetryPolicy(retry_interval_ms=5, max_retries=2),
@@ -136,6 +142,7 @@ def test_deduplicates_retries_for_same_syn() -> None:
 
 def test_forget_sender_clears_dedup_cache() -> None:
     """Test that forget_sender removes dedup entries for a specific address."""
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -155,6 +162,7 @@ def test_forget_sender_clears_dedup_cache() -> None:
 
 def test_unregister_host_purges_dedup_for_both_lanes() -> None:
     """Test that unregister_host clears dedup entries for both endpoints."""
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -189,6 +197,7 @@ def test_unregister_host_purges_dedup_for_both_lanes() -> None:
 
 
 def test_close_waits_for_pending_ack() -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -211,6 +220,7 @@ def test_close_waits_for_pending_ack() -> None:
 
 
 def test_close_logs_remaining_inflight_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=10, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=10, max_retries=3),
@@ -236,6 +246,7 @@ def test_close_logs_remaining_inflight_on_timeout(monkeypatch: pytest.MonkeyPatc
 
 
 def test_close_polls_then_retries_until_inflight_clears(monkeypatch: pytest.MonkeyPatch) -> None:
+    destroy_context()
     config = YggConfig(
         control=RetryPolicy(retry_interval_ms=25, max_retries=3),
         bulk=RetryPolicy(retry_interval_ms=25, max_retries=3),

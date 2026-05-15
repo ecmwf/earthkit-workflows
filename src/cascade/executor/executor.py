@@ -64,7 +64,7 @@ from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
-from cascade.ygg.transport import has_context
+from cascade.ygg.transport import destroy_context, has_context
 
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms

@@ -65,7 +65,7 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
         raise CascadeInternalError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":
         return mp.get_context("spawn")
-    elif situation in ("executor-loc", "worker", "executor-dataserver", "gateway"):
+    elif situation in ("executor-loc"):
         # NOTE in the case of executor being launched locally, from eg cascade main
         # after it has constructed a jobInstance, there is a chance of the process
         # being tainted with some imports such as earthkit.workflows.fluent which in
