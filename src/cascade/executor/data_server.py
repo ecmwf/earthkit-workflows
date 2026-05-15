@@ -20,6 +20,8 @@ from concurrent.futures import Executor as PythonExecutor
 from time import time_ns
 from typing import cast
 
+from zmq import MessageTracker
+
 import cascade.shm.client as shm_client
 from cascade.executor.checkpoints import persist_dataset, retrieve_dataset
 from cascade.executor.comms import Listener, callback, send_data
@@ -198,6 +200,7 @@ class DataServer:
     def _send_payload(self, command: DatasetTransmitCommand) -> int:
         buf: None | shm_client.AllocatedBuffer = None
         payload: None | DatasetTransmitPayload = None
+        tracker: None | MessageTracker = None
         try:
             if command.target == self.host or command.source != self.host:
                 raise CascadeInternalError(f"invalid {command=}")
@@ -219,7 +222,7 @@ class DataServer:
             )
             payload = DatasetTransmitPayload(header, value=cast(bytes, buf.view()))
             syn = Syn(command.idx, self.dlistener.address)
-            send_data(command.daddress, payload, syn)
+            tracker = send_data(command.daddress, payload, syn)
             logger.debug(f"payload for {command} sent")
         except Exception as e:
             logger.exception(f"failed to send payload for {command}, reporting up")
@@ -233,7 +236,11 @@ class DataServer:
         finally:
             if payload is not None:
                 del payload  # to enforce deletion of exported pointer, so that buffer can be closed
+            if tracker is not None:
+                # this may raise zmq.NotDone -- but thats something we want to propagate, it signifies transmit problem
+                tracker.wait(timeout=10.0)
             if buf is not None:
+                # this *could* raise BufferError due to pointers not closed, but since we have awaited the tracker, it should not
                 buf.close()
         return time_ns()
 
