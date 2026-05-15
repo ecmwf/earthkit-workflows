@@ -107,7 +107,7 @@ def test_executor():
     import time
 
     time.sleep(1)
-    # NOTE critical -- we need to launch the listener *after* the process, to not fork the zmq context
+    # NOTE important -- we need to launch the listener *after* the process, to not fork the zmq context
     l = Listener(c1)  # controller
 
     # run

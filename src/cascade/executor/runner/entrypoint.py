@@ -160,7 +160,7 @@ def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     logger.debug(f"worker {workerSetup.workerId} binding to {address=}")
     socket.bind(address)
     callback(runnerContext.callback, WorkerReady(workerSetup.workerId))
-    logger.debug(f"worker {workerSetup.workerId} sent callback ready")
+    logger.debug(f"worker {workerSetup.workerId} sent WorkerReady")
     with (
         Memory(runnerContext.callback, workerSetup.workerId) as memory,
         PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}) as pckg,

@@ -247,19 +247,4 @@ def main_dist(
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    print(f"--- Child PID {os.getpid()} FD Table ---", file=sys.stderr)
-    fd_path = "/proc/self/fd"
-    if os.path.exists(fd_path):
-        for fd in sorted(os.listdir(fd_path)):
-            try:
-                # Get the actual file/socket the FD points to
-                dest = os.readlink(os.path.join(fd_path, fd))
-                print(f"FD {fd}: {dest}", file=sys.stderr)
-            except OSError:
-                continue
-    print("------------------------------------------", file=sys.stderr)
-
     fire.Fire({"local": main_local, "dist": main_dist})

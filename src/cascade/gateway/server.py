@@ -73,7 +73,6 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
 
 
 def handle_controller(ygg: YggNode, jobs: JobRouter) -> None:
-    logger.debug("gateway controller drain start: state=%s", ygg.describe_state())
     while msgs := ygg.poll_messages(timeout_ms=0):
         for msg in msgs:
             raw_report = msg.payload
@@ -82,7 +81,6 @@ def handle_controller(ygg: YggNode, jobs: JobRouter) -> None:
             jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
             for dataset_id, result in report.results:
                 jobs.put_result(report.job_id, dataset_id, result)
-    logger.debug("gateway controller drain complete: state=%s", ygg.describe_state())
 
 
 def serve(
@@ -109,25 +107,12 @@ def serve(
     poller.register(fe, flags=zmq.POLLIN)
     poller.register(ygg_control_socket, flags=zmq.POLLIN)
     jobs = JobRouter(ygg, loggingConfig, troika_config, max_jobs)
-    logger.debug(
-        "gateway sockets registered: fe=%s control=%s state=%s",
-        fe.getsockopt_string(zmq.LAST_ENDPOINT),
-        ygg_control_socket.getsockopt_string(zmq.LAST_ENDPOINT),
-        ygg.describe_state(),
-    )
 
     logger.debug("entering recv loop")
     is_break = False
     try:
         while not is_break:
             ready = poller.poll(None)
-            logger.debug(
-                "gateway poll wakeup: ready=%s fe_events=%s control_events=%s state=%s",
-                len(ready),
-                fe.getsockopt(zmq.EVENTS),
-                ygg_control_socket.getsockopt(zmq.EVENTS),
-                ygg.describe_state(),
-            )
             for socket, _ in ready:
                 if socket == fe:
                     is_break = handle_fe(socket, jobs)

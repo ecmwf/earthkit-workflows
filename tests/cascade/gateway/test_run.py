@@ -94,7 +94,7 @@ def test_job():
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
         while tries < tries_limit:
-            job_progress_res = client.request_response(job_progress_req, url, timeout_ms=10000)
+            job_progress_res = client.request_response(job_progress_req, url)
             assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
             is_computed = job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]

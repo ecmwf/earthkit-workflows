@@ -14,7 +14,7 @@ val:
     uv run ty check tests/cascade
     uv run ty check integration_tests
     # TODO eventually broaden type coverage to ekw as well
-    uv run pytest -n8 -s tests
+    uv run pytest -n8 tests
 fmt:
     uv run prek --all-files
 integration testname:

@@ -64,7 +64,6 @@ from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
-from cascade.ygg.transport import destroy_context
 
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms
@@ -113,7 +112,9 @@ class Executor:
         logger.debug("register terminate function")
         atexit.register(self.terminate)
         # NOTE following inits are with potential side effects
-        # NOTE shm server is the most dangerous because we fork, therefore imperative to not create zmq context before
+        self.mlistener = Listener(address_of(portBase))
+        self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
+        self.sender.add_host(HostId("controller"), controller_address)
         # TODO make shm startable with forkserver, there is some propagation issue in that case -- reproducible with tests
         # TODO make the shm server params configurable
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
@@ -128,10 +129,6 @@ class Executor:
             },
         )
         self.shm_process.start()
-        self.mlistener = Listener(address_of(portBase))
-        self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
-        self.sender.add_host(HostId("controller"), controller_address)
-        logger.debug(f"started shm process with pid {self.shm_process.pid}")
         self.daddress = address_of(portBase + 1)
         logger.debug("about to start a data server process")
         self.data_server = platform.get_mp_ctx("executor-dataserver").Process(
@@ -144,7 +141,6 @@ class Executor:
             ),
         )
         self.data_server.start()
-        logger.debug(f"started data server process with pid {self.data_server.pid}")
         gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
         self.registration = ExecutorRegistration(
             host=self.host,
