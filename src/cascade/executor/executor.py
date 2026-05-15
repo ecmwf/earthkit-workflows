@@ -64,7 +64,7 @@ from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
-from cascade.ygg.transport import destroy_context, has_context
+from cascade.ygg.transport import destroy_context
 
 logger = logging.getLogger(__name__)
 heartbeat_grace_ms = 2 * comms_default_timeout_ms
@@ -96,7 +96,6 @@ class Executor:
         loggingConfig: LoggingConfig,
         url_base: str,
     ) -> None:
-        logger.debug(f"init start: {has_context()=}")
         self.job_instance = job_instance
         self.schema_lookup = RunnerContext.build_schema_lookup(self.job_instance)
         self.param_source = param_source(job_instance.edges)
@@ -111,7 +110,7 @@ class Executor:
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
 
         self.terminating = False
-        logger.debug(f"register terminate function, {has_context()=}")
+        logger.debug("register terminate function")
         atexit.register(self.terminate)
         # NOTE following inits are with potential side effects
         # NOTE shm server is the most dangerous because we fork, therefore imperative to not create zmq context before
@@ -119,7 +118,7 @@ class Executor:
         # TODO make the shm server params configurable
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
         shm_api.publish_socket_addr(shm_port)
-        logger.debug(f"about to start an shm process, {has_context()=}")
+        logger.debug("about to start an shm process")
         self.shm_process = platform.get_mp_ctx("executor-shm").Process(
             target=shm_server,
             kwargs={
@@ -134,7 +133,7 @@ class Executor:
         self.sender.add_host(HostId("controller"), controller_address)
         logger.debug(f"started shm process with pid {self.shm_process.pid}")
         self.daddress = address_of(portBase + 1)
-        logger.debug(f"about to start a data server process, {has_context()=}")
+        logger.debug("about to start a data server process")
         self.data_server = platform.get_mp_ctx("executor-dataserver").Process(
             target=start_data_server,
             args=(

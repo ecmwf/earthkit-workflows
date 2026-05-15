@@ -29,24 +29,14 @@ def get_context() -> zmq.Context:
     return _local.context
 
 
-def has_context() -> bool:
-    if not hasattr(_local, "context"):
-        return False
-    else:
-        return True
-
-
 def destroy_context() -> None:
+    """When a process has potentially started via a fork, there may be
+    a remnant of parent's zmq context, therefore it is imperative to
+    destoy it. Additionally, in tests the context may be left in
+    an unpractical state, requiring a delete at the start"""
     if hasattr(_local, "context"):
         _local.context.destroy(linger=0)
         del _local.context
-        logger.debug("context destroyed")
-        import time
-
-        # time.sleep(0.5)
-        logger.debug("proceeding after destroy")
-    else:
-        logger.debug("no context to destroy")
 
 
 class OutboundTransport:

@@ -48,14 +48,13 @@ from cascade.low.core import (
     TaskInstance,
     WorkerId,
 )
-from cascade.ygg.transport import destroy_context, has_context
+from cascade.ygg.transport import destroy_context
 
 logger = logging.getLogger(__name__)
 
 
 def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int, test_name: str):
     dictConfig(logging_config)
-    logging.getLogger("cascade.executor.testHarness").debug(f"at executor launch: {has_context()=}")
     destroy_context()
     executor = Executor(
         job_instance,
@@ -101,11 +100,9 @@ def test_executor():
     )
 
     # cluster setup
-    logger.debug(f"before cluster setup: {has_context()=}")
     c1 = "tcp://localhost:12545"
     m1 = f"tcp://{platform.get_bindabble_self()}:12546"
     d1 = f"tcp://{platform.get_bindabble_self()}:12547"
-    logger.debug(f"before executor launch: {has_context()=}")
     p = get_mp_ctx("executor-loc").Process(target=launch_executor, args=(job, c1, 12546, "executor1"))
     import time
 

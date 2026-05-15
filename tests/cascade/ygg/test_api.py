@@ -4,7 +4,7 @@ import pytest
 
 from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.api import YggNode
-from cascade.ygg.transport import destroy_context, has_context
+from cascade.ygg.transport import destroy_context
 from cascade.ygg.types import HostEndpoints, RetryPolicy, YggConfig
 
 
