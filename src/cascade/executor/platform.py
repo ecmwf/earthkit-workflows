@@ -72,8 +72,6 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
         # turn brings in numpy -- therefore, we cannot allow to fork
         return mp.get_context("forkserver")
     else:
-        # NOTE in particular shm currently requires fork on linux, due to some
-        # propagation or env or whatnot -- reproducible with shm test
         return mp.get_context("fork")
 
 

@@ -115,7 +115,6 @@ class Executor:
         self.mlistener = Listener(address_of(portBase))
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         self.sender.add_host(HostId("controller"), controller_address)
-        # TODO make shm startable with forkserver, there is some propagation issue in that case -- reproducible with tests
         # TODO make the shm server params configurable
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
         shm_api.publish_socket_addr(shm_port)
@@ -126,6 +125,7 @@ class Executor:
                 "capacity": shm_vol_gb * (1024**3) if shm_vol_gb else None,
                 "logging_config": as_dict_config(loggingConfig, "shm"),
                 "shm_pref": f"sCasc{host}",
+                "socket_addr": shm_port,
             },
         )
         self.shm_process.start()

@@ -249,7 +249,8 @@ client_socket_envvar = "CASCADE_SHM_SOCKET"
 def publish_socket_addr(sock: int | str) -> None:
     # NOTE the publish is via os.environ, meaning the server
     # process must not be already running, and if it is launched
-    # via forkserver the mp manager must not have been launched either
+    # via forkserver the mp manager must not have been launched either,
+    # or itself call the publish at the start as well
     if isinstance(sock, int):
         ssock = f"port:{sock}"
     else:

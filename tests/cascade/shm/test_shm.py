@@ -30,7 +30,11 @@ def test_shm_simple(shm_addr):
     pref = f"cTi{shm_addr % 10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
     serverP = get_mp_ctx("executor-shm").Process(
         target=server.entrypoint,
-        kwargs={"logging_config": logging_config, "shm_pref": pref},
+        kwargs={
+            "logging_config": logging_config,
+            "shm_pref": pref,
+            "socket_addr": shm_addr,
+        },
     )
     serverP.start()
     try:
@@ -70,6 +74,7 @@ def test_shm_disk(shm_addr):
             "capacity": capacity,
             "logging_config": logging_config,
             "shm_pref": pref,
+            "socket_addr": shm_addr,
         },
     )
     serverP.start()
