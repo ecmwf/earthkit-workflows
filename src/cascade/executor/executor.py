@@ -115,12 +115,12 @@ class Executor:
         self.mlistener = Listener(address_of(portBase))
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
         self.sender.add_host(HostId("controller"), controller_address)
+        # TODO make shm startable with forkserver, there is some propagation issue in that case -- reproducible with tests
         # TODO make the shm server params configurable
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
         shm_api.publish_socket_addr(shm_port)
-        ctx = platform.get_mp_ctx("executor-aux")
         logger.debug("about to start an shm process")
-        self.shm_process = ctx.Process(
+        self.shm_process = platform.get_mp_ctx("executor-shm").Process(
             target=shm_server,
             kwargs={
                 "capacity": shm_vol_gb * (1024**3) if shm_vol_gb else None,
@@ -131,7 +131,7 @@ class Executor:
         self.shm_process.start()
         self.daddress = address_of(portBase + 1)
         logger.debug("about to start a data server process")
-        self.data_server = ctx.Process(
+        self.data_server = platform.get_mp_ctx("executor-dataserver").Process(
             target=start_data_server,
             args=(
                 self.mlistener.address,

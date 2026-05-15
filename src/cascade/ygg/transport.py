@@ -6,12 +6,16 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import logging
 import threading
+from typing import Any
 
 import zmq
 
 from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.types import Lane
+
+logger = logging.getLogger(__name__)
 
 _local = threading.local()
 
@@ -20,6 +24,16 @@ def get_context() -> zmq.Context:
     if not hasattr(_local, "context"):
         _local.context = zmq.Context()
     return _local.context
+
+
+def destroy_context() -> None:
+    """When a process has potentially started via a fork, there may be
+    a remnant of parent's zmq context, therefore it is imperative to
+    destoy it. Additionally, in tests the context may be left in
+    an unpractical state, requiring a delete at the start"""
+    if hasattr(_local, "context"):
+        _local.context.destroy(linger=0)
+        del _local.context
 
 
 class OutboundTransport:
@@ -36,6 +50,9 @@ class OutboundTransport:
         socket.connect(address)
         self._sockets[address] = socket
         return socket
+
+    def describe_state(self) -> dict[str, Any]:
+        return {address: _describe_socket(socket) for address, socket in self._sockets.items()}
 
     def send_multipart(self, address: str, frames: tuple[bytes, ...], copy: bool = True) -> None:
         self._socket_for(address).send_multipart(frames, copy=copy)
@@ -65,6 +82,9 @@ class MultiLaneListener:
             self._addresses[lane] = address
             self._poller.register(socket, flags=zmq.POLLIN)
 
+    def describe_state(self) -> dict[str, Any]:
+        return {lane: _describe_socket(socket) for lane, socket in self._socket_by_lane.items()}
+
     def _bind(self, socket: zmq.Socket, bind_address: str) -> str:
         if bind_address.endswith(":*"):
             base = bind_address[: -len(":*")]
@@ -93,3 +113,12 @@ class MultiLaneListener:
         self._socket_by_lane.clear()
         self._lane_by_socket_id.clear()
         self._addresses.clear()
+
+
+def _describe_socket(socket: zmq.Socket) -> dict[str, Any]:
+    return {
+        "type": socket.getsockopt(zmq.TYPE),
+        "events": socket.getsockopt(zmq.EVENTS),
+        "endpoint": socket.getsockopt_string(zmq.LAST_ENDPOINT),
+        "fd": socket.getsockopt(zmq.FD),
+    }

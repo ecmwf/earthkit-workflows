@@ -46,7 +46,7 @@ def gpu_init(worker_num: int):
         pass  # no macos specific gpu init due to unified mem model
 
 
-MpSituation = typing.Literal["worker", "executor-loc", "executor-aux", "gateway", "other"]
+MpSituation = typing.Literal["worker", "executor-loc", "executor-shm", "executor-dataserver", "gateway", "other"]
 _MpSituation = typing.get_args(MpSituation)
 
 
@@ -65,13 +65,15 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
         raise CascadeInternalError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":
         return mp.get_context("spawn")
-    elif situation == "executor-loc":
+    elif situation in ("executor-loc"):
         # NOTE in the case of executor being launched locally, from eg cascade main
         # after it has constructed a jobInstance, there is a chance of the process
         # being tainted with some imports such as earthkit.workflows.fluent which in
         # turn brings in numpy -- therefore, we cannot allow to fork
         return mp.get_context("forkserver")
     else:
+        # NOTE in particular shm currently requires fork on linux, due to some
+        # propagation or env or whatnot -- reproducible with shm test
         return mp.get_context("fork")
 
 

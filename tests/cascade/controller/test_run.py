@@ -18,9 +18,9 @@ import os
 import pathlib
 import pickle
 import tempfile
+import time
 from logging.config import dictConfig
 from multiprocessing import Process
-from time import sleep
 
 from cascade.controller.impl import run
 from cascade.deployment.logging import DefaultLoggingConfig
@@ -33,6 +33,7 @@ from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import CheckpointSpec, DatasetId, HostId, JobInstance, JobInstanceRich, StorageId, TaskId
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
+from cascade.ygg.transport import destroy_context
 
 # see the comment above
 run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
@@ -74,6 +75,7 @@ def run_cluster(
     # TODO rework the port assignemnt in this whole file -- we waste a lot. Note if there
     # is a port overlap, it causes *very unpleasant* interference, even when the tests
     # are executed sequentially
+    destroy_context()
     if not preschedule:
         preschedule = precompute(job.jobInstance)
     c = f"tcp://localhost:{portBase}"
@@ -90,11 +92,10 @@ def run_cluster(
         for p in ps:
             if p.is_alive():
                 callback(m, ExecutorShutdown())
-                import time
-
                 time.sleep(1)
                 p.kill()
         raise
+    time.sleep(0.5)  # improves stability
 
 
 def test_simple():
@@ -105,7 +106,6 @@ def test_simple():
     task2 = TaskBuilder.from_callable(_payload).with_values(a=1)
     job = JobBuilder().with_node("task1", task1).with_node("task2", task2).with_edge("task1", "task2", "b").build().get_or_raise()
     run_cluster(JobInstanceRich(jobInstance=job, checkpointSpec=None), 12000, 1, "controllerSimple")
-    sleep(1)  # improves stability
 
 
 def get_job() -> JobInstanceRich:
@@ -151,7 +151,6 @@ def test_para2():
         return
     job = get_job()
     run_cluster(job, 12200, 2, "controllerPara2")
-    sleep(1)  # improves stability
 
 
 def test_para4():
@@ -159,7 +158,6 @@ def test_para4():
         return
     job = get_job()
     run_cluster(job, 12400, 4, "controllerPara4")
-    sleep(1)  # improves stability
 
 
 def test_para1_persist():
@@ -223,7 +221,6 @@ def test_fusing():
     # TODO we currently dont check that those actually *got fused* -- fix
     jobInstanceRich = JobInstanceRich(jobInstance=job, checkpointSpec=None)
     run_cluster(jobInstanceRich, 12800, 2, "controllerFusing", preschedule)
-    sleep(1)  # improves stability
 
 
 def test_checkpoints():
@@ -262,6 +259,4 @@ def test_checkpoints():
         )
 
         run_cluster(jobInstanceRich, 13200, 2, "ctrlCkpt1", preschedule)
-        sleep(1)  # improves stability
         run_cluster(jobInstanceRich, 13300, 2, "ctrlCkpt2", preschedule)
-        sleep(1)  # improves stability

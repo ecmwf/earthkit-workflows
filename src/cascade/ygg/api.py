@@ -6,6 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import logging
 import time
 from typing import Iterable
 
@@ -15,6 +16,8 @@ from cascade.ygg.registry import HostRegistry
 from cascade.ygg.reliability import DedupCache, InflightMessage, RetryPlanner
 from cascade.ygg.transport import MultiLaneListener, OutboundTransport
 from cascade.ygg.types import Delivery, HostEndpoints, HostId, IncomingMessage, Lane, YggConfig
+
+logger = logging.getLogger(__name__)
 
 
 class YggNode:
@@ -124,9 +127,21 @@ class YggNode:
             record = self._inflight[idx]
             self._retry.assert_not_exhausted(record, now_ns=now)
             if self._retry.is_due(record, now_ns=now):
+                logger.debug(f"retrying message {idx=}")
                 self._send_record(record)
 
-    def close(self) -> None:
+    def close(self, timeout_ms: int = 1000, wait_for_all_acks: bool = True) -> None:
+        if wait_for_all_acks:
+            deadline_ns = time.monotonic_ns() + timeout_ms * 1_000_000
+            while self._inflight:
+                remaining_ns = deadline_ns - time.monotonic_ns()
+                if remaining_ns <= 0:
+                    break
+                poll_timeout_ms = min(remaining_ns // 1_000_000, self._config.control.retry_interval_ms)
+                self.poll_messages(timeout_ms=poll_timeout_ms)
+                self.retry_outstanding()
+            if self._inflight:
+                logger.warning("ygg close timed out with %d inflight messages", len(self._inflight))
         self._outbound.close()
         self._listener.close()
 
@@ -166,3 +181,13 @@ class YggNode:
         if len(frames) != 1:
             raise CascadeInternalError("unexpected multipart ygg message without envelope")
         return IncomingMessage(payload=frames[0], lane=lane, source_address=None, message_id=None)
+
+    def describe_state(self) -> dict[str, object]:
+        return {
+            "control_address": self.control_address,
+            "bulk_address": self.bulk_address,
+            "pending": len(self._inflight),
+            "pending_ids": sorted(self._inflight.keys()),
+            "listener": self._listener.describe_state(),
+            "outbound": self._outbound.describe_state(),
+        }
