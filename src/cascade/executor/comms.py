@@ -92,10 +92,11 @@ def callback(address: BackboneAddress, msg: Message):
     socket.send(byt)
 
 
-def send_data(address: BackboneAddress, data: DatasetTransmitPayload, syn: Syn) -> None:
+def send_data(address: BackboneAddress, data: DatasetTransmitPayload, syn: Syn) -> zmq.MessageTracker:
     socket = get_socket(address)
     byt = (ser_message(syn), pickle.dumps(data.header), data.value)
-    socket.send_multipart(byt, copy=False)
+    tracker = socket.send_multipart(byt, copy=False, track=True)
+    return tracker
 
 
 def receive_and_ack(socket: zmq.Socket, seen_syns: set[tuple[int, BackboneAddress]]) -> bytes | None:
