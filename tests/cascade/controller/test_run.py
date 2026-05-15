@@ -14,6 +14,7 @@
 # by setting RUN_ALL_TESTS=1, as on CI is particularly flaky and incompatible
 # with xdist etc
 
+import logging
 import os
 import pathlib
 import pickle
@@ -33,6 +34,7 @@ from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import CheckpointSpec, DatasetId, HostId, JobInstance, JobInstanceRich, StorageId, TaskId
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
+from cascade.ygg.transport import destroy_context, has_context
 
 # see the comment above
 run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
@@ -50,6 +52,7 @@ def launch_executor(
     test_name: str,  # used to derive executor address, must be unique
 ):
     dictConfig(logging_config)
+    logging.getLogger("cascade.controller.testHarness").debug(f"at executor launch: {has_context()=}")
     executor = Executor(
         job_instance,
         controller_address,
@@ -80,10 +83,12 @@ def run_cluster(
     m = f"tcp://localhost:{portBase + 1}"
     ps = []
     for i, executor in enumerate(range(executors)):
+        logging.getLogger("cascade.controller.testHarness").debug(f"before process launch: {has_context()=}")
         p = Process(target=launch_executor, args=(job.jobInstance, c, portBase + 1 + i * 10, i, test_name))
         p.start()
         ps.append(p)
     try:
+        logging.getLogger("cascade.controller.testHarness").debug(f"before bridge launch: {has_context()=}")
         b = Bridge(c, executors, job.checkpointSpec)
         run(job, b, preschedule)
     except:
@@ -262,6 +267,7 @@ def test_checkpoints():
         )
 
         run_cluster(jobInstanceRich, 13200, 2, "ctrlCkpt1", preschedule)
+        destroy_context()
         sleep(1)  # improves stability
         run_cluster(jobInstanceRich, 13300, 2, "ctrlCkpt2", preschedule)
         sleep(1)  # improves stability

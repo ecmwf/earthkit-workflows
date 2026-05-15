@@ -22,8 +22,18 @@ _local = threading.local()
 
 def get_context() -> zmq.Context:
     if not hasattr(_local, "context"):
+        logger.debug("creating a new context")
         _local.context = zmq.Context()
+    else:
+        logger.debug("retrieving cached context")
     return _local.context
+
+
+def has_context() -> bool:
+    if not hasattr(_local, "context"):
+        return False
+    else:
+        return True
 
 
 def destroy_context() -> None:

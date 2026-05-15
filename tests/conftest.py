@@ -46,7 +46,6 @@ def nuke_zmq_context():
 
     # --- Post-test Cleanup ---
     try:
-        import cascade.executor.comms as t2
         import cascade.ygg.transport as t1
 
         t1.destroy_context()

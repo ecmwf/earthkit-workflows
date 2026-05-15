@@ -16,7 +16,6 @@ from dataclasses import dataclass
 
 import zmq
 
-import cascade.ygg.transport
 from cascade.executor.msg import (
     Ack,
     BackboneAddress,
@@ -71,10 +70,13 @@ class GraceWatcher:
         return self._now() - self.step_time_ms
 
 
-_local = threading.local()
-
-
 def get_context() -> zmq.Context:
+    # local = threading.local()
+    # if not hasattr(local, 'context'):
+    #     local.context = zmq.Context()
+    # return local.context
+    import cascade.ygg.transport
+
     return cascade.ygg.transport.get_context()
 
 
