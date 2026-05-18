@@ -86,7 +86,7 @@ def spawn_gateway(
 @pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
     destroy_context()
-    url, gw = spawn_gateway(1, max_jobs_history=1)
+    url, gw = spawn_gateway(1, max_jobs_history=2)
     try:
         # succ job
         ji = get_job_succ()
@@ -104,6 +104,7 @@ def test_job():
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
+        succ_job_id = job_id
 
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
@@ -162,6 +163,7 @@ def test_job():
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
+        fail_job_id = job_id
 
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
@@ -176,14 +178,6 @@ def test_job():
                 tries += 1
                 time.sleep(2)
         assert tries < tries_limit
-
-        shutdown_req = api.ShutdownRequest()
-        shutdown_res = client.request_response(shutdown_req, url, 3000)
-        assert hasattr(shutdown_res, "error") and shutdown_res.error is None
-        gw.join(5)
-        assert gw.exitcode == 0
-
-        url, gw = spawn_gateway(1, max_jobs_history=1)
 
         # two jobs at once
         # TODO this is for manual test only, I dont have a good idea how to test, in a reliable & timely fashion,
@@ -214,8 +208,10 @@ def test_job():
             job_progress_res = client.request_response(job_progress_req, url)
             assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
-            second_progress = job_progress_res.progresses[res2.job_id]
-            if second_progress is not None and second_progress.pct == "100.00":  # ty: ignore[possibly-missing-attribute]
+            is_computed = (
+                lambda job_id: job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]
+            )
+            if all(is_computed(job_id) for job_id in job_ids):
                 break
             else:
                 # NOTE not using logger, not properly configured in downstream-ci
@@ -226,7 +222,9 @@ def test_job():
         final_progress_res = client.request_response(api.JobProgressRequest(job_ids=[]), url)
         assert isinstance(final_progress_res, api.JobProgressResponse)
         assert final_progress_res.error is None
-        assert res1.job_id not in final_progress_res.progresses
+        assert succ_job_id not in final_progress_res.progresses
+        assert fail_job_id not in final_progress_res.progresses
+        assert res1.job_id in final_progress_res.progresses
         assert res2.job_id in final_progress_res.progresses
 
         # gw shutdown

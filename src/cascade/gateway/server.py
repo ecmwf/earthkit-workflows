@@ -49,9 +49,14 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
             rv = api.JobProgressResponse(progresses={}, datasets={}, error=repr(e), queue_length=-1)
     elif isinstance(m, api.ResultRetrievalRequest):
         try:
-            result = jobs.get_result(m.job_id, m.dataset_id)
-            encoded = base64.b64encode(result).decode("ascii")
-            rv = api.ResultRetrievalResponse(result=encoded, error=None)
+            result, error = jobs.get_result(m.job_id, m.dataset_id)
+            if error is not None:
+                rv = api.ResultRetrievalResponse(result=None, error=error)
+            elif result is None:
+                rv = api.ResultRetrievalResponse(result=None, error="unexpected empty result")
+            else:
+                encoded = base64.b64encode(result).decode("ascii")
+                rv = api.ResultRetrievalResponse(result=encoded, error=None)
         except Exception as e:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultRetrievalResponse(result=None, error=repr(e))
@@ -80,11 +85,7 @@ def handle_controller(ygg: YggNode, jobs: JobRouter) -> None:
             logger.debug(f"received controller message {report}")
             for dataset_id, result in report.results:
                 jobs.put_result(report.job_id, dataset_id, result)
-            should_evict = jobs.maybe_update(
-                report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks
-            )
-            if should_evict:
-                jobs.maybe_evict_old_jobs()
+            jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
 
 
 def serve(
