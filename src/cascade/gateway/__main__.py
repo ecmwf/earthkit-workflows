@@ -18,11 +18,13 @@ def main_cli(
     url: str,
     loggingConfigSer: str | None = None,
     troika_config: str | None = None,
-    max_jobs: int | None = None,
+    max_concurrent_jobs: int | None = None,
+    max_jobs_history: int = 20,
+    max_queue_length: int = 50,
     report_transport: str = "tcp",
 ) -> None:
     loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
-    serve(url, loggingConfig, troika_config, max_jobs, report_transport)
+    serve(url, loggingConfig, troika_config, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)
 
 
 if __name__ == "__main__":

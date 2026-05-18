@@ -62,9 +62,23 @@ def get_job_slow() -> JobInstanceRich:
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 
-def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
+def spawn_gateway(
+    max_concurrent_jobs: int | None = None,
+    *,
+    max_jobs_history: int = 20,
+    max_queue_length: int = 50,
+) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=main_cli, args=(url,), kwargs={"max_jobs": max_jobs, "report_transport": "ipc"})
+    p = Process(
+        target=main_cli,
+        args=(url,),
+        kwargs={
+            "max_concurrent_jobs": max_concurrent_jobs,
+            "max_jobs_history": max_jobs_history,
+            "max_queue_length": max_queue_length,
+            "report_transport": "ipc",
+        },
+    )
     p.start()
     return url, p
 
@@ -72,7 +86,7 @@ def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
 @pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
     destroy_context()
-    url, gw = spawn_gateway(1)
+    url, gw = spawn_gateway(1, max_jobs_history=2)
     try:
         # succ job
         ji = get_job_succ()
@@ -90,6 +104,7 @@ def test_job():
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
+        succ_job_id = job_id
 
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
@@ -148,6 +163,7 @@ def test_job():
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
+        fail_job_id = job_id
 
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
@@ -203,6 +219,13 @@ def test_job():
                 tries += 1
                 time.sleep(2)
         assert tries < tries_limit
+        final_progress_res = client.request_response(api.JobProgressRequest(job_ids=[]), url)
+        assert isinstance(final_progress_res, api.JobProgressResponse)
+        assert final_progress_res.error is None
+        assert succ_job_id not in final_progress_res.progresses
+        assert fail_job_id not in final_progress_res.progresses
+        assert res1.job_id in final_progress_res.progresses
+        assert res2.job_id in final_progress_res.progresses
 
         # gw shutdown
         shutdown_req = api.ShutdownRequest()

@@ -36,8 +36,8 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
     rv: api.CascadeGatewayAPI
     if isinstance(m, api.SubmitJobRequest):
         try:
-            job_id = jobs.enqueue_job(m.job)
-            rv = api.SubmitJobResponse(job_id=job_id, error=None)
+            job_id, error = jobs.enqueue_job(m.job)
+            rv = api.SubmitJobResponse(job_id=job_id, error=error)
         except Exception as e:
             logger.exception(f"failed to spawn a job: {m}")
             rv = api.SubmitJobResponse(job_id=None, error=repr(e))
@@ -49,9 +49,14 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
             rv = api.JobProgressResponse(progresses={}, datasets={}, error=repr(e), queue_length=-1)
     elif isinstance(m, api.ResultRetrievalRequest):
         try:
-            result = jobs.get_result(m.job_id, m.dataset_id)
-            encoded = base64.b64encode(result).decode("ascii")
-            rv = api.ResultRetrievalResponse(result=encoded, error=None)
+            result, error = jobs.get_result(m.job_id, m.dataset_id)
+            if error is not None:
+                rv = api.ResultRetrievalResponse(result=None, error=error)
+            elif result is None:
+                rv = api.ResultRetrievalResponse(result=None, error="unexpected empty result")
+            else:
+                encoded = base64.b64encode(result).decode("ascii")
+                rv = api.ResultRetrievalResponse(result=encoded, error=None)
         except Exception as e:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultRetrievalResponse(result=None, error=repr(e))
@@ -78,16 +83,18 @@ def handle_controller(ygg: YggNode, jobs: JobRouter) -> None:
             raw_report = msg.payload
             report = deserialize(raw_report)
             logger.debug(f"received controller message {report}")
-            jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
             for dataset_id, result in report.results:
                 jobs.put_result(report.job_id, dataset_id, result)
+            jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
 
 
 def serve(
     url: str,
     loggingConfig: LoggingConfig,
     troika_config: str | None = None,
-    max_jobs: int | None = None,
+    max_concurrent_jobs: int | None = None,
+    max_jobs_history: int = 20,
+    max_queue_length: int = 50,
     report_transport: str = "tcp",
 ) -> None:
     if report_transport == "tcp":
@@ -106,7 +113,7 @@ def serve(
     ygg_control_socket = ygg._listener._socket_by_lane["control"]  # ty: ignore
     poller.register(fe, flags=zmq.POLLIN)
     poller.register(ygg_control_socket, flags=zmq.POLLIN)
-    jobs = JobRouter(ygg, loggingConfig, troika_config, max_jobs)
+    jobs = JobRouter(ygg, loggingConfig, troika_config, max_concurrent_jobs, max_jobs_history, max_queue_length)
 
     logger.debug("entering recv loop")
     is_break = False
@@ -132,7 +139,14 @@ def roleLoggingStr() -> str:
     return f"gateway.{now}"
 
 
-def main_enp(url: str, loggingConfig: LoggingConfig, max_jobs: int | None, report_transport: str = "tcp") -> None:
+def main_enp(
+    url: str,
+    loggingConfig: LoggingConfig,
+    max_concurrent_jobs: int | None,
+    max_jobs_history: int = 20,
+    max_queue_length: int = 50,
+    report_transport: str = "tcp",
+) -> None:
     # use when process is not __main__ but eg forked from another
     init_from_obj(loggingConfig, roleLoggingStr())
-    serve(url, loggingConfig, None, max_jobs, report_transport)
+    serve(url, loggingConfig, None, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)
