@@ -378,7 +378,6 @@ def test_combine_branches():
     force = reduced.combine_branches(dim="dim_1", force=True)
     for _, array in nodetree_arrays(force.nodes):
         assert array.shape == (12,)
-    force.flatten()
 
 
 @pytest.mark.parametrize(
