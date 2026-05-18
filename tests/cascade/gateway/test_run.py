@@ -62,9 +62,23 @@ def get_job_slow() -> JobInstanceRich:
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 
-def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
+def spawn_gateway(
+    max_concurrent_jobs: int | None = None,
+    *,
+    max_jobs_history: int = 20,
+    max_queue_length: int = 50,
+) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=main_cli, args=(url,), kwargs={"max_jobs": max_jobs, "report_transport": "ipc"})
+    p = Process(
+        target=main_cli,
+        args=(url,),
+        kwargs={
+            "max_concurrent_jobs": max_concurrent_jobs,
+            "max_jobs_history": max_jobs_history,
+            "max_queue_length": max_queue_length,
+            "report_transport": "ipc",
+        },
+    )
     p.start()
     return url, p
 
@@ -72,7 +86,7 @@ def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
 @pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
     destroy_context()
-    url, gw = spawn_gateway(1)
+    url, gw = spawn_gateway(1, max_jobs_history=1)
     try:
         # succ job
         ji = get_job_succ()
@@ -163,6 +177,14 @@ def test_job():
                 time.sleep(2)
         assert tries < tries_limit
 
+        shutdown_req = api.ShutdownRequest()
+        shutdown_res = client.request_response(shutdown_req, url, 3000)
+        assert hasattr(shutdown_res, "error") and shutdown_res.error is None
+        gw.join(5)
+        assert gw.exitcode == 0
+
+        url, gw = spawn_gateway(1, max_jobs_history=1)
+
         # two jobs at once
         # TODO this is for manual test only, I dont have a good idea how to test, in a reliable & timely fashion,
         # that the execution has in effect been serial. But just running it and checking for success is still worth
@@ -192,10 +214,8 @@ def test_job():
             job_progress_res = client.request_response(job_progress_req, url)
             assert isinstance(job_progress_res, api.JobProgressResponse)
             assert job_progress_res.error is None
-            is_computed = (
-                lambda job_id: job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]
-            )
-            if all(is_computed(job_id) for job_id in job_ids):
+            second_progress = job_progress_res.progresses[res2.job_id]
+            if second_progress is not None and second_progress.pct == "100.00":  # ty: ignore[possibly-missing-attribute]
                 break
             else:
                 # NOTE not using logger, not properly configured in downstream-ci
@@ -203,6 +223,11 @@ def test_job():
                 tries += 1
                 time.sleep(2)
         assert tries < tries_limit
+        final_progress_res = client.request_response(api.JobProgressRequest(job_ids=[]), url)
+        assert isinstance(final_progress_res, api.JobProgressResponse)
+        assert final_progress_res.error is None
+        assert res1.job_id not in final_progress_res.progresses
+        assert res2.job_id in final_progress_res.progresses
 
         # gw shutdown
         shutdown_req = api.ShutdownRequest()

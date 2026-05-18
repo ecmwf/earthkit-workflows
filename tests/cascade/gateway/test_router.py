@@ -32,7 +32,7 @@ def _make_router(ygg: YggNode) -> JobRouter:
         ygg=ygg,
         loggingConfig=DefaultLoggingConfig,
         troika_config=None,
-        max_jobs=None,
+        max_concurrent_jobs=None,
     )
 
 

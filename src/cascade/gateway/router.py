@@ -51,21 +51,27 @@ class JobRouter:
         ygg: YggNode,
         loggingConfig: LoggingConfig,
         troika_config: str | None,
-        max_jobs: int | None,
+        max_concurrent_jobs: int | None,
+        max_jobs_history: int = 20,
+        max_queue_length: int = 50,
     ):
         self._ygg = ygg
         self.jobs: dict[JobId, Job] = {}
         self.active_jobs = 0
-        self.max_jobs = max_jobs
+        self.max_concurrent_jobs = max_concurrent_jobs
+        self.max_jobs_history = max_jobs_history
+        self.max_queue_length = max_queue_length
         self.jobs_queue: OrderedDict[JobId, api.JobSpec] = OrderedDict()
         self.procs: dict[JobId, subprocess.Popen] = {}
+        self.job_submission_order: list[JobId] = []
+        self.completed_jobs = 0
         self.loggingConfig = loggingConfig
         self.troika_config = troika_config
 
     def maybe_spawn(self) -> None:
         if not self.jobs_queue:
             return
-        if self.max_jobs is not None and self.active_jobs >= self.max_jobs:
+        if self.max_concurrent_jobs is not None and self.active_jobs >= self.max_concurrent_jobs:
             logger.debug(f"already running {self.active_jobs}, no spawn")
             return
 
@@ -76,14 +82,41 @@ class JobRouter:
         self.procs[job_id] = spawn_subprocess(job_spec, full_addr, job_id, self.loggingConfig, self.troika_config)
         self.active_jobs += 1
 
-    def enqueue_job(self, job_spec: api.JobSpec) -> JobId:
+    def enqueue_job(self, job_spec: api.JobSpec) -> tuple[JobId | None, str | None]:
+        if self.max_queue_length is not None and len(self.jobs_queue) >= self.max_queue_length:
+            return None, f"queue full: {len(self.jobs_queue)} jobs already queued"
         job_id = next_uuid(
-            set(self.jobs.keys()).union(self.jobs_queue.keys()),
+            set(self.jobs.keys()).union(self.jobs_queue.keys()).union(self.job_submission_order),
             lambda: JobId(str(uuid.uuid4())),
         )
         self.jobs_queue[job_id] = job_spec
+        self.job_submission_order.append(job_id)
         self.maybe_spawn()
-        return job_id
+        return job_id, None
+
+    def maybe_evict_old_jobs(self) -> None:
+        if self.max_jobs_history is None:
+            return
+        while self.completed_jobs > self.max_jobs_history:
+            evicted = False
+            index = 0
+            while index < len(self.job_submission_order):
+                job_id = self.job_submission_order[index]
+                job = self.jobs.get(job_id)
+                if job is None:
+                    self.job_submission_order.pop(index)
+                    continue
+                if not job.progress.completed:
+                    index += 1
+                    continue
+                del self.jobs[job_id]
+                self.procs.pop(job_id, None)
+                self.job_submission_order.pop(index)
+                self.completed_jobs -= 1
+                evicted = True
+                break
+            if not evicted:
+                break
 
     def progress_of(self, job_ids: Iterable[JobId], detailed_report: bool = False) -> api.JobProgressResponse:
         if not job_ids:
@@ -112,6 +145,8 @@ class JobRouter:
         )
 
     def get_result(self, job_id: JobId, dataset_id: DatasetId) -> bytes:
+        if job_id not in self.jobs:
+            raise KeyError(f"{job_id=} not retained")
         return self.jobs[job_id].results[dataset_id]
 
     def maybe_update(
@@ -121,9 +156,11 @@ class JobRouter:
         timestamp: int,
         completed_task: TaskId | None = None,
         planned_tasks: set[TaskId] | None = None,
-    ) -> None:
+    ) -> bool:
         if progress is None and completed_task is None and not planned_tasks:
-            return
+            return False
+        if job_id not in self.jobs:
+            return False
         job = self.jobs[job_id]
         if completed_task is not None:
             job.planned_task_ids.discard(completed_task)
@@ -131,23 +168,25 @@ class JobRouter:
         if planned_tasks:
             job.planned_task_ids.update(planned_tasks - job.completed_task_ids)
         if progress is None:
-            return
+            return False
         if timestamp <= job.last_seen:
-            return
+            return False
         job.last_seen = timestamp
-        if progress.completed and not job.progress.completed:
-            # NOTE we could call forget_sender here to flush cache early,
-            # assuming we passed the msg.source_address from the caller. But that
-            # could lead to some double processings of completed/planned messages,
-            # so probably not worth it
-            self.active_jobs -= 1
-            self.maybe_spawn()
+        was_completed = job.progress.completed
         if progress.failure is not None and job.progress.failure is None:
             job.progress = progress
         elif job.progress.failure is not None:
             pass
         elif progress.pct is not None:
             job.progress = progress
+        if progress.completed and not was_completed:
+            if progress.failure is None:
+                job.progress = JobProgress(job.progress.started, True, job.progress.pct, job.progress.failure)
+            self.active_jobs -= 1
+            self.completed_jobs += 1
+            self.maybe_spawn()
+            return True
+        return False
 
     def put_result(self, job_id: JobId, dataset_id: DatasetId, result: bytes) -> None:
         if dataset_id not in self.jobs[job_id].results:
