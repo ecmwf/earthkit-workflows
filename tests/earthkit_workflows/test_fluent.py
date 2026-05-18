@@ -142,9 +142,6 @@ def test_flatten_expand():
     flatten_all = input_action.flatten()
     assert flatten_all.nodes == action2.nodes
 
-    with pytest.raises(ValueError):
-        action2.flatten()
-
     action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
     action3_array = nodetree_array(action3.nodes)
     assert action3_array.shape == (2,)
@@ -378,6 +375,20 @@ def test_combine_branches():
     force = reduced.combine_branches(dim="dim_1", force=True)
     for _, array in nodetree_arrays(force.nodes):
         assert array.shape == (12,)
+
+
+def test_flatten_branches():
+    input_action = mock_action((3, 4))
+    branches = input_action.create_branches(
+        {
+            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+            "/branch2": lambda data: np.where(data == 0, data, np.nan),
+        }
+    )
+    reduced = branches.flatten(path="/branch1/subbranch1")
+    flattened = reduced.flatten()
+    assert reduced.sel(path="/branch1/subbranch1").nodes == flattened.sel(path="/branch1/subbranch1").nodes
 
 
 @pytest.mark.parametrize(

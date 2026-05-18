@@ -263,6 +263,15 @@ class Action:
         else:
             new_nodes = nodetree.to_dict()
         self.nodes = nodetree_from_dict(new_nodes)
+        self._node_dims = set.union(set(), *[arr.dims for arr in new_nodes.values()])
+
+    def _temp_dim(self) -> str:
+        temp_dim = "**tempindex**"
+        index = 0
+        while temp_dim in self._node_dims:
+            temp_dim = f"**tempindex{index}**"
+            index += 1
+        return temp_dim
 
     def graph(self) -> Graph:
         """Creates graph from the nodes of the action.
@@ -668,22 +677,22 @@ class Action:
         ------
         Action
         """
+        temp_dim = self._temp_dim()
         node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
             if narray.size == 1:
-                raise ValueError("Can not flatten array containing single node")
+                continue
             diff = set(keep_dims).difference(narray.dims)
             if len(diff) > 0:
                 raise ValueError(f"Dimensions {diff} not in array at {npath}")
             stack_dims = [x for x in narray.dims if x not in keep_dims]
             if len(stack_dims) > 0:
-                node_arrays[npath] = narray.stack(**{"**tempindex**": stack_dims}).reset_index(stack_dims, drop=True)
-            reset_coords = [name for name, coord in node_arrays[npath].coords.items() if "**tempindex**" in coord.dims]
+                node_arrays[npath] = narray.stack(dim={temp_dim: stack_dims}).reset_index(stack_dims, drop=True)
+            reset_coords = [name for name, coord in node_arrays[npath].coords.items() if temp_dim in coord.dims]
             if len(reset_coords) > 0:
                 node_arrays[npath] = node_arrays[npath].reset_coords(reset_coords, drop=True)
-
         action = type(self)(nodetree_from_dict(node_arrays))
-        return _combine_nodes(action, method, dim="**tempindex**", batch_size=0, keep_dim=False, path=path, backend_kwargs=backend_kwargs)
+        return _combine_nodes(action, method, dim=temp_dim, batch_size=0, keep_dim=False, path=path, backend_kwargs=backend_kwargs)
 
     def set_path(self, path: str) -> "Action":
         """Create path for current node array
