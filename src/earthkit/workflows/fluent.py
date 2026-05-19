@@ -753,7 +753,7 @@ class Action:
             common_dims = set.intersection(*[set(x.dims) for x in narrays.values()])
             for apath in narrays.keys():
                 action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
-        new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals")
+        new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals", join="exact")
         if path:
             node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}
             node_arrays[path] = new_array

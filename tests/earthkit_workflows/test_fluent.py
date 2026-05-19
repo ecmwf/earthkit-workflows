@@ -358,19 +358,22 @@ def test_invalid_branches():
 
 
 def test_combine_branches():
-    input_action = mock_action((3, 4))
-    branches = input_action.create_branches(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-            "/branch2": lambda data: np.where(data == 0, data, np.nan),
-        }
+    branches = merge(
+        mock_action((3, 4))
+        .set_path("/branch1")
+        .create_branches(
+            {
+                "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
+                "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
+            },
+        ),
+        mock_action((5, 4, 6)).set_path("/branch2"),
     )
     reduced = branches.sum(path="/branch1/subbranch1")
-    reduced.nodes["/branch2"].coords["dim_2"] = 1
-    reduced.nodes["/branch1/subbranch1"].coords["dim_2"] = 2
-    reduced.nodes["/branch1/subbranch2"].coords["dim_2"] = 2
-    with pytest.raises(ValueError):
+    reduced.nodes["/branch2"].coords["scalar_dim"] = 1
+    reduced.nodes["/branch1/subbranch1"].coords["scalar_dim"] = 2
+    reduced.nodes["/branch1/subbranch2"].coords["scalar_dim"] = 2
+    with pytest.raises(Exception, match="cannot align objects with join='exact"):
         reduced.combine_branches("dim_1")
     force = reduced.combine_branches(dim="dim_1", force=True)
     for _, array in nodetree_arrays(force.nodes):
