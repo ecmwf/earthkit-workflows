@@ -656,28 +656,24 @@ class Action:
     @capture_payload_metadata
     def flatten(
         self,
+        new_dim: str,
         keep_dims: list[str] = [],
         path: Optional[str] = None,
-        method: str = "concat",
-        backend_kwargs: dict = {},
-        payload_metadata: dict | None = None,
+        reset_coords: bool = False,
     ) -> "Action":
-        """Flattens the array of nodes along all dims, except keep_sims, for node arrays
-        along path. Internal data in nodes is combined either by stacking for concatenating,
-        specified by method
+        """Restructures node arrays by flattening arrays along all dims, except keep_dims, for node arrays
+        along path.
 
         Parameters
         ----------
         keep_dims: str, name of dimensions not to flatten
-        method: str, either concat or stack
+        new_dim: str, name of new dimension containing flattened dims
         path: str, path to select subset of nodes to operate on, if provided
-        backend_kwargs: dict, kwargs for the underlying array module stack method
 
         Return
         ------
         Action
         """
-        temp_dim = self._temp_dim()
         node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
             if narray.size == 1:
@@ -687,12 +683,12 @@ class Action:
                 raise ValueError(f"Dimensions {diff} not in array at {npath}")
             stack_dims = [x for x in narray.dims if x not in keep_dims]
             if len(stack_dims) > 0:
-                node_arrays[npath] = narray.stack(dim={temp_dim: stack_dims}).reset_index(stack_dims, drop=True)
-            reset_coords = [name for name, coord in node_arrays[npath].coords.items() if temp_dim in coord.dims]
-            if len(reset_coords) > 0:
+                node_arrays[npath] = narray.stack(dim={new_dim: stack_dims}).reset_index(stack_dims, drop=True)
+
+            reset_coords = [name for name, coord in node_arrays[npath].coords.items() if new_dim in coord.dims]
+            if reset_coords and len(reset_coords) > 0:
                 node_arrays[npath] = node_arrays[npath].reset_coords(reset_coords, drop=True)
-        action = type(self)(nodetree_from_dict(node_arrays))
-        return _combine_nodes(action, method, dim=temp_dim, batch_size=0, keep_dim=False, path=path, backend_kwargs=backend_kwargs)
+        return type(self)(nodetree_from_dict(node_arrays))
 
     def set_path(self, path: str) -> "Action":
         """Create path for current node array
@@ -750,12 +746,13 @@ class Action:
         ------
         ValueError if arrays along leaves are not compatible
         """
+        temp_dim = self._temp_dim()
         action = self.select(path=path)
         narrays = {apath: array for apath, array in nodetree_arrays(action.nodes)}
         if force:
             common_dims = set.intersection(*[set(x.dims) for x in narrays.values()])
             for apath in narrays.keys():
-                action = action.flatten(keep_dims=common_dims, path=apath)
+                action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
         new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals")
         if path:
             node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}

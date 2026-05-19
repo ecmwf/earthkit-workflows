@@ -130,16 +130,16 @@ def test_flatten_expand():
     input_action = mock_action((2, 3))
 
     with pytest.raises(ValueError):
-        input_action.flatten(keep_dims=["dim_2"])
-    action1 = input_action.flatten(keep_dims=["dim_0"])
+        input_action.flatten(new_dim="temp", keep_dims=["dim_2"])
+    action1 = input_action.flatten(new_dim="temp", keep_dims=["dim_0"]).concatenate(dim="temp")
     action1_array = nodetree_array(action1.nodes)
     assert action1_array.shape == (2,)
     assert len(action1_array.data.item(0).inputs) == 3
 
-    action2 = action1.flatten(method="stack")
+    action2 = action1.flatten(new_dim="temp").stack(dim="temp")
     assert len(nodetree_array(action2.nodes).data.item(0).inputs) == 2
 
-    flatten_all = input_action.flatten()
+    flatten_all = input_action.flatten(new_dim="temp").concatenate(dim="temp")
     assert flatten_all.nodes == action2.nodes
 
     action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
@@ -386,8 +386,8 @@ def test_flatten_branches():
             "/branch2": lambda data: np.where(data == 0, data, np.nan),
         }
     )
-    reduced = branches.flatten(path="/branch1/subbranch1")
-    flattened = reduced.flatten()
+    reduced = branches.flatten(new_dim="temp", path="/branch1/subbranch1").concatenate(dim="temp")
+    flattened = reduced.flatten(new_dim="temp").concatenate(dim="temp")
     assert reduced.sel(path="/branch1/subbranch1").nodes == flattened.sel(path="/branch1/subbranch1").nodes
 
 
