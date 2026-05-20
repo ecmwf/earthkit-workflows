@@ -685,9 +685,9 @@ class Action:
             if len(stack_dims) > 0:
                 node_arrays[npath] = narray.stack(dim={new_dim: stack_dims}).reset_index(stack_dims, drop=True)
 
-            reset_coords = [name for name, coord in node_arrays[npath].coords.items() if new_dim in coord.dims]
-            if reset_coords and len(reset_coords) > 0:
-                node_arrays[npath] = node_arrays[npath].reset_coords(reset_coords, drop=True)
+            to_reset = [name for name, coord in node_arrays[npath].coords.items() if new_dim in coord.dims]
+            if reset_coords and len(to_reset) > 0:
+                node_arrays[npath] = node_arrays[npath].reset_coords(to_reset, drop=True)
         return type(self)(nodetree_from_dict(node_arrays))
 
     def set_path(self, path: str) -> "Action":
@@ -748,9 +748,9 @@ class Action:
         """
         temp_dim = self._temp_dim()
         action = self.select(path=path)
-        narrays = {apath: array for apath, array in nodetree_arrays(action.nodes)}
+        narrays: dict[str, xr.DataArray] = {apath: array for apath, array in nodetree_arrays(action.nodes)}
         if force:
-            common_dims = set.intersection(*[set(x.dims) for x in narrays.values()])
+            common_dims = list(set.intersection(*[set(x.dims) for x in narrays.values()]))
             for apath in narrays.keys():
                 action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
         new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals", join="exact")
