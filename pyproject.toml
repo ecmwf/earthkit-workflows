@@ -42,7 +42,14 @@ dynamic = ["version"]
 readme = "README.md"
 
 [dependency-groups]
-dev = ["pytest", "pytest-xdist>=3.8", "prek", "ty==0.0.2", "build", "bokeh"]
+dev = [
+    "pytest",
+    "pytest-xdist>=3.8",
+    "prek",
+    "ty==0.0.2",
+    "build",
+    "bokeh",
+]
 
 
 [tool.setuptools]

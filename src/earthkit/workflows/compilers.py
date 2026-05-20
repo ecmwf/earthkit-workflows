@@ -19,6 +19,8 @@ from typing import Any, Literal
 
 from earthkit.workflows.graph import Graph, serialise
 
+logger = logging.getLogger(__name__)
+
 try:
     from cascade.low.core import JobInstance
     from cascade.low.into import graph2job as cascadeInto
@@ -28,7 +30,7 @@ except ImportError:
     def cascadeInto(graph: dict) -> Any:
         raise NotImplementedError("failed to import cascade execution engine")
 
-    JobInstance = Any
+    JobInstance = object  # type: ignore[assignment]
 
 Engine = Literal["cascade"]
 

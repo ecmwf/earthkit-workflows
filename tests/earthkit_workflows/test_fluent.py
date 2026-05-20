@@ -120,7 +120,7 @@ def test_broadcast():
     out_array = nodetree_array(output_action.nodes)
     assert out_array.shape == (2, 3, 3)
     assert len(out_array.data.item(0).inputs) == 1
-    it = np.nditer(out_array, flags=["multi_index", "refs_ok"])
+    it = np.nditer(out_array, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
     for _ in it:
         print(it.multi_index)
         assert out_array[it.multi_index].item(0).inputs["input0"].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
@@ -248,7 +248,7 @@ def test_serialisation(tmpdir, task_graph):
 
 def test_invalid_registration():
     with pytest.raises(TypeError):
-        Action.register("test", None)
+        Action.register("test", None)  # type: ignore[arg-type]
 
 
 def test_registration():

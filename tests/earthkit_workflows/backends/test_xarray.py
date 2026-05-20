@@ -15,6 +15,9 @@ from earthkit.workflows import backends
 
 
 class XarrayBackend(BackendBase):
+    def values(self, array):
+        raise NotImplementedError
+
     @pytest.mark.parametrize(
         ["num_inputs", "kwargs", "output_shape"],
         [
@@ -80,7 +83,7 @@ class XarrayBackend(BackendBase):
 
 
 class TestXarrayDataArrayBackend(XarrayBackend):
-    def input_generator(self, number: int, shape=(2, 3)):
+    def input_generator(self, number: int, shape=(2, 3)):  # type: ignore[override]
         return [
             xr.DataArray(
                 np.random.rand(*shape),
@@ -98,7 +101,7 @@ class TestXarrayDataArrayBackend(XarrayBackend):
 
 
 class TestXarrayDatasetBackend(XarrayBackend):
-    def input_generator(self, number: int, shape=(2, 3)):
+    def input_generator(self, number: int, shape=(2, 3)):  # type: ignore[override]
         return [
             xr.Dataset(
                 {

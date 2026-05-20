@@ -35,7 +35,7 @@ def _convert_num_to_abc(num: int) -> str:
 
 def get_name(child: "Qube", index: int) -> str:
     if "name" in child.metadata:
-        name_meta = child.metadata["name"]
+        name_meta = child.metadata["name"]  # type: ignore[index]
         return str(np.unique_values(name_meta).flatten()[0])
     return _convert_num_to_abc(index)
 

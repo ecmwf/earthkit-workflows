@@ -192,8 +192,8 @@ class _Expander(Transformer):
             output_map = None
         else:
             expanded, input_map, output_map = expanded  # type: ignore # expanded[2] is dict[str, str|None]
-        sp = self.splicer(n.name, inputs, input_map, n.outputs, output_map)
-        return sp.transform(expanded)
+        sp = self.splicer(n.name, inputs, input_map, n.outputs, output_map)  # type: ignore[arg-type]
+        return sp.transform(expanded)  # type: ignore[arg-type]
 
     def graph(self, graph: Graph, sinks: list[Node | _Subgraph]) -> Graph:
         new_sinks = []
