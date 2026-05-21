@@ -737,6 +737,8 @@ class Action:
         ----------
         dim: str, dimension to concatenate arrays along. Either existing or new dimension
         path: str, path along which leaf nodes will be concatenated into single array
+        force: bool, if True, then incompatible dimensions in node arrays are concatenated to ensure
+        each node array has the same dimensions.
 
         Return
         ------
@@ -744,12 +746,12 @@ class Action:
 
         Raises
         ------
-        ValueError if arrays along leaves are not compatible
+        ValueError if arrays along leaves are not compatible and force=False
         """
         temp_dim = self._temp_dim()
         action = self.select(path=path)
-        narrays: dict[str, xr.DataArray] = {apath: array for apath, array in nodetree_arrays(action.nodes)}
         if force:
+            narrays: dict[str, xr.DataArray] = {apath: array for apath, array in nodetree_arrays(action.nodes)}
             common_dims = list(set.intersection(*[set(x.dims) for x in narrays.values()]))
             for apath in narrays.keys():
                 action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
