@@ -31,7 +31,7 @@ from . import backends
 from ._qubed import expand_as_qube
 from .graph import Graph, Output
 from .graph import Node as BaseNode
-from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict
+from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict, nodetree_new_dimension
 
 PayloadFunc = Callable | str
 
@@ -263,15 +263,6 @@ class Action:
         else:
             new_nodes = nodetree.to_dict()
         self.nodes = nodetree_from_dict(new_nodes)
-        self._node_dims = set.union(set(), *[arr.dims for arr in new_nodes.values()])
-
-    def _temp_dim(self) -> str:
-        temp_dim = "**tempindex**"
-        index = 0
-        while temp_dim in self._node_dims:
-            temp_dim = f"**tempindex{index}**"
-            index += 1
-        return temp_dim
 
     def graph(self) -> Graph:
         """Creates graph from the nodes of the action.
@@ -748,8 +739,8 @@ class Action:
         ------
         ValueError if arrays along leaves are not compatible and force=False
         """
-        temp_dim = self._temp_dim()
         action = self.select(path=path)
+        temp_dim = nodetree_new_dimension(action.nodes)
         if force:
             narrays: dict[str, xr.DataArray] = {apath: array for apath, array in nodetree_arrays(action.nodes)}
             common_dims = list(set.intersection(*[set(x.dims) for x in narrays.values()]))
