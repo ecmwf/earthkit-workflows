@@ -10,7 +10,6 @@
 Interaction with shm
 """
 
-import hashlib
 import logging
 import sys
 from contextlib import AbstractContextManager
@@ -22,6 +21,7 @@ from cascade.executor.comms import callback
 from cascade.executor.msg import BackboneAddress, DatasetPublished
 from cascade.low.core import NO_OUTPUT_PLACEHOLDER, DatasetId, WorkerId
 from cascade.low.exceptions import CascadeInternalError
+from cascade.low.func import md5hash24
 from cascade.low.tracing import Microtrace, timer
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 
 def ds2shmid(ds: DatasetId) -> str:
     # we cant use too long file names for shm, https://trac.macports.org/ticket/64806
-    h = hashlib.new("md5", usedforsecurity=False)
-    h.update((ds.task + ds.output).encode())
-    return h.hexdigest()[:24]
+    return md5hash24(ds.task + ds.output)
 
 
 class Memory(AbstractContextManager):

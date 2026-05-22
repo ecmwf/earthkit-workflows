@@ -11,6 +11,8 @@ from __future__ import annotations
 import functools
 import hashlib
 import os
+import threading
+import types
 from typing import (
     Any,
     Callable,
@@ -33,6 +35,75 @@ from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict
 
 PayloadFunc = Callable | str
 
+_payload_context = threading.local()
+
+
+def _get_context_stack() -> list[dict[str, Any]]:
+    if not hasattr(_payload_context, "earthkit_workflow_payload_metadata_stack"):
+        _payload_context.earthkit_workflow_payload_metadata_stack = []
+    return _payload_context.earthkit_workflow_payload_metadata_stack  # type: ignore[return-value]
+
+
+def _metadata_update(dInto: dict, dFrom: dict) -> None:
+    for key, value in dFrom.items():
+        if key == "environment":
+            if "environment" not in dInto:
+                dInto["environment"] = []
+            dInto["environment"] = list(set(dFrom["environment"] + dInto["environment"]))
+        else:
+            dInto[key] = value
+
+
+def _invalidate_context_cache() -> None:
+    if hasattr(_payload_context, "earthkit_workflow_payload_metadata_resolved"):
+        del _payload_context.earthkit_workflow_payload_metadata_resolved
+
+
+def _get_context_metadata() -> dict[str, Any]:
+    if hasattr(_payload_context, "earthkit_workflow_payload_metadata_resolved"):
+        return _payload_context.earthkit_workflow_payload_metadata_resolved
+    result: dict[str, Any] = {}
+    for frame in _get_context_stack():
+        _metadata_update(result, frame)
+    _payload_context.earthkit_workflow_payload_metadata_resolved = result
+    return result
+
+
+def _pop_context_stack() -> None:
+    _invalidate_context_cache()
+    _get_context_stack().pop()
+
+
+class PayloadBuildingContext:
+    """Context manager that injects metadata into every Payload created within it.
+
+    Contexts can be nested; inner values override outer ones on key collision.
+    Metadata passed directly to Payload() overrides any context-provided metadata.
+    But for 'environment' types, instead of override we append, as that makes more sense.
+
+    Example
+    -------
+    with PayloadBuildingContext(key1="value1"):
+        action1 = from_source(...)
+        action2 = action1.map(some_func)
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        self._metadata = kwargs
+
+    def __enter__(self) -> "PayloadBuildingContext":
+        _get_context_stack().append(self._metadata)
+        _invalidate_context_cache()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        _pop_context_stack()
+
 
 class Payload:
     """Class for detailing function, args and kwargs to be computing in a graph node"""
@@ -44,6 +115,9 @@ class Payload:
         kwargs: dict | None = None,
         metadata: dict[str, Any] | None = None,
     ):
+        """Metadata is proccessed in addition to what comes from PayloadBuildingContexts.
+        Note that for 'environment' metadata, we always append, not override. If you
+        need to override, modify *afterwards* on the instance directly"""
         self.args: list
         if isinstance(func, functools.partial):
             if args is not None or kwargs is not None:
@@ -57,7 +131,8 @@ class Payload:
             self.kwargs = kwargs or {}
 
         self.metadata = getattr(self.func, "_cascade", {})
-        self.metadata.update(metadata or {})
+        _metadata_update(self.metadata, _get_context_metadata())
+        _metadata_update(self.metadata, metadata or {})
 
     def to_tuple(self) -> tuple:
         """Return
@@ -75,7 +150,7 @@ class Payload:
         if isinstance(self.func, str):
             return self.func
         if hasattr(self.func, "__name__"):
-            return self.func.__name__
+            return self.func.__name__  # type: ignore[union-attr]
         return ""
 
     def __str__(self) -> str:
@@ -166,7 +241,7 @@ class Node(BaseNode):
         return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
 
     def copy(self) -> "Node":
-        return self.__class__(*self._for_copy)
+        return self.__class__(*self._for_copy)  # type: ignore[arg-type]
 
 
 class Action:
@@ -188,6 +263,15 @@ class Action:
         else:
             new_nodes = nodetree.to_dict()
         self.nodes = nodetree_from_dict(new_nodes)
+        self._node_dims = set.union(set(), *[arr.dims for arr in new_nodes.values()])
+
+    def _temp_dim(self) -> str:
+        temp_dim = "**tempindex**"
+        index = 0
+        while temp_dim in self._node_dims:
+            temp_dim = f"**tempindex{index}**"
+            index += 1
+        return temp_dim
 
     def graph(self) -> Graph:
         """Creates graph from the nodes of the action.
@@ -270,7 +354,7 @@ class Action:
 
     def transform(
         self,
-        func: Callable[["Action", Any], "Action"],
+        func: Callable[..., "Action"],
         params: list,
         dim: str | Coord,
         axis: int = 0,
@@ -350,7 +434,7 @@ class Action:
                     )
             broadcasted_nodes = array.broadcast_like(narray, exclude=exclude)
             new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
-            it = np.nditer(
+            it = np.nditer(  # type: ignore[call-overload]
                 array.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
                 flags=["multi_index", "refs_ok"],
             )
@@ -412,7 +496,7 @@ class Action:
 
     def map(
         self,
-        payload: PayloadFunc | Payload | np.ndarray[Any, Any],
+        payload: PayloadFunc | Payload | np.ndarray[Any, Any] | list,
         yields: Coord | None = None,
         path: Optional[str] = None,
     ) -> "Action":
@@ -448,7 +532,7 @@ class Action:
 
             # Applies operation to every node, keeping node array structure
             new_nodes = np.empty(narray.shape, dtype=object)
-            it = np.nditer(narray, flags=["multi_index", "refs_ok"])
+            it = np.nditer(narray, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
             node_payload = payload
             for node in it:
                 if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
@@ -507,6 +591,12 @@ class Action:
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
             if len(dim) == 0:
                 dim = str(narray.dims[0])
+            if dim not in narray.sizes:
+                continue
+            if narray.sizes[dim] == 1:
+                if not keep_dim:
+                    node_arrays[npath] = narray.squeeze(dim)
+                continue
 
             batched = self.select(path=npath)
             level = 0
@@ -516,7 +606,9 @@ class Action:
                 raise ValueError("Can not batch the execution of a generator")
             if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
                 if not getattr(payload.func, "batchable", False):
-                    raise ValueError(f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified")
+                    raise ValueError(
+                        f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified"  # type: ignore[union-attr]
+                    )
 
                 while batch_size < nodetree_array(batched.nodes).sizes[dim]:
                     lst = nodetree_array(batched.nodes).coords[dim].data
@@ -536,7 +628,7 @@ class Action:
             new_dims = [x for x in batched_narray.dims if x != dim]
             transposed_nodes = batched_narray.transpose(dim, *new_dims)
             new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
-            it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])
+            it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
             for _ in it:
                 inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
                 new_nodes[it.multi_index] = Node(payload, inputs, num_outputs=len(yields[1]) if yields else 1)
@@ -559,35 +651,44 @@ class Action:
 
         new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
         new_nodes.update(node_arrays)
-        return type(batched)(nodetree_from_dict(new_nodes), yields)
+        return type(self)(nodetree_from_dict(new_nodes), yields)
 
     @capture_payload_metadata
     def flatten(
         self,
-        dim: str = "",
-        axis: int = 0,
+        new_dim: str,
+        keep_dims: list[str] = [],
         path: Optional[str] = None,
-        backend_kwargs: dict = {},
+        reset_coords: bool = False,
     ) -> "Action":
-        """Flattens the array of nodes along specified dimension by creating new
-        nodes from stacking internal data of nodes along that dimension.
+        """Restructures node arrays by flattening arrays along all dims, except keep_dims, for node arrays
+        along path.
 
         Parameters
         ----------
-        dim: str, name of dimension to flatten along
-        axis: int, axis of new dimension in internal data
+        keep_dims: str, name of dimensions not to flatten
+        new_dim: str, name of new dimension containing flattened dims
         path: str, path to select subset of nodes to operate on, if provided
-        backend_kwargs: dict, kwargs for the underlying array module stack method
 
         Return
         ------
         Action
         """
-        return self.reduce(
-            Payload(backends.stack, kwargs={"axis": axis, **backend_kwargs}),
-            dim=dim,
-            path=path,
-        )
+        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
+            if narray.size == 1:
+                continue
+            diff = set(keep_dims).difference(narray.dims)
+            if len(diff) > 0:
+                raise ValueError(f"Dimensions {diff} not in array at {npath}")
+            stack_dims = [x for x in narray.dims if x not in keep_dims]
+            if len(stack_dims) > 0:
+                node_arrays[npath] = narray.stack(dim={new_dim: stack_dims}).reset_index(stack_dims, drop=True)
+
+            to_reset = [name for name, coord in node_arrays[npath].coords.items() if new_dim in coord.dims]
+            if reset_coords and len(to_reset) > 0:
+                node_arrays[npath] = node_arrays[npath].reset_coords(to_reset, drop=True)
+        return type(self)(nodetree_from_dict(node_arrays))
 
     def set_path(self, path: str) -> "Action":
         """Create path for current node array
@@ -604,7 +705,7 @@ class Action:
             raise NotImplementedError("Multiple node arrays present, can not set single path")
         return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes)}))
 
-    def split(self, expansion: Optional[dict[str, PayloadFunc | Payload]] = None) -> "Action":
+    def create_branches(self, expansion: dict[str, PayloadFunc | Payload]) -> "Action":
         """Create action containing new node arrays by splitting an existing node array
         by the specified functions in expansion
 
@@ -629,7 +730,40 @@ class Action:
             node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
         return type(self)(nodetree_from_dict(node_arrays))
 
-    def _validate_criteria(cls, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
+    def combine_branches(self, dim: str, path: Optional[str] = None, force: bool = False) -> "Action":
+        """Combine node arrays for leaves along path into a single node array
+
+        Parameters
+        ----------
+        dim: str, dimension to concatenate arrays along. Either existing or new dimension
+        path: str, path along which leaf nodes will be concatenated into single array
+        force: bool, if True, then incompatible dimensions in node arrays are concatenated to ensure
+        each node array has the same dimensions.
+
+        Return
+        ------
+        Action
+
+        Raises
+        ------
+        ValueError if arrays along leaves are not compatible and force=False
+        """
+        temp_dim = self._temp_dim()
+        action = self.select(path=path)
+        if force:
+            narrays: dict[str, xr.DataArray] = {apath: array for apath, array in nodetree_arrays(action.nodes)}
+            common_dims = list(set.intersection(*[set(x.dims) for x in narrays.values()]))
+            for apath in narrays.keys():
+                action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
+        new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals", join="exact")
+        if path:
+            node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}
+            node_arrays[path] = new_array
+        else:
+            node_arrays = {"/": new_array}
+        return type(self)(nodetree_from_dict(node_arrays))
+
+    def _validate_criteria(self, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
         keys = list(criteria.keys())
         new_criteria = criteria.copy()
         for key in keys:
@@ -664,7 +798,7 @@ class Action:
 
         nodes = self.nodes if path is None else self.nodes[path]
         new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):
+        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
             valid, new_criteria = self._validate_criteria(narray, crit)
             if valid:
                 try:
@@ -702,7 +836,7 @@ class Action:
 
         nodes = self.nodes if path is None else self.nodes[path]
         new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):
+        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
             valid, new_criteria = self._validate_criteria(narray, crit)
             if valid:
                 try:
@@ -724,6 +858,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return _combine_nodes(self, "concat", dim, batch_size, keep_dim, path, backend_kwargs)
 
@@ -736,6 +871,7 @@ class Action:
         axis: int = 0,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return _combine_nodes(
             self,
@@ -755,6 +891,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.sum, kwargs=backend_kwargs),
@@ -772,6 +909,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         action = self
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
@@ -804,6 +942,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         action = self
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
@@ -844,6 +983,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.max, kwargs=backend_kwargs),
@@ -861,6 +1001,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.min, kwargs=backend_kwargs),
@@ -878,6 +1019,7 @@ class Action:
         keep_dim: bool = False,
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.reduce(
             Payload(backends.prod, kwargs=backend_kwargs),
@@ -906,6 +1048,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.subtract, other, path=path, **backend_kwargs)
 
@@ -915,6 +1058,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.divide, other, path=path, **backend_kwargs)
 
@@ -924,6 +1068,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.add, other, path=path, **backend_kwargs)
 
@@ -933,6 +1078,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.multiply, other, path=path, **backend_kwargs)
 
@@ -942,6 +1088,7 @@ class Action:
         other: "Action | float",
         path: Optional[str] = None,
         backend_kwargs: dict = {},
+        payload_metadata: dict | None = None,
     ) -> "Action":
         return self.__two_arg_method(backends.pow, other, path=path, **backend_kwargs)
 
@@ -1025,11 +1172,8 @@ def _combine_nodes(
     path: Optional[str] = None,
     backend_kwargs: dict = {},
 ) -> Action:
-    if action.nodes.sizes[dim] == 1:
-        # no-op
-        if not keep_dim:
-            action._squeeze_dimension(dim, path=path)
-        return action
+    if backend_method not in ["stack", "concat"]:
+        raise ValueError(f"Unknown method {backend_method} for combining nodes")
     return action.reduce(
         Payload(getattr(backends, backend_method), kwargs=backend_kwargs),
         dim=dim,
@@ -1040,20 +1184,21 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]]),  # values are Callables
+    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]] | list[Any] | PayloadFunc | Payload),  # values are Callables
     yields: Coord | None = None,
     dims: list | None = None,
     coords: dict | None = None,
     action=Action,
 ) -> Action:
-    if not isinstance(payloads_list, dict):
-        payloads_list = {"/": payloads_list}
+    payloads_dict: dict[str, Any] = (  # type: ignore[assignment]
+        payloads_list if isinstance(payloads_list, dict) else {"/": payloads_list}
+    )
 
     node_arrays = {}
-    for nindex, (path, parray) in enumerate(payloads_list.items()):
+    for nindex, (path, parray) in enumerate(payloads_dict.items()):
         payloads = xr.DataArray(parray, dims=dims, coords=coords)
         nodes = xr.DataArray(np.empty(payloads.shape, dtype=object), dims=dims, coords=coords)
-        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])
+        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
         # Ensure all source nodes have a unique name
         node_names = set()
         for item in it:
@@ -1110,6 +1255,7 @@ Action.register("default", Action)
 __all__ = [
     "Action",
     "Payload",
+    "PayloadBuildingContext",
     "Node",
     "from_source",
     "merge",

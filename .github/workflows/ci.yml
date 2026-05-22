@@ -1,4 +1,4 @@
-name: CI # TODO rename the file in a standalone PR, its not macos-test, but ci
+name: CI
 
 on:
   # Trigger the workflow manually
@@ -29,4 +29,5 @@ jobs:
           echo "uv version is $(uv --version)"
           uv sync --python "${{ matrix.python_version }}"
           just fmt
-          just val
+          # linux hosted runners have tmp mounted with noexec or smth like that
+          if [[ "${{ matrix.arch_type }}" == "linux"* ]] ; then CASCADE_VENV_ROOT=$(pwd) just val ; else just val ; fi

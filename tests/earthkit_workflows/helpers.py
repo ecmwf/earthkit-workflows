@@ -20,7 +20,7 @@ class MockNode(Node):
 
 def mock_action(shape: tuple) -> Action:
     nodes = np.empty(shape, dtype=object)
-    it = np.nditer(nodes, flags=["multi_index", "refs_ok"])
+    it = np.nditer(nodes, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
     for _ in it:
         nodes[it.multi_index] = MockNode(f"{it.multi_index}")
     nodes_xr = xr.DataArray(nodes, coords={f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)})

@@ -14,6 +14,7 @@ base = {
         "cascade.executor": {"level": "DEBUG"},
         "cascade.scheduler": {"level": "DEBUG"},
         "cascade.gateway": {"level": "DEBUG"},
+        "cascade.ygg": {"level": "DEBUG"},
         "earthkit.workflows": {"level": "DEBUG"},
         "httpcore": {"level": "ERROR"},
         "httpx": {"level": "ERROR"},

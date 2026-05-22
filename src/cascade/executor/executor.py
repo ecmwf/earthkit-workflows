@@ -18,17 +18,17 @@ the tasks themselves.
 import atexit
 import logging
 import os
+import tempfile
 import uuid
 from dataclasses import dataclass
-from multiprocessing.process import BaseProcess
+from multiprocessing.shared_memory import SharedMemory
 from typing import Iterable
 
-import cloudpickle
-
 import cascade.executor.platform as platform
+import cascade.executor.runner.setup as runner_setup
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
-from cascade.deployment.logging import LoggingConfig, as_dict_config
+from cascade.deployment.logging import LoggingConfig, as_dict_config, process_log_paths
 from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
@@ -56,9 +56,11 @@ from cascade.executor.msg import (
     WorkerReady,
     WorkerShutdown,
 )
-from cascade.executor.runner.entrypoint import RunnerContext, entrypoint, worker_address
+from cascade.executor.runner.entrypoint import worker_address
+from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
+from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
@@ -76,8 +78,9 @@ def address_of(port: int) -> BackboneAddress:
 
 @dataclass
 class WorkerHandle:
-    process: BaseProcess
+    process: WorkerProcessHandle
     attempt_cnt: int
+    venv_dir: tempfile.TemporaryDirectory[str]
 
 
 class Executor:
@@ -100,7 +103,7 @@ class Executor:
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
         self.worker_awaits: dict[WorkerId, None | TaskSequence] = {}
         self.loggingConfig = loggingConfig
-        self.old_processes: list[BaseProcess] = []
+        self.old_workers: list[tuple[WorkerProcessHandle, tempfile.TemporaryDirectory[str]]] = []
 
         self.datasets: set[DatasetId] = set()
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
@@ -115,20 +118,20 @@ class Executor:
         # TODO make the shm server params configurable
         shm_port = f"/tmp/cascShmSock-{uuid.uuid4()}"  # portBase + 2
         shm_api.publish_socket_addr(shm_port)
-        ctx = platform.get_mp_ctx("executor-aux")
         logger.debug("about to start an shm process")
-        self.shm_process = ctx.Process(
+        self.shm_process = platform.get_mp_ctx("executor-shm").Process(
             target=shm_server,
             kwargs={
                 "capacity": shm_vol_gb * (1024**3) if shm_vol_gb else None,
                 "logging_config": as_dict_config(loggingConfig, "shm"),
                 "shm_pref": f"sCasc{host}",
+                "socket_addr": shm_port,
             },
         )
         self.shm_process.start()
         self.daddress = address_of(portBase + 1)
         logger.debug("about to start a data server process")
-        self.data_server = ctx.Process(
+        self.data_server = platform.get_mp_ctx("executor-dataserver").Process(
             target=start_data_server,
             args=(
                 self.mlistener.address,
@@ -154,6 +157,19 @@ class Executor:
             ],
             url_base=url_base,
         )
+        # Build the shared RunnerContext and save it to POSIX shared memory.
+        # All workers on this executor share this object; only per-worker identity (WorkerSetup)
+        # is passed per-process via envvar.
+        # The key is host-unique, but quick restarts are problematic on mac, and we cant have too long key for mac
+        self.runner_ctx_shm_key = md5hash24(f"sCascRnrCtx{host}" + str(uuid.uuid4()))
+        runner_ctx = RunnerContext(
+            job=self.job_instance,
+            callback=self.mlistener.address,
+            param_source=self.param_source,
+            loggingConfig=self.loggingConfig,
+            schema_lookup=self.schema_lookup,
+        )
+        self.runner_ctx_shm: SharedMemory = runner_setup.save_runner_ctx_to_shm(runner_ctx, self.runner_ctx_shm_key)
         logger.debug("constructed executor")
 
     def terminate(self) -> None:
@@ -171,15 +187,26 @@ class Executor:
             try:
                 if (handle := self.workers[worker]) is not None:
                     callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
-                    handle.process.join()
+                    handle.process.wait()
+                    try:
+                        handle.venv_dir.cleanup()
+                    except Exception as e:
+                        logger.warning(f"failed to cleanup venv for {worker}: {repr(e)}")
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down {worker}")
-        for proc in self.old_processes:
+        for proc, venv in self.old_workers:
             logger.debug(f"cleanup old process {proc.pid}")
             try:
-                proc.join()
+                proc.wait()
+                venv.cleanup()
             except Exception as e:
-                logger.warning(f"gotten {repr(e)} when shutting down {proc.pid}")
+                logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
+        if hasattr(self, "runner_ctx_shm") and self.runner_ctx_shm is not None:
+            try:
+                self.runner_ctx_shm.close()
+                self.runner_ctx_shm.unlink()
+            except Exception as e:
+                logger.warning(f"failed to free runner ctx shm: {repr(e)}")
         if hasattr(self, "shm_process") and self.shm_process is not None and self.shm_process.is_alive():
             try:
                 shm_client.shutdown()
@@ -194,26 +221,25 @@ class Executor:
         self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
-        ctx = platform.get_mp_ctx("worker")
-        runnerContext = RunnerContext(
+        venv_td, initial_installed = runner_setup.create_venv()
+        worker_setup = runner_setup.WorkerSetup(
             workerId=worker,
             workerAttemptCnt=attempt_cnt,
-            job=self.job_instance,
-            param_source=self.param_source,
-            callback=self.mlistener.address,
-            loggingConfig=self.loggingConfig,
-            schema_lookup=self.schema_lookup,
+            shm_key=self.runner_ctx_shm_key,
+            initial_installed=initial_installed,
         )
-        # NOTE we need to cloudpickle because runnerContext contains some lambdas
-        p = ctx.Process(
-            target=entrypoint,
-            kwargs={"runnerContextClpkl": cloudpickle.dumps(runnerContext)},
+        worker_log_paths = process_log_paths(self.loggingConfig, f"worker_{worker.worker}")
+        p = runner_setup.launch_in_venv(
+            "cascade.executor.runner.entrypoint",
+            venv_td.name,
+            {runner_setup.WORKER_SETUP_ENVVAR: worker_setup.to_str()},
+            stdout_path=worker_log_paths.stdout if worker_log_paths is not None else None,
+            stderr_path=worker_log_paths.stderr if worker_log_paths is not None else None,
         )
-        p.start()
         if worker in self.worker_awaits:
             raise CascadeInternalError(f"{worker=} was already awaiting")
         self.worker_awaits[worker] = seq
-        return WorkerHandle(process=p, attempt_cnt=attempt_cnt)
+        return WorkerHandle(process=p, attempt_cnt=attempt_cnt, venv_dir=venv_td)
 
     def start_workers(self, workers: Iterable[WorkerId]) -> None:
         # NOTE fork would be better but causes issues on macos+torch with XPC_ERROR_CONNECTION_INVALID
@@ -237,8 +263,12 @@ class Executor:
             self.start_workers(self.workers.keys())
             logger.debug(f"about to send register message from {self.host}")
             self.to_controller(self.registration)
-        except:
+        except Exception as e:
             logger.exception("failed during register")
+            try:
+                self.to_controller(ExecutorFailure(self.host, ser(e)))
+            except Exception:
+                logger.exception("failed to send ExecutorFailure to controller after register failure")
             self.terminate()
         # NOTE we don't mind this registration message being lost -- if that happens, we send it
         # during next heartbeat. But we may want to introduce a check that if no message,
@@ -254,9 +284,9 @@ class Executor:
             if e is None:
                 # this should not really be happening -> InternalError
                 raise CascadeInternalError(f"process on {k} is not alive")
-            elif procFail(e.process.exitcode):
+            elif procFail(e.process.poll()):
                 # we assume low memory setting or callable issue -> UserError
-                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.exitcode}")
+                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.poll()}")
         if procFail(self.shm_process.exitcode):
             # possibly low memory setting but this is system config -> InfrastructureError
             raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
@@ -270,10 +300,14 @@ class Executor:
             # NOTE we send registration in place of heartbeat -- it makes the startup more reliable,
             # and the registration's size overhead is negligible
             self.to_controller(self.registration)
-        if self.old_processes and not self.old_processes[0].is_alive():
+        if self.old_workers and self.old_workers[0][0].poll() is not None:
             # we check just the first one for simplicity
-            self.old_processes[0].join()
-            self.old_processes.pop(0)
+            proc, venv = self.old_workers.pop(0)
+            proc.wait()
+            try:
+                venv.cleanup()
+            except Exception as e:
+                logger.warning(f"failed to cleanup old worker venv: {repr(e)}")
 
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
@@ -292,7 +326,7 @@ class Executor:
                                 }
                             )
                         handle = self.workers[m.worker]
-                        if handle is None or handle.process.exitcode is not None:
+                        if handle is None or handle.process.poll() is not None:
                             # unexpected exit -> InfrastructureError
                             raise CascadeInfrastructureError(f"worker process {m.worker} is not alive")
                         if m.worker in self.worker_awaits:
@@ -342,7 +376,7 @@ class Executor:
                         if handle is None:
                             raise CascadeInternalError("unexpected restart from worker without handle")
                         callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
-                        self.old_processes.append(handle.process)
+                        self.old_workers.append((handle.process, handle.venv_dir))
                         logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt + 1}")
                         self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt + 1, m.remainder)
                         self.to_controller(m)
@@ -362,6 +396,7 @@ class Executor:
                         for worker, handle in self.workers.items():
                             if handle is not None:
                                 callback(worker_address(worker, handle.attempt_cnt), availability_notification)
+                        self.datasets.add(m.ds)
                         self.to_controller(m)
                     elif isinstance(m, JustForwardToController):
                         self.to_controller(m)

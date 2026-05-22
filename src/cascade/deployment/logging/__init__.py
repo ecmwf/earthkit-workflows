@@ -33,7 +33,7 @@ can be implemented fully within this module
 import base64
 import logging
 import logging.config
-import os
+from dataclasses import dataclass
 from typing import Literal
 
 import orjson
@@ -66,12 +66,30 @@ class LoggingConfig(CascadeBaseModel):
 DefaultLoggingConfig = LoggingConfig()
 
 
+@dataclass(frozen=True, slots=True)
+class ProcessLogPaths:
+    logs: str
+    stdout: str
+    stderr: str
+
+
+def process_log_paths(loggingConfig: LoggingConfig, hostAndRole: str) -> ProcessLogPaths | None:
+    if loggingConfig.path_base is None:
+        return None
+    path_prefix = f"{loggingConfig.path_base}{hostAndRole}"
+    return ProcessLogPaths(
+        logs=f"{path_prefix}.logs.txt",
+        stdout=f"{path_prefix}.stdout.txt",
+        stderr=f"{path_prefix}.stderr.txt",
+    )
+
+
 def as_dict_config(loggingConfig: LoggingConfig, hostAndRole: str) -> dict:
     if loggingConfig.disable:
         return {"version": 1, "disable_existing_loggers": True}
-    if loggingConfig.path_base:
-        filename = f"{loggingConfig.path_base}{hostAndRole}.txt"
-        handler = defaults.handlers["filename"](filename)  # ty:ignore[call-non-callable] # sloppy typing on my side
+    process_paths = process_log_paths(loggingConfig, hostAndRole)
+    if process_paths is not None:
+        handler = defaults.handlers["filename"](process_paths.logs)  # ty:ignore[call-non-callable] # sloppy typing on my side
     else:
         handler = defaults.handlers["stdout"]
     return {

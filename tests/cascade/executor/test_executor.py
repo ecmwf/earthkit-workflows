@@ -12,9 +12,9 @@ get sent out. In essence, we build a pseudo-controller in this test.
 
 import logging
 from logging.config import dictConfig
-from multiprocessing import Process
 
 import numpy as np
+import pytest
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
@@ -37,6 +37,7 @@ from cascade.executor.msg import (
     TaskSequence,
     Worker,
 )
+from cascade.executor.platform import get_mp_ctx
 from cascade.low.core import (
     DatasetId,
     HostId,
@@ -47,17 +48,19 @@ from cascade.low.core import (
     TaskInstance,
     WorkerId,
 )
+from cascade.ygg.transport import destroy_context
 
 logger = logging.getLogger(__name__)
 
 
-def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int):
+def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int, test_name: str):
     dictConfig(logging_config)
+    destroy_context()
     executor = Executor(
         job_instance,
         controller_address,
         4,
-        HostId("test_executor"),
+        HostId(f"{test_name}executor"),
         portBase,
         None,
         DefaultLoggingConfig,
@@ -67,6 +70,7 @@ def launch_executor(job_instance: JobInstance, controller_address: BackboneAddre
     executor.recv_loop()
 
 
+@pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_executor():
     # job
     def test_func(x: np.ndarray) -> np.ndarray:
@@ -99,8 +103,12 @@ def test_executor():
     c1 = "tcp://localhost:12545"
     m1 = f"tcp://{platform.get_bindabble_self()}:12546"
     d1 = f"tcp://{platform.get_bindabble_self()}:12547"
+    p = get_mp_ctx("executor-loc").Process(target=launch_executor, args=(job, c1, 12546, "executor1"))
+    import time
+
+    time.sleep(1)
+    # NOTE important -- we need to launch the listener *after* the process, to not fork the zmq context
     l = Listener(c1)  # controller
-    p = Process(target=launch_executor, args=(job, c1, 12546))
 
     # run
     p.start()
@@ -108,12 +116,12 @@ def test_executor():
         # register
         ms = l.recv_messages(None)
         expected_registration = ExecutorRegistration(
-            host=HostId("test_executor"),
+            host=HostId("executor1executor"),
             maddress=m1,
             daddress=d1,
             workers=[
                 Worker(
-                    worker_id=WorkerId(HostId("test_executor"), f"w{i}"),
+                    worker_id=WorkerId(HostId("executor1executor"), f"w{i}"),
                     cpu=1,
                     gpu=0,
                     memory_mb=1024,
@@ -128,7 +136,7 @@ def test_executor():
             assert m == expected_registration
 
         # submit graph
-        w0 = WorkerId(HostId("test_executor"), "w0")
+        w0 = WorkerId(HostId("executor1executor"), "w0")
         callback(
             m1,
             TaskSequence(worker=w0, tasks=[TaskId("source"), TaskId("sink")], publish={sink_o}, extra_env=[]),
@@ -150,7 +158,7 @@ def test_executor():
             DatasetTransmitCommand(
                 ds=sink_o,
                 idx=0,
-                source=HostId("test_executor"),
+                source=HostId("executor1executor"),
                 target=HostId("controller"),
                 daddress=c1,
             ),
@@ -170,13 +178,14 @@ def test_executor():
         send_data(d1, payload, syn)
         expected = {
             Ack(idx=1),
-            DatasetPublished(origin=HostId("test_executor"), ds=source_o, transmit_idx=1),
+            DatasetPublished(origin=HostId("executor1executor"), ds=source_o, transmit_idx=1),
         }
         while expected:
             ms = l.recv_messages()
             for m in ms:
-                logger.debug(f"about to remove received message {m}")
-                expected.remove(m)
+                if not isinstance(m, ExecutorRegistration):  # there may be extra due to retries
+                    logger.debug(f"about to remove received message {m}")
+                    expected.remove(m)
         callback(m1, TaskSequence(worker=w0, tasks=[TaskId("sink")], publish={sink_o}, extra_env=[]))
         expected = [
             DatasetPublished(w0, ds=sink_o, transmit_idx=None),
@@ -191,7 +200,7 @@ def test_executor():
             DatasetTransmitCommand(
                 ds=sink_o,
                 idx=2,
-                source=HostId("test_executor"),
+                source=HostId("executor1executor"),
                 target=HostId("controller"),
                 daddress=c1,
             ),
@@ -204,7 +213,7 @@ def test_executor():
         # shutdown
         callback(m1, ExecutorShutdown())
         ms = l.recv_messages()
-        assert ExecutorExit(host=HostId("test_executor")) in ms
+        assert ExecutorExit(host=HostId("executor1executor")) in ms
         p.join()
     except:
         if p.is_alive():

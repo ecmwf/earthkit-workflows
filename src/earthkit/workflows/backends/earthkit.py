@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import TypeAlias
+from typing import Callable, TypeAlias
 
 import array_api_compat
 from earthkit.data import FieldList
@@ -33,7 +33,7 @@ def comp_str2func(array_module, comparison: str):
     return array_module.greater
 
 
-Metadata: TypeAlias = "dict | callable | None"
+Metadata: TypeAlias = dict | Callable | None
 
 
 def resolve_metadata(metadata: Metadata, *args) -> dict:
@@ -64,7 +64,7 @@ def new_fieldlist(data, metadata: list[ekdMetadata], overrides: dict):
 
 
 class FieldListBackend:
-    def _merge(*fieldlists: list[FieldList]):
+    def _merge(*fieldlists: FieldList):
         """Merge fieldlist elements into a single array. fieldlists with
         different number of fields must be concatenated, otherwise, the
         elements in each fieldlist are stacked along a new dimension
@@ -76,7 +76,7 @@ class FieldListBackend:
         xp = array_api_compat.array_namespace(*values)
         return xp.asarray(values)
 
-    def multi_arg_function(func: str, *arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def multi_arg_function(func: str, *arrays: FieldList, metadata: Metadata = None) -> FieldList:
         merged_array = FieldListBackend._merge(*arrays)
         xp = array_api_compat.array_namespace(*merged_array)
         res = standardise_output(getattr(xp, func)(merged_array, axis=0))
@@ -101,53 +101,56 @@ class FieldListBackend:
         res = getattr(xp, func)(val1, val2)
         return new_fieldlist(res, [arrays[0][x].metadata() for x in range(len(res))], metadata)
 
-    def mean(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def mean(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("mean", *arrays, metadata=metadata)
 
-    def std(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def std(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("std", *arrays, metadata=metadata)
 
-    def min(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def min(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("min", *arrays, metadata=metadata)
 
-    def max(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def max(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("max", *arrays, metadata=metadata)
 
-    def sum(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def sum(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("sum", *arrays, metadata=metadata)
 
-    def prod(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def prod(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("prod", *arrays, metadata=metadata)
 
-    def var(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def var(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.multi_arg_function("var", *arrays, metadata=metadata)
 
-    def stack(*arrays: list[FieldList], axis: int = 0) -> FieldList:
+    def stack(*arrays: FieldList, axis: int = 0) -> FieldList:
         if axis != 0:
             raise ValueError("Can not stack FieldList along axis != 0")
         assert all([len(x) == 1 for x in arrays]), "Can not stack FieldLists with more than one element, use concat"
         return FieldListBackend.concat(*arrays)
 
-    def add(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def add(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("add", *arrays, metadata=metadata)
 
-    def subtract(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def subtract(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("subtract", *arrays, metadata=metadata)
 
     @num_args(2)
-    def diff(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
-        return FieldListBackend.multiply(FieldListBackend.subtract(*arrays, metadata=metadata), -1)
+    def diff(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
+        return FieldListBackend.multiply(
+            FieldListBackend.subtract(*arrays, metadata=metadata),
+            -1,  # type: ignore[arg-type]
+        )
 
-    def multiply(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def multiply(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("multiply", *arrays, metadata=metadata)
 
-    def divide(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def divide(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("divide", *arrays, metadata=metadata)
 
-    def pow(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def pow(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         return FieldListBackend.two_arg_function("pow", *arrays, metadata=metadata)
 
-    def concat(*arrays: list[FieldList]) -> FieldList:
+    def concat(*arrays: FieldList) -> FieldList:
         """Concatenates the list of fields inside each FieldList into a single
         FieldList object
 
@@ -176,7 +179,7 @@ class FieldListBackend:
             if dim != 0:
                 raise ValueError("Can not slice from FieldList along dim != 0")
             if isinstance(indices, int):
-                indices = [indices]
+                indices = [indices]  # type: ignore[assignment]
             ret = array[indices]
         else:
             if not isinstance(dim, str):
@@ -190,7 +193,7 @@ class FieldListBackend:
 
         return FieldList.from_array(ret.values, ret.metadata())
 
-    def norm(*arrays: list[FieldList], metadata: Metadata = None) -> FieldList:
+    def norm(*arrays: FieldList, metadata: Metadata = None) -> FieldList:
         merged_array = FieldListBackend._merge(*arrays)
         xp = array_api_compat.array_namespace(merged_array)
         norm = standardise_output(xp.sqrt(xp.sum(xp.pow(merged_array, 2), axis=0)))

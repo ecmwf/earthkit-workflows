@@ -110,12 +110,12 @@ class LocalServer:
 
 
 def entrypoint(
-    capacity: int | None = None,
-    logging_config: dict | None = None,
-    shm_pref: str = "shm",
+    capacity: int | None = None, logging_config: dict | None = None, shm_pref: str = "shm", socket_addr: int | str | None = None
 ):
     if logging_config:
         logging.config.dictConfig(logging_config)
+    if socket_addr is not None:
+        api.publish_socket_addr(socket_addr)
     server = LocalServer(shm_pref, capacity)
     try:
         server.start()

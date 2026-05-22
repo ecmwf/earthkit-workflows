@@ -42,7 +42,14 @@ dynamic = ["version"]
 readme = "README.md"
 
 [dependency-groups]
-dev = ["pytest", "pytest-xdist>=3.8", "prek", "ty==0.0.2", "build", "bokeh"]
+dev = [
+    "pytest",
+    "pytest-xdist>=3.8",
+    "prek",
+    "ty==0.0.2",
+    "build",
+    "bokeh",
+]
 
 
 [tool.setuptools]
@@ -65,6 +72,7 @@ log_cli = true
 log_cli_level = "DEBUG"
 testpaths = ["tests/"]
 addopts = "-n8"
+markers = ["concurrency_filelock"]
 
 [tool.ruff]
 line-length = 140

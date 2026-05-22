@@ -14,7 +14,7 @@ from earthkit.workflows import backends
 
 
 class TestArrayAPIBackend(BackendBase):
-    def input_generator(self, num_inputs: int, input_shape=(2, 3)):
+    def input_generator(self, num_inputs: int, input_shape=(2, 3)):  # type: ignore[override]
         return [np.random.rand(*input_shape) for _ in range(num_inputs)]
 
     def shape(self, array):

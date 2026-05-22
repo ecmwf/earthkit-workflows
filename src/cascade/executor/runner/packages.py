@@ -6,27 +6,34 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-"""Extending venv with packages required by the executed job
+"""Runtime package management for worker processes.
 
-Note that venv itself is left untouched after the run finishes -- we extend sys path
-with a temporary directory and install in there
+Each worker runs in its own dedicated venv, created initially with earthkit-workflows
+installed. PackagesEnv manages additional runtime pip installs into that venv as
+requested by executed jobs.
 
-When extending, we check that none of the actually installed packages was not imported
-already with a different version
+The central challenge is that if a module is already imported in the process, a pip
+install of a different version of that same module cannot take effect (the old version
+stays loaded). PackagesEnv handles this in two ways:
+
+1. Prevention: before calling pip, it pins already-imported modules to their current
+   versions, and checks for spec conflicts up-front.
+2. Detection: after pip completes, it verifies that no imported module ended up at a
+   mismatched version.
 """
 
 import importlib.metadata
+import json
 import logging
 import os
 import re
-import site
 import subprocess
 import sys
-import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Callable, Iterator, Literal, cast
+from typing import Callable, Iterable, Literal, cast
 
+from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 from typing_extensions import Self
@@ -41,16 +48,13 @@ _python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.versi
 
 class Commands:
     venv_command = lambda name: ["uv", "venv", "--python", _python_version, name]
-    install_command = lambda name: [
+    install_command = [
         "uv",
         "pip",
         "install",
-        "--prefix",
-        name,
         "--prerelease",
         "explicit",
     ]
-    freeze_command = ["uv", "pip", "freeze"]
 
 
 @dataclass
@@ -126,27 +130,6 @@ def check_install_result(result: subprocess.CompletedProcess, was_clean: bool) -
             raise CascadeInternalError(msg)
 
 
-def new_venv() -> tempfile.TemporaryDirectory:
-    """1. Creates a new temporary directory with a venv inside.
-    2. Extends sys.path so that packages in that venv can be imported.
-    """
-    logger.debug("creating a new venv")
-    td = tempfile.TemporaryDirectory(prefix="cascade_runner_venv_")
-    # NOTE we create a venv instead of just plain directory, because some of the packages create files
-    # outside of site-packages. Thus we then install with --prefix, not with --target
-    run_command(Commands.venv_command(td.name), check_run_result)
-
-    # NOTE not sure if getsitepackages was intended for this -- if issues, attempt replacing
-    # with something like f"{td.name}/lib/python*/site-packages" + globbing
-    extra_sp = site.getsitepackages(prefixes=[td.name])
-    # NOTE this makes the explicit packages go first, in case of a different version
-    logger.debug(f"extending sys.path with {extra_sp}")
-    sys.path = extra_sp + sys.path
-    logger.debug(f"new sys.path: {sys.path}")
-
-    return td
-
-
 def _parse_pip_install(pip_output: str) -> dict[str, Version]:
     """Assumed input like: 'Using Python 3.11.8 environment at: <venv>\nResolved 1 package in 5ms\nUninstalled 1 package in 12ms\nInstalled 1 package in 18ms\n - numpy==2.4.2\n + numpy==2.4.1\n'
     Provided output: {'numpy': '2.4.1'}"""
@@ -167,44 +150,6 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
     return rv
 
 
-def _get_dist_modules(dist_name: str) -> list[str]:
-    """From package name like 'earthkit-workflows' get the top level importible like 'earthkit', 'cascade'"""
-    # TODO presumably cacheable
-    try:
-        handle = importlib.metadata.distribution(dist_name)
-        top_level = handle.read_text("top_level.txt")
-        if top_level:
-            return top_level.split()
-        elif handle.files:
-            return list({path.parts[0] for path in handle.files if path.suffix == ".py"})
-        else:
-            logger.warning(f"neither files nor top level for {dist_name} -- ignoring")
-            return []
-    except Exception as e:
-        logging.warning(f"Could not find metadata for installed package: {dist_name} due to {repr(e)} -- ignoring")
-        return []
-
-
-def _maybe_module_dist(module_name: str) -> tuple[str, Version] | None:
-    """From a module name like 'cascade' get the pip installable like 'earthkit-workflows' and version"""
-    # TODO presumably cacheable, unless None
-    # NOTE we dont rely on __version__, eg:
-    # - for torch it adds the +cu310
-    # - for mir it drops the fourth version
-    # and neither leads to an installable wheel.
-    # NOTE that because of the 4-number version of ecmwf libs, we dont use the base_version here
-    lookup = importlib.metadata.packages_distributions()
-    maybe = lookup.get(module_name, [])
-    if len(maybe) >= 1:
-        distName = maybe[0]
-        try:
-            return distName, Version(importlib.metadata.version(distName))
-        except importlib.metadata.PackageNotFoundError:
-            return None
-    else:
-        return None
-
-
 def _maybe_imported_version(mod_name: str) -> Version | None:
     # TODO presumably cacheable, unless None
     if mod_name in ("eccodes", "gribapi", "mir-python"):
@@ -221,129 +166,374 @@ def _maybe_imported_version(mod_name: str) -> Version | None:
                 logger.debug(f"failed to parse module {mod_name} version {mod.__version__} due to {repr(e)}-- ignoring!")
         else:
             logging.debug(f"Module '{mod_name}' is loaded, but has no __version__ attribute -- ignoring")
+    return None
 
 
-def _postinstall_verify(pip_output) -> list[PostverifyIssue]:
-    installed_packages = _parse_pip_install(pip_output)
-    rv = []
+def _earthkit_install_spec() -> str:
+    """Returns the install spec for earthkit-workflows suitable for uv pip install.
 
-    for dist_name, desired_version in installed_packages.items():
-        modules = _get_dist_modules(dist_name)
-        versions = [(m, _maybe_imported_version(m)) for m in modules]
-        # NOTE eg torch is a bit of an issue here:
-        # pip reports + torch==2.7.1, but torch module version declares 2.7.1+cu126
-        # we have no real means of deciding whether this is correct or not -- but we make the assumption
-        # that checkpoints et cetera won't ever depend on this particular build discriminator => .base_version
-        # For ecmwf libs, this hides the 4th version which is the build counter -- but that is presumably
-        # legitimate as well, as it means the api of the underlying library being the same
-        mod_issues = [(m, v) for m, v in versions if v and v.base_version != desired_version.base_version]
-        if mod_issues:
-            rv.append(PostverifyIssue(dist_name=dist_name, desired_version=desired_version, mod_issues=mod_issues))
-
-    return rv
-
-
-def _prefer_installed(packages: list[str]) -> Iterator[str]:
-    """If a package is desired to be installed but is not exactly pinned,
-    we will inspect pip freeze to see if it is already installed, and inject
-    the pin otherwise. This is default `uv` behaviour, but remember we
-    override --prefix, thus uv has no way of knowing. We thus have to explicate.
-
-    Furthermore, we will extend the list with already-imported packages. This
-    moves some PostInstall verify issues into the Install phase, and importantly,
-    for fresh workers and unavoidable dependencies (like orjson or pydantic),
-    forces a pin to prevent unbound resolution infinite loops.
+    For editable/source installs (dev mode), uses the local source path directly.
+    Otherwise, pins to the currently installed version.
     """
-    # NOTE the pip-freeze thing doesnt work for transitive dependencies. We may
-    # decide to drop the whole --prefix business, and completely switch
-    # over to the new venv even before doing any install
+    ek_version = importlib.metadata.version("earthkit-workflows")
+    try:
+        dist = importlib.metadata.distribution("earthkit-workflows")
+        direct_url_text = dist.read_text("direct_url.json")
+        if direct_url_text:
+            info = json.loads(direct_url_text)
+            url = info.get("url", "")
+            if url.startswith("file://") and info.get("dir_info", {}).get("editable", False):
+                path = url[len("file://") :]
+                logger.debug(f"earthkit-workflows is an editable install at {path}")
+                return path
+    except Exception as e:
+        logger.debug(f"could not read direct_url.json for earthkit-workflows: {repr(e)}")
+    return f"earthkit-workflows=={ek_version}"
 
-    installed_raw = run_command(Commands.freeze_command, check_run_result).stdout
 
-    def maybe_tuple(kv: str) -> None | tuple[str, str]:
-        if kv.startswith("-e"):
-            return kv.rsplit("/", 1)[1], "--editable"
-        elif "@ git" in kv:
-            return kv.split("@", 1)[0], "--git"
-        elif "==" in kv:
-            return cast(tuple[str, str], kv.split("==", 1))
+def initial_venv_packages() -> list[str]:
+    """Returns the list of packages to install into a fresh worker venv.
+
+    Used by setup.py to create the initial venv, and by PackagesEnv to
+    pre-populate its installed-packages state.
+    """
+    return [_earthkit_install_spec()]
+
+
+def _parse_editable_paths_from_pip_output(pip_output: str) -> list[str]:
+    """Extract local source paths for editable installs from pip/uv install output.
+
+    We do this post-install rather than pre-install (e.g. scanning the -e specs) because
+    uv may satisfy transitive dependencies via local file:// paths too -- for example when
+    a workspace package declares another workspace package as a dependency, uv resolves it
+    as an editable install without an explicit -e flag in our request.  Parsing the output
+    captures all such recursive editable installs that we would otherwise miss.
+
+    Matches lines like:
+      + fiab-plugin-test==0.1.0 (from file:///home/.../fiab-plugin-test)
+    """
+    paths: list[str] = []
+    for line in pip_output.splitlines():
+        clean_line = line.strip()
+        if not clean_line.startswith("+"):
+            continue
+        match = re.search(r"\(from file://([^)]+)\)", clean_line)
+        if match:
+            paths.append(match.group(1))
+    return paths
+
+
+def _extend_sys_path_for_editables(editable_paths: list[str]) -> None:
+    """Extend sys.path with the src/ subdirectory of each editable install path.
+
+    NOTE: This assumes the src-layout convention (PEP 517) where package code lives
+    in <editable_path>/src/. The flat layout (code directly in <editable_path>/) is
+    not handled. To support it, one could inspect the editable package's pyproject.toml
+    for the [tool.setuptools.package-dir] / [tool.hatch.build.targets.wheel] source
+    root setting, or fall back to <editable_path>/ itself when no src/ subdirectory
+    is present.
+    """
+    for path in editable_paths:
+        src_path = os.path.join(path, "src")
+        if src_path not in sys.path:
+            logger.debug(f"extending sys.path with editable install src path: {src_path}")
+            sys.path.insert(0, src_path)
         else:
-            logger.warning(f"unable to discern package install {kv}")
-            return None
+            logger.debug(f"editable install src path already in sys.path: {src_path}")
 
-    _installed = (maybe_tuple(kv) for kv in installed_raw.splitlines() if kv)
-    installed = dict(tup_or_none for tup_or_none in _installed if tup_or_none)
-    for package_spec in packages:
-        try:
-            parts = re.split(r"([<>=!~].*)", package_spec)
-            package = parts[0]
-            if package not in installed:
-                yield package_spec
-            elif len(parts) == 1:
-                if installed[package] == "--editable" or installed[package] == "--git":
-                    continue
-                yield f"{package}=={installed[package]}"
-            else:
-                specifier = SpecifierSet(parts[1].strip())
-                # NOTE in case of mismatch we just warn because we dont know if the module was imported already
-                # NOTE we dont check for import because we need to after install *anyway*
-                # NOTE for editable + explicit constraint, we leave it to uv -- imo unclear
-                if installed[package] == "--editable" or installed[package] == "--git":
-                    logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
-                    yield package_spec
-                elif Version(installed[package]) in specifier:
-                    yield f"{package}=={installed[package]}"
-                else:
-                    logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
-                    yield package_spec
-        except Exception as e:
-            logger.warning(f"failed to discern preference for package {package} -- continuing")
-            yield package
 
-    def _is_ignorable_module(top_level: str):
-        is_stdlib = top_level in sys.stdlib_module_names
-        is_local = top_level.startswith("_")  # for __main__, __editable, _distutils_hack, etc
-        return is_stdlib or is_local
+def _is_ignorable_module(top_level: str) -> bool:
+    # stdlib modules and private/internal modules (eg __main__, _distutils_hack)
+    return top_level in sys.stdlib_module_names or top_level.startswith("_")
 
-    def _is_ignorable_dist(distName: str, distVersion: Version) -> bool:
-        # editable/local installs such as that of cascade itself should not be put to
-        # the pip command as that wont be resolvable! We need to rely on caching here
-        if distVersion.dev or distVersion.local:
-            return True
-        if distVersion == Version("0.0.0"):
-            return True
-        origin = importlib.metadata.distribution(distName)
-        if origin is not None and hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
-            return True
-        return False
 
-    imported = set(name.split(".")[0] for name in sys.modules)
-    for name in imported:
-        if not _is_ignorable_module(name):
-            maybe_dist_version = _maybe_module_dist(name)
-            if maybe_dist_version is None:
-                logger.debug(f"failed to provide install pin for imported: {name=}, {maybe_dist_version=}")
-            else:
-                dist, version = maybe_dist_version
-                if not _is_ignorable_dist(dist, version):
-                    yield f"{dist}=={version}"
+def _is_ignorable_dist(dist_name: str, dist_version: Version) -> bool:
+    # editable/local installs such as that of cascade itself should not be put to
+    # the pip command as that wont be resolvable! We need to rely on caching here
+    if dist_version.dev is not None or dist_version.local is not None:
+        return True
+    if dist_version == Version("0.0.0"):
+        return True
+    try:
+        distribution = importlib.metadata.distribution(dist_name)
+        if hasattr(distribution, "origin"):
+            origin = distribution.origin
+            if hasattr(origin, "url") and isinstance(origin.url, str) and origin.url.startswith("file://"):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 class PackagesEnv(AbstractContextManager):
-    def __init__(self) -> None:
-        self.td: tempfile.TemporaryDirectory | None = None
+    """Context manager responsible for runtime pip installs.
+
+    Tracks installed packages and caches the module->dist_name mapping for imported
+    modules. importlib.metadata.packages_distributions() is not cached by Python
+    itself (it rescans all package metadata on every call), so we maintain our own
+    permanent per-module cache to avoid repeated scans.
+
+    We only protect already-imported modules from version changes: those are the
+    only modules that cannot be safely re-loaded in a running process. Non-imported
+    packages can be freely changed by pip.
+    """
+
+    def __init__(self, initial_installed: dict[str, Version]) -> None:
         self.clean = True
+        # dist_name -> version, tracks what has been installed into this venv.
+        # Seeded from the pip output of create_venv() so that all transitive deps
+        # are known upfront and _is_already_satisfied can be a pure dict lookup.
+        self._installed: dict[str, Version] = dict(initial_installed)
+        # module_name -> dist_name (or None if no dist found).
+        # Populated lazily via _populate_dist_cache(). None entries are kept permanently:
+        # modules without a dist are typically oddities and gaining a dist post-install
+        # is not a realistic scenario we need to handle.
+        self._dist_name_cache: dict[str, str | None] = {}
+        # Pre-populate cache for the initially installed packages so that packages_distributions()
+        # is not needed for those modules when they are later imported.
+        self._cache_dist_modules(self._installed)
+
+    def _populate_dist_cache(self, mod_names: set[str]) -> None:
+        """Batch-populate the dist_name cache for a set of module names.
+
+        Falls back to packages_distributions() for modules not already cached by
+        _cache_dist_modules(). packages_distributions() rescans all installed package
+        metadata (~130ms on a typical venv) so we only call it when there are truly
+        uncached modules that need lookup.
+        """
+        new_mods = {m for m in mod_names if m not in self._dist_name_cache and not _is_ignorable_module(m)}
+        if not new_mods:
+            return
+        pkg_dist = importlib.metadata.packages_distributions()
+        for mod in new_mods:
+            maybe = pkg_dist.get(mod, [])
+            self._dist_name_cache[mod] = maybe[0] if maybe else None
+
+    def _cache_dist_modules(self, dist_names: Iterable[str]) -> None:
+        """Pre-populate the dist_name cache from the dist->modules direction.
+
+        Cheaper than packages_distributions() when only a few dists are known:
+        each individual dist lookup takes ~0.5ms vs ~130ms for a full scan.
+        Called after each install for the newly installed dists, and at __init__
+        for the initially installed packages. This way, when those modules are later
+        imported and _populate_dist_cache() is called, they are already cached and
+        packages_distributions() is not invoked for them.
+        """
+        for dist_name in dist_names:
+            try:
+                handle = importlib.metadata.distribution(dist_name)
+                top_level = handle.read_text("top_level.txt")
+                if top_level:
+                    modules = top_level.split()
+                elif handle.files:
+                    modules = list({path.parts[0] for path in handle.files if path.suffix == ".py"})
+                else:
+                    modules = []
+                for mod in modules:
+                    if not _is_ignorable_module(mod):
+                        self._dist_name_cache[mod] = dist_name
+            except Exception:
+                pass
+
+    def _import_pins(self) -> dict[str, Version]:
+        """Return {dist_name: version} for all currently imported top-level modules.
+
+        Version is fetched from importlib.metadata rather than module.__version__,
+        because importlib.metadata gives the pip-installable dist version:
+        - for torch, __version__ adds a local +cu126 tag that is not in the wheel name
+        - for ecmwf libs, __version__ omits the 4th build counter that IS in the wheel name
+        Using importlib.metadata gives us the correct installable version in both cases.
+        """
+        imported = set(name.split(".")[0] for name in sys.modules)
+        self._populate_dist_cache(imported)
+
+        pins: dict[str, Version] = {}
+        for name in imported:
+            if _is_ignorable_module(name):
+                continue
+            dist_name = self._dist_name_cache.get(name)
+            if dist_name is None:
+                logger.debug(f"failed to provide install pin for imported: {name!r}")
+                continue
+            try:
+                version = Version(importlib.metadata.version(dist_name))
+            except importlib.metadata.PackageNotFoundError:
+                continue
+            if not _is_ignorable_dist(dist_name, version):
+                pins[dist_name] = version
+        return pins
+
+    def _prefer_installed(self, packages: list[str]) -> list[str]:
+        """Pin user-requested packages to their currently-imported version where
+        compatible, and append pins for all other imported distributions.
+
+        We only protect imported modules because those are the only ones that cannot
+        be safely changed in a running process.
+        """
+        import_pins = self._import_pins()
+        result: list[str] = []
+
+        for package_spec in packages:
+            try:
+                parts = re.split(r"([<>=!~].*)", package_spec)
+                package = parts[0]
+                if package in import_pins:
+                    pin_version = import_pins[package]
+                    if len(parts) == 1:
+                        # bare name with no constraint -> pin to imported version
+                        result.append(f"{package}=={pin_version}")
+                    else:
+                        specifier = SpecifierSet(parts[1].strip())
+                        if pin_version in specifier:
+                            # constraint is compatible -> pin to imported version
+                            result.append(f"{package}=={pin_version}")
+                        else:
+                            # constraint conflicts with imported version -> pass through and let
+                            # _check_conflicts or post-install verify catch it
+                            logger.warning(f"will upgrade a package {package} -- may cause issues in post-verify")
+                            result.append(package_spec)
+                else:
+                    result.append(package_spec)
+            except Exception:
+                logger.warning(f"failed to discern preference for package {package_spec} -- continuing")
+                result.append(package_spec)
+
+        # Append pins for all imported distributions not already covered above.
+        # This prevents pip from silently downgrading or upgrading loaded modules
+        # when resolving transitive dependencies.
+        for dist, version in import_pins.items():
+            result.append(f"{dist}=={version}")
+
+        return result
+
+    def _check_conflicts(self, packages: list[str]) -> list[ResolutionIssue]:
+        """Pre-pip conflict detection.
+
+        Groups package specs by name and checks whether any exact == pin is
+        incompatible with another spec for the same package. Emits at most one
+        ResolutionIssue per conflicting package name.
+        """
+        specs: dict[str, list[SpecifierSet]] = {}
+        for pkg in packages:
+            try:
+                parts = re.split(r"([<>=!~].*)", pkg)
+                name = parts[0]
+                spec = SpecifierSet(parts[1].strip()) if len(parts) > 1 else SpecifierSet("")
+                specs.setdefault(name, []).append(spec)
+            except Exception:
+                continue
+
+        issues: list[ResolutionIssue] = []
+        for name, specsets in specs.items():
+            if len(specsets) <= 1:
+                continue
+            conflict: str | None = None
+            for i, si in enumerate(specsets):
+                for spec_item in si:
+                    if spec_item.operator == "==":
+                        try:
+                            pin_ver = Version(spec_item.version)
+                            for j, sj in enumerate(specsets):
+                                if j != i and str(sj) and pin_ver not in sj:
+                                    conflict = f"{name} pinned to {pin_ver} but {sj} also required"
+                                    break
+                        except Exception:
+                            pass
+                    if conflict:
+                        break
+                if conflict:
+                    break
+            if conflict:
+                issues.append(ResolutionIssue(conflict))
+
+        return issues
+
+    def _postinstall_verify(self, pip_output: str) -> list[PostverifyIssue]:
+        """Check that no already-imported module has a version mismatch with what pip just installed.
+
+        Uses the dist_name cache to map module names to distributions, iterating
+        in the import->dist direction (rather than dist->modules) for efficiency.
+
+        We compare base_version (stripping local/build parts like +cu126) because pip
+        reports the base wheel version while __version__ may include build discriminators.
+        """
+        installed_packages = _parse_pip_install(pip_output)
+        if not installed_packages:
+            return []
+
+        imported = set(name.split(".")[0] for name in sys.modules)
+        self._populate_dist_cache(imported)
+
+        dist_to_issues: dict[str, list[tuple[str, Version]]] = {}
+        for mod_name in imported:
+            if _is_ignorable_module(mod_name):
+                continue
+            dist_name = self._dist_name_cache.get(mod_name)
+            if dist_name is None or dist_name not in installed_packages:
+                continue
+            desired_version = installed_packages[dist_name]
+            mod_ver = _maybe_imported_version(mod_name)
+            if mod_ver is None:
+                continue
+            if mod_ver.base_version != desired_version.base_version:
+                dist_to_issues.setdefault(dist_name, []).append((mod_name, mod_ver))
+
+        return [
+            PostverifyIssue(dist_name=dist_name, desired_version=installed_packages[dist_name], mod_issues=mod_issues)
+            for dist_name, mod_issues in dist_to_issues.items()
+        ]
+
+    def _is_already_satisfied(self, packages: list[str]) -> bool:
+        """Return True if every specifier in packages is satisfied by an already-installed package.
+
+        Performs a pure in-memory lookup against self._installed.  Returns False
+        conservatively for any specifier that cannot be verified, so that pip is still invoked.
+
+        self._installed is pre-populated from the venv creation pip output (covering all
+        transitive deps) and updated after every extend() call.  Packages outside that set
+        (e.g. installed by uv venv itself rather than pip) will cause a single no-op pip
+        invocation, after which extend() back-fills their entry so subsequent calls are free.
+        """
+        for pkg_spec in packages:
+            try:
+                req = Requirement(pkg_spec)
+                name = req.name
+
+                installed_version = self._installed.get(name)
+                if installed_version is None:
+                    logger.debug(f"package {name!r} not in installed cache, will run pip")
+                    return False
+
+                if installed_version not in req.specifier:
+                    logger.debug(f"installed {name}=={installed_version} does not satisfy {req.specifier!r}, will run pip")
+                    return False
+            except Exception:
+                logger.debug(f"could not verify satisfaction for {pkg_spec!r}, will run pip")
+                return False
+        return True
 
     def extend(self, packages: list[str]) -> None:
         if not packages:
             return
-        if self.td is None:
-            self.td = new_venv()
-        packages = list(_prefer_installed(packages))
+
+        if self._is_already_satisfied(packages):
+            logger.debug(f"all {len(packages)} requested packages already satisfied, skipping pip")
+            return
+
+        # Save the user-requested packages before _prefer_installed expands them, so we can
+        # back-fill _installed for any packages pip treated as no-ops (already installed but
+        # not yet tracked — e.g. packages installed by uv venv rather than by pip).
+        user_packages = packages
+
+        packages = list(self._prefer_installed(packages))
+
+        conflicts = self._check_conflicts(packages)
+        if conflicts:
+            raise PkgInstallException(cast(list[PostverifyIssue | ResolutionIssue], conflicts), self.clean)
 
         logger.debug(f"installing {len(packages)} packages")
         logger.debug(f"installing packages: {','.join(packages)}")
-        install_command = Commands.install_command(self.td.name)
+        install_command = list(Commands.install_command)
         if os.environ.get("VENV_OFFLINE", "") == "YES":
             install_command += ["--offline"]
         if cache_dir := os.environ.get("VENV_CACHE", ""):
@@ -353,19 +543,33 @@ class PackagesEnv(AbstractContextManager):
         install_output = run_command(install_command, lambda r: check_install_result(r, self.clean)).stderr
         logger.debug(f"install result: {install_output}")
 
-        install_issues = _postinstall_verify(install_output)
+        newly_installed = _parse_pip_install(install_output)
+        self._installed.update(newly_installed)
+        self._cache_dist_modules(newly_installed)
+
+        # Back-fill _installed for packages that pip reported as already satisfied (no + line).
+        # Without this, packages that exist in the venv but were never seen by _parse_pip_install
+        # would cause a no-op pip invocation on every subsequent extend() call for the same spec.
+        for pkg_spec in user_packages:
+            try:
+                req = Requirement(pkg_spec)
+                if req.name not in self._installed:
+                    self._installed[req.name] = Version(importlib.metadata.version(req.name))
+            except Exception:
+                pass
+
+        install_issues = self._postinstall_verify(install_output)
         if install_issues:
-            install_issues = cast(list[PostverifyIssue | ResolutionIssue], install_issues)
-            raise PkgInstallException(install_issues, self.clean)
+            raise PkgInstallException(cast(list[PostverifyIssue | ResolutionIssue], install_issues), self.clean)
 
         # NOTE do *not* invalidate caches before postinstall verify, that could
         # hide some issues. But afterwards this is important to actually allow
         # importing the modules
         importlib.invalidate_caches()
+        editable_paths = _parse_editable_paths_from_pip_output(install_output)
+        if editable_paths:
+            _extend_sys_path_for_editables(editable_paths)
         self.clean = False
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Literal[False]:
-        sys.path = [p for p in sys.path if self.td is None or not p.startswith(self.td.name)]
-        if self.td is not None:
-            self.td.cleanup()
         return False

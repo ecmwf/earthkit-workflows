@@ -1,11 +1,14 @@
 import time
 from multiprocessing import Process
 
+import pytest
+
 import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.gateway.__main__ import main_cli
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskId, TaskInstance
+from cascade.ygg.transport import destroy_context
 
 init_value = 10
 job_func = lambda i: i * 2
@@ -16,14 +19,14 @@ tries_limit = 32
 def get_job_succ() -> JobInstanceRich:
     sod = TaskDefinition(
         func=TaskDefinition.func_enc(lambda: init_value),
-        environment=[],
+        environment=["pytest"],
         input_schema={},
         output_schema=[("o", "int")],
     )
     soi = TaskInstance(definition=sod, static_input_kw={}, static_input_ps={})
     sid = TaskDefinition(
         func=TaskDefinition.func_enc(job_func),
-        environment=[],
+        environment=["pytest"],
         input_schema={},  # TODO add 0: int once supported
         output_schema=[("o", "int")],
     )
@@ -59,15 +62,31 @@ def get_job_slow() -> JobInstanceRich:
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
 
 
-def spawn_gateway(max_jobs: int | None = None) -> tuple[str, Process]:
+def spawn_gateway(
+    max_concurrent_jobs: int | None = None,
+    *,
+    max_jobs_history: int = 20,
+    max_queue_length: int = 50,
+) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
-    p = Process(target=main_cli, args=(url,), kwargs={"max_jobs": max_jobs})
+    p = Process(
+        target=main_cli,
+        args=(url,),
+        kwargs={
+            "max_concurrent_jobs": max_concurrent_jobs,
+            "max_jobs_history": max_jobs_history,
+            "max_queue_length": max_queue_length,
+            "report_transport": "ipc",
+        },
+    )
     p.start()
     return url, p
 
 
+@pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
-    url, gw = spawn_gateway(1)
+    destroy_context()
+    url, gw = spawn_gateway(1, max_jobs_history=2)
     try:
         # succ job
         ji = get_job_succ()
@@ -85,6 +104,7 @@ def test_job():
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
+        succ_job_id = job_id
 
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
@@ -94,6 +114,8 @@ def test_job():
             assert job_progress_res.error is None
             is_computed = job_progress_res.progresses[job_id].pct == "100.00"  # ty: ignore[possibly-missing-attribute]
             is_datasets = ji.jobInstance.ext_outputs[0] in job_progress_res.datasets[job_id]
+            has_failure = job_progress_res.progresses[job_id].failure is not None  # ty: ignore[possibly-missing-attribute]
+            assert not has_failure, f"the job {job_id} has failed with {job_progress_res.progresses[job_id].failure}"  # ty: ignore[possibly-missing-attribute]
             if is_computed and is_datasets:
                 break
             else:
@@ -110,6 +132,15 @@ def test_job():
         assert result_retrieval_res.result is not None
         deser = api.decoded_result(result_retrieval_res, ji.jobInstance)
         assert deser == job_func(init_value)
+
+        detailed_progress_req = api.JobProgressRequest(job_ids=[job_id], detailed_report=True)
+        detailed_progress_res = client.request_response(detailed_progress_req, url)
+        assert isinstance(detailed_progress_res, api.JobProgressResponse)
+        assert detailed_progress_res.error is None
+        assert detailed_progress_res.completed_task_ids is not None
+        assert len(detailed_progress_res.completed_task_ids[job_id]) == len(ji.jobInstance.tasks)
+        assert detailed_progress_res.planned_task_ids is not None
+        assert len(detailed_progress_res.planned_task_ids[job_id]) == 0
 
         result_deletion_req = api.ResultDeletionRequest(datasets={job_id: [ji.jobInstance.ext_outputs[0]]})
         result_deletion_res = client.request_response(result_deletion_req, url)
@@ -132,6 +163,7 @@ def test_job():
         job_id = submit_job_res.job_id
         assert submit_job_res.error is None
         assert job_id is not None
+        fail_job_id = job_id
 
         tries = 0
         job_progress_req = api.JobProgressRequest(job_ids=[job_id])
@@ -187,6 +219,13 @@ def test_job():
                 tries += 1
                 time.sleep(2)
         assert tries < tries_limit
+        final_progress_res = client.request_response(api.JobProgressRequest(job_ids=[]), url)
+        assert isinstance(final_progress_res, api.JobProgressResponse)
+        assert final_progress_res.error is None
+        assert succ_job_id not in final_progress_res.progresses
+        assert fail_job_id not in final_progress_res.progresses
+        assert res1.job_id in final_progress_res.progresses
+        assert res2.job_id in final_progress_res.progresses
 
         # gw shutdown
         shutdown_req = api.ShutdownRequest()

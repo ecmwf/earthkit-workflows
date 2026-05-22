@@ -47,7 +47,7 @@ class CallableInstance:
 
 @contextmanager
 def setup_shm(testId: str):
-    mp_ctx = platform.get_mp_ctx("executor-aux")
+    mp_ctx = platform.get_mp_ctx("executor-shm")
     shm_socket = f"/tmp/tcShm-{testId}"
     shm_api.publish_socket_addr(shm_socket)
     shm_process = mp_ctx.Process(
@@ -82,7 +82,7 @@ def simple_runner(callback: BackboneAddress, executionContext: ExecutionContext)
         raise ValueError(f"expected 1 task, gotten {len(tasks)}")
     taskId = tasks[0]
     taskInstance = executionContext.tasks[taskId]
-    with Memory(callback, WorkerId(host=HostId("testHost"), worker="testWorker")) as memory, PackagesEnv() as pckg:
+    with Memory(callback, WorkerId(host=HostId("testHost"), worker="testWorker")) as memory, PackagesEnv({}) as pckg:
         # for key, value in taskSequence.extra_env.items():
         #    os.environ[key] = value
 
@@ -118,7 +118,7 @@ def run_test(callableInstance: CallableInstance, testId: str, max_runtime_sec: i
         addr = f"ipc:///tmp/tc{testId}"
         listener = ZmqListener(addr)
         ec_ctx = callable2ctx(callableInstance, addr)
-        mp_ctx = platform.get_mp_ctx("executor-aux")
+        mp_ctx = platform.get_mp_ctx("executor-shm")
         runner = mp_ctx.Process(target=simple_runner, args=(addr, ec_ctx))
         runner.start()
         output = DatasetId(TaskId("taskId"), "0")

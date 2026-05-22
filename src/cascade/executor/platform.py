@@ -17,6 +17,13 @@ import typing
 
 from cascade.low.exceptions import CascadeInternalError
 
+NewWorkerMethod = typing.Literal["popen", "multiprocessing"]
+
+NEW_WORKER_METHOD_BY_PLATFORM: dict[str, NewWorkerMethod] = {
+    "darwin": "multiprocessing",
+    "linux": "multiprocessing",
+}
+
 
 def get_bindabble_self():
     """Returns a hostname such that zmq can bind to it"""
@@ -39,7 +46,7 @@ def gpu_init(worker_num: int):
         pass  # no macos specific gpu init due to unified mem model
 
 
-MpSituation = typing.Literal["worker", "executor-loc", "executor-aux", "gateway", "other"]
+MpSituation = typing.Literal["worker", "executor-loc", "executor-shm", "executor-dataserver", "gateway", "other"]
 _MpSituation = typing.get_args(MpSituation)
 
 
@@ -58,7 +65,7 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
         raise CascadeInternalError(f"{situation=} is not in {_MpSituation}")
     if sys.platform == "darwin":
         return mp.get_context("spawn")
-    elif situation == "executor-loc":
+    elif situation in ("executor-loc"):
         # NOTE in the case of executor being launched locally, from eg cascade main
         # after it has constructed a jobInstance, there is a chance of the process
         # being tainted with some imports such as earthkit.workflows.fluent which in
@@ -66,6 +73,15 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
         return mp.get_context("forkserver")
     else:
         return mp.get_context("fork")
+
+
+def get_new_worker_method() -> NewWorkerMethod:
+    env_value = os.environ.get("CASCADE_NEW_WORKER_METHOD")
+    if env_value is not None and env_value != "":
+        if env_value in typing.get_args(NewWorkerMethod):
+            return typing.cast(NewWorkerMethod, env_value)
+        raise ValueError(f"unrecognized CASCADE_NEW_WORKER_METHOD={env_value!r}")
+    return NEW_WORKER_METHOD_BY_PLATFORM.get(sys.platform, "popen")
 
 
 # NOTE not really perftested, more like for fun

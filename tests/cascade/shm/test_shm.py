@@ -24,13 +24,17 @@ from cascade.executor.platform import get_mp_ctx
 # the mp manager gets launched.
 
 
-@pytest.mark.parametrize("shm_addr", [12345, "/tmp/shmport12345"])
+@pytest.mark.parametrize("shm_addr", [22345, "/tmp/shmport22345"])
 def test_shm_simple(shm_addr):
     api.publish_socket_addr(shm_addr)
     pref = f"cTi{shm_addr % 10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
-    serverP = get_mp_ctx("executor-aux").Process(
+    serverP = get_mp_ctx("executor-shm").Process(
         target=server.entrypoint,
-        kwargs={"logging_config": logging_config, "shm_pref": pref},
+        kwargs={
+            "logging_config": logging_config,
+            "shm_pref": pref,
+            "socket_addr": shm_addr,
+        },
     )
     serverP.start()
     try:
@@ -58,18 +62,19 @@ def test_shm_simple(shm_addr):
         serverP.terminate()
 
 
-@pytest.mark.parametrize("shm_addr", [12346, "/tmp/shmport12346"])
+@pytest.mark.parametrize("shm_addr", [22346, "/tmp/shmport22346"])
 def test_shm_disk(shm_addr):
     capacity = 4
     pref = f"cTi{shm_addr % 10}" if isinstance(shm_addr, int) else f"cTu{shm_addr[-1]}"
     api.publish_socket_addr(shm_addr)
 
-    serverP = get_mp_ctx("executor-aux").Process(
+    serverP = get_mp_ctx("executor-shm").Process(
         target=server.entrypoint,
         kwargs={
             "capacity": capacity,
             "logging_config": logging_config,
             "shm_pref": pref,
+            "socket_addr": shm_addr,
         },
     )
     serverP.start()

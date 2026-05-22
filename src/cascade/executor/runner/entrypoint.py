@@ -11,16 +11,13 @@
 import logging
 import logging.config
 import os
-from dataclasses import dataclass
-from typing import Any
 
-import cloudpickle
 import zmq
-from typing_extensions import Self
+from packaging.version import Version
 
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
-from cascade.deployment.logging import LoggingConfig, init_from_obj
+from cascade.deployment.logging import init_from_obj
 from cascade.executor.comms import callback
 from cascade.executor.msg import (
     BackboneAddress,
@@ -34,45 +31,14 @@ from cascade.executor.msg import (
 )
 from cascade.executor.runner.memory import Memory
 from cascade.executor.runner.packages import PackagesEnv, PkgInstallException
-from cascade.executor.runner.runner import ExecutionContext, run
-from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId, type_dec
+from cascade.executor.runner.runner import run
+from cascade.executor.runner.setup import RunnerContext, WorkerSetup, load_runner_ctx_from_shm
+from cascade.low.core import DatasetId, TaskId, WorkerId, type_dec
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import label
+from cascade.ygg.transport import destroy_context, get_context
 
-logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class RunnerContext:
-    """The static runner configuration"""
-
-    workerId: WorkerId
-    workerAttemptCnt: int
-    job: JobInstance
-    callback: BackboneAddress
-    param_source: dict[TaskId, dict[int | str, DatasetId]]
-    loggingConfig: LoggingConfig
-    schema_lookup: dict[DatasetId, str]
-
-    @staticmethod
-    def build_schema_lookup(job: JobInstance) -> dict[DatasetId, str]:
-        return {
-            DatasetId(task_id, output): fqn
-            for task_id, task_instance in job.tasks.items()
-            for output, fqn in task_instance.definition.output_schema
-        }
-
-    def project(self, taskSequence: TaskSequence) -> ExecutionContext:
-        param_source_ext: dict[TaskId, dict[int | str, tuple[DatasetId, str]]] = {
-            task: {k: (dataset_id, self.schema_lookup[dataset_id]) for k, dataset_id in self.param_source[task].items()}
-            for task in taskSequence.tasks
-        }
-        return ExecutionContext(
-            tasks={task: self.job.tasks[task] for task in taskSequence.tasks},
-            param_source=param_source_ext,
-            callback=self.callback,
-            publish=taskSequence.publish,
-        )
+logger = logging.getLogger(__name__ if __name__ != "__main__" else "cascade.executor.runner.entrypoint")
 
 
 def task_sequence_postmortem(ctx: RunnerContext, taskSequence: TaskSequence, cut: TaskId) -> list[tuple[DatasetId, str]]:
@@ -184,22 +150,23 @@ def execute_sequence(
         return False
 
 
-def entrypoint(runnerContextClpkl: bytes):
-    """runnerContext is a cloudpickled instance of RunnerContext -- needed for forkserver mp context due to defautdicts"""
-    runnerContext = cloudpickle.loads(runnerContextClpkl)
-    init_from_obj(runnerContext.loggingConfig, f"worker_{runnerContext.workerId.worker}")
-    ctx = zmq.Context()
+def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
+    """Main runner loop for a worker process."""
+    init_from_obj(runnerContext.loggingConfig, f"worker_{workerSetup.workerId.worker}")
+    destroy_context()
+    ctx = get_context()
     socket = ctx.socket(zmq.PULL)
-    address = worker_address(runnerContext.workerId, runnerContext.workerAttemptCnt)
-    logger.debug(f"worker {runnerContext.workerId} binding to {address=}")
+    address = worker_address(workerSetup.workerId, workerSetup.workerAttemptCnt)
+    logger.debug(f"worker {workerSetup.workerId} binding to {address=}")
     socket.bind(address)
-    callback(runnerContext.callback, WorkerReady(runnerContext.workerId))
+    callback(runnerContext.callback, WorkerReady(workerSetup.workerId))
+    logger.debug(f"worker {workerSetup.workerId} sent WorkerReady")
     with (
-        Memory(runnerContext.callback, runnerContext.workerId) as memory,
-        PackagesEnv() as pckg,
+        Memory(runnerContext.callback, workerSetup.workerId) as memory,
+        PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}) as pckg,
     ):
-        label("worker", repr(runnerContext.workerId))
-        worker_num = runnerContext.workerId.worker_num()
+        label("worker", repr(workerSetup.workerId))
+        worker_num = workerSetup.workerId.worker_num()
         platform.gpu_init(worker_num)
         # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
@@ -215,7 +182,7 @@ def entrypoint(runnerContextClpkl: bytes):
             mRaw = socket.recv()
             mDes = serde.des_message(mRaw)
             if isinstance(mDes, WorkerShutdown):
-                logger.debug(f"worker {runnerContext.workerId} shutting down")
+                logger.debug(f"worker {workerSetup.workerId} shutting down")
                 break
             elif isTerminating:
                 logger.warning(f"ignoring message {mDes} because terminating")
@@ -250,3 +217,12 @@ def entrypoint(runnerContextClpkl: bytes):
                     isTerminating = not execute_sequence(mDes, memory, pckg, runnerContext)
             else:
                 raise CascadeInternalError(f"unexpected message received: {type(mDes)}")
+
+
+if __name__ == "__main__":
+    from cascade.executor.runner.setup import WORKER_SETUP_ENVVAR, WorkerSetup, load_runner_ctx_from_shm
+
+    _setup_str = os.environ[WORKER_SETUP_ENVVAR]
+    _worker_setup = WorkerSetup.from_str(_setup_str)
+    _runner_ctx = load_runner_ctx_from_shm(_worker_setup.shm_key)
+    entrypoint(_worker_setup, _runner_ctx)

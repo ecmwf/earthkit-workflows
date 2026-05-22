@@ -100,7 +100,7 @@ def _spawn_local(
     global local_job_port
     portBase = ["--port_base", str(local_job_port)]
     local_job_port += 1 + job_spec.hosts * job_spec.workers_per_host * 10
-    return subprocess.Popen(base + infra + report + portBase + logs, env={**os.environ, **job_spec.envvars})
+    return subprocess.Popen(base + infra + report + portBase + logs, env={**os.environ, **job_spec.envvars}, close_fds=True)
 
 
 def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId) -> subprocess.Popen:
