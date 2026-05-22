@@ -191,6 +191,8 @@ class FieldListBackend:
             else:
                 raise ValueError(f"Invalid method {method}")
 
+        if len(ret) == 0:
+            raise ValueError(f"Take along dim {dim} resulted in empty fieldlist: indices {indices}, method {method}")
         return FieldList.from_array(ret.values, ret.metadata())
 
     def norm(*arrays: FieldList, metadata: Metadata = None) -> FieldList:

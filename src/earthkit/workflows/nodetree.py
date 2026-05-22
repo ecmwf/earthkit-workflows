@@ -55,3 +55,15 @@ def nodetree_size(nodetree: xr.DataTree) -> int:
     for _, array in nodetree_arrays(nodetree):
         size += array.size
     return size
+
+
+def nodetree_dimensions(nodetree: xr.DataTree) -> set[str]:
+    return set.union(set(), *[arr.dims for _, arr in nodetree_arrays(nodetree)])  # type: ignore[invalid-argument-type]
+
+
+def nodetree_new_dimension(nodetree: xr.DataTree, attempt: str = "tempindex") -> str:
+    index = 0
+    while attempt in nodetree_dimensions(nodetree):
+        attempt = f"{attempt}{index}"
+        index += 1
+    return attempt
