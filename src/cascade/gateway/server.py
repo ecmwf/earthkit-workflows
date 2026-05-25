@@ -14,6 +14,7 @@ import base64
 import datetime as dt
 import logging
 import os
+import socket
 
 import zmq
 
@@ -29,8 +30,8 @@ from cascade.ygg.api import YggNode
 logger = logging.getLogger(__name__)
 
 
-def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
-    rr = socket.recv()
+def handle_fe(sock: zmq.Socket, jobs: JobRouter) -> bool:
+    rr = sock.recv()
     m = parse_request(rr)
     logger.debug(f"received frontend request {m}")
     rv: api.CascadeGatewayAPI
@@ -73,7 +74,7 @@ def handle_fe(socket: zmq.Socket, jobs: JobRouter) -> bool:
     else:
         raise CascadeInternalError(f"unexpected message type in gateway handle_fe: {type(m)}")
     response = serialize_response(rv)
-    socket.send(response)
+    sock.send(response)
     return isinstance(rv, api.ShutdownResponse)
 
 
@@ -97,6 +98,7 @@ def serve(
     max_queue_length: int = 50,
     report_transport: str = "tcp",
 ) -> None:
+    logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
     if report_transport == "tcp":
         bind_base = f"tcp://{platform.get_bindabble_self()}"
         ygg = YggNode(f"{bind_base}:*")
@@ -120,13 +122,13 @@ def serve(
     try:
         while not is_break:
             ready = poller.poll(None)
-            for socket, _ in ready:
-                if socket == fe:
-                    is_break = handle_fe(socket, jobs)
-                elif socket == ygg_control_socket:
+            for sock, _ in ready:
+                if sock == fe:
+                    is_break = handle_fe(sock, jobs)
+                elif sock == ygg_control_socket:
                     handle_controller(ygg, jobs)
                 else:
-                    raise CascadeInternalError(f"unexpected socket in gateway poller loop: {socket=}")
+                    raise CascadeInternalError(f"unexpected socket in gateway poller loop: {sock=}")
     finally:
         fe.close()
         ygg.close()
