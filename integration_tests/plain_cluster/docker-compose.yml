@@ -1,0 +1,46 @@
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plain-cluster-main
+    hostname: main
+    ports:
+      - "2221:22"
+    volumes:
+      - shared:/shared
+    networks:
+      - plain-cluster
+
+  worker1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plain-cluster-worker1
+    hostname: worker1
+    ports:
+      - "2222:22"
+    volumes:
+      - shared:/shared
+    networks:
+      - plain-cluster
+
+  worker2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plain-cluster-worker2
+    hostname: worker2
+    ports:
+      - "2223:22"
+    volumes:
+      - shared:/shared
+    networks:
+      - plain-cluster
+
+volumes:
+  shared: {}
+
+networks:
+  plain-cluster:
+    name: plain-cluster
