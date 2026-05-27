@@ -8,6 +8,8 @@ services:
     hostname: slurm-main
     environment:
       NODE_ROLE: controller
+    volumes:
+      - shared:/shared
     networks:
       - slurm-net
 
@@ -19,6 +21,8 @@ services:
       NODE_ROLE: worker
     depends_on:
       - slurm-main
+    volumes:
+      - shared:/shared
     networks:
       - slurm-net
 
@@ -30,8 +34,13 @@ services:
       NODE_ROLE: worker
     depends_on:
       - slurm-main
+    volumes:
+      - shared:/shared
     networks:
       - slurm-net
+
+volumes:
+  shared: {}
 
 networks:
   slurm-net:

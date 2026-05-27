@@ -11,14 +11,14 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-job_script="/tmp/slurm-hello.sbatch"
+job_script="/shared/slurm-hello.sbatch"
 cat > "${job_script}" <<'EOF'
 #!/usr/bin/env bash
 #SBATCH --job-name=slurm-hello
 #SBATCH --partition=debug
 #SBATCH --nodes=2
 #SBATCH --ntasks=2
-#SBATCH --output=/tmp/slurm-hello-%j.out
+#SBATCH --output=/shared/slurm-hello-%j.out
 
 echo "Hello from Slurm job ${SLURM_JOB_ID}"
 echo "Allocated nodes: ${SLURM_JOB_NODELIST}"
@@ -32,7 +32,7 @@ while squeue -h -j "${job_id}" | grep -q .; do
   sleep 1
 done
 
-output_file="/tmp/slurm-hello-${job_id}.out"
+output_file="/shared/slurm-hello-${job_id}.out"
 if [[ ! -f "${output_file}" ]]; then
   echo "Job output file was not created: ${output_file}"
   exit 1
