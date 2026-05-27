@@ -6,6 +6,7 @@ import pytest
 import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.gateway.__main__ import main_cli
+from cascade.gateway.api import LocalProcesses
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskId, TaskInstance
 from cascade.ygg.transport import destroy_context
@@ -93,9 +94,7 @@ def test_job():
         js = api.JobSpec(
             envvars={},
             job_instance=ji,
-            workers_per_host=1,
-            hosts=1,
-            use_slurm=False,
+            infra_spec=LocalProcesses(workers_per_host=1, hosts=1),
         )
 
         submit_job_req = api.SubmitJobRequest(job=js)
@@ -152,9 +151,7 @@ def test_job():
         js = api.JobSpec(
             envvars={},
             job_instance=ji,
-            workers_per_host=1,
-            hosts=1,
-            use_slurm=False,
+            infra_spec=LocalProcesses(workers_per_host=1, hosts=1),
         )
 
         submit_job_req = api.SubmitJobRequest(job=js)
@@ -186,9 +183,7 @@ def test_job():
         js = api.JobSpec(
             envvars={},
             job_instance=ji,
-            workers_per_host=1,
-            hosts=1,
-            use_slurm=False,
+            infra_spec=LocalProcesses(workers_per_host=1, hosts=1),
         )
 
         req = api.SubmitJobRequest(job=js)

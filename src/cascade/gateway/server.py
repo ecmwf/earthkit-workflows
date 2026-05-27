@@ -100,8 +100,15 @@ def serve(
 ) -> None:
     logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
     if report_transport == "tcp":
-        bind_base = f"tcp://{platform.get_bindabble_self()}"
-        ygg = YggNode(f"{bind_base}:*")
+        # Bind to all interfaces so that the gateway is reachable on all network
+        # interfaces (important when the gateway has multiple NICs and controllers
+        # connect via a different interface than the one hostname resolves to locally).
+        # The reported address uses the actual hostname so remote controllers can
+        # resolve and connect to it.
+        ext_hostname = platform.get_bindabble_self()
+        ygg = YggNode("tcp://0.0.0.0:*")
+        actual_port = ygg.control_address.split(":")[-1]
+        ygg.control_address = f"tcp://{ext_hostname}:{actual_port}"
     elif report_transport == "ipc":
         bind = f"ipc:///tmp/gateway.{os.getpid()}.socket"
         ygg = YggNode(bind)
