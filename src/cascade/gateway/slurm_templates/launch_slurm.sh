@@ -12,4 +12,5 @@ exec srun -J cascade-devel-01 \
     --qos=np \
     --kill-on-bad-exit=1 \
     --output="$JOB_ROOT/slurm-%j-%t.out" \
+    --error="$JOB_ROOT/slurm-%j-%t.err" \
     "$SCRIPT_DIR/slurm_entrypoint.sh" "$1"
