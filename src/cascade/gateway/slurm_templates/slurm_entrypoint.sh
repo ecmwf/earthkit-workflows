@@ -27,10 +27,11 @@ if [[ "$DEBUG" == "1" ]]; then
         echo "instance=${INSTANCE:-}"
         echo "report_address=${REPORT_ADDRESS:-}"
         echo "logging_config_ser_len=${#logging_config_ser}"
+        echo "ekw_install_spec=${EKW_INSTALL_SPEC:-}"
     } >&2
 fi
 
-exec uv run --with earthkit-workflows python -m cascade.main dist \
+exec uv run --with "$EKW_INSTALL_SPEC" python -m cascade.main dist \
     --idx "$SLURM_PROCID" \
     --controller_url "$CONTROLLER_URL" \
     --instance "$INSTANCE" \
