@@ -8,13 +8,14 @@
 
 """Spawning new processes for each SubmitJobRequest, locally or remotely"""
 
-import hashlib
-import itertools
 import logging
 import os
+import shlex
 import stat
 import subprocess
 import tempfile
+from importlib import resources
+from pathlib import Path
 
 import orjson
 
@@ -25,6 +26,7 @@ from cascade.gateway.api import JobSpec, LocalProcesses, SlurmCluster, SshCluste
 from cascade.low.exceptions import CascadeUserError
 
 logger = logging.getLogger(__name__)
+_SLURM_TEMPLATE_PACKAGE = "cascade.gateway.slurm_templates"
 
 # TODO this is a hotfix to not port collide on local jobs. There should be way more
 # bind-to-random-port overall, but the current code often needs to use the port number
@@ -111,22 +113,77 @@ def _spawn_local(
     return subprocess.Popen(base + infra_args + report + portBase + logs, env={**os.environ, **job_spec.envvars}, close_fds=True)
 
 
-def _spawn_slurm(job_spec: JobSpec, addr: str, job_id: JobId, infra: SlurmCluster) -> subprocess.Popen[bytes]:
-    extra_vars = {
+def _stage_text_resource(resource_name: str, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    content = resources.files(_SLURM_TEMPLATE_PACKAGE).joinpath(resource_name).read_text(encoding="utf-8")
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=dest.parent, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    tmp_path.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    tmp_path.replace(dest)
+
+
+def _write_slurm_exports(dest: Path, exports: dict[str, str]) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for key, value in exports.items():
+        lines.append(f"export {key}={shlex.quote(value)}")
+    body = "\n".join(lines) + "\n"
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=dest.parent, delete=False) as tmp:
+        tmp.write(body)
+        tmp_path = Path(tmp.name)
+    tmp_path.replace(dest)
+
+
+def _stage_slurm_scripts(shared_path: str) -> Path:
+    slurm_root = Path(shared_path) / "cascade-slurm"
+    scripts_dir = slurm_root / "scripts"
+    _stage_text_resource("launch_slurm.sh", scripts_dir / "launch_slurm.sh")
+    _stage_text_resource("slurm_entrypoint.sh", scripts_dir / "slurm_entrypoint.sh")
+    return slurm_root
+
+
+def _spawn_slurm(
+    job_spec: JobSpec,
+    addr: str,
+    job_id: JobId,
+    loggingConfig: LoggingConfig,
+    infra: SlurmCluster,
+    shared_path: str | None,
+) -> subprocess.Popen[bytes]:
+    if shared_path is None:
+        raise CascadeUserError("Slurm jobs require gateway shared_path")
+
+    slurm_root = _stage_slurm_scripts(shared_path)
+    job_root = slurm_root / "jobs" / str(job_id)
+    job_root.mkdir(parents=True, exist_ok=True)
+    scripts_dir = slurm_root / "scripts"
+
+    global local_job_port
+    controller_port = local_job_port
+    local_job_port += 1 + (infra.hosts + 1) * infra.workers_per_host * 10
+
+    job_instance_path = job_root / "instance.json"
+    with open(job_instance_path, "wb") as f:
+        f.write(orjson.dumps(job_spec.job_instance.model_dump()))
+
+    logging_ser = loggingConfig.withContext(f"job_{job_id}").ser_cliparam()
+    exports = {
+        **job_spec.envvars,
         "EXECUTOR_HOSTS": str(infra.hosts),
         "WORKERS_PER_HOST": str(infra.workers_per_host),
-        # NOTE put to infra specs
         "SHM_VOL_GB": "64",
+        "INSTANCE": str(job_instance_path),
         "REPORT_ADDRESS": f"{addr},{job_id}",
+        "LOGGING_CONFIG_SER": logging_ser,
+        "CONTROLLER_PORT": str(controller_port),
+        "JOB_ROOT": str(job_root),
     }
-    with open(f"./localConfigs/_tmp/{job_id}.json", "wb") as f:
-        f.write(orjson.dumps(job_spec.job_instance.model_dump()))
-    extra_vars["INSTANCE"] = f"./localConfigs/_tmp/{job_id}.json"
-    subprocess.run(["cp", "localConfigs/gateway.sh", f"localConfigs/_tmp/{job_id}"], check=True)
-    with open(f"./localConfigs/_tmp/{job_id}", "a") as f:
-        for k, v in itertools.chain(job_spec.envvars.items(), extra_vars.items()):
-            f.write(f"export {k}={v}\n")
-    return subprocess.Popen(["./scripts/launch_slurm.sh", f"localConfigs/_tmp/{job_id}"])
+    config_path = job_root / "config.sh"
+    _write_slurm_exports(config_path, exports)
+
+    launcher = scripts_dir / "launch_slurm.sh"
+    return subprocess.Popen([str(launcher), str(config_path)])
 
 
 def _ssh_args(ssh_key_path: str | None) -> list[str]:
@@ -191,7 +248,6 @@ def _spawn_ssh(
     wheel_path: str | None = None
     if os.path.isabs(ek_spec):
         # Editable / local install -- build a wheel to copy to remote nodes
-        wheel_hash = hashlib.sha1(ek_spec.encode()).hexdigest()[:8]
         wheel_dir = tempfile.mkdtemp(prefix="cascade_ssh_wheel_")
         logger.info(f"Building wheel from editable install at {ek_spec}")
         subprocess.run(
@@ -278,6 +334,7 @@ def spawn_subprocess(
     job_id: JobId,
     loggingConfig: LoggingConfig,
     troika_config: str | None,
+    shared_path: str | None,
 ) -> subprocess.Popen[bytes]:
     infra = job_spec.infra_spec
     if isinstance(infra, SlurmCluster):
@@ -288,7 +345,7 @@ def spawn_subprocess(
             return _spawn_troika_singlehost(job_spec, addr, job_id, infra, infra.troika, troika_config)
         else:
             # TODO support logging config properly
-            return _spawn_slurm(job_spec, addr, job_id, infra)
+            return _spawn_slurm(job_spec, addr, job_id, loggingConfig, infra, shared_path)
     elif isinstance(infra, LocalProcesses):
         return _spawn_local(job_spec, addr, job_id, loggingConfig, infra)
     elif isinstance(infra, SshCluster):

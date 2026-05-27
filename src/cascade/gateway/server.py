@@ -93,6 +93,7 @@ def serve(
     url: str,
     loggingConfig: LoggingConfig,
     troika_config: str | None = None,
+    shared_path: str | None = None,
     max_concurrent_jobs: int | None = None,
     max_jobs_history: int = 20,
     max_queue_length: int = 50,
@@ -122,7 +123,7 @@ def serve(
     ygg_control_socket = ygg._listener._socket_by_lane["control"]  # ty: ignore
     poller.register(fe, flags=zmq.POLLIN)
     poller.register(ygg_control_socket, flags=zmq.POLLIN)
-    jobs = JobRouter(ygg, loggingConfig, troika_config, max_concurrent_jobs, max_jobs_history, max_queue_length)
+    jobs = JobRouter(ygg, loggingConfig, troika_config, shared_path, max_concurrent_jobs, max_jobs_history, max_queue_length)
 
     logger.debug("entering recv loop")
     is_break = False
@@ -158,4 +159,4 @@ def main_enp(
 ) -> None:
     # use when process is not __main__ but eg forked from another
     init_from_obj(loggingConfig, roleLoggingStr())
-    serve(url, loggingConfig, None, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)
+    serve(url, loggingConfig, None, None, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)

@@ -13,5 +13,6 @@ cascade.code-workspace
 build
 .dmypy.json
 localConfigs
+.cascade-slurm
 dist
 **/_version.py

@@ -6,8 +6,6 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-import logging.config
-
 import fire
 
 from cascade.deployment.logging import init_from_cliparam
@@ -18,13 +16,23 @@ def main_cli(
     url: str,
     loggingConfigSer: str | None = None,
     troika_config: str | None = None,
+    shared_path: str | None = None,
     max_concurrent_jobs: int | None = None,
     max_jobs_history: int = 20,
     max_queue_length: int = 50,
     report_transport: str = "tcp",
 ) -> None:
     loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
-    serve(url, loggingConfig, troika_config, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)
+    serve(
+        url,
+        loggingConfig,
+        troika_config,
+        shared_path,
+        max_concurrent_jobs,
+        max_jobs_history,
+        max_queue_length,
+        report_transport,
+    )
 
 
 if __name__ == "__main__":

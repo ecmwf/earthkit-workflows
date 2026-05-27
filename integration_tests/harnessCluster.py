@@ -1,13 +1,15 @@
-"""Integration test: submit a job to a gateway using SshCluster infra.
+"""Integration test: submit a job to a gateway using SshCluster or SlurmCluster infra.
 
-Spawns a gateway in-process, then submits job_noRuntime.py via an SshCluster
-targeting the plain_cluster docker-compose environment (plain-cluster-main +
-plain-cluster-worker1, plain-cluster-worker2).
+Spawns a gateway in-process, then submits job_noRuntime.py either via:
+- an SshCluster targeting the plain_cluster docker-compose environment, or
+- a SlurmCluster when running on the slurm_cluster docker-compose environment.
 
 Usage (from repo root):
-    uv run python integration_tests/harnessCluster.py
+    uv run python integration_tests/harnessCluster.py --mode ssh
+    uv run python integration_tests/harnessCluster.py --mode slurm
 """
 
+import argparse
 import logging
 import sys
 import time
@@ -21,7 +23,7 @@ from job_noRuntime import job  # ty:ignore[unresolved-import]
 import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.gateway.__main__ import main_cli
-from cascade.gateway.api import SshCluster
+from cascade.gateway.api import SlurmCluster, SshCluster
 from cascade.ygg.transport import destroy_context
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -35,11 +37,11 @@ TRIES_LIMIT = 60
 POLL_INTERVAL = 3.0
 
 
-def spawn_gateway() -> Process:
+def spawn_gateway(shared_path: str | None) -> Process:
     p = Process(
         target=main_cli,
         args=(GATEWAY_URL,),
-        kwargs={"report_transport": "tcp"},
+        kwargs={"report_transport": "tcp", "shared_path": shared_path},
     )
     p.start()
     return p
@@ -69,24 +71,40 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
     raise RuntimeError("Gateway did not become ready in time")
 
 
-def main() -> None:
-    destroy_context()
-    gw = spawn_gateway()
-    try:
-        wait_for_gateway(GATEWAY_URL)
-
-        ji = job()
+def build_job_spec(mode: str, shared_path: str | None) -> api.JobSpec:
+    ji = job()
+    if mode == "ssh":
         infra = SshCluster(
             controller_url="root@plain-cluster-main",
             worker_urls=["root@plain-cluster-worker1"],
             workers_per_host=1,
             ssh_key_path=SSH_KEY,
         )
-        js = api.JobSpec(
-            job_instance=ji,
-            envvars={},
-            infra_spec=infra,
-        )
+    elif mode == "slurm":
+        infra = SlurmCluster(workers_per_host=1, hosts=1)
+        if shared_path is None:
+            raise ValueError("shared_path is required for slurm mode")
+    else:
+        raise ValueError(f"unsupported mode: {mode}")
+    return api.JobSpec(job_instance=ji, envvars={}, infra_spec=infra)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["ssh", "slurm"], default="ssh")
+    parser.add_argument("--shared-path", default=None)
+    args = parser.parse_args()
+
+    shared_path = args.shared_path
+    if args.mode == "slurm" and shared_path is None:
+        shared_path = str(REPO_ROOT / ".cascade-slurm")
+
+    destroy_context()
+    gw = spawn_gateway(shared_path if args.mode == "slurm" else None)
+    try:
+        wait_for_gateway(GATEWAY_URL)
+
+        js = build_job_spec(args.mode, shared_path)
 
         logger.info("Submitting job to gateway...")
         submit_req = api.SubmitJobRequest(job=js)
@@ -128,7 +146,7 @@ def main() -> None:
             if result_res.error:
                 logger.warning(f"Could not retrieve {ds_id}: {result_res.error}")
             else:
-                value = api.decoded_result(result_res, ji.jobInstance)
+                value = api.decoded_result(result_res, js.job_instance.jobInstance)
                 logger.info(f"Result {ds_id} = {value!r}")
 
         # Shut down gateway
