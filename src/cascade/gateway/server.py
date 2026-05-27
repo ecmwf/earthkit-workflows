@@ -24,6 +24,7 @@ from cascade.controller.report import deserialize
 from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
+from cascade.gateway.spawning import prepare_slurm_install_spec
 from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.api import YggNode
 
@@ -100,6 +101,7 @@ def serve(
     report_transport: str = "tcp",
 ) -> None:
     logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
+    slurm_install_spec = prepare_slurm_install_spec(shared_path)
     if report_transport == "tcp":
         # Bind to all interfaces so that the gateway is reachable on all network
         # interfaces (important when the gateway has multiple NICs and controllers
@@ -123,7 +125,16 @@ def serve(
     ygg_control_socket = ygg._listener._socket_by_lane["control"]  # ty: ignore
     poller.register(fe, flags=zmq.POLLIN)
     poller.register(ygg_control_socket, flags=zmq.POLLIN)
-    jobs = JobRouter(ygg, loggingConfig, troika_config, shared_path, max_concurrent_jobs, max_jobs_history, max_queue_length)
+    jobs = JobRouter(
+        ygg,
+        loggingConfig,
+        troika_config,
+        shared_path,
+        slurm_install_spec,
+        max_concurrent_jobs,
+        max_jobs_history,
+        max_queue_length,
+    )
 
     logger.debug("entering recv loop")
     is_break = False

@@ -11,6 +11,7 @@
 import logging
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -143,6 +144,43 @@ def _stage_slurm_scripts(shared_path: str) -> Path:
     return slurm_root
 
 
+def prepare_slurm_install_spec(shared_path: str | None) -> str | None:
+    """Resolve the install spec used for Slurm launches for this gateway lifetime.
+
+    If running from an editable/local checkout and shared_path is provided, build a
+    wheel once at gateway startup, copy it into shared staging, and return that
+    wheel path. This keeps all Slurm jobs launched by this gateway process pinned to
+    the same code snapshot while avoiding per-job rebuilds.
+    """
+    if shared_path is None:
+        return None
+    ek_spec = _earthkit_install_spec()
+    if not os.path.isabs(ek_spec):
+        return ek_spec
+
+    slurm_root = Path(shared_path) / "cascade-slurm"
+    wheels_dir = slurm_root / "wheels"
+    wheels_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Building gateway startup wheel from editable install at {ek_spec}")
+    with tempfile.TemporaryDirectory(prefix="cascade_slurm_wheel_build_") as build_dir:
+        subprocess.run(
+            ["uv", "build", "--wheel", "-o", build_dir, ek_spec],
+            check=True,
+            capture_output=True,
+        )
+        wheels = [w for w in os.listdir(build_dir) if w.endswith(".whl")]
+        if not wheels:
+            raise CascadeUserError(f"Failed to build wheel from {ek_spec}")
+        built_wheel = Path(build_dir) / wheels[0]
+        staged_wheel = wheels_dir / built_wheel.name
+        staged_tmp = wheels_dir / f".{built_wheel.name}.tmp"
+        shutil.copy2(built_wheel, staged_tmp)
+        staged_tmp.replace(staged_wheel)
+    logger.info(f"Using staged Slurm install spec: {staged_wheel}")
+    return str(staged_wheel)
+
+
 def _spawn_slurm(
     job_spec: JobSpec,
     addr: str,
@@ -150,9 +188,12 @@ def _spawn_slurm(
     loggingConfig: LoggingConfig,
     infra: SlurmCluster,
     shared_path: str | None,
+    slurm_install_spec: str | None,
 ) -> subprocess.Popen[bytes]:
     if shared_path is None:
         raise CascadeUserError("Slurm jobs require gateway shared_path")
+    if slurm_install_spec is None:
+        raise CascadeUserError("Slurm jobs require resolved slurm_install_spec at gateway startup")
 
     slurm_root = _stage_slurm_scripts(shared_path)
     job_root = slurm_root / "jobs" / str(job_id)
@@ -168,7 +209,6 @@ def _spawn_slurm(
         f.write(orjson.dumps(job_spec.job_instance.model_dump()))
 
     logging_ser = loggingConfig.withContext(f"job_{job_id}").ser_cliparam()
-    ekw_install_spec = _earthkit_install_spec()
     exports = {
         **job_spec.envvars,
         "EXECUTOR_HOSTS": str(infra.hosts),
@@ -177,8 +217,8 @@ def _spawn_slurm(
         "INSTANCE": str(job_instance_path),
         "REPORT_ADDRESS": f"{addr},{job_id}",
         "LOGGING_CONFIG_SER": logging_ser,
-        "EKW_INSTALL_SPEC": ekw_install_spec,
-        "CASCADE_EKW_INSTALL_SPEC": ekw_install_spec,
+        "EKW_INSTALL_SPEC": slurm_install_spec,
+        "CASCADE_EKW_INSTALL_SPEC": slurm_install_spec,
         "CONTROLLER_PORT": str(controller_port),
         "JOB_ROOT": str(job_root),
     }
@@ -338,6 +378,7 @@ def spawn_subprocess(
     loggingConfig: LoggingConfig,
     troika_config: str | None,
     shared_path: str | None,
+    slurm_install_spec: str | None,
 ) -> subprocess.Popen[bytes]:
     infra = job_spec.infra_spec
     if isinstance(infra, SlurmCluster):
@@ -348,7 +389,7 @@ def spawn_subprocess(
             return _spawn_troika_singlehost(job_spec, addr, job_id, infra, infra.troika, troika_config)
         else:
             # TODO support logging config properly
-            return _spawn_slurm(job_spec, addr, job_id, loggingConfig, infra, shared_path)
+            return _spawn_slurm(job_spec, addr, job_id, loggingConfig, infra, shared_path, slurm_install_spec)
     elif isinstance(infra, LocalProcesses):
         return _spawn_local(job_spec, addr, job_id, loggingConfig, infra)
     elif isinstance(infra, SshCluster):
