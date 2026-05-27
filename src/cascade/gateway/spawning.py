@@ -168,6 +168,7 @@ def _spawn_slurm(
         f.write(orjson.dumps(job_spec.job_instance.model_dump()))
 
     logging_ser = loggingConfig.withContext(f"job_{job_id}").ser_cliparam()
+    ekw_install_spec = _earthkit_install_spec()
     exports = {
         **job_spec.envvars,
         "EXECUTOR_HOSTS": str(infra.hosts),
@@ -176,7 +177,8 @@ def _spawn_slurm(
         "INSTANCE": str(job_instance_path),
         "REPORT_ADDRESS": f"{addr},{job_id}",
         "LOGGING_CONFIG_SER": logging_ser,
-        "EKW_INSTALL_SPEC": _earthkit_install_spec(),
+        "EKW_INSTALL_SPEC": ekw_install_spec,
+        "CASCADE_EKW_INSTALL_SPEC": ekw_install_spec,
         "CONTROLLER_PORT": str(controller_port),
         "JOB_ROOT": str(job_root),
     }
