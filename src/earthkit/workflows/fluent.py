@@ -676,7 +676,7 @@ class Action:
             if len(stack_dims) > 0:
                 node_arrays[npath] = narray.stack(dim={new_dim: stack_dims}).reset_index(stack_dims, drop=True)
 
-            to_reset = [name for name, coord in node_arrays[npath].coords.items() if new_dim in coord.dims]
+            to_reset = [name for name, coord in node_arrays[npath].coords.items() if name not in keep_dims or new_dim in coord.dims]
             if reset_coords and len(to_reset) > 0:
                 node_arrays[npath] = node_arrays[npath].reset_coords(to_reset, drop=True)
         return type(self)(nodetree_from_dict(node_arrays))
