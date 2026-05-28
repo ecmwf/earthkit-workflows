@@ -369,6 +369,7 @@ def test_combine_branches():
         ),
         mock_action((5, 4, 6)).set_path("/branch2"),
     )
+    assert len([x for x in nodetree_arrays(branches.combine_branches(dim="dim_0", path="/branch1").nodes)]) == 2
     reduced = branches.sum(path="/branch1/subbranch1")
     reduced.nodes["/branch2"].coords["scalar_dim"] = 1
     reduced.nodes["/branch1/subbranch1"].coords["scalar_dim"] = 2
