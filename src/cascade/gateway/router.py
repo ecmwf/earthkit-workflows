@@ -52,6 +52,8 @@ class JobRouter:
         ygg: YggNode,
         loggingConfig: LoggingConfig,
         troika_config: str | None,
+        shared_path: str | None,
+        slurm_install_spec: str | None,
         max_concurrent_jobs: int | None,
         max_jobs_history: int = 20,
         max_queue_length: int = 50,
@@ -74,6 +76,8 @@ class JobRouter:
         self.completed_jobs = 0
         self.loggingConfig = loggingConfig
         self.troika_config = troika_config
+        self.shared_path = shared_path
+        self.slurm_install_spec = slurm_install_spec
 
     def maybe_spawn(self) -> None:
         if not self.jobs_queue:
@@ -86,7 +90,15 @@ class JobRouter:
         full_addr = self._ygg.control_address
         logger.debug(f"will spawn job {job_id} and listen on {full_addr}")
         self.jobs[job_id] = Job(JobProgressStarted, -1, {}, set(), set())
-        self.procs[job_id] = spawn_subprocess(job_spec, full_addr, job_id, self.loggingConfig, self.troika_config)
+        self.procs[job_id] = spawn_subprocess(
+            job_spec,
+            full_addr,
+            job_id,
+            self.loggingConfig,
+            self.troika_config,
+            self.shared_path,
+            self.slurm_install_spec,
+        )
         self.active_jobs += 1
 
     def enqueue_job(self, job_spec: api.JobSpec) -> tuple[JobId | None, str | None]:

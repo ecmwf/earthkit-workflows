@@ -24,6 +24,7 @@ from cascade.controller.report import deserialize
 from cascade.deployment.logging import LoggingConfig, init_from_obj
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
+from cascade.gateway.spawning import prepare_slurm_install_spec
 from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.api import YggNode
 
@@ -93,15 +94,24 @@ def serve(
     url: str,
     loggingConfig: LoggingConfig,
     troika_config: str | None = None,
+    shared_path: str | None = None,
     max_concurrent_jobs: int | None = None,
     max_jobs_history: int = 20,
     max_queue_length: int = 50,
     report_transport: str = "tcp",
 ) -> None:
     logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
+    slurm_install_spec = prepare_slurm_install_spec(shared_path)
     if report_transport == "tcp":
-        bind_base = f"tcp://{platform.get_bindabble_self()}"
-        ygg = YggNode(f"{bind_base}:*")
+        # Bind to all interfaces so that the gateway is reachable on all network
+        # interfaces (important when the gateway has multiple NICs and controllers
+        # connect via a different interface than the one hostname resolves to locally).
+        # The reported address uses the actual hostname so remote controllers can
+        # resolve and connect to it.
+        ext_hostname = platform.get_bindabble_self()
+        ygg = YggNode("tcp://0.0.0.0:*")
+        actual_port = ygg.control_address.split(":")[-1]
+        ygg.control_address = f"tcp://{ext_hostname}:{actual_port}"
     elif report_transport == "ipc":
         bind = f"ipc:///tmp/gateway.{os.getpid()}.socket"
         ygg = YggNode(bind)
@@ -115,7 +125,16 @@ def serve(
     ygg_control_socket = ygg._listener._socket_by_lane["control"]  # ty: ignore
     poller.register(fe, flags=zmq.POLLIN)
     poller.register(ygg_control_socket, flags=zmq.POLLIN)
-    jobs = JobRouter(ygg, loggingConfig, troika_config, max_concurrent_jobs, max_jobs_history, max_queue_length)
+    jobs = JobRouter(
+        ygg,
+        loggingConfig,
+        troika_config,
+        shared_path,
+        slurm_install_spec,
+        max_concurrent_jobs,
+        max_jobs_history,
+        max_queue_length,
+    )
 
     logger.debug("entering recv loop")
     is_break = False
@@ -151,4 +170,4 @@ def main_enp(
 ) -> None:
     # use when process is not __main__ but eg forked from another
     init_from_obj(loggingConfig, roleLoggingStr())
-    serve(url, loggingConfig, None, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)
+    serve(url, loggingConfig, None, None, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)

@@ -173,7 +173,15 @@ def _earthkit_install_spec() -> str:
 
     For editable/source installs (dev mode), uses the local source path directly.
     Otherwise, pins to the currently installed version.
+
+    The environment variable CASCADE_EKW_INSTALL_SPEC can override the detection,
+    which is used when the gateway has copied a wheel to a remote node and wants
+    all child processes on that node to reuse the same wheel.
     """
+    env_override = os.environ.get("CASCADE_EKW_INSTALL_SPEC")
+    if env_override:
+        logger.debug(f"using CASCADE_EKW_INSTALL_SPEC override: {env_override}")
+        return env_override
     ek_version = importlib.metadata.version("earthkit-workflows")
     try:
         dist = importlib.metadata.distribution("earthkit-workflows")

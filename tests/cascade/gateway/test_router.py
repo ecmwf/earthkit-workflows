@@ -32,6 +32,8 @@ def _make_router(ygg: YggNode) -> JobRouter:
         ygg=ygg,
         loggingConfig=DefaultLoggingConfig,
         troika_config=None,
+        shared_path=None,
+        slurm_install_spec=None,
         max_concurrent_jobs=None,
     )
 

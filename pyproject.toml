@@ -67,6 +67,9 @@ local_scheme = "no-local-version"
 include = ["earthkit.workflows*", "cascade*"]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"cascade.gateway.slurm_templates" = ["*.sh"]
+
 [tool.pytest.ini_options]
 log_cli = true
 log_cli_level = "DEBUG"

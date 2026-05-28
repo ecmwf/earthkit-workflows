@@ -7,8 +7,8 @@
 # nor does it submit to any jurisdiction.
 
 import base64
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Union
 
 import cloudpickle
 
@@ -33,15 +33,47 @@ class TroikaSpec:
 
 
 @dataclass
+class LocalProcesses:
+    """Run controller and executors as local subprocesses on the gateway host."""
+
+    workers_per_host: int
+    hosts: int
+
+
+@dataclass
+class SlurmCluster:
+    """Launch via Slurm (or troika wrapping Slurm) from the gateway host."""
+
+    workers_per_host: int
+    hosts: int
+    troika: TroikaSpec | None = None
+
+
+@dataclass
+class SshCluster:
+    """Launch controller and executors on remote nodes via SSH.
+
+    Each URL is of the form [<username>@]<hostname>. The hostnames must be
+    SSH-accessible from the gateway and reachable among each other for ZMQ
+    communications (controller <-> executors).
+
+    The earthkit-workflows package is installed on the fly via ``uv run --with``.
+    """
+
+    controller_url: str  # e.g. "root@plain-cluster-main"
+    worker_urls: list[str]  # e.g. ["root@plain-cluster-worker1", "root@plain-cluster-worker2"]
+    workers_per_host: int
+    ssh_key_path: str | None = None
+
+
+InfraSpec = Union[LocalProcesses, SlurmCluster, SshCluster]
+
+
+@dataclass
 class JobSpec:
     job_instance: JobInstanceRich
     envvars: dict[str, str]
-
-    # infra
-    workers_per_host: int
-    hosts: int
-    use_slurm: bool
-    troika: TroikaSpec | None = None
+    infra_spec: InfraSpec
 
 
 class SubmitJobRequest(CascadeGatewayAPI):

@@ -25,7 +25,6 @@ from cascade.controller.impl import run
 from cascade.deployment.logging import DefaultLoggingConfig, LoggingConfig, init_from_cliparam, init_from_obj
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
-from cascade.executor.config import logging_config, logging_config_filehandler
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich
@@ -212,6 +211,7 @@ def main_dist(
     workers_per_host: int = 10,
     shm_vol_gb: int = 64,
     report_address: str | None = None,
+    loggingConfigSer: str | None = None,
 ) -> None:
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
     controller, 1+ for worker. Assumed to come from slurm procid.
@@ -221,7 +221,7 @@ def main_dist(
     jobInstanceRich = _deserialize(instance)
 
     if idx == 0:
-        logging.config.dictConfig(logging_config)
+        loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
         tp = ThreadPoolExecutor(max_workers=1)
         preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
         b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
@@ -232,6 +232,7 @@ def main_dist(
         end = perf_counter_ns()
         print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
     else:
+        loggingConfig = init_from_cliparam(loggingConfigSer, f"executor_{idx}")
         gpu_count = _get_gpu_count(0, workers_per_host)
         launch_executor(
             jobInstanceRich,
@@ -241,7 +242,7 @@ def main_dist(
             idx,
             shm_vol_gb,
             gpu_count,
-            loggingConfig=DefaultLoggingConfig,  # TODO handle logging for dist scenario
+            loggingConfig=loggingConfig,
             url_base=f"tcp://{platform.get_bindabble_self()}",
         )
 
