@@ -50,6 +50,7 @@ class LoggingConfig(CascadeBaseModel):
     """If None log to stdout, otherwise log into files in path_base directory, with each process having its own files.
     Expected to have been created beforehand"""
     disable: bool = False
+    ignore: bool = False
 
     def ser_cliparam(self) -> str:
         return base64.b64encode(self.model_dump_json().encode("utf-8")).decode("utf-8")
@@ -100,6 +101,8 @@ def as_dict_config(loggingConfig: LoggingConfig, hostAndRole: str) -> dict:
 
 
 def init_from_obj(loggingConfig: LoggingConfig, hostAndRole: str) -> None:
+    if loggingConfig.ignore:
+        return
     dictConfig = as_dict_config(loggingConfig, hostAndRole)
     logging.config.dictConfig(dictConfig)
 

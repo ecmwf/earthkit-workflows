@@ -22,8 +22,9 @@ from job_noRuntime import job  # ty:ignore[unresolved-import]
 
 import cascade.gateway.api as api
 import cascade.gateway.client as client
-from cascade.gateway.__main__ import main_cli
+from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.gateway.api import SlurmCluster, SshCluster
+from cascade.gateway.server import serve
 from cascade.ygg.transport import destroy_context
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -38,10 +39,15 @@ POLL_INTERVAL = 3.0
 
 
 def spawn_gateway(shared_path: str | None) -> Process:
+    logging_config_ser = DefaultLoggingConfig.ser_cliparam()
     p = Process(
-        target=main_cli,
+        target=serve,
         args=(GATEWAY_URL,),
-        kwargs={"report_transport": "tcp", "shared_path": shared_path},
+        kwargs={
+            "loggingConfigSer": logging_config_ser,
+            "report_transport": "tcp",
+            "shared_path": shared_path,
+        },
     )
     p.start()
     return p

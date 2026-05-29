@@ -8,32 +8,7 @@
 
 import fire
 
-from cascade.deployment.logging import init_from_cliparam
-from cascade.gateway.server import roleLoggingStr, serve
-
-
-def main_cli(
-    url: str,
-    loggingConfigSer: str | None = None,
-    troika_config: str | None = None,
-    shared_path: str | None = None,
-    max_concurrent_jobs: int | None = None,
-    max_jobs_history: int = 20,
-    max_queue_length: int = 50,
-    report_transport: str = "tcp",
-) -> None:
-    loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
-    serve(
-        url,
-        loggingConfig,
-        troika_config,
-        shared_path,
-        max_concurrent_jobs,
-        max_jobs_history,
-        max_queue_length,
-        report_transport,
-    )
-
+from cascade.gateway.server import serve
 
 if __name__ == "__main__":
-    fire.Fire(main_cli)
+    fire.Fire(serve)
