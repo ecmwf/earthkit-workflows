@@ -21,7 +21,7 @@ import zmq
 import cascade.executor.platform as platform
 import cascade.gateway.api as api
 from cascade.controller.report import deserialize
-from cascade.deployment.logging import LoggingConfig, init_from_obj
+from cascade.deployment.logging import init_from_cliparam
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
 from cascade.gateway.spawning import prepare_slurm_install_spec
@@ -92,7 +92,7 @@ def handle_controller(ygg: YggNode, jobs: JobRouter) -> None:
 
 def serve(
     url: str,
-    loggingConfig: LoggingConfig,
+    loggingConfigSer: str | None = None,
     troika_config: str | None = None,
     shared_path: str | None = None,
     max_concurrent_jobs: int | None = None,
@@ -100,6 +100,7 @@ def serve(
     max_queue_length: int = 50,
     report_transport: str = "tcp",
 ) -> None:
+    loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
     logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
     slurm_install_spec = prepare_slurm_install_spec(shared_path)
     if report_transport == "tcp":
@@ -158,16 +159,3 @@ def roleLoggingStr() -> str:
     # For other roles this matters not -- they are distinguished by jobId in the name, or by #attempt counter
     now = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     return f"gateway.{now}"
-
-
-def main_enp(
-    url: str,
-    loggingConfig: LoggingConfig,
-    max_concurrent_jobs: int | None,
-    max_jobs_history: int = 20,
-    max_queue_length: int = 50,
-    report_transport: str = "tcp",
-) -> None:
-    # use when process is not __main__ but eg forked from another
-    init_from_obj(loggingConfig, roleLoggingStr())
-    serve(url, loggingConfig, None, None, max_concurrent_jobs, max_jobs_history, max_queue_length, report_transport)

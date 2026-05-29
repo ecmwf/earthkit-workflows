@@ -5,8 +5,9 @@ import pytest
 
 import cascade.gateway.api as api
 import cascade.gateway.client as client
-from cascade.gateway.__main__ import main_cli
+from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.gateway.api import LocalProcesses
+from cascade.gateway.server import serve
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskId, TaskInstance
 from cascade.ygg.transport import destroy_context
@@ -70,10 +71,12 @@ def spawn_gateway(
     max_queue_length: int = 50,
 ) -> tuple[str, Process]:
     url = "tcp://localhost:12355"
+    logging_config_ser = DefaultLoggingConfig.ser_cliparam()
     p = Process(
-        target=main_cli,
+        target=serve,
         args=(url,),
         kwargs={
+            "loggingConfigSer": logging_config_ser,
             "max_concurrent_jobs": max_concurrent_jobs,
             "max_jobs_history": max_jobs_history,
             "max_queue_length": max_queue_length,
