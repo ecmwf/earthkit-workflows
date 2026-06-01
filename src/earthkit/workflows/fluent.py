@@ -676,7 +676,7 @@ class Action:
             if len(stack_dims) > 0:
                 node_arrays[npath] = narray.stack(dim={new_dim: stack_dims}).reset_index(stack_dims, drop=True)
 
-            to_reset = [name for name, coord in node_arrays[npath].coords.items() if new_dim in coord.dims]
+            to_reset = [name for name, coord in node_arrays[npath].coords.items() if name not in keep_dims or new_dim in coord.dims]
             if reset_coords and len(to_reset) > 0:
                 node_arrays[npath] = node_arrays[npath].reset_coords(to_reset, drop=True)
         return type(self)(nodetree_from_dict(node_arrays))
@@ -748,7 +748,7 @@ class Action:
                 action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
         new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals", join="exact")
         if path:
-            node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in array}
+            node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in apath}
             node_arrays[path] = new_array
         else:
             node_arrays = {"/": new_array}
