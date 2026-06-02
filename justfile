@@ -17,4 +17,11 @@ val:
 fmt:
     uv run prek --all-files
 integration testCase deploymentKind:
-    bash -euo pipefail -c 'repo_root=$PWD; cd "$repo_root/integration_tests/deployments/{{deploymentKind}}" && ./start.sh; trap "cd \"$repo_root/integration_tests/deployments/{{deploymentKind}}\" && ./stop.sh" EXIT; cd "$repo_root/integration_tests" && uv run python harness.py {{testCase}} {{deploymentKind}}'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo_root="$PWD"
+    cd "$repo_root/integration_tests/deployments/{{deploymentKind}}"
+    ./start.sh
+    trap 'cd "$repo_root/integration_tests/deployments/{{deploymentKind}}" && ./stop.sh' EXIT
+    cd "$repo_root/integration_tests"
+    uv run python harness.py {{testCase}} {{deploymentKind}}

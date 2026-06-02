@@ -64,6 +64,7 @@ class SshCluster:
     worker_urls: list[str]  # e.g. ["root@plain-cluster-worker1", "root@plain-cluster-worker2"]
     workers_per_host: int
     ssh_key_path: str | None = None
+    ssh_config_path: str | None = None
 
 
 InfraSpec = Union[LocalProcesses, SlurmCluster, SshCluster]

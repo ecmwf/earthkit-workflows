@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).parent.parent
 GATEWAY_URL = "tcp://localhost:15355"
 SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "plain_cluster" / "ssh" / "id_ed25519")
+SSH_CONFIG = str(REPO_ROOT / "integration_tests" / "deployments" / "plain_cluster" / "ssh" / "ssh_config")
 TRIES_LIMIT = 60
 POLL_INTERVAL = 3.0
 DeploymentKind = Literal["local", "plain_cluster", "slurm_cluster"]
@@ -80,6 +81,7 @@ def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: Deployme
             worker_urls=[f"root@plain-cluster-worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
             ssh_key_path=SSH_KEY,
+            ssh_config_path=SSH_CONFIG,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     if deployment_kind == "slurm_cluster":
