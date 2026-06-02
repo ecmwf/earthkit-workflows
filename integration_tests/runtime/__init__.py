@@ -1,5 +1,7 @@
 """Module to be imported from at runtime, ie, the callables definitions"""
 
+from typing import Any
+
 
 def check_numpy_version(expected: str) -> bool:
     import numpy
@@ -24,11 +26,12 @@ def product_add(a: int, b: int) -> int:
     return a + b
 
 
-def sink_file(data, fname: str) -> None:
+def sink_file(data: Any, fname: str) -> Any:
     print(f"sink_file called with {fname=} and {data=}")
     import pathlib
 
     pathlib.Path(fname).write_text(str(data))
+    return data
 
 
 def source_tensor() -> "torch.Tensor":  # ty: ignore

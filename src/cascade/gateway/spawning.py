@@ -229,18 +229,20 @@ def _spawn_slurm(
     return subprocess.Popen([str(launcher), str(config_path)])
 
 
-def _ssh_args(ssh_key_path: str | None) -> list[str]:
+def _ssh_args(ssh_key_path: str | None, ssh_config_path: str | None) -> list[str]:
     """Common SSH flags: disable host-key prompts, use key if provided."""
     args = ["-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes"]
     if ssh_key_path is not None:
         args += ["-i", ssh_key_path]
+    if ssh_config_path is not None:
+        args += ["-F", ssh_config_path]
     return args
 
 
-def _get_controller_zmq_hostname(controller_url: str, ssh_key_path: str | None) -> str:
+def _get_controller_zmq_hostname(controller_url: str, ssh_key_path: str | None, ssh_config_path: str | None) -> str:
     """SSH to the controller node and ask for its own hostname for ZMQ binding."""
     result = subprocess.run(
-        ["ssh", *_ssh_args(ssh_key_path), controller_url, 'python3 -c "import socket; print(socket.gethostname())"'],
+        ["ssh", *_ssh_args(ssh_key_path, ssh_config_path), controller_url, 'python3 -c "import socket; print(socket.gethostname())"'],
         capture_output=True,
         text=True,
         check=True,
@@ -248,22 +250,24 @@ def _get_controller_zmq_hostname(controller_url: str, ssh_key_path: str | None) 
     return result.stdout.strip()
 
 
-def _prepare_ekw_on_node(node_url: str, ssh_key_path: str | None, ek_spec: str, wheel_path: str | None) -> str:
+def _prepare_ekw_on_node(node_url: str, ssh_key_path: str | None, ssh_config_path: str | None, ek_spec: str, wheel_path: str | None) -> str:
     """Ensure earthkit-workflows is available on node, return the install spec to use with uv."""
     if wheel_path is not None:
         remote_wheel = f"/tmp/{os.path.basename(wheel_path)}"
         subprocess.run(
-            ["scp", *_ssh_args(ssh_key_path), wheel_path, f"{node_url}:{remote_wheel}"],
+            ["scp", *_ssh_args(ssh_key_path, ssh_config_path), wheel_path, f"{node_url}:{remote_wheel}"],
             check=True,
         )
         return remote_wheel
     return ek_spec
 
 
-def _write_instance_to_node(node_url: str, ssh_key_path: str | None, job_json: bytes, remote_path: str) -> None:
+def _write_instance_to_node(
+    node_url: str, ssh_key_path: str | None, ssh_config_path: str | None, job_json: bytes, remote_path: str
+) -> None:
     """Pipe job instance JSON to a remote file via SSH stdin."""
     subprocess.run(
-        ["ssh", *_ssh_args(ssh_key_path), node_url, f"cat > {remote_path}"],
+        ["ssh", *_ssh_args(ssh_key_path, ssh_config_path), node_url, f"cat > {remote_path}"],
         input=job_json,
         check=True,
     )
@@ -285,6 +289,7 @@ def _spawn_ssh(
     each node before launching.
     """
     ssh_key = infra.ssh_key_path
+    ssh_config = infra.ssh_config_path
 
     # Determine earthkit-workflows install spec for remote nodes
     ek_spec = _earthkit_install_spec()
@@ -312,12 +317,12 @@ def _spawn_ssh(
     remote_instance_path = f"/tmp/cascade_{job_id}.json"
     node_ek_specs: dict[str, str] = {}
     for node_url in all_nodes:
-        node_ek_specs[node_url] = _prepare_ekw_on_node(node_url, ssh_key, ek_spec, wheel_path)
-        _write_instance_to_node(node_url, ssh_key, job_json, remote_instance_path)
+        node_ek_specs[node_url] = _prepare_ekw_on_node(node_url, ssh_key, ssh_config, ek_spec, wheel_path)
+        _write_instance_to_node(node_url, ssh_key, ssh_config, job_json, remote_instance_path)
         logger.debug(f"Prepared node {node_url}: ek_spec={node_ek_specs[node_url]}")
 
     # Determine the ZMQ URL the controller will bind on (uses controller's own hostname)
-    controller_hostname = _get_controller_zmq_hostname(infra.controller_url, ssh_key)
+    controller_hostname = _get_controller_zmq_hostname(infra.controller_url, ssh_key, ssh_config)
     global local_job_port
     port = local_job_port
     local_job_port += 1 + (n_hosts + 1) * infra.workers_per_host * 10
@@ -356,7 +361,7 @@ def _spawn_ssh(
         return [env_exports + uv_cmd]
 
     # Launch controller (idx=0) -- this is the "primary" process we track
-    ctrl_cmd = ["ssh", *_ssh_args(ssh_key), infra.controller_url] + _build_dist_cmd(
+    ctrl_cmd = ["ssh", *_ssh_args(ssh_key, ssh_config), infra.controller_url] + _build_dist_cmd(
         infra.controller_url, 0, ["--report_address", f"{addr},{job_id}"]
     )
     logger.debug(f"Launching controller: {ctrl_cmd}")
@@ -364,7 +369,7 @@ def _spawn_ssh(
 
     # Launch executors (idx=1, 2, ...)
     for i, worker_url in enumerate(infra.worker_urls):
-        exec_cmd = ["ssh", *_ssh_args(ssh_key), worker_url] + _build_dist_cmd(worker_url, i + 1, [])
+        exec_cmd = ["ssh", *_ssh_args(ssh_key, ssh_config), worker_url] + _build_dist_cmd(worker_url, i + 1, [])
         logger.debug(f"Launching executor {i + 1} on {worker_url}: {exec_cmd}")
         subprocess.Popen(exec_cmd, shell=False)
 

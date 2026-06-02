@@ -15,8 +15,8 @@ All nodes include:
 ## Start the cluster
 
 ```bash
-cd integration_tests/slurm_cluster
-docker compose up --build -d
+cd integration_tests/deployments/slurm_cluster
+./start.sh
 ```
 
 ## Run the Slurm hello-world job

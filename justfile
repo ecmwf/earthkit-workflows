@@ -16,6 +16,12 @@ val:
     uv run pytest -n8 tests
 fmt:
     uv run prek --all-files
-integration testname:
-    # testname is the importible module, so eg job_ekwTrivial
-    cd integration_tests && uv run python harness.py {{testname}}
+integration testCase deploymentKind:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo_root="$PWD"
+    cd "$repo_root/integration_tests/deployments/{{deploymentKind}}"
+    ./start.sh
+    trap 'cd "$repo_root/integration_tests/deployments/{{deploymentKind}}" && ./stop.sh' EXIT
+    cd "$repo_root/integration_tests"
+    uv run python harness.py {{testCase}} {{deploymentKind}}
