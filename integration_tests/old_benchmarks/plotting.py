@@ -13,9 +13,10 @@ Run `dirTaskLane(<path-to-your-logs-directory>)`
 
 import os
 
-from benchmarks_old.reporting import logParse  # ty:ignore[unresolved-import]
 from bokeh.io import curdoc, output_notebook, show
 from bokeh.models import ColumnDataSource, Grid, HBar, LinearAxis, Plot, VSpan
+
+from integration_tests.old_benchmarks.reporting import logParse  # ty:ignore[unresolved-import]
 
 output_notebook()
 
