@@ -13,6 +13,7 @@ from typing import Callable, Union
 import xarray as xr
 
 from .arrayapi import ArrayAPIBackend
+from .dictionary import DictBackend
 from .xarray import XArrayBackend
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 BACKENDS = {
     xr.DataArray: XArrayBackend,
     xr.Dataset: XArrayBackend,
+    dict: DictBackend,
     object: ArrayAPIBackend,
 }
 
