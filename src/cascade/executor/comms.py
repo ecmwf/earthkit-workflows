@@ -26,7 +26,7 @@ from cascade.executor.msg import (
     Syn,
 )
 from cascade.executor.serde import des_message, ser_message
-from cascade.low.core import HostId
+from cascade.low.core import HostId, WorkerId
 from cascade.low.exceptions import CascadeInfrastructureError, CascadeInternalError
 
 logger = logging.getLogger(__name__)
@@ -265,3 +265,7 @@ class ReliableSender:
                         raise CascadeInfrastructureError(f"message {idx} ({record.clazz}) retried too many times")
                 else:
                     logger.warning(f"{record.host=} not present, cannot retry message {idx=}. Presumably we are at shutdown")
+
+
+def worker_address(workerId: WorkerId, workerAttemptCnt: int) -> BackboneAddress:
+    return f"ipc:///tmp/{repr(workerId)}.{workerAttemptCnt}.socket"

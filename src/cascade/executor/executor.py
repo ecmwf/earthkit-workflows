@@ -29,7 +29,7 @@ import cascade.executor.runner.setup as runner_setup
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
 from cascade.deployment.logging import LoggingConfig, as_dict_config, process_log_paths
-from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback
+from cascade.executor.comms import GraceWatcher, Listener, ReliableSender, callback, worker_address
 from cascade.executor.comms import default_message_resend_ms as resend_grace_ms
 from cascade.executor.comms import default_timeout_ms as comms_default_timeout_ms
 from cascade.executor.config import logging_config, logging_config_filehandler
@@ -56,7 +56,6 @@ from cascade.executor.msg import (
     WorkerReady,
     WorkerShutdown,
 )
-from cascade.executor.runner.entrypoint import worker_address
 from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
 from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
@@ -203,8 +202,8 @@ class Executor:
                 logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
         if hasattr(self, "runner_ctx_shm") and self.runner_ctx_shm is not None:
             try:
-                self.runner_ctx_shm.close()
                 self.runner_ctx_shm.unlink()
+                self.runner_ctx_shm.close()
             except Exception as e:
                 logger.warning(f"failed to free runner ctx shm: {repr(e)}")
         if hasattr(self, "shm_process") and self.shm_process is not None and self.shm_process.is_alive():
