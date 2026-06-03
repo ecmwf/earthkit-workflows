@@ -90,8 +90,9 @@ class ReporterChannel:
         self._ygg.retry_outstanding()
 
     def close(self) -> None:
-        # NOTE we really want to get these acked from gw, otherwise completion is never reported
-        self._ygg.close(timeout_ms=1000, wait_for_all_acks=True)
+        # NOTE we really want to get these acked from gw, otherwise completion is never reported,
+        # we go with 3.1s so that 6 retries with 500ms each fit in, +100ms for some slack
+        self._ygg.close(timeout_ms=3100, wait_for_all_acks=True)
 
 
 class Reporter:
