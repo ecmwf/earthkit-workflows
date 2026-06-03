@@ -18,7 +18,7 @@ from packaging.version import Version
 import cascade.executor.platform as platform
 import cascade.executor.serde as serde
 from cascade.deployment.logging import init_from_obj
-from cascade.executor.comms import callback
+from cascade.executor.comms import callback, worker_address
 from cascade.executor.msg import (
     BackboneAddress,
     DatasetPublished,
@@ -93,10 +93,6 @@ class Config:
     # decide dynamically based on memory pressure -- but neither is easy.
     posttask_flush = False  # after task is done, drop all outputs from memory
     pretask_flush = True  # when we receive a task, we drop those in memory that wont be needed
-
-
-def worker_address(workerId: WorkerId, workerAttemptCnt: int) -> BackboneAddress:
-    return f"ipc:///tmp/{repr(workerId)}.{workerAttemptCnt}.socket"
 
 
 def execute_sequence(

@@ -59,16 +59,6 @@ venv_root = os.environ.get("CASCADE_VENV_ROOT", None)
 
 _python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
-# Shared memory unregistering pattern: Python's resource tracker automatically unlinks
-# shared memory it created, which is wrong for memory we share across processes.
-# On 3.13+ we can disable tracking at creation time; on older versions we unregister manually.
-if (sys.version_info.major, sys.version_info.minor) >= (3, 13):
-    _is_unregister = False
-    _shm_kwargs: dict[str, Any] = {"track": False}
-else:
-    _is_unregister = True
-    _shm_kwargs = {}
-
 
 class WorkerProcessHandle(ABC):
     @property
@@ -205,6 +195,14 @@ class RunnerContext:
         )
 
 
+# NOTE about shared memory: unlike in the `cascade.shm` module, we dont
+# unregister or provide track=False, because the shared memory lifecycle
+# is that executor process creates, then workers open and close, and then
+# executor unlinks. This is compatible with python default behaviour.
+# On the `cascade.shm`, however, the creator and destroyer of the memory
+# are potentially different processes, thus we need to unregister/untrack.
+
+
 def save_runner_ctx_to_shm(ctx: RunnerContext, key: str) -> SharedMemory:
     """Cloudpickle ctx and store it in a new POSIX shared memory block named key.
 
@@ -214,18 +212,17 @@ def save_runner_ctx_to_shm(ctx: RunnerContext, key: str) -> SharedMemory:
     data = cloudpickle.dumps(ctx)
     size = len(data)
     try:
-        shm = SharedMemory(key, create=True, size=size, **_shm_kwargs)
+        logger.debug(f"saving runner ctx to shm with {key=}")
+        shm = SharedMemory(key, create=True, size=size)
     except FileExistsError:
         # this should not happen thanks to uuid, but if it does we handle gracefully
         logger.error(f"runner ctx shm {key!r} already existed; deleting and recreating")
-        _old = SharedMemory(key, create=False, **_shm_kwargs)
-        _old.close()
+        _old = SharedMemory(key, create=False)
         _old.unlink()
+        _old.close()
         if sys.platform == "darwin":
             time.sleep(1)  # on mac, create right after unlink leads to not found
-        shm = SharedMemory(key, create=True, size=size, **_shm_kwargs)
-    if _is_unregister:
-        resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
+        shm = SharedMemory(key, create=True, size=size)
     assert shm.buf is not None
     shm.buf[:size] = data
     return shm
@@ -236,9 +233,7 @@ def load_runner_ctx_from_shm(key: str) -> RunnerContext:
 
     The worker calls this once during init; the memory stays alive until the executor frees it.
     """
-    shm = SharedMemory(key, create=False, **_shm_kwargs)
-    if _is_unregister:
-        resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]
+    shm = SharedMemory(key, create=False)
     assert shm.buf is not None
     data = bytes(shm.buf[: shm.size])
     shm.close()
@@ -325,6 +320,14 @@ def _launch_worker_module(
 ) -> None:
     _redirect_standard_streams(stdout_path, stderr_path)
     _activate_worker_venv(venv_dir, envvars)
+    if module in sys.modules:
+        # NOTE we log because runpy itself gives a warning which is hard to
+        # track down. Its *probably* not a problem, it just denotes that
+        # post-init state changes may have affected the module *but* it is
+        # not visible to the runpy's initializiation. We dont do such changes
+        # anyway so we would not be observably affected, but runpy is careful.
+        # So we better *not* import it, for less warnings and confusion.
+        logger.error(f"the {module=} imported prior to runpy call!")
     runpy.run_module(module, run_name="__main__", alter_sys=True)
 
 
