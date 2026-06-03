@@ -292,22 +292,27 @@ def _spawn_ssh(
     ssh_config = infra.ssh_config_path
 
     # Determine earthkit-workflows install spec for remote nodes
-    ek_spec = _earthkit_install_spec()
     wheel_path: str | None = None
-    if os.path.isabs(ek_spec):
-        # Editable / local install -- build a wheel to copy to remote nodes
-        wheel_dir = tempfile.mkdtemp(prefix="cascade_ssh_wheel_")
-        logger.info(f"Building wheel from editable install at {ek_spec}")
-        subprocess.run(
-            ["uv", "build", "--wheel", "-o", wheel_dir, ek_spec],
-            check=True,
-            capture_output=True,
-        )
-        wheels = [w for w in os.listdir(wheel_dir) if w.endswith(".whl")]
-        if not wheels:
-            raise CascadeUserError(f"Failed to build wheel from {ek_spec}")
-        wheel_path = os.path.join(wheel_dir, wheels[0])
-        logger.info(f"Built wheel: {wheel_path}")
+    if infra.wheel_path is not None:
+        logger.debug(f"Using the wheel at path {infra.wheel_path}")
+        wheel_path = infra.wheel_path
+        ek_spec = ""
+    else:
+        ek_spec = _earthkit_install_spec()
+        if os.path.isabs(ek_spec):
+            # Editable / local install -- build a wheel to copy to remote nodes
+            wheel_dir = tempfile.mkdtemp(prefix="cascade_ssh_wheel_")
+            logger.info(f"Building wheel from editable install at {ek_spec}")
+            subprocess.run(
+                ["uv", "build", "--wheel", "-o", wheel_dir, ek_spec],
+                check=True,
+                capture_output=True,
+            )
+            wheels = [w for w in os.listdir(wheel_dir) if w.endswith(".whl")]
+            if not wheels:
+                raise CascadeUserError(f"Failed to build wheel from {ek_spec}")
+            wheel_path = os.path.join(wheel_dir, wheels[0])
+            logger.info(f"Built wheel: {wheel_path}")
 
     all_nodes = [infra.controller_url] + infra.worker_urls
     n_hosts = len(infra.worker_urls)  # executors only, controller is separate

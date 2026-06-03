@@ -1,20 +1,6 @@
-Host plain-cluster-main
+Host plain-cluster-gateway
     HostName 127.0.0.1
     Port 2221
-    User root
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-
-Host plain-cluster-worker1
-    HostName 127.0.0.1
-    Port 2222
-    User root
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-
-Host plain-cluster-worker2
-    HostName 127.0.0.1
-    Port 2223
     User root
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null

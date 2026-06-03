@@ -1,12 +1,24 @@
 services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plain-cluster-gateway
+    hostname: gateway
+    ports:
+      - "2221:22"
+      - "15355:15355"
+    volumes:
+      - shared:/shared
+    networks:
+      - plain-cluster
+
   main:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: plain-cluster-main
     hostname: main
-    ports:
-      - "2221:22"
     volumes:
       - shared:/shared
     networks:
@@ -18,8 +30,6 @@ services:
       dockerfile: Dockerfile
     container_name: plain-cluster-worker1
     hostname: worker1
-    ports:
-      - "2222:22"
     volumes:
       - shared:/shared
     networks:
@@ -31,8 +41,6 @@ services:
       dockerfile: Dockerfile
     container_name: plain-cluster-worker2
     hostname: worker2
-    ports:
-      - "2223:22"
     volumes:
       - shared:/shared
     networks:
