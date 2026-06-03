@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.controller.report import JobId
-from cascade.deployment.logging import DefaultLoggingConfig
+from cascade.deployment.logging import DefaultLoggingConfig, init_from_cliparam
 from cascade.gateway.api import SlurmCluster, SshCluster
 from cascade.gateway.server import serve
 from cascade.low.core import DatasetId, JobInstanceRich
@@ -21,8 +21,7 @@ from cascade.main import run_locally
 from cascade.ygg.transport import destroy_context
 from integration_tests.jobCases.base import JobSpec
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("cascade.main.client")
 
 REPO_ROOT = Path(__file__).parent.parent
 GATEWAY_URL = "tcp://localhost:15355"
@@ -175,6 +174,9 @@ def main() -> None:
     parser.add_argument("deployment_kind", choices=["local", "plain_cluster", "slurm_cluster"])
     parser.add_argument("--shared-path", default=None)
     args = parser.parse_args()
+
+    init_from_cliparam(DefaultLoggingConfig.ser_cliparam(), "client")
+    logger.info("client for integration tests starting")
 
     job_mod = load_job_case(args.test_case)
     deployment_kind = args.deployment_kind
