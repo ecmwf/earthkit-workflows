@@ -28,7 +28,7 @@ class RetryPolicy:
 
 @dataclass(frozen=True)
 class YggConfig:
-    control: RetryPolicy = RetryPolicy(retry_interval_ms=800, max_retries=20)
+    control: RetryPolicy = RetryPolicy(retry_interval_ms=500, max_retries=20)
     bulk: RetryPolicy = RetryPolicy(retry_interval_ms=4_000, max_retries=10)
     control_delivery: Delivery = "reliable"
     bulk_delivery: Delivery = "reliable"
