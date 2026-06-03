@@ -5,15 +5,19 @@
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-
-from __future__ import annotations
-
 from typing import Any
 
 
-def _common_keys(*dicts: dict[str, Any]) -> set[str]:
-    """Return keys present in all provided dicts."""
-    return set.intersection(*(set(d.keys()) for d in dicts))
+def _common_keys(*dicts: dict[str, Any]) -> list[str]:
+    """Return keys present in all provided dicts, preserving the first dict's order."""
+    if not dicts:
+        return []
+
+    common = set(dicts[0].keys())
+    for d in dicts[1:]:
+        common.intersection_update(d.keys())
+
+    return [k for k in dicts[0].keys() if k in common]
 
 
 def _delegate(name: str, *dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
@@ -26,8 +30,9 @@ def _delegate(name: str, *dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any
     # exceptional in-body import -- circular dependency with backends dispatcher
     from earthkit.workflows import backends
 
+    op = getattr(backends, name)
     keys = _common_keys(*dicts)
-    return {k: getattr(backends, name)(*(d[k] for d in dicts), **kwargs) for k in keys}
+    return {k: op(*(d[k] for d in dicts), **kwargs) for k in keys}
 
 
 class DictBackend:
@@ -54,6 +59,10 @@ class DictBackend:
 
     def stack(*dicts: dict[str, Any], axis: int = 0, **kwargs: Any) -> dict[str, Any]:
         """Merge multiple dicts into one. Later dicts overwrite earlier keys."""
+        if axis != 0:
+            raise ValueError("DictBackend.stack does not support axis != 0")
+        if kwargs:
+            raise TypeError(f"DictBackend.stack does not accept keyword arguments: {sorted(kwargs)}")
         result: dict[str, Any] = {}
         for d in dicts:
             result.update(d)
@@ -61,6 +70,8 @@ class DictBackend:
 
     def concat(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
         """Merge multiple dicts into one. Later dicts overwrite earlier keys."""
+        if kwargs:
+            raise TypeError(f"DictBackend.concat does not accept keyword arguments: {sorted(kwargs)}")
         result: dict[str, Any] = {}
         for d in dicts:
             result.update(d)

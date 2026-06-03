@@ -243,5 +243,5 @@ class TestDictBackendArithmetic:
     def test_two_arg_enforced(self, func: str) -> None:
         """Arithmetic ops require exactly two arguments."""
         dicts = _make_scalar_dicts(3)
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError, match="expects two input arguments"):
             getattr(backends, func)(*dicts)
