@@ -1,10 +1,13 @@
 import argparse
 import importlib
 import logging
+import subprocess
 import sys
+import tempfile
 import time
 from multiprocessing import Process
 from pathlib import Path
+from shlex import quote
 from types import ModuleType
 from typing import Any, Literal
 
@@ -25,8 +28,10 @@ logger = logging.getLogger("cascade.main.client")
 
 REPO_ROOT = Path(__file__).parent.parent
 GATEWAY_URL = "tcp://localhost:15355"
-SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "plain_cluster" / "ssh" / "id_ed25519")
-SSH_CONFIG = str(REPO_ROOT / "integration_tests" / "deployments" / "plain_cluster" / "ssh" / "ssh_config")
+PLAIN_CLUSTER_GATEWAY_BIND_URL = "tcp://0.0.0.0:15355"
+PLAIN_CLUSTER_GATEWAY_SSH_URL = "root@127.0.0.1"
+PLAIN_CLUSTER_GATEWAY_SSH_PORT = 2221
+PLAIN_CLUSTER_GATEWAY_SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "plain_cluster" / "ssh" / "id_ed25519")
 TRIES_LIMIT = 60
 POLL_INTERVAL = 3.0
 DeploymentKind = Literal["local", "plain_cluster", "slurm_cluster"]
@@ -36,7 +41,7 @@ def load_job_case(test_case: str) -> ModuleType:
     return importlib.import_module(f"integration_tests.jobCases.{test_case}")
 
 
-def spawn_gateway(shared_path: str | None) -> Process:
+def spawn_local_gateway(shared_path: str | None) -> Process:
     logging_config_ser = DefaultLoggingConfig.ser_cliparam()
     process = Process(
         target=serve,
@@ -49,6 +54,57 @@ def spawn_gateway(shared_path: str | None) -> Process:
     )
     process.start()
     return process
+
+
+def _plain_cluster_ssh_args() -> list[str]:
+    return [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-i",
+        PLAIN_CLUSTER_GATEWAY_SSH_KEY,
+    ]
+
+
+def spawn_plain_cluster_gateway() -> subprocess.Popen[bytes]:
+    with tempfile.TemporaryDirectory(prefix="cascade_plain_cluster_wheel_") as wheel_dir:
+        subprocess.run(
+            ["uv", "build", "--wheel", "-o", wheel_dir, str(REPO_ROOT)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        wheels = sorted(Path(wheel_dir).glob("*.whl"))
+        if not wheels:
+            raise RuntimeError(f"Failed to build wheel from {REPO_ROOT}")
+        local_wheel = wheels[0]
+        remote_wheel = f"/tmp/{local_wheel.name}"
+        subprocess.run(
+            [
+                "scp",
+                *_plain_cluster_ssh_args(),
+                "-P",
+                str(PLAIN_CLUSTER_GATEWAY_SSH_PORT),
+                str(local_wheel),
+                f"{PLAIN_CLUSTER_GATEWAY_SSH_URL}:{remote_wheel}",
+            ],
+            check=True,
+        )
+    gateway_cmd = f"uv run --with {quote(remote_wheel)} cascade.gateway --url {quote(PLAIN_CLUSTER_GATEWAY_BIND_URL)}"
+    return subprocess.Popen(
+        [
+            "ssh",
+            *_plain_cluster_ssh_args(),
+            "-p",
+            str(PLAIN_CLUSTER_GATEWAY_SSH_PORT),
+            PLAIN_CLUSTER_GATEWAY_SSH_URL,
+            gateway_cmd,
+        ],
+        shell=False,
+    )
 
 
 def wait_for_gateway(url: str, retries: int = 20) -> None:
@@ -76,11 +132,9 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
 def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: DeploymentKind, shared_path: str | None) -> api.JobSpec:
     if deployment_kind == "plain_cluster":
         infra = SshCluster(
-            controller_url="root@plain-cluster-main",
-            worker_urls=[f"root@plain-cluster-worker{i}" for i in range(1, spc.hosts + 1)],
+            controller_url="root@main",
+            worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
-            ssh_key_path=SSH_KEY,
-            ssh_config_path=SSH_CONFIG,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     if deployment_kind == "slurm_cluster":
@@ -109,7 +163,11 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_pat
     js = build_job_spec(job, spc, deployment_kind, shared_path)
 
     destroy_context()
-    gw = spawn_gateway(shared_path if deployment_kind == "slurm_cluster" else None)
+    gw: Process | subprocess.Popen[bytes]
+    if deployment_kind == "plain_cluster":
+        gw = spawn_plain_cluster_gateway()
+    else:
+        gw = spawn_local_gateway(shared_path if deployment_kind == "slurm_cluster" else None)
     try:
         wait_for_gateway(GATEWAY_URL)
 
@@ -149,13 +207,25 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_pat
         shutdown_res = client.request_response(shutdown_req, GATEWAY_URL, timeout_ms=5000)
         assert isinstance(shutdown_res, api.ShutdownResponse)
         assert shutdown_res.error is None
-        gw.join(5)
-        if gw.exitcode != 0:
-            raise RuntimeError(f"gateway exited with {gw.exitcode}")
+        if isinstance(gw, Process):
+            gw.join(5)
+            if gw.exitcode != 0:
+                raise RuntimeError(f"gateway exited with {gw.exitcode}")
+        else:
+            try:
+                gw.wait(timeout=5)
+            except subprocess.TimeoutExpired as exc:
+                gw.kill()
+                raise RuntimeError("gateway ssh session did not exit in time") from exc
+            if gw.returncode != 0:
+                raise RuntimeError(f"gateway ssh session exited with {gw.returncode}")
         logger.info("Gateway shut down cleanly.")
     except Exception:
         logger.exception("Integration test failed")
-        if gw.is_alive():
+        if isinstance(gw, Process):
+            if gw.is_alive():
+                gw.kill()
+        elif gw.poll() is None:
             gw.kill()
         raise
 
