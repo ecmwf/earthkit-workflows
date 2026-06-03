@@ -65,6 +65,7 @@ class SshCluster:
     workers_per_host: int
     ssh_key_path: str | None = None
     ssh_config_path: str | None = None
+    wheel_path: str | None = None
 
 
 InfraSpec = Union[LocalProcesses, SlurmCluster, SshCluster]

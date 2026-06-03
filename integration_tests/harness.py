@@ -69,6 +69,11 @@ def _plain_cluster_ssh_args() -> list[str]:
     ]
 
 
+class SshClusterHelper:
+    # NOTE ugly -- refactor better
+    remote_wheel: str
+
+
 def spawn_plain_cluster_gateway() -> subprocess.Popen[bytes]:
     with tempfile.TemporaryDirectory(prefix="cascade_plain_cluster_wheel_") as wheel_dir:
         subprocess.run(
@@ -78,8 +83,8 @@ def spawn_plain_cluster_gateway() -> subprocess.Popen[bytes]:
             text=True,
         )
         wheels = sorted(Path(wheel_dir).glob("*.whl"))
-        if not wheels:
-            raise RuntimeError(f"Failed to build wheel from {REPO_ROOT}")
+        if len(wheels) != 1:
+            raise RuntimeError(f"Failed to build one wheel from {REPO_ROOT}: {wheels=}")
         local_wheel = wheels[0]
         remote_wheel = f"/tmp/{local_wheel.name}"
         subprocess.run(
@@ -93,7 +98,8 @@ def spawn_plain_cluster_gateway() -> subprocess.Popen[bytes]:
             ],
             check=True,
         )
-    gateway_cmd = f"uv run --with {quote(remote_wheel)} cascade.gateway --url {quote(PLAIN_CLUSTER_GATEWAY_BIND_URL)}"
+    gateway_cmd = f"uv run --with {quote(remote_wheel)} python -m cascade.gateway --url {quote(PLAIN_CLUSTER_GATEWAY_BIND_URL)}"
+    SshClusterHelper.remote_wheel = remote_wheel
     return subprocess.Popen(
         [
             "ssh",
@@ -135,6 +141,7 @@ def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: Deployme
             controller_url="root@main",
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
+            wheel_path=SshClusterHelper.remote_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     if deployment_kind == "slurm_cluster":
@@ -158,16 +165,16 @@ def collect_outputs(job_id: JobId, datasets: list[DatasetId], job: JobInstanceRi
 
 
 def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_path: str | None) -> None:
-    job = job_mod.job()
-    spc = job_mod.spc()
-    js = build_job_spec(job, spc, deployment_kind, shared_path)
-
     destroy_context()
     gw: Process | subprocess.Popen[bytes]
     if deployment_kind == "plain_cluster":
         gw = spawn_plain_cluster_gateway()
     else:
         gw = spawn_local_gateway(shared_path if deployment_kind == "slurm_cluster" else None)
+
+    job = job_mod.job()
+    spc = job_mod.spc()
+    js = build_job_spec(job, spc, deployment_kind, shared_path)
     try:
         wait_for_gateway(GATEWAY_URL)
 
