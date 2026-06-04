@@ -102,9 +102,13 @@ class MultiLaneListener:
     def poll(self, timeout_ms: int | None) -> list[tuple[Lane, list[bytes]]]:
         ready = self._poller.poll(timeout_ms if timeout_ms is not None else None)
         messages: list[tuple[Lane, list[bytes]]] = []
-        for socket, _ in ready:
-            lane = self._lane_by_socket_id[id(socket)]
-            messages.append((lane, socket.recv_multipart()))
+        while ready:
+            for socket, _ in ready:
+                lane = self._lane_by_socket_id[id(socket)]
+                messages.append((lane, socket.recv_multipart()))
+            # NOTE this looping is *critical* -- otherwise at most one message
+            # per socket would be consumed!
+            ready = self._poller.poll(0)
         return messages
 
     def close(self) -> None:
