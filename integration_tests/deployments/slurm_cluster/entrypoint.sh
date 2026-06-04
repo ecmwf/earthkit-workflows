@@ -76,5 +76,10 @@ if [[ "${NODE_ROLE}" == "worker" ]]; then
   exec /usr/sbin/slurmd -D -vv -f "${SLURM_CONF}"
 fi
 
-echo "Unknown NODE_ROLE '${NODE_ROLE}', expected controller or worker"
+if [[ "${NODE_ROLE}" == "gateway" ]]; then
+  # Gateway node: just keep container running with SSH available
+  exec tail -f /dev/null
+fi
+
+echo "Unknown NODE_ROLE '${NODE_ROLE}', expected controller, worker, or gateway"
 exit 1
