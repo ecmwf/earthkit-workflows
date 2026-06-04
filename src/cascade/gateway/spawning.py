@@ -192,8 +192,16 @@ def _spawn_slurm(
 ) -> subprocess.Popen[bytes]:
     if shared_path is None:
         raise CascadeUserError("Slurm jobs require gateway shared_path")
-    if slurm_install_spec is None:
-        raise CascadeUserError("Slurm jobs require resolved slurm_install_spec at gateway startup")
+
+    # Determine the install spec to use
+    install_spec_to_use: str
+    if infra.wheel_path is not None:
+        logger.debug(f"Using the wheel at path {infra.wheel_path}")
+        install_spec_to_use = infra.wheel_path
+    elif slurm_install_spec is not None:
+        install_spec_to_use = slurm_install_spec
+    else:
+        raise CascadeUserError("Slurm jobs require resolved slurm_install_spec at gateway startup or wheel_path")
 
     slurm_root = _stage_slurm_scripts(shared_path)
     job_root = slurm_root / "jobs" / str(job_id)
@@ -217,8 +225,8 @@ def _spawn_slurm(
         "INSTANCE": str(job_instance_path),
         "REPORT_ADDRESS": f"{addr},{job_id}",
         "LOGGING_CONFIG_SER": logging_ser,
-        "EKW_INSTALL_SPEC": slurm_install_spec,
-        "CASCADE_EKW_INSTALL_SPEC": slurm_install_spec,
+        "EKW_INSTALL_SPEC": install_spec_to_use,
+        "CASCADE_EKW_INSTALL_SPEC": install_spec_to_use,
         "CONTROLLER_PORT": str(controller_port),
         "JOB_ROOT": str(job_root),
     }

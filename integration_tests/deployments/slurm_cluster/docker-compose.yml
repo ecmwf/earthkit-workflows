@@ -1,4 +1,21 @@
 services:
+  slurm-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: slurm-mini-cluster:latest
+    container_name: slurm-gateway
+    hostname: slurm-gateway
+    environment:
+      NODE_ROLE: gateway
+    ports:
+      - "2224:22"
+      - "15355:15355"
+    volumes:
+      - shared:/shared
+    networks:
+      - slurm-net
+
   slurm-main:
     build:
       context: .

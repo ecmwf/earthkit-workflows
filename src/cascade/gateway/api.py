@@ -47,6 +47,7 @@ class SlurmCluster:
     workers_per_host: int
     hosts: int
     troika: TroikaSpec | None = None
+    wheel_path: str | None = None
 
 
 @dataclass

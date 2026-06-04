@@ -28,10 +28,13 @@ logger = logging.getLogger("cascade.main.client")
 
 REPO_ROOT = Path(__file__).parent.parent
 GATEWAY_URL = "tcp://localhost:15355"
-PLAIN_CLUSTER_GATEWAY_BIND_URL = "tcp://0.0.0.0:15355"
+GATEWAY_BIND_URL = "tcp://0.0.0.0:15355"
 PLAIN_CLUSTER_GATEWAY_SSH_URL = "root@127.0.0.1"
 PLAIN_CLUSTER_GATEWAY_SSH_PORT = 2221
 PLAIN_CLUSTER_GATEWAY_SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "plain_cluster" / "ssh" / "id_ed25519")
+SLURM_CLUSTER_GATEWAY_SSH_URL = "root@127.0.0.1"
+SLURM_CLUSTER_GATEWAY_SSH_PORT = 2224
+SLURM_CLUSTER_GATEWAY_SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "slurm_cluster" / "config" / "ssh_cluster_key")
 TRIES_LIMIT = 60
 POLL_INTERVAL = 3.0
 DeploymentKind = Literal["local", "plain_cluster", "slurm_cluster"]
@@ -56,26 +59,43 @@ def spawn_local_gateway(shared_path: str | None) -> Process:
     return process
 
 
-def _plain_cluster_ssh_args() -> list[str]:
-    return [
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-o",
-        "UserKnownHostsFile=/dev/null",
-        "-o",
-        "BatchMode=yes",
-        "-i",
-        PLAIN_CLUSTER_GATEWAY_SSH_KEY,
-    ]
+def _ssh_args_for_cluster(deployment_kind: DeploymentKind) -> tuple[list[str], str, int]:
+    """Get SSH args, URL, and port for a cluster deployment."""
+    if deployment_kind == "plain_cluster":
+        ssh_key = PLAIN_CLUSTER_GATEWAY_SSH_KEY
+        ssh_url = PLAIN_CLUSTER_GATEWAY_SSH_URL
+        ssh_port = PLAIN_CLUSTER_GATEWAY_SSH_PORT
+    elif deployment_kind == "slurm_cluster":
+        ssh_key = SLURM_CLUSTER_GATEWAY_SSH_KEY
+        ssh_url = SLURM_CLUSTER_GATEWAY_SSH_URL
+        ssh_port = SLURM_CLUSTER_GATEWAY_SSH_PORT
+    else:
+        raise ValueError(f"Unsupported cluster deployment: {deployment_kind}")
+
+    return (
+        [
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "BatchMode=yes",
+            "-i",
+            ssh_key,
+        ],
+        ssh_url,
+        ssh_port,
+    )
 
 
-class SshClusterHelper:
+class RemoteGatewayHelper:
     # NOTE ugly -- refactor better
     remote_wheel: str
 
 
-def spawn_plain_cluster_gateway() -> subprocess.Popen[bytes]:
-    with tempfile.TemporaryDirectory(prefix="cascade_plain_cluster_wheel_") as wheel_dir:
+def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | None) -> subprocess.Popen[bytes]:
+    """Build wheel, copy to remote gateway node, and launch gateway via SSH."""
+    with tempfile.TemporaryDirectory(prefix="cascade_remote_wheel_") as wheel_dir:
         subprocess.run(
             ["uv", "build", "--wheel", "-o", wheel_dir, str(REPO_ROOT)],
             check=True,
@@ -86,27 +106,47 @@ def spawn_plain_cluster_gateway() -> subprocess.Popen[bytes]:
         if len(wheels) != 1:
             raise RuntimeError(f"Failed to build one wheel from {REPO_ROOT}: {wheels=}")
         local_wheel = wheels[0]
-        remote_wheel = f"/tmp/{local_wheel.name}"
+        remote_wheel = f"/shared/{local_wheel.name}"
+
+        ssh_args, ssh_url, ssh_port = _ssh_args_for_cluster(deployment_kind)
+
         subprocess.run(
             [
                 "scp",
-                *_plain_cluster_ssh_args(),
+                *ssh_args,
                 "-P",
-                str(PLAIN_CLUSTER_GATEWAY_SSH_PORT),
+                str(ssh_port),
                 str(local_wheel),
-                f"{PLAIN_CLUSTER_GATEWAY_SSH_URL}:{remote_wheel}",
+                f"{ssh_url}:{remote_wheel}",
             ],
             check=True,
         )
-    gateway_cmd = f"uv run --with {quote(remote_wheel)} python -m cascade.gateway --url {quote(PLAIN_CLUSTER_GATEWAY_BIND_URL)}"
-    SshClusterHelper.remote_wheel = remote_wheel
+
+    # Build gateway command with optional shared_path
+    gateway_cmd_parts = [
+        "uv",
+        "run",
+        "--with",
+        quote(remote_wheel),
+        "python",
+        "-m",
+        "cascade.gateway",
+        "--url",
+        quote(GATEWAY_BIND_URL),
+    ]
+    if shared_path is not None:
+        gateway_cmd_parts.extend(["--shared-path", quote(shared_path)])
+
+    gateway_cmd = " ".join(gateway_cmd_parts)
+    RemoteGatewayHelper.remote_wheel = remote_wheel
+
     return subprocess.Popen(
         [
             "ssh",
-            *_plain_cluster_ssh_args(),
+            *ssh_args,
             "-p",
-            str(PLAIN_CLUSTER_GATEWAY_SSH_PORT),
-            PLAIN_CLUSTER_GATEWAY_SSH_URL,
+            str(ssh_port),
+            ssh_url,
             gateway_cmd,
         ],
         shell=False,
@@ -135,19 +175,21 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
     raise RuntimeError("Gateway did not become ready in time")
 
 
-def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: DeploymentKind, shared_path: str | None) -> api.JobSpec:
+def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: DeploymentKind) -> api.JobSpec:
     if deployment_kind == "plain_cluster":
         infra = SshCluster(
             controller_url="root@main",
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
-            wheel_path=SshClusterHelper.remote_wheel,
+            wheel_path=RemoteGatewayHelper.remote_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     if deployment_kind == "slurm_cluster":
-        if shared_path is None:
-            raise ValueError("shared_path is required for slurm_cluster")
-        infra = SlurmCluster(workers_per_host=spc.workers, hosts=spc.hosts)
+        infra = SlurmCluster(
+            workers_per_host=spc.workers,
+            hosts=spc.hosts,
+            wheel_path=RemoteGatewayHelper.remote_wheel,
+        )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     raise ValueError(f"unsupported deployment kind for cluster submission: {deployment_kind}")
 
@@ -167,14 +209,19 @@ def collect_outputs(job_id: JobId, datasets: list[DatasetId], job: JobInstanceRi
 def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_path: str | None) -> None:
     destroy_context()
     gw: Process | subprocess.Popen[bytes]
-    if deployment_kind == "plain_cluster":
-        gw = spawn_plain_cluster_gateway()
+
+    # For remote deployments, determine the gateway shared_path (inside container)
+    gateway_shared_path: str | None = None
+    if deployment_kind in ("plain_cluster", "slurm_cluster"):
+        if deployment_kind == "slurm_cluster":
+            gateway_shared_path = "/shared"  # Path inside container
+        gw = spawn_remote_gateway(deployment_kind, gateway_shared_path)
     else:
-        gw = spawn_local_gateway(shared_path if deployment_kind == "slurm_cluster" else None)
+        gw = spawn_local_gateway(shared_path)
 
     job = job_mod.job()
     spc = job_mod.spc()
-    js = build_job_spec(job, spc, deployment_kind, shared_path)
+    js = build_job_spec(job, spc, deployment_kind)
     try:
         wait_for_gateway(GATEWAY_URL)
 
