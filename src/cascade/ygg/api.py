@@ -110,7 +110,9 @@ class YggNode:
         return set(self._inflight.keys())
 
     def poll_messages(self, timeout_ms: int | None = 0) -> list[IncomingMessage]:
-        """Poll for incoming messages on registered lanes.
+        """Poll for incoming messages on registered lanes. Polls at most timeout_ms
+        (or unlimited if None), then returns *all* messages that arrived. With timeout=0,
+        returns all ready messages without blocking.
 
         Does NOT automatically call retry_outstanding. Callers should manage retries explicitly.
         """
