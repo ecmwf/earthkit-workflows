@@ -44,7 +44,7 @@ from typing_extensions import Self
 import cascade.executor.platform as platform
 from cascade.deployment.logging import LoggingConfig
 from cascade.executor.msg import BackboneAddress
-from cascade.executor.runner.packages import _parse_pip_install, check_run_result, initial_venv_packages, run_command
+from cascade.executor.runner.packages import _parse_pip_install, _pip_index_flags, check_run_result, initial_venv_packages, run_command
 from cascade.executor.runner.runner import ExecutionContext
 from cascade.low.core import DatasetId, JobInstance, TaskId, WorkerId
 from cascade.low.exceptions import CascadeInternalError
@@ -173,6 +173,7 @@ class RunnerContext:
     param_source: dict[TaskId, dict[int | str, DatasetId]]
     loggingConfig: LoggingConfig
     schema_lookup: dict[DatasetId, str]
+    pip_indices: tuple[str, ...] = ()
 
     @staticmethod
     def build_schema_lookup(job: JobInstance) -> dict[DatasetId, str]:
@@ -240,12 +241,13 @@ def load_runner_ctx_from_shm(key: str) -> RunnerContext:
     return cloudpickle.loads(data)
 
 
-def create_venv() -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:
+def create_venv(pip_indices: list[str] | None = None) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:
     """Creates a new temporary venv with earthkit-workflows installed at the same version as the parent process.
 
     Returns the TemporaryDirectory for the venv and a {dist_name: version_str} dict of every
     package pip reported as installed, so callers can pre-populate PackagesEnv._installed.
     """
+    indices: list[str] = pip_indices if pip_indices is not None else []
     td = tempfile.TemporaryDirectory(prefix="cascade_worker_venv_", dir=venv_root)
     logger.debug(f"creating a new worker venv at {td}")
     run_command(["uv", "venv", "--python", _python_version, td.name], check_run_result)
@@ -254,7 +256,7 @@ def create_venv() -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:
     for install_spec in initial_venv_packages():
         logger.debug(f"installing {install_spec} into worker venv")
         result = run_command(
-            ["uv", "pip", "install", "--python", python, install_spec],
+            ["uv", "pip", "install", "--python", python, install_spec] + _pip_index_flags(indices),
             check_run_result,
         )
         for dist_name, version in _parse_pip_install(result.stderr).items():

@@ -42,6 +42,7 @@ from cascade.low.core import (
     DatasetId,
     HostId,
     JobInstance,
+    JobInstanceRich,
     Task2TaskEdge,
     TaskDefinition,
     TaskId,
@@ -57,7 +58,7 @@ def launch_executor(job_instance: JobInstance, controller_address: BackboneAddre
     dictConfig(logging_config)
     destroy_context()
     executor = Executor(
-        job_instance,
+        JobInstanceRich(jobInstance=job_instance, checkpointSpec=None),
         controller_address,
         4,
         HostId(f"{test_name}executor"),

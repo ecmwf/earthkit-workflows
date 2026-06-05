@@ -198,6 +198,23 @@ def _earthkit_install_spec() -> str:
     return f"earthkit-workflows=={ek_version}"
 
 
+def _pip_index_flags(indices: list[str]) -> list[str]:
+    """Return uv pip install flags for the given custom package indices.
+
+    Absolute filesystem paths are treated as local wheelhouse directories and
+    mapped to ``--find-links``.  Everything else is assumed to be a remote
+    package index URL and mapped to ``--extra-index-url`` (so the default PyPI
+    index is still searched as a fallback).
+    """
+    flags: list[str] = []
+    for idx in indices:
+        if os.path.isabs(idx):
+            flags += ["--find-links", idx]
+        else:
+            flags += ["--extra-index-url", idx]
+    return flags
+
+
 def initial_venv_packages() -> list[str]:
     """Returns the list of packages to install into a fresh worker venv.
 
@@ -285,8 +302,9 @@ class PackagesEnv(AbstractContextManager):
     packages can be freely changed by pip.
     """
 
-    def __init__(self, initial_installed: dict[str, Version]) -> None:
+    def __init__(self, initial_installed: dict[str, Version], pip_indices: list[str] | None = None) -> None:
         self.clean = True
+        self._pip_indices: list[str] = pip_indices if pip_indices is not None else []
         # dist_name -> version, tracks what has been installed into this venv.
         # Seeded from the pip output of create_venv() so that all transitive deps
         # are known upfront and _is_already_satisfied can be a pure dict lookup.
@@ -545,6 +563,7 @@ class PackagesEnv(AbstractContextManager):
             install_command += ["--offline"]
         if cache_dir := os.environ.get("VENV_CACHE", ""):
             install_command += ["--cache-dir", cache_dir]
+        install_command += _pip_index_flags(self._pip_indices)
         install_command.extend(set(packages))
         logger.debug(f"running install command: {' '.join(install_command)}")
         install_output = run_command(install_command, lambda r: check_install_result(r, self.clean)).stderr

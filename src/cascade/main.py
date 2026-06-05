@@ -81,7 +81,7 @@ def launch_executor(
         logger.info(f"will set {gpu_count} gpus on host {i}")
         os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
         executor = Executor(
-            job.jobInstance,
+            job,
             controller_address,
             workers_per_host,
             HostId(f"h{i}"),

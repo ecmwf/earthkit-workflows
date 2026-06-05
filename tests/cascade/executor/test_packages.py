@@ -12,6 +12,7 @@ from cascade.executor.runner.packages import (
     _is_ignorable_module,
     _maybe_imported_version,
     _parse_pip_install,
+    _pip_index_flags,
     check_install_result,
     check_run_result,
     run_command,
@@ -285,3 +286,62 @@ def test_extend_backfills_installed_after_noop_pip() -> None:
     with patch("cascade.executor.runner.packages.run_command") as mock_run2:
         env.extend([f"numpy=={numpy.__version__}"])
         mock_run2.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests for _pip_index_flags and pip_indices propagation
+# ---------------------------------------------------------------------------
+
+
+def test_pip_index_flags_empty() -> None:
+    assert _pip_index_flags([]) == []
+
+
+def test_pip_index_flags_local_abs_path(tmp_path) -> None:
+    flags = _pip_index_flags([str(tmp_path)])
+    assert flags == ["--find-links", str(tmp_path)]
+
+
+def test_pip_index_flags_url() -> None:
+    url = "https://test.pypi.org/simple/"
+    flags = _pip_index_flags([url])
+    assert flags == ["--extra-index-url", url]
+
+
+def test_pip_index_flags_mixed(tmp_path) -> None:
+    local = str(tmp_path)
+    url = "https://test.pypi.org/simple/"
+    flags = _pip_index_flags([local, url])
+    assert flags == ["--find-links", local, "--extra-index-url", url]
+
+
+def test_pip_index_flags_relative_path_treated_as_url() -> None:
+    # Relative paths are not absolute, so treated as index URLs
+    flags = _pip_index_flags(["relative/path"])
+    assert flags == ["--extra-index-url", "relative/path"]
+
+
+def test_extend_includes_index_flags_in_pip_call(tmp_path) -> None:
+    """When pip_indices are set, extend() must include them in the pip command."""
+    env = PackagesEnv({}, pip_indices=[str(tmp_path), "https://test.pypi.org/simple/"])
+    with patch("cascade.executor.runner.packages.run_command") as mock_run:
+        mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
+        env.extend(["totally-nonexistent-xyz==999.0.0"])
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "--find-links" in call_args
+        assert str(tmp_path) in call_args
+        assert "--extra-index-url" in call_args
+        assert "https://test.pypi.org/simple/" in call_args
+
+
+def test_extend_no_index_flags_when_empty() -> None:
+    """When pip_indices is empty, no index flags appear in the pip command."""
+    env = PackagesEnv({})
+    with patch("cascade.executor.runner.packages.run_command") as mock_run:
+        mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
+        env.extend(["totally-nonexistent-xyz==999.0.0"])
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "--find-links" not in call_args
+        assert "--extra-index-url" not in call_args
