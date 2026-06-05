@@ -37,6 +37,7 @@ SLURM_CLUSTER_GATEWAY_SSH_PORT = 2224
 SLURM_CLUSTER_GATEWAY_SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "slurm_cluster" / "config" / "ssh_cluster_key")
 TRIES_LIMIT = 60
 POLL_INTERVAL = 3.0
+REMOTE_WHEELS_DIR = "/shared/wheels"
 DeploymentKind = Literal["local", "plain_cluster", "slurm_cluster"]
 
 
@@ -90,44 +91,57 @@ def _ssh_args_for_cluster(deployment_kind: DeploymentKind) -> tuple[list[str], s
 
 class RemoteGatewayHelper:
     # NOTE ugly -- refactor better
-    remote_wheel: str
+    ekw_wheel: str
+    wheels_dir: str
 
 
 def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | None) -> subprocess.Popen[bytes]:
-    """Build wheel, copy to remote gateway node, and launch gateway via SSH."""
+    """Build wheels, copy to remote gateway node, and launch gateway via SSH."""
     with tempfile.TemporaryDirectory(prefix="cascade_remote_wheel_") as wheel_dir:
-        subprocess.run(
-            ["uv", "build", "--wheel", "-o", wheel_dir, str(REPO_ROOT)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        for build_root in [str(REPO_ROOT), str(REPO_ROOT / "integration_tests" / "runtime_pkg")]:
+            subprocess.run(
+                ["uv", "build", "--wheel", "-o", wheel_dir, build_root],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         wheels = sorted(Path(wheel_dir).glob("*.whl"))
-        if len(wheels) != 1:
-            raise RuntimeError(f"Failed to build one wheel from {REPO_ROOT}: {wheels=}")
-        local_wheel = wheels[0]
-        remote_wheel = f"/shared/{local_wheel.name}"
+        ekw_wheels = [w for w in wheels if w.name.startswith("earthkit")]
+        runtime_wheels = [w for w in wheels if w.name.startswith("cascade_integration_runtime")]
+        if len(ekw_wheels) != 1 or len(runtime_wheels) != 1:
+            raise RuntimeError(f"Expected exactly one ekw and one runtime wheel, got {wheels=}")
+        ekw_wheel = ekw_wheels[0]
+        runtime_wheel = runtime_wheels[0]
 
         ssh_args, ssh_url, ssh_port = _ssh_args_for_cluster(deployment_kind)
 
         subprocess.run(
-            [
-                "scp",
-                *ssh_args,
-                "-P",
-                str(ssh_port),
-                str(local_wheel),
-                f"{ssh_url}:{remote_wheel}",
-            ],
+            ["ssh", *ssh_args, "-p", str(ssh_port), ssh_url, f"mkdir -p {REMOTE_WHEELS_DIR}"],
             check=True,
         )
+        for wheel in [ekw_wheel, runtime_wheel]:
+            subprocess.run(
+                [
+                    "scp",
+                    *ssh_args,
+                    "-P",
+                    str(ssh_port),
+                    str(wheel),
+                    f"{ssh_url}:{REMOTE_WHEELS_DIR}/{wheel.name}",
+                ],
+                check=True,
+            )
+
+    remote_ekw_wheel = f"{REMOTE_WHEELS_DIR}/{ekw_wheel.name}"
+    RemoteGatewayHelper.ekw_wheel = remote_ekw_wheel
+    RemoteGatewayHelper.wheels_dir = REMOTE_WHEELS_DIR
 
     # Build gateway command with optional shared_path
     gateway_cmd_parts = [
         "uv",
         "run",
         "--with",
-        quote(remote_wheel),
+        quote(remote_ekw_wheel),
         "python",
         "-m",
         "cascade.gateway",
@@ -138,7 +152,6 @@ def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | Non
         gateway_cmd_parts.extend(["--shared-path", quote(shared_path)])
 
     gateway_cmd = " ".join(gateway_cmd_parts)
-    RemoteGatewayHelper.remote_wheel = remote_wheel
 
     return subprocess.Popen(
         [
@@ -177,18 +190,20 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
 
 def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: DeploymentKind) -> api.JobSpec:
     if deployment_kind == "plain_cluster":
+        job = job.model_copy(update={"custom_pip_indices": (RemoteGatewayHelper.wheels_dir,)})
         infra = SshCluster(
             controller_url="root@main",
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
-            wheel_path=RemoteGatewayHelper.remote_wheel,
+            wheel_path=RemoteGatewayHelper.ekw_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     if deployment_kind == "slurm_cluster":
+        job = job.model_copy(update={"custom_pip_indices": (RemoteGatewayHelper.wheels_dir,)})
         infra = SlurmCluster(
             workers_per_host=spc.workers,
             hosts=spc.hosts,
-            wheel_path=RemoteGatewayHelper.remote_wheel,
+            wheel_path=RemoteGatewayHelper.ekw_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     raise ValueError(f"unsupported deployment kind for cluster submission: {deployment_kind}")

@@ -16,3 +16,5 @@ localConfigs
 .cascade-slurm
 dist
 **/_version.py
+integration_tests/uv.lock
+integration_tests/runtime_pkg/uv.lock
