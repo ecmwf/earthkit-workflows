@@ -302,9 +302,9 @@ class PackagesEnv(AbstractContextManager):
     packages can be freely changed by pip.
     """
 
-    def __init__(self, initial_installed: dict[str, Version], pip_indices: list[str] | None = None) -> None:
+    def __init__(self, initial_installed: dict[str, Version], pip_indices: list[str] = []) -> None:
         self.clean = True
-        self._pip_indices: list[str] = pip_indices if pip_indices is not None else []
+        self._pip_indices: list[str] = pip_indices
         # dist_name -> version, tracks what has been installed into this venv.
         # Seeded from the pip output of create_venv() so that all transitive deps
         # are known upfront and _is_already_satisfied can be a pure dict lookup.
