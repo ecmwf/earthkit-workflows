@@ -167,7 +167,7 @@ class Executor:
             param_source=self.param_source,
             loggingConfig=self.loggingConfig,
             schema_lookup=self.schema_lookup,
-            pip_indices=tuple(self.job_rich.custom_pip_indices),
+            pip_indices=self.job_rich.custom_pip_indices,
         )
         self.runner_ctx_shm: SharedMemory = runner_setup.save_runner_ctx_to_shm(runner_ctx, self.runner_ctx_shm_key)
         logger.debug("constructed executor")
@@ -221,7 +221,7 @@ class Executor:
         self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
-        venv_td, initial_installed = runner_setup.create_venv(list(self.job_rich.custom_pip_indices))
+        venv_td, initial_installed = runner_setup.create_venv(self.job_rich.custom_pip_indices)
         worker_setup = runner_setup.WorkerSetup(
             workerId=worker,
             workerAttemptCnt=attempt_cnt,

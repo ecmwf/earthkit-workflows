@@ -220,8 +220,8 @@ class JobInstanceRich(CascadeBaseModel):
 
     jobInstance: JobInstance
     checkpointSpec: CheckpointSpec | None
-    custom_pip_indices: list[str] = Field(
-        default_factory=list,
+    custom_pip_indices: tuple[str, ...] = Field(
+        default=(),
         description=(
             "Extra package sources for pip installs performed by workers. "
             "Absolute filesystem paths are treated as --find-links (local wheelhouse directories). "

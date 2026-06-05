@@ -34,7 +34,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from multiprocessing.process import BaseProcess
 from multiprocessing.shared_memory import SharedMemory
-from typing import Any
+from typing import Any, Iterable
 
 import cloudpickle
 import orjson
@@ -174,8 +174,6 @@ class RunnerContext:
     loggingConfig: LoggingConfig
     schema_lookup: dict[DatasetId, str]
     pip_indices: tuple[str, ...] = ()
-    # NOTE tuple (not list) because frozen dataclasses require hashable field types for slots=True,
-    # and it signals immutability intentionally -- the indices are fixed for the lifetime of the executor.
 
     @staticmethod
     def build_schema_lookup(job: JobInstance) -> dict[DatasetId, str]:
@@ -243,7 +241,7 @@ def load_runner_ctx_from_shm(key: str) -> RunnerContext:
     return cloudpickle.loads(data)
 
 
-def create_venv(pip_indices: list[str]) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:
+def create_venv(pip_indices: Iterable[str]) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:
     """Creates a new temporary venv with earthkit-workflows installed at the same version as the parent process.
 
     Returns the TemporaryDirectory for the venv and a {dist_name: version_str} dict of every

@@ -198,7 +198,7 @@ def _earthkit_install_spec() -> str:
     return f"earthkit-workflows=={ek_version}"
 
 
-def _pip_index_flags(indices: list[str]) -> list[str]:
+def _pip_index_flags(indices: Iterable[str]) -> list[str]:
     """Return uv pip install flags for the given custom package indices.
 
     Absolute filesystem paths are treated as local wheelhouse directories and
@@ -302,9 +302,9 @@ class PackagesEnv(AbstractContextManager):
     packages can be freely changed by pip.
     """
 
-    def __init__(self, initial_installed: dict[str, Version], pip_indices: list[str] = []) -> None:
+    def __init__(self, initial_installed: dict[str, Version], pip_indices: Iterable[str] = ()) -> None:
         self.clean = True
-        self._pip_indices: list[str] = pip_indices
+        self._pip_index_flags: list[str] = _pip_index_flags(pip_indices)
         # dist_name -> version, tracks what has been installed into this venv.
         # Seeded from the pip output of create_venv() so that all transitive deps
         # are known upfront and _is_already_satisfied can be a pure dict lookup.
@@ -563,7 +563,7 @@ class PackagesEnv(AbstractContextManager):
             install_command += ["--offline"]
         if cache_dir := os.environ.get("VENV_CACHE", ""):
             install_command += ["--cache-dir", cache_dir]
-        install_command += _pip_index_flags(self._pip_indices)
+        install_command += self._pip_index_flags
         install_command.extend(set(packages))
         logger.debug(f"running install command: {' '.join(install_command)}")
         install_output = run_command(install_command, lambda r: check_install_result(r, self.clean)).stderr

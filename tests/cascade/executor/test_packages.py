@@ -323,7 +323,7 @@ def test_pip_index_flags_relative_path_treated_as_url() -> None:
 
 def test_extend_includes_index_flags_in_pip_call(tmp_path) -> None:
     """When pip_indices are set, extend() must include them in the pip command."""
-    env = PackagesEnv({}, pip_indices=[str(tmp_path), "https://test.pypi.org/simple/"])
+    env = PackagesEnv({}, pip_indices=(str(tmp_path), "https://test.pypi.org/simple/"))
     with patch("cascade.executor.runner.packages.run_command") as mock_run:
         mock_run.return_value = type("R", (), {"stderr": "", "stdout": "", "returncode": 0})()
         env.extend(["totally-nonexistent-xyz==999.0.0"])

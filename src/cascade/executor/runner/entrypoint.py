@@ -159,7 +159,7 @@ def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     logger.debug(f"worker {workerSetup.workerId} sent WorkerReady")
     with (
         Memory(runnerContext.callback, workerSetup.workerId) as memory,
-        PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}, list(runnerContext.pip_indices)) as pckg,
+        PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}, runnerContext.pip_indices) as pckg,
     ):
         label("worker", repr(workerSetup.workerId))
         worker_num = workerSetup.workerId.worker_num()
