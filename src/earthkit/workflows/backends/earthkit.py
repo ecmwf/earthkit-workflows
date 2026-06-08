@@ -23,16 +23,6 @@ def standardise_output(data):
     return data
 
 
-def comp_str2func(array_module, comparison: str):
-    if comparison == "<=":
-        return array_module.less_equal
-    if comparison == "<":
-        return array_module.less
-    if comparison == ">=":
-        return array_module.greater_equal
-    return array_module.greater
-
-
 Metadata: TypeAlias = dict | Callable | None
 
 
@@ -79,7 +69,8 @@ class FieldListBackend:
     def multi_arg_function(func: str, *arrays: FieldList, metadata: Metadata = None) -> FieldList:
         merged_array = FieldListBackend._merge(*arrays)
         xp = array_api_compat.array_namespace(*merged_array)
-        res = standardise_output(getattr(xp, func)(merged_array, axis=0))
+        is_nan = xp.isnan(merged_array).any(axis=0)
+        res = xp.where(is_nan, xp.nan, standardise_output(getattr(xp, func)(merged_array, axis=0)))
         return new_fieldlist(
             res,
             [arrays[0][x].metadata() for x in range(len(res))],
@@ -207,17 +198,14 @@ class FieldListBackend:
 
     def filter(
         arr1: FieldList,
-        arr2: FieldList,
-        comparison: str,
-        threshold: float,
+        mask: FieldList,
         *,
         replacement: float = 0,
         metadata: Metadata = None,
     ) -> FieldList:
-        xp = array_api_compat.array_namespace(arr1.values, arr2.values)
-        condition = comp_str2func(xp, comparison)(arr2.values, threshold)
-        res = xp.where(condition, replacement, arr1.values)
-        return new_fieldlist(res, arr1.metadata(), resolve_metadata(metadata, arr1, arr2))
+        xp = array_api_compat.array_namespace(arr1.values, mask.values)
+        res = xp.where(mask.values, replacement, arr1.values)
+        return new_fieldlist(res, arr1.metadata(), resolve_metadata(metadata, arr1, mask))
 
     def set_metadata(data: FieldList, metadata: dict) -> FieldList:
         return new_fieldlist(data.values, data.metadata(), metadata)
