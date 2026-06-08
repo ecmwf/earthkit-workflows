@@ -9,20 +9,21 @@ from multiprocessing import Process
 from pathlib import Path
 from shlex import quote
 from types import ModuleType
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from integration_tests_base.base import JobSpec
 
 import cascade.gateway.api as api
 import cascade.gateway.client as client
 from cascade.controller.report import JobId
 from cascade.deployment.logging import DefaultLoggingConfig, init_from_cliparam
-from cascade.gateway.api import SlurmCluster, SshCluster
+from cascade.gateway.api import LocalProcesses, SlurmCluster, SshCluster
 from cascade.gateway.server import serve
 from cascade.low.core import DatasetId, JobInstanceRich
 from cascade.main import run_locally
 from cascade.ygg.transport import destroy_context
-from integration_tests.jobCases.base import JobSpec
 
 logger = logging.getLogger("cascade.main.client")
 
@@ -37,11 +38,18 @@ SLURM_CLUSTER_GATEWAY_SSH_PORT = 2224
 SLURM_CLUSTER_GATEWAY_SSH_KEY = str(REPO_ROOT / "integration_tests" / "deployments" / "slurm_cluster" / "config" / "ssh_cluster_key")
 TRIES_LIMIT = 60
 POLL_INTERVAL = 3.0
+REMOTE_WHEELS_DIR = "/shared/wheels"
+RUNTIME_WHEEL_SRC = str(REPO_ROOT / "integration_tests" / "integration_tests_runtime")
 DeploymentKind = Literal["local", "plain_cluster", "slurm_cluster"]
 
 
 def load_job_case(test_case: str) -> ModuleType:
-    return importlib.import_module(f"integration_tests.jobCases.{test_case}")
+    return importlib.import_module(f"integration_tests_base.{test_case}")
+
+
+def add_environment(spec: api.JobSpec, env: str) -> None:
+    for task in spec.job_instance.jobInstance.tasks.values():
+        task.definition.environment.append(env)
 
 
 def spawn_local_gateway(shared_path: str | None) -> Process:
@@ -90,44 +98,57 @@ def _ssh_args_for_cluster(deployment_kind: DeploymentKind) -> tuple[list[str], s
 
 class RemoteGatewayHelper:
     # NOTE ugly -- refactor better
-    remote_wheel: str
+    ekw_wheel: str
+    wheels_dir: str
 
 
 def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | None) -> subprocess.Popen[bytes]:
-    """Build wheel, copy to remote gateway node, and launch gateway via SSH."""
+    """Build wheels, copy to remote gateway node, and launch gateway via SSH."""
     with tempfile.TemporaryDirectory(prefix="cascade_remote_wheel_") as wheel_dir:
-        subprocess.run(
-            ["uv", "build", "--wheel", "-o", wheel_dir, str(REPO_ROOT)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        for build_root in [str(REPO_ROOT), RUNTIME_WHEEL_SRC]:
+            subprocess.run(
+                ["uv", "build", "--wheel", "-o", wheel_dir, build_root],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         wheels = sorted(Path(wheel_dir).glob("*.whl"))
-        if len(wheels) != 1:
-            raise RuntimeError(f"Failed to build one wheel from {REPO_ROOT}: {wheels=}")
-        local_wheel = wheels[0]
-        remote_wheel = f"/shared/{local_wheel.name}"
+        ekw_wheels = [w for w in wheels if w.name.startswith("earthkit")]
+        runtime_wheels = [w for w in wheels if w.name.startswith("integration_tests_runtime")]
+        if len(ekw_wheels) != 1 or len(runtime_wheels) != 1:
+            raise RuntimeError(f"Expected exactly one ekw and one runtime wheel, got {wheels=}")
+        ekw_wheel = ekw_wheels[0]
+        runtime_wheel = runtime_wheels[0]
 
         ssh_args, ssh_url, ssh_port = _ssh_args_for_cluster(deployment_kind)
 
         subprocess.run(
-            [
-                "scp",
-                *ssh_args,
-                "-P",
-                str(ssh_port),
-                str(local_wheel),
-                f"{ssh_url}:{remote_wheel}",
-            ],
+            ["ssh", *ssh_args, "-p", str(ssh_port), ssh_url, f"mkdir -p {REMOTE_WHEELS_DIR}"],
             check=True,
         )
+        for wheel in [ekw_wheel, runtime_wheel]:
+            subprocess.run(
+                [
+                    "scp",
+                    *ssh_args,
+                    "-P",
+                    str(ssh_port),
+                    str(wheel),
+                    f"{ssh_url}:{REMOTE_WHEELS_DIR}/{wheel.name}",
+                ],
+                check=True,
+            )
+
+    remote_ekw_wheel = f"{REMOTE_WHEELS_DIR}/{ekw_wheel.name}"
+    RemoteGatewayHelper.ekw_wheel = remote_ekw_wheel
+    RemoteGatewayHelper.wheels_dir = REMOTE_WHEELS_DIR
 
     # Build gateway command with optional shared_path
     gateway_cmd_parts = [
         "uv",
         "run",
         "--with",
-        quote(remote_wheel),
+        quote(remote_ekw_wheel),
         "python",
         "-m",
         "cascade.gateway",
@@ -138,7 +159,6 @@ def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | Non
         gateway_cmd_parts.extend(["--shared-path", quote(shared_path)])
 
     gateway_cmd = " ".join(gateway_cmd_parts)
-    RemoteGatewayHelper.remote_wheel = remote_wheel
 
     return subprocess.Popen(
         [
@@ -175,23 +195,30 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
     raise RuntimeError("Gateway did not become ready in time")
 
 
-def build_job_spec(job: JobInstanceRich, spc: JobSpec, deployment_kind: DeploymentKind) -> api.JobSpec:
+def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.JobSpec:
+    job = job_mod.job()
+    spc = job_mod.spc()
     if deployment_kind == "plain_cluster":
+        job = job.model_copy(update={"custom_pip_indices": (RemoteGatewayHelper.wheels_dir,)})
         infra = SshCluster(
             controller_url="root@main",
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
-            wheel_path=RemoteGatewayHelper.remote_wheel,
+            wheel_path=RemoteGatewayHelper.ekw_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
-    if deployment_kind == "slurm_cluster":
+    elif deployment_kind == "slurm_cluster":
+        job = job.model_copy(update={"custom_pip_indices": (RemoteGatewayHelper.wheels_dir,)})
         infra = SlurmCluster(
             workers_per_host=spc.workers,
             hosts=spc.hosts,
-            wheel_path=RemoteGatewayHelper.remote_wheel,
+            wheel_path=RemoteGatewayHelper.ekw_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
-    raise ValueError(f"unsupported deployment kind for cluster submission: {deployment_kind}")
+    elif deployment_kind == "local":
+        return api.JobSpec(job_instance=job, envvars={}, infra_spec=LocalProcesses(workers_per_host=spc.workers, hosts=spc.hosts))
+    else:
+        raise ValueError(f"unsupported deployment kind for cluster submission: {deployment_kind}")
 
 
 def collect_outputs(job_id: JobId, datasets: list[DatasetId], job: JobInstanceRich, gateway_url: str) -> dict[DatasetId, Any]:
@@ -206,27 +233,22 @@ def collect_outputs(job_id: JobId, datasets: list[DatasetId], job: JobInstanceRi
     return outputs
 
 
-def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_path: str | None) -> None:
+def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
     destroy_context()
     gw: Process | subprocess.Popen[bytes]
 
     # For remote deployments, determine the gateway shared_path (inside container)
-    gateway_shared_path: str | None = None
-    if deployment_kind in ("plain_cluster", "slurm_cluster"):
-        if deployment_kind == "slurm_cluster":
-            gateway_shared_path = "/shared"  # Path inside container
-        gw = spawn_remote_gateway(deployment_kind, gateway_shared_path)
-    else:
-        gw = spawn_local_gateway(shared_path)
+    gateway_shared_path = "/shared"  # Path inside container
+    gw = spawn_remote_gateway(deployment_kind, gateway_shared_path)
 
-    job = job_mod.job()
-    spc = job_mod.spc()
-    js = build_job_spec(job, spc, deployment_kind)
     try:
         wait_for_gateway(GATEWAY_URL)
 
         logger.info("Submitting job to gateway...")
-        submit_req = api.SubmitJobRequest(job=js)
+        spec = build_job_spec(job_mod, deployment_kind)
+        if "noRuntime" not in job_mod.__name__:
+            add_environment(spec, "integration_tests_runtime")
+        submit_req = api.SubmitJobRequest(job=spec)
         submit_res = client.request_response(submit_req, GATEWAY_URL, timeout_ms=5000)
         assert isinstance(submit_res, api.SubmitJobResponse), f"unexpected response: {submit_res}"
         assert submit_res.error is None, f"submit error: {submit_res.error}"
@@ -254,7 +276,7 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_pat
             raise RuntimeError(f"Job did not complete within {TRIES_LIMIT * POLL_INTERVAL:.0f}s")
 
         assert last_progress is not None
-        outputs = collect_outputs(job_id, last_progress.datasets.get(job_id, []), job, GATEWAY_URL)
+        outputs = collect_outputs(job_id, last_progress.datasets.get(job_id, []), spec.job_instance, GATEWAY_URL)
         job_mod.outputOk(outputs)
 
         shutdown_req = api.ShutdownRequest()
@@ -285,9 +307,13 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind, shared_pat
 
 
 def run_local(job_mod: ModuleType) -> None:
-    job = job_mod.job()
-    spc = job_mod.spc()
-    outputs = run_locally(job=job, hosts=spc.hosts, workers=spc.workers)
+    spec = build_job_spec(job_mod, "local")
+    if not isinstance(spec.infra_spec, api.LocalProcesses):
+        raise TypeError
+    # NOTE actually not needed, the editable install survives
+    # if "noRuntime" not in job_mod.__name__:
+    #   add_environment(spec, f"-e {RUNTIME_WHEEL_SRC}")
+    outputs = run_locally(job=spec.job_instance, hosts=spec.infra_spec.hosts, workers=spec.infra_spec.workers_per_host)
     job_mod.outputOk(outputs)
     logger.info("Local integration test passed with outputs: %s", list(outputs.keys()))
 
@@ -296,7 +322,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("test_case")
     parser.add_argument("deployment_kind", choices=["local", "plain_cluster", "slurm_cluster"])
-    parser.add_argument("--shared-path", default=None)
     args = parser.parse_args()
 
     init_from_cliparam(DefaultLoggingConfig.ser_cliparam(), "client")
@@ -304,14 +329,10 @@ def main() -> None:
 
     job_mod = load_job_case(args.test_case)
     deployment_kind = args.deployment_kind
-    shared_path = args.shared_path
-    if deployment_kind == "slurm_cluster" and shared_path is None:
-        shared_path = str(REPO_ROOT / ".cascade-slurm")
-
     if deployment_kind == "local":
         run_local(job_mod)
     else:
-        run_cluster(job_mod, deployment_kind, shared_path)
+        run_cluster(job_mod, deployment_kind)
 
 
 if __name__ == "__main__":

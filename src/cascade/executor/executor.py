@@ -57,7 +57,7 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
-from cascade.low.core import DatasetId, HostId, JobInstance, TaskId, WorkerId
+from cascade.low.core import DatasetId, HostId, JobInstanceRich, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, mark
@@ -85,7 +85,7 @@ class WorkerHandle:
 class Executor:
     def __init__(
         self,
-        job_instance: JobInstance,
+        job_rich: JobInstanceRich,
         controller_address: BackboneAddress,
         workers: int,
         host: HostId,
@@ -94,9 +94,9 @@ class Executor:
         loggingConfig: LoggingConfig,
         url_base: str,
     ) -> None:
-        self.job_instance = job_instance
-        self.schema_lookup = RunnerContext.build_schema_lookup(self.job_instance)
-        self.param_source = param_source(job_instance.edges)
+        self.job_rich = job_rich
+        self.schema_lookup = RunnerContext.build_schema_lookup(self.job_rich.jobInstance)
+        self.param_source = param_source(job_rich.jobInstance.edges)
         self.controller_address = controller_address
         self.host = host
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
@@ -162,11 +162,12 @@ class Executor:
         # The key is host-unique, but quick restarts are problematic on mac, and we cant have too long key for mac
         self.runner_ctx_shm_key = md5hash24(f"sCascRnrCtx{host}" + str(uuid.uuid4()))
         runner_ctx = RunnerContext(
-            job=self.job_instance,
+            job=self.job_rich.jobInstance,
             callback=self.mlistener.address,
             param_source=self.param_source,
             loggingConfig=self.loggingConfig,
             schema_lookup=self.schema_lookup,
+            pip_indices=self.job_rich.custom_pip_indices,
         )
         self.runner_ctx_shm: SharedMemory = runner_setup.save_runner_ctx_to_shm(runner_ctx, self.runner_ctx_shm_key)
         logger.debug("constructed executor")
@@ -220,7 +221,7 @@ class Executor:
         self.sender.send(HostId("controller"), m)
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
-        venv_td, initial_installed = runner_setup.create_venv()
+        venv_td, initial_installed = runner_setup.create_venv(self.job_rich.custom_pip_indices)
         worker_setup = runner_setup.WorkerSetup(
             workerId=worker,
             workerAttemptCnt=attempt_cnt,

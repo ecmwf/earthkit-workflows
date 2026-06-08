@@ -11,13 +11,13 @@ from collections.abc import Mapping
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich, TaskId
-from integration_tests.jobCases.base import JobSpec
+from integration_tests_base.base import JobSpec
 
 
 def job() -> JobInstanceRich:
     def fac(version: str) -> TaskBuilder:
         return TaskBuilder.from_entrypoint(
-            "runtime.check_numpy_version",
+            "integration_tests_runtime.check_numpy_version",
             {"expected": "str"},
             "bool",
             [f"numpy=={version}"],

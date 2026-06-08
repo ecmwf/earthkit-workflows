@@ -24,4 +24,4 @@ integration testCase deploymentKind:
     ./start.sh
     trap 'cd "$repo_root/integration_tests/deployments/{{deploymentKind}}" && ./stop.sh' EXIT
     cd "$repo_root/integration_tests"
-    uv run python harness.py {{testCase}} {{deploymentKind}}
+    uv run --with-editable integration_tests_runtime python harness.py {{testCase}} {{deploymentKind}}

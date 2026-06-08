@@ -52,7 +52,7 @@ def launch_executor(
 ):
     dictConfig(logging_config)
     executor = Executor(
-        job_instance,
+        JobInstanceRich(jobInstance=job_instance, checkpointSpec=None),
         controller_address,
         2,
         HostId(f"{test_name}executor{i}"),

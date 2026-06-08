@@ -8,14 +8,14 @@ import numpy
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich, TaskId
-from integration_tests.jobCases.base import JobSpec
+from integration_tests_base.base import JobSpec
 
 
 def job() -> JobInstanceRich:
     b = JobBuilder()
-    b = b.with_node("source", TaskBuilder.from_entrypoint("runtime.source_numpy", {}, "numpy.ndarray", ["numpy"]))
+    b = b.with_node("source", TaskBuilder.from_entrypoint("integration_tests_runtime.source_numpy", {}, "numpy.ndarray", ["numpy"]))
     b = b.with_node(
-        "t1", TaskBuilder.from_entrypoint("runtime.transform_numpy", {"a": "numpy.ndarray"}, "numpy.ndarray", ["numpy"])
+        "t1", TaskBuilder.from_entrypoint("integration_tests_runtime.transform_numpy", {"a": "numpy.ndarray"}, "numpy.ndarray", ["numpy"])
     ).with_edge("source", "t1", "a")
     ji = b.build().get_or_raise()
     ji.ext_outputs = [DatasetId(task=TaskId("t1"), output=DefaultTaskOutput)]
