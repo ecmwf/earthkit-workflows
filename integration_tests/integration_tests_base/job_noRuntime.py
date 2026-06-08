@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich, TaskId
-from integration_tests.jobCases.base import JobSpec
+from integration_tests_base.base import JobSpec
 
 
 def job() -> JobInstanceRich:

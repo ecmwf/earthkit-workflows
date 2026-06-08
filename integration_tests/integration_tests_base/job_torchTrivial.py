@@ -1,15 +1,16 @@
 """
-A trivial job based on earthkit-workflows fluent custom actions.
+A trivial job with torch tensor sum over two steps
 """
 
 from collections.abc import Mapping
 from pathlib import Path
 
+from integration_tests_runtime import sink_file, source_tensor, transform_tensorsum  # ty: ignore
+
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, JobInstanceRich, TaskId
 from earthkit.workflows.compilers import graph2job
 from earthkit.workflows.fluent import Payload, from_source
-from integration_tests.jobCases.base import JobSpec
-from integration_tests.runtime import product_add, sink_file, source_42, transform_increment
+from integration_tests_base.base import JobSpec
 
 
 def _task_id(ji: JobInstance, prefix: str) -> TaskId:
@@ -20,16 +21,18 @@ def _task_id(ji: JobInstance, prefix: str) -> TaskId:
 
 
 def job() -> JobInstanceRich:
-    source = from_source(source_42)
-    trans = source.map(transform_increment)
-    prod = trans.join(source, dim="inputs").reduce(product_add)
-    sink = prod.map(Payload(sink_file, kwargs={"fname": "/tmp/ekwTrivial.txt"}))
+    source = from_source(source_tensor)
+    trans = source.map(transform_tensorsum)
+    sink = trans.map(Payload(sink_file, kwargs={"fname": "/tmp/torchTrivial.txt"}))
 
     graph = sink.graph()
     ji = graph2job(graph)
+    for task in ji.tasks:
+        if "tensor" in task:
+            ji.tasks[task].definition.environment = ["torch"]
     ji.ext_outputs = [
         DatasetId(task=_task_id(ji, "sink_file:"), output=DefaultTaskOutput),
-        DatasetId(task=_task_id(ji, "product_add:"), output=DefaultTaskOutput),
+        DatasetId(task=_task_id(ji, "transform_tensorsum:"), output=DefaultTaskOutput),
     ]
 
     return JobInstanceRich(jobInstance=ji, checkpointSpec=None)
@@ -40,11 +43,11 @@ def spc() -> JobSpec:
 
 
 def outputOk(outputs: Mapping[object, object]) -> None:
-    if not any(value == 85 for value in outputs.values()):
-        raise AssertionError(f"expected product output, got {list(outputs.values())!r}")
+    if not any(value == 6 for value in outputs.values()):
+        raise AssertionError(f"expected tensor sum, got {list(outputs.values())!r}")
 
-    file_path = Path("/tmp/ekwTrivial.txt")
+    file_path = Path("/tmp/torchTrivial.txt")
     if file_path.exists():
         content = file_path.read_text()
-        if content != "85":
+        if content != "6":
             raise AssertionError(f"unexpected file content: {content!r}")
