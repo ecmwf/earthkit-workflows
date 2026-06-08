@@ -332,8 +332,7 @@ class Action:
             if match_coord_values:
                 for coord, values in narray.coords.items():
                     if coord in oarray.coords:
-                        assigned = oarray.assign_coords(**{str(coord): values})
-                        other_action.nodes[npath] = assigned.to_dataset()
+                        oarray = oarray.assign_coords(**{str(coord): values})
             node_arrays[npath] = xr.concat(
                 [narray, oarray],
                 dim=(dim if isinstance(dim, str) else xr.DataArray(dim[1], name=dim[0])),
