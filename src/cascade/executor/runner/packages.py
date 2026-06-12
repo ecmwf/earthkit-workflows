@@ -26,6 +26,7 @@ import importlib.metadata
 import json
 import logging
 import os
+import os.path
 import re
 import subprocess
 import sys
@@ -144,7 +145,11 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
             logger.warning(f"Suspicious pip output: {clean_line} -- ignoring!")
             continue
         try:
-            rv[parts[0]] = Version(parts[1])
+            if " (from file" in parts[1]:
+                version_raw = parts[1].split(" ", 1)[0]
+            else:
+                version_raw = parts[1]
+            rv[parts[0]] = Version(version_raw)
         except Exception as e:
             logger.warning(f"failed to parse package {parts[0]} version {parts[1]} due to {repr(e)}-- ignoring!")
     return rv
@@ -521,8 +526,14 @@ class PackagesEnv(AbstractContextManager):
         """
         for pkg_spec in packages:
             try:
-                req = Requirement(pkg_spec)
-                name = req.name
+                if pkg_spec.startswith("-e"):
+                    pkg_spec = pkg_spec[len("-e") :].strip()
+                if os.path.isdir(pkg_spec):
+                    name = os.path.split(pkg_spec)[1]
+                    req = Requirement(name)
+                else:
+                    req = Requirement(pkg_spec)
+                    name = req.name
 
                 installed_version = self._installed.get(name)
                 if installed_version is None:
@@ -532,8 +543,8 @@ class PackagesEnv(AbstractContextManager):
                 if installed_version not in req.specifier:
                     logger.debug(f"installed {name}=={installed_version} does not satisfy {req.specifier!r}, will run pip")
                     return False
-            except Exception:
-                logger.debug(f"could not verify satisfaction for {pkg_spec!r}, will run pip")
+            except Exception as e:
+                logger.debug(f"could not verify satisfaction for {pkg_spec!r} because of {repr(e)}, will run pip")
                 return False
         return True
 
@@ -581,6 +592,7 @@ class PackagesEnv(AbstractContextManager):
                 req = Requirement(pkg_spec)
                 if req.name not in self._installed:
                     self._installed[req.name] = Version(importlib.metadata.version(req.name))
+
             except Exception:
                 pass
 
