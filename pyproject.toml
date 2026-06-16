@@ -35,8 +35,11 @@ dependencies = [
     "fire",
     "orjson",
     "qubed>=0.3.0",
+]
+optional-dependencies.dask = [
     "dask[distributed]>=2026.1.2",
 ]
+
 # version provided via setuptools_scm module, which derives it from git tag
 dynamic = ["version"]
 readme = "README.md"
@@ -50,7 +53,6 @@ dev = [
     "build",
     "bokeh",
 ]
-
 
 [tool.setuptools]
 include-package-data = true
