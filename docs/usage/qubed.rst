@@ -170,11 +170,11 @@ You can remove dimensions from a qube before expanding:
    })
 
    # Drop the time step dimension
-   qube_no_steps = qube.remove_by_key("step")
+   qube_no_steps = qube.drop("step")
    expanded = action.expand_as_qube(qube_no_steps)
 
    # Drop multiple dimensions
-   qube_params_only = qube.remove_by_key(["step", "level"])
+   qube_params_only = qube.drop(["step", "level"])
    expanded = action.expand_as_qube(qube_params_only)
 
 Inspecting Axes
@@ -211,7 +211,7 @@ View available dimensions in a qube:
 
 -  ``Qube.from_datacube(dims)``: Create a qube from dimension dictionary
 -  ``qube.axes()``: View available dimensions
--  ``qube.remove_by_key(key)``: Remove dimension(s)
+-  ``qube.drop(key)``: Remove dimension(s)
 -  ``qube.add_metadata(metadata)``: Add metadata (e.g., names) to qube nodes
 
 **See Also**
