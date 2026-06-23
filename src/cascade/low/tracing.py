@@ -13,8 +13,6 @@ level since this is assumed to be high level tracing
 """
 
 import logging
-from collections.abc import Generator
-from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import perf_counter_ns, time_ns
@@ -104,18 +102,10 @@ def label(key: str, value: str) -> None:
     d[key] = value
 
 
-@contextmanager
-def labeled(key: str, value: str) -> Generator[None, None, None]:
-    """Temporarily sets a label for the duration of the block, restoring the previous value on exit."""
-    previous = d.get(key)
-    label(key, value)
-    try:
-        yield
-    finally:
-        if previous is None:
-            d.pop(key, None)
-        else:
-            d[key] = previous
+def clear_label(key: str) -> None:
+    """Removes a previously set label. No-op if the key was not set."""
+    global d
+    d.pop(key, None)
 
 
 def mark(labels: Labels) -> None:

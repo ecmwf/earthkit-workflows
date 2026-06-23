@@ -22,7 +22,7 @@ from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
 from cascade.low.exceptions import CascadeError, CascadeInternalError, CascadeUserError
 from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
-from cascade.low.tracing import Microtrace, TaskLifecycle, labeled, mark, trace
+from cascade.low.tracing import Microtrace, TaskLifecycle, clear_label, label, mark, trace
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,11 @@ class ExecutionContext:
 
 
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
-    with labeled("task", taskId):
+    label("task", taskId)
+    try:
         _run(taskId, executionContext, memory)
+    finally:
+        clear_label("task")
 
 
 def _run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
