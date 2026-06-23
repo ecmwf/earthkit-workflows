@@ -60,7 +60,7 @@ from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
 from cascade.low.core import DatasetId, HostId, JobInstanceRich, TaskId, WorkerId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.func import md5hash24
-from cascade.low.tracing import TaskLifecycle, mark
+from cascade.low.tracing import TaskLifecycle, label, mark
 from cascade.low.views import param_source
 from cascade.shm.server import entrypoint as shm_server
 
@@ -99,6 +99,7 @@ class Executor:
         self.param_source = param_source(job_rich.jobInstance.edges)
         self.controller_address = controller_address
         self.host = host
+        label("host", self.host)
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
         self.worker_awaits: dict[WorkerId, None | TaskSequence] = {}
         self.loggingConfig = loggingConfig

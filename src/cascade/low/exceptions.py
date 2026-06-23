@@ -17,26 +17,37 @@ Three categories:
    then a re-run may help
 """
 
+import orjson
+
+import cascade.low.tracing as tracing
+
 
 class CascadeError(Exception):
     """Base class for all Cascade exceptions."""
 
-    def __init__(self, description: str, parent: Exception | None = None) -> None:
+    def __init__(self, description: str, parent: Exception | None = None, _context: dict[str, str] | None = None) -> None:
         self.description = description
+        self.context: dict[str, str] = _context if _context is not None else dict(tracing.d)
         self.parent = parent
         super().__init__(description)
 
+    def _context_str(self) -> str:
+        if not self.context:
+            return ""
+        return "; ".join(f"{k}={v}" for k, v in self.context.items()) + "; "
+
     def __repr__(self) -> str:
         parent_repr = f", parent={repr(self.parent)}" if self.parent else ""
-        return f"{type(self).__name__}({self.description!r}{parent_repr})"
+        return f"{type(self).__name__}('{self._context_str()}{self.description}'{parent_repr})"
 
     def __str__(self) -> str:
+        prefix = self._context_str()
         if self.parent:
-            return f"{self.description} (caused by {repr(self.parent)})"
-        return self.description
+            return f"{prefix}{self.description} (caused by {repr(self.parent)})"
+        return f"{prefix}{self.description}"
 
-    def add_context(self, context: str) -> None:
-        self.description = f"{context}; {self.description}"
+    def add_context(self, context: dict[str, str]) -> None:
+        self.context.update(context)
 
 
 class CascadeInternalError(CascadeError):
@@ -51,46 +62,50 @@ class CascadeUserError(CascadeError):
     pass
 
 
-def ser(e: Exception, extra_context: str | None = None) -> str:
-    """Serialize error to a string representation, converting to CascadeError first if needed."""
+_CLASS_MAP: dict[str, type[CascadeError]] = {
+    "CascadeError": CascadeError,
+    "CascadeInternalError": CascadeInternalError,
+    "CascadeInfrastructureError": CascadeInfrastructureError,
+    "CascadeUserError": CascadeUserError,
+}
+
+
+def ser(e: Exception, extra_context: dict[str, str] | None = None) -> str:
+    """Serialize error to a JSON string, converting to CascadeError first if needed.
+
+    The serialized format preserves description and context as separate fields so
+    that consumers can distinguish the original error message from propagated context.
+    """
     # we go with InternalError, because context-aware conversions should have happened prior
-    e = e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e)
+    cascade_e = e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e)
     if extra_context:
-        e.add_context(extra_context)
-    return repr(e)
+        cascade_e.add_context(extra_context)
+    data: dict[str, object] = {
+        "type": type(cascade_e).__name__,
+        "description": cascade_e.description,
+        "context": cascade_e.context,
+    }
+    if cascade_e.parent is not None:
+        data["parent"] = repr(cascade_e.parent)
+    return orjson.dumps(data).decode()
 
 
 def des(s: str) -> CascadeError:
-    """Deserialize a string back to a CascadeError.
+    """Deserialize a JSON string back to a CascadeError.
 
-    Attempts to parse the string as '<CascadeErrorClassName>(<detail>)'.
-    If successful, constructs the appropriate exception class.
-    Otherwise, returns CascadeInternalError with the input string.
-    Parent field is always set to None.
+    Expects the format produced by ser(). Falls back to CascadeInternalError wrapping
+    the raw string if parsing fails (e.g. for legacy repr-formatted strings).
+    Parent field is always set to None on deserialization.
     """
-    import re
-
-    # Try to match pattern: ClassName('detail') or ClassName("detail")
-    # We need to handle both single and double quotes, and escaped quotes
-    match = re.match(
-        r"^(CascadeError|CascadeInternalError|CascadeInfrastructureError|CascadeUserError)\((['\"])(.+?)\2(?:, parent=.*)?\)$", s, re.DOTALL
-    )
-
-    if match:
-        class_name = match.group(1)
-        detail = match.group(3)
-
-        # Map class name to actual class
-        class_map = {
-            "CascadeError": CascadeError,
-            "CascadeInternalError": CascadeInternalError,
-            "CascadeInfrastructureError": CascadeInfrastructureError,
-            "CascadeUserError": CascadeUserError,
-        }
-
-        exc_class = class_map.get(class_name)
-        if exc_class:
-            return exc_class(description=detail, parent=None)
-
-    # If parsing fails, return as CascadeInternalError
-    return CascadeInternalError(description=s, parent=None)
+    try:
+        data = orjson.loads(s)
+        class_name = data.get("type", "")
+        description = data.get("description", "")
+        context: dict[str, str] = data.get("context", {})
+        exc_class = _CLASS_MAP.get(class_name)
+        if exc_class and isinstance(description, str):
+            return exc_class(description=description, _context=context)
+    except Exception:
+        pass
+    # Fallback: wrap the raw string, no context captured from tracing
+    return CascadeInternalError(description=s, _context={})

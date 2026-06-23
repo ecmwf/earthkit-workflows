@@ -547,7 +547,6 @@ source = { editable = "." }
 dependencies = [
     { name = "array-api-compat" },
     { name = "cloudpickle" },
-    { name = "dask", extra = ["distributed"] },
     { name = "dill" },
     { name = "earthkit-data" },
     { name = "fire" },
@@ -561,6 +560,11 @@ dependencies = [
     { name = "qubed" },
     { name = "sortedcontainers" },
     { name = "xarray" },
+]
+
+[package.optional-dependencies]
+dask = [
+    { name = "dask", extra = ["distributed"] },
 ]
 
 [package.dev-dependencies]
@@ -577,7 +581,7 @@ dev = [
 requires-dist = [
     { name = "array-api-compat" },
     { name = "cloudpickle" },
-    { name = "dask", extras = ["distributed"], specifier = ">=2026.1.2" },
+    { name = "dask", extras = ["distributed"], marker = "extra == 'dask'", specifier = ">=2026.1.2" },
     { name = "dill" },
     { name = "earthkit-data" },
     { name = "fire" },
@@ -592,6 +596,7 @@ requires-dist = [
     { name = "sortedcontainers" },
     { name = "xarray" },
 ]
+provides-extras = ["dask"]
 
 [package.metadata.requires-dev]
 dev = [

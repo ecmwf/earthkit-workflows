@@ -10,6 +10,7 @@
 
 import pytest
 
+import cascade.low.tracing as tracing
 from cascade.low.exceptions import (
     CascadeError,
     CascadeInfrastructureError,
@@ -20,6 +21,14 @@ from cascade.low.exceptions import (
 )
 
 
+@pytest.fixture(autouse=True)
+def reset_tracing_labels():
+    """Ensure tracing labels are cleared before each test to avoid cross-test contamination."""
+    tracing.d.clear()
+    yield
+    tracing.d.clear()
+
+
 def test_ser_des_cascade_internal_error():
     """Test serialization and deserialization of CascadeInternalError."""
     exc = CascadeInternalError("something went wrong")
@@ -28,6 +37,7 @@ def test_ser_des_cascade_internal_error():
 
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == "something went wrong"
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
@@ -39,6 +49,7 @@ def test_ser_des_cascade_infrastructure_error():
 
     assert isinstance(deserialized, CascadeInfrastructureError)
     assert deserialized.description == "network failure"
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
@@ -50,6 +61,7 @@ def test_ser_des_cascade_user_error():
 
     assert isinstance(deserialized, CascadeUserError)
     assert deserialized.description == "invalid configuration"
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
@@ -61,11 +73,12 @@ def test_ser_des_cascade_error():
 
     assert isinstance(deserialized, CascadeError)
     assert deserialized.description == "general error"
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
 def test_ser_des_with_parent():
-    """Test that parent field is not preserved (set to None)."""
+    """Test that parent field is not preserved (set to None) and description is kept separately from context."""
     parent_exc = ValueError("parent error")
     exc = CascadeInternalError("child error", parent=parent_exc)
     serialized = ser(exc)
@@ -73,6 +86,7 @@ def test_ser_des_with_parent():
 
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == "child error"
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
@@ -83,6 +97,7 @@ def test_des_invalid_string():
 
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == invalid_str
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
@@ -93,11 +108,15 @@ def test_des_unknown_exception_class():
 
     assert isinstance(deserialized, CascadeInternalError)
     assert deserialized.description == invalid_str
+    assert deserialized.context == {}
     assert deserialized.parent is None
 
 
 def test_ser_des_roundtrip_all_types():
-    """Test roundtrip serialization for all exception types."""
+    """Test roundtrip serialization for all exception types, including context propagation."""
+    tracing.label("host", "h1")
+    tracing.label("task", "my_task")
+
     exceptions = [
         CascadeError("test error"),
         CascadeInternalError("internal error"),
@@ -106,8 +125,10 @@ def test_ser_des_roundtrip_all_types():
     ]
 
     for exc in exceptions:
+        assert exc.context == {"host": "h1", "task": "my_task"}
         serialized = ser(exc)
         deserialized = des(serialized)
         assert type(deserialized) == type(exc)
         assert deserialized.description == exc.description
+        assert deserialized.context == {"host": "h1", "task": "my_task"}
         assert deserialized.parent is None

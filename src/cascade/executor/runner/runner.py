@@ -22,7 +22,7 @@ from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
 from cascade.low.exceptions import CascadeError, CascadeInternalError, CascadeUserError
 from cascade.low.func import assert_iter_empty, assert_never, ensure, resolve_callable
-from cascade.low.tracing import Microtrace, TaskLifecycle, mark, trace
+from cascade.low.tracing import Microtrace, TaskLifecycle, clear_label, label, mark, trace
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class ExecutionContext:
 
 
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
+    label("task", taskId)
     start = perf_counter_ns()
     task = executionContext.tasks[taskId]
     mark({"task": taskId, "action": TaskLifecycle.started})
@@ -133,3 +134,4 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     logger.debug(f"inner elapsed {(run_end - prep_end) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_publish, end - run_end)
     logger.debug(f"post elapsed {(end - run_end) / 1e9: .5f} s in {taskId}")
+    clear_label("task")

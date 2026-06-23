@@ -91,7 +91,7 @@ class DataServer:
                         ex = cast(Exception, ex)  # NOTE ty consider ex BaseException & ~AlwaysFalsy
                         callback(
                             self.maddress,
-                            DatasetTransmitFailure(host=self.host, detail=ser(ex, repr(key))),
+                            DatasetTransmitFailure(host=self.host, detail=ser(ex, {"command": repr(key)})),
                         )
                     else:
                         result = fut.result()
@@ -147,7 +147,7 @@ class DataServer:
                 self.maddress,
                 DatasetTransmitFailure(
                     host=self.host,
-                    detail=ser(e, f"{payload.header.confirm_idx}, {payload.header.ds}"),
+                    detail=ser(e, {"dataset": repr(payload.header.ds)}),
                 ),
             )
         return time_ns()  # not actually consumed but uniform signature with send_payload simplifies typing
@@ -166,7 +166,7 @@ class DataServer:
                 self.maddress,
                 DatasetRetrieveFailure(
                     host=self.host,
-                    detail=ser(e, repr(command)),
+                    detail=ser(e, {"command": repr(command)}),
                 ),
             )
         finally:
@@ -189,7 +189,7 @@ class DataServer:
                 self.maddress,
                 DatasetPersistFailure(
                     host=self.host,
-                    detail=ser(e, repr(command)),
+                    detail=ser(e, {"command": repr(command)}),
                 ),
             )
         finally:
@@ -230,7 +230,7 @@ class DataServer:
                 self.maddress,
                 DatasetTransmitFailure(
                     host=self.host,
-                    detail=ser(e, repr(command)),
+                    detail=ser(e, {"command": repr(command)}),
                 ),
             )
         finally:

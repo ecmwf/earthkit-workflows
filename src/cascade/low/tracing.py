@@ -102,6 +102,12 @@ def label(key: str, value: str) -> None:
     d[key] = value
 
 
+def clear_label(key: str) -> None:
+    """Removes a previously set label. No-op if the key was not set."""
+    global d
+    d.pop(key, None)
+
+
 def mark(labels: Labels) -> None:
     at = time_ns()
     global d
