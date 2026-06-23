@@ -10,6 +10,7 @@
 
 import pytest
 
+import cascade.low.tracing as tracing
 from cascade.low.exceptions import (
     CascadeError,
     CascadeInfrastructureError,
@@ -18,6 +19,14 @@ from cascade.low.exceptions import (
     des,
     ser,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_tracing_labels():
+    """Ensure tracing labels are cleared before each test to avoid cross-test contamination."""
+    tracing.d.clear()
+    yield
+    tracing.d.clear()
 
 
 def test_ser_des_cascade_internal_error():

@@ -17,11 +17,17 @@ Three categories:
    then a re-run may help
 """
 
+import cascade.low.tracing as tracing
+
 
 class CascadeError(Exception):
     """Base class for all Cascade exceptions."""
 
     def __init__(self, description: str, parent: Exception | None = None) -> None:
+        context = dict(tracing.d)
+        if context:
+            context_str = ", ".join(f"{k}={v}" for k, v in context.items())
+            description = f"{context_str}; {description}"
         self.description = description
         self.parent = parent
         super().__init__(description)

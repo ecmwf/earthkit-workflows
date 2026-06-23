@@ -161,6 +161,7 @@ def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
         Memory(runnerContext.callback, workerSetup.workerId) as memory,
         PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}, runnerContext.pip_indices) as pckg,
     ):
+        label("host", workerSetup.workerId.host)
         label("worker", repr(workerSetup.workerId))
         worker_num = workerSetup.workerId.worker_num()
         platform.gpu_init(worker_num)
