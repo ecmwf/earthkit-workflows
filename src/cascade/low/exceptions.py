@@ -21,8 +21,6 @@ import orjson
 
 import cascade.low.tracing as tracing
 
-_CLASS_MAP: dict[str, "type[CascadeError]"]
-
 
 class CascadeError(Exception):
     """Base class for all Cascade exceptions."""
@@ -33,17 +31,23 @@ class CascadeError(Exception):
         self.parent = parent
         super().__init__(description)
 
+    def _context_str(self) -> str:
+        if not self.context:
+            return ""
+        return "; ".join(f"{k}={v}" for k, v in self.context.items()) + "; "
+
     def __repr__(self) -> str:
         parent_repr = f", parent={repr(self.parent)}" if self.parent else ""
-        return f"{type(self).__name__}({self.description!r}{parent_repr})"
+        return f"{type(self).__name__}('{self._context_str()}{self.description}'{parent_repr})"
 
     def __str__(self) -> str:
+        prefix = self._context_str()
         if self.parent:
-            return f"{self.description} (caused by {repr(self.parent)})"
-        return self.description
+            return f"{prefix}{self.description} (caused by {repr(self.parent)})"
+        return f"{prefix}{self.description}"
 
-    def add_context(self, context: str) -> None:
-        self.description = f"{context}; {self.description}"
+    def add_context(self, context: dict[str, str]) -> None:
+        self.context.update(context)
 
 
 class CascadeInternalError(CascadeError):
@@ -58,7 +62,7 @@ class CascadeUserError(CascadeError):
     pass
 
 
-_CLASS_MAP = {
+_CLASS_MAP: dict[str, type[CascadeError]] = {
     "CascadeError": CascadeError,
     "CascadeInternalError": CascadeInternalError,
     "CascadeInfrastructureError": CascadeInfrastructureError,
@@ -66,7 +70,7 @@ _CLASS_MAP = {
 }
 
 
-def ser(e: Exception, extra_context: str | None = None) -> str:
+def ser(e: Exception, extra_context: dict[str, str] | None = None) -> str:
     """Serialize error to a JSON string, converting to CascadeError first if needed.
 
     The serialized format preserves description and context as separate fields so

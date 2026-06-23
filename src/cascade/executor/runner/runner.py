@@ -41,13 +41,6 @@ class ExecutionContext:
 
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
     label("task", taskId)
-    try:
-        _run(taskId, executionContext, memory)
-    finally:
-        clear_label("task")
-
-
-def _run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
     start = perf_counter_ns()
     task = executionContext.tasks[taskId]
     mark({"task": taskId, "action": TaskLifecycle.started})
@@ -141,3 +134,4 @@ def _run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> 
     logger.debug(f"inner elapsed {(run_end - prep_end) / 1e9: .5f} s in {taskId}")
     trace(Microtrace.wrk_publish, end - run_end)
     logger.debug(f"post elapsed {(end - run_end) / 1e9: .5f} s in {taskId}")
+    clear_label("task")
