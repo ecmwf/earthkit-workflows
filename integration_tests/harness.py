@@ -97,8 +97,6 @@ def _ssh_args_for_cluster(deployment_kind: DeploymentKind) -> tuple[list[str], s
 
 
 class RemoteGatewayHelper:
-    # NOTE ugly -- refactor better
-    ekw_wheel: str
     wheels_dir: str
 
 
@@ -140,7 +138,6 @@ def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | Non
             )
 
     remote_ekw_wheel = f"{REMOTE_WHEELS_DIR}/{ekw_wheel.name}"
-    RemoteGatewayHelper.ekw_wheel = remote_ekw_wheel
     RemoteGatewayHelper.wheels_dir = REMOTE_WHEELS_DIR
 
     # Build gateway command with optional shared_path
@@ -204,7 +201,6 @@ def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.
             controller_url="root@main",
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
-            wheel_path=RemoteGatewayHelper.ekw_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     elif deployment_kind == "slurm_cluster":
@@ -212,7 +208,6 @@ def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.
         infra = SlurmCluster(
             workers_per_host=spc.workers,
             hosts=spc.hosts,
-            wheel_path=RemoteGatewayHelper.ekw_wheel,
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     elif deployment_kind == "local":
@@ -237,8 +232,8 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
     destroy_context()
     gw: Process | subprocess.Popen[bytes]
 
-    # For remote deployments, determine the gateway shared_path (inside container)
-    gateway_shared_path = "/shared"  # Path inside container
+    # Slurm requires shared_path for srun scripts; SSH tests the per-node scp path
+    gateway_shared_path = "/shared" if deployment_kind == "slurm_cluster" else None
     gw = spawn_remote_gateway(deployment_kind, gateway_shared_path)
 
     try:
