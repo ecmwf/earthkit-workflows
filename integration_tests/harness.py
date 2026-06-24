@@ -1,6 +1,7 @@
 import argparse
 import importlib
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -190,6 +191,9 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
 def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.JobSpec:
     job = job_mod.job()
     spc = job_mod.spc()
+    envvars = {
+        "CASCADE_DEBUG_PERF": "1",
+    }
     if deployment_kind == "plain_cluster":
         job = job.model_copy(update={"custom_pip_indices": (REMOTE_WHEELS_DIR,)})
         infra = SshCluster(
@@ -197,16 +201,16 @@ def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
             workers_per_host=spc.workers,
         )
-        return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
+        return api.JobSpec(job_instance=job, envvars=envvars, infra_spec=infra)
     elif deployment_kind == "slurm_cluster":
         job = job.model_copy(update={"custom_pip_indices": (REMOTE_WHEELS_DIR,)})
         infra = SlurmCluster(
             workers_per_host=spc.workers,
             hosts=spc.hosts,
         )
-        return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
+        return api.JobSpec(job_instance=job, envvars=envvars, infra_spec=infra)
     elif deployment_kind == "local":
-        return api.JobSpec(job_instance=job, envvars={}, infra_spec=LocalProcesses(workers_per_host=spc.workers, hosts=spc.hosts))
+        return api.JobSpec(job_instance=job, envvars=envvars, infra_spec=LocalProcesses(workers_per_host=spc.workers, hosts=spc.hosts))
     else:
         raise ValueError(f"unsupported deployment kind for cluster submission: {deployment_kind}")
 
@@ -298,11 +302,10 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
 
 def run_local(job_mod: ModuleType) -> None:
     spec = build_job_spec(job_mod, "local")
+    for k, v in spec.envvars.items():
+        os.environ[k] = v
     if not isinstance(spec.infra_spec, api.LocalProcesses):
         raise TypeError
-    # NOTE actually not needed, the editable install survives
-    # if "noRuntime" not in job_mod.__name__:
-    #   add_environment(spec, f"-e {RUNTIME_WHEEL_SRC}")
     outputs = run_locally(job=spec.job_instance, hosts=spec.infra_spec.hosts, workers=spec.infra_spec.workers_per_host)
     job_mod.outputOk(outputs)
     logger.info("Local integration test passed with outputs: %s", list(outputs.keys()))

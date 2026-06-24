@@ -12,12 +12,14 @@ Just io handling (ie, using Memory api), tracing and callable invocation
 """
 
 import logging
+import os
 from collections.abc import Generator
 from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Any, Callable
 
 from cascade.executor.msg import BackboneAddress
+from cascade.executor.platform import get_fdcount
 from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
 from cascade.low.exceptions import CascadeError, CascadeInternalError, CascadeUserError
@@ -39,12 +41,19 @@ class ExecutionContext:
     publish: set[DatasetId]
 
 
+# NOTE we guard this because on macos the get_fdcount can take time
+# (TODO actually measure it... on linux its negligible)
+is_debug_perf = os.environ.get("CASCADE_DEBUG_PERF") == "1"
+
+
 def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> None:
     label("task", taskId)
     start = perf_counter_ns()
     task = executionContext.tasks[taskId]
     mark({"task": taskId, "action": TaskLifecycle.started})
     logger.debug(f"starting {taskId}")
+    if is_debug_perf:
+        logger.debug(f"before executing {taskId=}, we have {get_fdcount()=}")
 
     # prepare func & inputs
     func: Callable
@@ -135,3 +144,5 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
     trace(Microtrace.wrk_publish, end - run_end)
     logger.debug(f"post elapsed {(end - run_end) / 1e9: .5f} s in {taskId}")
     clear_label("task")
+    if is_debug_perf:
+        logger.debug(f"after executing {taskId=}, we have {get_fdcount()=}")
