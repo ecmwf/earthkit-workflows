@@ -23,7 +23,6 @@ stays loaded). PackagesEnv handles this in two ways:
 """
 
 import importlib.metadata
-import json
 import logging
 import os
 import os.path
@@ -34,6 +33,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Callable, Iterable, Literal, cast
 
+import orjson
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -176,27 +176,23 @@ def _maybe_imported_version(mod_name: str) -> Version | None:
 def _earthkit_install_spec() -> str:
     """Returns the install spec for earthkit-workflows suitable for uv pip install.
 
-    For editable/source installs (dev mode), uses the local source path directly.
-    Otherwise, pins to the currently installed version.
-
-    The environment variable CASCADE_EKW_INSTALL_SPEC can override the detection,
-    which is used when the gateway has copied a wheel to a remote node and wants
-    all child processes on that node to reuse the same wheel.
+    For editable/source installs (dev mode) or local paths (.whl copied by
+    the gateway), uses the local source path directly. Otherwise, pins to
+    the currently installed version.
     """
-    env_override = os.environ.get("CASCADE_EKW_INSTALL_SPEC")
-    if env_override:
-        logger.debug(f"using CASCADE_EKW_INSTALL_SPEC override: {env_override}")
-        return env_override
     ek_version = importlib.metadata.version("earthkit-workflows")
     try:
         dist = importlib.metadata.distribution("earthkit-workflows")
         direct_url_text = dist.read_text("direct_url.json")
         if direct_url_text:
-            info = json.loads(direct_url_text)
+            info = orjson.loads(direct_url_text)
             url = info.get("url", "")
-            if url.startswith("file://") and info.get("dir_info", {}).get("editable", False):
+            if url.startswith("file://"):
+                # NOTE this covers two+ scenarios:
+                # and info.get("dir_info", {}).get("editable", False): # editable install
+                # and 'archive_info' in info and url.endswith('whl'): # locally provided wheel
                 path = url[len("file://") :]
-                logger.debug(f"earthkit-workflows is an editable install at {path}")
+                logger.debug(f"earthkit-workflows is file install at {path}")
                 return path
     except Exception as e:
         logger.debug(f"could not read direct_url.json for earthkit-workflows: {repr(e)}")

@@ -16,6 +16,7 @@ import stat
 import subprocess
 import tempfile
 from importlib import resources
+from importlib.metadata import distribution
 from pathlib import Path
 
 import orjson
@@ -24,7 +25,7 @@ from cascade.controller.report import JobId
 from cascade.deployment.logging import LoggingConfig
 from cascade.executor.runner.packages import _earthkit_install_spec
 from cascade.gateway.api import JobSpec, LocalProcesses, SlurmCluster, SshCluster, TroikaSpec
-from cascade.low.exceptions import CascadeUserError
+from cascade.low.exceptions import CascadeInfrastructureError, CascadeUserError
 
 logger = logging.getLogger(__name__)
 _SLURM_TEMPLATE_PACKAGE = "cascade.gateway.slurm_templates"
@@ -155,8 +156,18 @@ def prepare_slurm_install_spec(shared_path: str | None) -> str | None:
     if shared_path is None:
         return None
     ek_spec = _earthkit_install_spec()
-    if not os.path.isabs(ek_spec):
+    if not os.path.isabs(ek_spec):  # PyPI installs -- we just forward it
         return ek_spec
+    if ek_spec.endswith(".whl"):  # local wheel installs -- already built, just forward it
+        return ek_spec
+    try:  # ek_spec is a path but not .whl -- we assume its editable install
+        dist = distribution("earthkit-workflows")
+        direct_url_text = dist.read_text("direct_url.json") or "{}"
+        editable = orjson.loads(direct_url_text)["editable"]
+    except Exception as e:
+        raise CascadeInfrastructureError(f"unparseable installation spec: {ek_spec}")
+    if not editable:
+        raise CascadeInfrastructureError(f"unknown installation spec: {ek_spec}")
 
     slurm_root = Path(shared_path) / "cascade-slurm"
     wheels_dir = slurm_root / "wheels"
@@ -225,8 +236,7 @@ def _spawn_slurm(
         "INSTANCE": str(job_instance_path),
         "REPORT_ADDRESS": f"{addr},{job_id}",
         "LOGGING_CONFIG_SER": logging_ser,
-        "EKW_INSTALL_SPEC": install_spec_to_use,
-        "CASCADE_EKW_INSTALL_SPEC": install_spec_to_use,
+        "UV_RUN_WITH": install_spec_to_use,
         "CONTROLLER_PORT": str(controller_port),
         "JOB_ROOT": str(job_root),
     }
@@ -348,7 +358,7 @@ def _spawn_ssh(
         node_ek = node_ek_specs[node_url]
         # Propagate envvars from job spec, plus the install spec override so that
         # worker venv creation on the remote node reuses the same wheel we copied.
-        all_exports = {**job_spec.envvars, "CASCADE_EKW_INSTALL_SPEC": node_ek}
+        all_exports = {**job_spec.envvars}
         env_exports = "".join(f"export {k}={v}; " for k, v in all_exports.items())
         dist_args = [
             "python",
