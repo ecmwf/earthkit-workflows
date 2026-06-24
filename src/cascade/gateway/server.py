@@ -24,7 +24,7 @@ from cascade.controller.report import deserialize
 from cascade.deployment.logging import init_from_cliparam
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
-from cascade.gateway.spawning import prepare_slurm_install_spec
+from cascade.gateway.spawning import EkwInstallSpec, prepare_install_spec
 from cascade.low.exceptions import CascadeInternalError
 from cascade.ygg.api import YggNode
 
@@ -102,7 +102,7 @@ def serve(
 ) -> None:
     loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
     logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
-    slurm_install_spec = prepare_slurm_install_spec(shared_path)
+    install_spec = prepare_install_spec(shared_path)
     if report_transport == "tcp":
         # Bind to all interfaces so that the gateway is reachable on all network
         # interfaces (important when the gateway has multiple NICs and controllers
@@ -131,7 +131,7 @@ def serve(
         loggingConfig,
         troika_config,
         shared_path,
-        slurm_install_spec,
+        install_spec,
         max_concurrent_jobs,
         max_jobs_history,
         max_queue_length,

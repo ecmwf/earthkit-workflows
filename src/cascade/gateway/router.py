@@ -28,7 +28,7 @@ from cascade.controller.report import (
     JobProgressStarted,
 )
 from cascade.deployment.logging import LoggingConfig
-from cascade.gateway.spawning import spawn_subprocess
+from cascade.gateway.spawning import EkwInstallSpec, spawn_subprocess
 from cascade.low.core import DatasetId, TaskId
 from cascade.low.exceptions import CascadeUserError
 from cascade.low.func import next_uuid
@@ -53,7 +53,7 @@ class JobRouter:
         loggingConfig: LoggingConfig,
         troika_config: str | None,
         shared_path: str | None,
-        slurm_install_spec: str | None,
+        install_spec: EkwInstallSpec | None,
         max_concurrent_jobs: int | None,
         max_jobs_history: int = 20,
         max_queue_length: int = 50,
@@ -77,7 +77,7 @@ class JobRouter:
         self.loggingConfig = loggingConfig
         self.troika_config = troika_config
         self.shared_path = shared_path
-        self.slurm_install_spec = slurm_install_spec
+        self.install_spec = install_spec
 
     def maybe_spawn(self) -> None:
         if not self.jobs_queue:
@@ -97,7 +97,7 @@ class JobRouter:
             self.loggingConfig,
             self.troika_config,
             self.shared_path,
-            self.slurm_install_spec,
+            self.install_spec,
         )
         self.active_jobs += 1
 
