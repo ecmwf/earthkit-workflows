@@ -96,10 +96,6 @@ def _ssh_args_for_cluster(deployment_kind: DeploymentKind) -> tuple[list[str], s
     )
 
 
-class RemoteGatewayHelper:
-    wheels_dir: str
-
-
 def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | None) -> subprocess.Popen[bytes]:
     """Build wheels, copy to remote gateway node, and launch gateway via SSH."""
     with tempfile.TemporaryDirectory(prefix="cascade_remote_wheel_") as wheel_dir:
@@ -138,7 +134,6 @@ def spawn_remote_gateway(deployment_kind: DeploymentKind, shared_path: str | Non
             )
 
     remote_ekw_wheel = f"{REMOTE_WHEELS_DIR}/{ekw_wheel.name}"
-    RemoteGatewayHelper.wheels_dir = REMOTE_WHEELS_DIR
 
     # Build gateway command with optional shared_path
     gateway_cmd_parts = [
@@ -196,7 +191,7 @@ def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.
     job = job_mod.job()
     spc = job_mod.spc()
     if deployment_kind == "plain_cluster":
-        job = job.model_copy(update={"custom_pip_indices": (RemoteGatewayHelper.wheels_dir,)})
+        job = job.model_copy(update={"custom_pip_indices": (REMOTE_WHEELS_DIR,)})
         infra = SshCluster(
             controller_url="root@main",
             worker_urls=[f"root@worker{i}" for i in range(1, spc.hosts + 1)],
@@ -204,7 +199,7 @@ def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.
         )
         return api.JobSpec(job_instance=job, envvars={}, infra_spec=infra)
     elif deployment_kind == "slurm_cluster":
-        job = job.model_copy(update={"custom_pip_indices": (RemoteGatewayHelper.wheels_dir,)})
+        job = job.model_copy(update={"custom_pip_indices": (REMOTE_WHEELS_DIR,)})
         infra = SlurmCluster(
             workers_per_host=spc.workers,
             hosts=spc.hosts,
