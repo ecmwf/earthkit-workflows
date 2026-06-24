@@ -27,7 +27,6 @@ if [[ "$DEBUG" == "1" ]]; then
         echo "instance=${INSTANCE:-}"
         echo "report_address=${REPORT_ADDRESS:-}"
         echo "logging_config_ser_len=${#logging_config_ser}"
-        echo "ekw_install_spec=${EKW_INSTALL_SPEC:-}"
         echo "uv_run_with=${UV_RUN_WITH:-}"
     } >&2
 fi

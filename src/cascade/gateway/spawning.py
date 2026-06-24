@@ -160,13 +160,14 @@ def prepare_slurm_install_spec(shared_path: str | None) -> str | None:
         return ek_spec
     if ek_spec.endswith(".whl"):  # local wheel installs -- already built, just forward it
         return ek_spec
-    try:  # ek_spec is a path but not .whl -- we assume its editable install
+    try:  # ek_spec is a path but not .whl -- we check its editable install
         dist = distribution("earthkit-workflows")
         direct_url_text = dist.read_text("direct_url.json") or "{}"
-        editable = orjson.loads(direct_url_text)["editable"]
+        editable = orjson.loads(direct_url_text)["dir_info"]["editable"]
     except Exception as e:
         raise CascadeInfrastructureError(f"unparseable installation spec: {ek_spec}")
     if not editable:
+        # NOTE maybe its a zip install or another oddity -- lets raise rather than risk
         raise CascadeInfrastructureError(f"unknown installation spec: {ek_spec}")
 
     slurm_root = Path(shared_path) / "cascade-slurm"
@@ -356,10 +357,7 @@ def _spawn_ssh(
 
     def _build_dist_cmd(node_url: str, idx: int, report_arg: list[str]) -> list[str]:
         node_ek = node_ek_specs[node_url]
-        # Propagate envvars from job spec, plus the install spec override so that
-        # worker venv creation on the remote node reuses the same wheel we copied.
-        all_exports = {**job_spec.envvars}
-        env_exports = "".join(f"export {k}={v}; " for k, v in all_exports.items())
+        env_exports = "".join(f"export {k}={v}; " for k, v in job_spec.envvars.items())
         dist_args = [
             "python",
             "-m",
