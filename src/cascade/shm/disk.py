@@ -38,6 +38,7 @@ class Disk:
                         break
                     shm.buf[i : i + l] = b
                     i += l
+            shm.buf.release()
             shm.close()
             # TODO eleminate in favour of track=False, once we are on python 3.13+
             multiprocessing.resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore # _name
@@ -56,6 +57,7 @@ class Disk:
             assert shm.buf is not None
             with open(f"{self.root.name}/{shmid}", "wb") as f:
                 f.write(shm.buf[:])
+            shm.buf.release()
             shm.unlink()
             shm.close()
         except Exception:

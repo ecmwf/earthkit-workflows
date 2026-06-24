@@ -157,6 +157,7 @@ def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     socket.bind(address)
     callback(runnerContext.callback, WorkerReady(workerSetup.workerId))
     logger.debug(f"worker {workerSetup.workerId} sent WorkerReady")
+
     with (
         Memory(runnerContext.callback, workerSetup.workerId) as memory,
         PackagesEnv({k: Version(v) for k, v in workerSetup.initial_installed.items()}, runnerContext.pip_indices) as pckg,
@@ -222,4 +223,5 @@ if __name__ == "__main__":
     _setup_str = os.environ[WORKER_SETUP_ENVVAR]
     _worker_setup = WorkerSetup.from_str(_setup_str)
     _runner_ctx = load_runner_ctx_from_shm(_worker_setup.shm_key)
+
     entrypoint(_worker_setup, _runner_ctx)

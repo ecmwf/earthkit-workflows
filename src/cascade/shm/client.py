@@ -70,6 +70,8 @@ class AllocatedBuffer:
 
     def close(self) -> None:
         if hasattr(self, "shm") and self.shm is not None:
+            if self.shm.buf is not None:
+                self.shm.buf.release()
             self.shm.close()
             if self.close_callback:
                 self.close_callback()
