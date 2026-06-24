@@ -50,5 +50,21 @@ def source_numpy() -> "numpy.ndarray":  # ty: ignore
     return numpy.array([1])
 
 
+ekdType = "earthkit.data.readers.grib.file.GRIBReader"
+
+
+def source_ekd() -> ekdType:  # ty: ignore
+    import earthkit.data as ekd
+
+    return ekd.from_source("sample", "test.grib")
+
+
+def write_grib(a: ekdType, i: int) -> ekdType:  # ty: ignore
+    pth = f"/tmp/file{i}.grib"
+    # TODO delete pth
+    a.to_target("file", pth)
+    return a
+
+
 def transform_numpy(a: "numpy.ndarray") -> "numpy.ndarray":  # ty: ignore
     return a + 1
