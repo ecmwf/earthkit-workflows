@@ -8,7 +8,6 @@
 
 import functools
 
-import dill
 import numpy as np
 import pytest
 
@@ -230,19 +229,6 @@ def test_attributes():
     # Set attributes global to all nodes
     action.add_attributes({"expver": "0001"})
     assert action.nodes.attrs["expver"] == "0001"
-
-
-@pytest.mark.skip("Serialisation not supported due to sinks with outputs")
-def test_serialisation(tmpdir, task_graph):
-    assert len(task_graph.sinks) > 0
-    data = serialise(task_graph)
-    with open(f"{tmpdir}/graph.dill", "wb") as f:
-        dill.dump(data, f)
-
-    with open(f"{tmpdir}/graph.dill", "rb") as f:
-        read_data = dill.load(f)
-    new_graph = deserialise(read_data)
-    assert len(task_graph.sinks) == len(new_graph.sinks)
 
 
 def test_invalid_registration():
