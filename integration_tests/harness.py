@@ -24,7 +24,7 @@ from cascade.gateway.api import LocalProcesses, SlurmCluster, SshCluster
 from cascade.gateway.server import serve
 from cascade.low.core import DatasetId, JobInstanceRich
 from cascade.main import run_locally
-from cascade.ygg.transport import destroy_context
+from cascade.ygg.transport import ensure_clean_zmq_state
 
 logger = logging.getLogger("cascade.main.client")
 
@@ -191,9 +191,7 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
 def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.JobSpec:
     job = job_mod.job()
     spc = job_mod.spc()
-    envvars = {
-        "CASCADE_DEBUG_PERF": "1",
-    }
+    envvars = {}
     if deployment_kind == "plain_cluster":
         job = job.model_copy(update={"custom_pip_indices": (REMOTE_WHEELS_DIR,)})
         infra = SshCluster(
@@ -228,7 +226,7 @@ def collect_outputs(job_id: JobId, datasets: list[DatasetId], job: JobInstanceRi
 
 
 def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
-    destroy_context()
+    ensure_clean_zmq_state()
     gw: Process | subprocess.Popen[bytes]
 
     # Slurm requires shared_path for srun scripts; SSH tests the per-node scp path

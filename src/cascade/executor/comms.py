@@ -75,15 +75,6 @@ def get_context() -> zmq.Context:
     return cascade.ygg.transport.get_context()
 
 
-def get_socket(address: BackboneAddress) -> zmq.Socket:
-    socket = get_context().socket(zmq.PUSH)
-    # NOTE we set the linger in case the executor dies before consuming a message sent
-    # by the child -- otherwise the child process would hang indefinitely
-    socket.set(zmq.LINGER, 1000)
-    socket.connect(address)
-    return socket
-
-
 def callback(address: BackboneAddress, msg: Message):
     # NOTE should be used for local comms only, as does not prepend with Syn message
     # TODO enforce that -- but needs a refactor for executor to open more sockets & poll correctly
@@ -237,7 +228,13 @@ class ReliableSender:
     def add_host(self, host: HostId, address: BackboneAddress) -> None:
         if host in self.hosts:
             self.hosts[host][0].close()
-        self.hosts[host] = (get_socket(address), address)
+
+        socket = get_context().socket(zmq.PUSH)
+        # NOTE we set the linger in case the executor dies before consuming a message sent
+        # by the child -- otherwise the child process would hang indefinitely
+        socket.set(zmq.LINGER, 1000)
+        socket.connect(address)
+        self.hosts[host] = (socket, address)
 
     def send(self, host: HostId, m: Message) -> None:
         raw = ser_message(m)

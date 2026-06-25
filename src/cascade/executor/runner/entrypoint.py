@@ -36,7 +36,7 @@ from cascade.executor.runner.setup import RunnerContext, WorkerSetup, load_runne
 from cascade.low.core import DatasetId, TaskId, WorkerId, type_dec
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.tracing import label
-from cascade.ygg.transport import destroy_context, get_context
+from cascade.ygg.transport import ensure_clean_zmq_state, get_context
 
 logger = logging.getLogger(__name__ if __name__ != "__main__" else "cascade.executor.runner.entrypoint")
 
@@ -149,7 +149,7 @@ def execute_sequence(
 def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     """Main runner loop for a worker process."""
     init_from_obj(runnerContext.loggingConfig, f"worker_{workerSetup.workerId.worker}")
-    destroy_context()
+    ensure_clean_zmq_state()
     ctx = get_context()
     socket = ctx.socket(zmq.PULL)
     address = worker_address(workerSetup.workerId, workerSetup.workerAttemptCnt)

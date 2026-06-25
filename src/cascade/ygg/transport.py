@@ -26,11 +26,14 @@ def get_context() -> zmq.Context:
     return _local.context
 
 
-def destroy_context() -> None:
+def ensure_clean_zmq_state() -> None:
     """When a process has potentially started via a fork, there may be
     a remnant of parent's zmq context, therefore it is imperative to
     destoy it. Additionally, in tests the context may be left in
     an unpractical state, requiring a delete at the start"""
+    # NOTE this is not intended as a general purpose teardown method, rather,
+    # its a startup method. Teardown via atexit register would be at odds
+    # with the storage being thread local
     # Close cached callback sockets before destroying the context they belong to
     if hasattr(_local, "callback_sockets"):
         for sock in _local.callback_sockets.values():
@@ -50,6 +53,12 @@ def get_callback_socket(address: str, linger_ms: int) -> zmq.Socket:
     each close(), so creating a new socket per callback() call leads to hundreds of
     lingering fds at any given time.
     """
+    # NOTE this has a slight downside that we never close the sockets until
+    # the program finishes. We expect the number of sockets to be bound,
+    # as the hosts are static. If this ever ceases to be true, introduce some
+    # ttl and eviction here
+    # NOTE ideally, this whole method gets refactored into OutboundTransport,
+    # to have a unified persistent socket management
     if not hasattr(_local, "callback_sockets"):
         _local.callback_sockets = {}
     sock: zmq.Socket | None = _local.callback_sockets.get(address)

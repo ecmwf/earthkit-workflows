@@ -10,7 +10,7 @@ from cascade.gateway.api import LocalProcesses
 from cascade.gateway.server import serve
 from cascade.low.builders import JobBuilder
 from cascade.low.core import DatasetId, JobInstanceRich, TaskDefinition, TaskId, TaskInstance
-from cascade.ygg.transport import destroy_context
+from cascade.ygg.transport import ensure_clean_zmq_state
 
 init_value = 10
 job_func = lambda i: i * 2
@@ -89,7 +89,7 @@ def spawn_gateway(
 
 @pytest.mark.concurrency_filelock("conflictInExecutorHostname")
 def test_job():
-    destroy_context()
+    ensure_clean_zmq_state()
     url, gw = spawn_gateway(1, max_jobs_history=2)
     try:
         # succ job

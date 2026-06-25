@@ -47,7 +47,7 @@ from cascade.low.core import DatasetId, HostId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, ser
 from cascade.low.func import assert_never
 from cascade.low.tracing import TransmitLifecycle, label, mark
-from cascade.ygg.transport import destroy_context
+from cascade.ygg.transport import ensure_clean_zmq_state
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class DataServer:
         logging_config: dict,
     ):
         logging.config.dictConfig(logging_config)
-        destroy_context()
+        ensure_clean_zmq_state()
 
         self.host = host
         label("host", self.host)
