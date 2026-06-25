@@ -107,6 +107,10 @@ class LocalServer:
                 response = api.OkResponse(error=repr(e))
             logger.debug(f"sending {response=} to {client}")
             self.respond(response, client)
+            # NOTE close accepted socket after responding; for SOCK_STREAM each accept()
+            # creates a new fd that must be explicitly closed or it leaks on the server side
+            if isinstance(client, socket.socket):
+                client.close()
 
 
 def entrypoint(

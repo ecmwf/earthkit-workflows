@@ -12,12 +12,14 @@ Just io handling (ie, using Memory api), tracing and callable invocation
 """
 
 import logging
+import os
 from collections.abc import Generator
 from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Any, Callable
 
 from cascade.executor.msg import BackboneAddress
+from cascade.executor.platform import get_fdcount
 from cascade.executor.runner.memory import Memory
 from cascade.low.core import DatasetId, TaskDefinition, TaskId, TaskInstance
 from cascade.low.exceptions import CascadeError, CascadeInternalError, CascadeUserError

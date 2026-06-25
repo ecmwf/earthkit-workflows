@@ -33,7 +33,7 @@ from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import CheckpointSpec, DatasetId, HostId, JobInstance, JobInstanceRich, StorageId, TaskId
 from cascade.scheduler.core import Preschedule
 from cascade.scheduler.precompute import precompute
-from cascade.ygg.transport import destroy_context
+from cascade.ygg.transport import ensure_clean_zmq_state
 
 # see the comment above
 run_all_tests = int(os.environ.get("RUN_ALL_TESTS", "0")) == 1
@@ -75,7 +75,7 @@ def run_cluster(
     # TODO rework the port assignemnt in this whole file -- we waste a lot. Note if there
     # is a port overlap, it causes *very unpleasant* interference, even when the tests
     # are executed sequentially
-    destroy_context()
+    ensure_clean_zmq_state()
     if not preschedule:
         preschedule = precompute(job.jobInstance)
     c = f"tcp://localhost:{portBase}"

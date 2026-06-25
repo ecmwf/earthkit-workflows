@@ -219,6 +219,8 @@ def save_runner_ctx_to_shm(ctx: RunnerContext, key: str) -> SharedMemory:
         # this should not happen thanks to uuid, but if it does we handle gracefully
         logger.error(f"runner ctx shm {key!r} already existed; deleting and recreating")
         _old = SharedMemory(key, create=False)
+        if _old.buf is not None:
+            _old.buf.release()
         _old.unlink()
         _old.close()
         if sys.platform == "darwin":
@@ -237,8 +239,10 @@ def load_runner_ctx_from_shm(key: str) -> RunnerContext:
     shm = SharedMemory(key, create=False)
     assert shm.buf is not None
     data = bytes(shm.buf[: shm.size])
+    loaded = cloudpickle.loads(data)
+    shm.buf.release()
     shm.close()
-    return cloudpickle.loads(data)
+    return loaded
 
 
 def create_venv(pip_indices: Iterable[str]) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str]]:

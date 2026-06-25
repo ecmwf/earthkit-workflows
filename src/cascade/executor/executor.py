@@ -204,6 +204,8 @@ class Executor:
                 logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
         if hasattr(self, "runner_ctx_shm") and self.runner_ctx_shm is not None:
             try:
+                if self.runner_ctx_shm.buf is not None:
+                    self.runner_ctx_shm.buf.release()
                 self.runner_ctx_shm.unlink()
                 self.runner_ctx_shm.close()
             except Exception as e:

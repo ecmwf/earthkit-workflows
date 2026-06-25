@@ -49,14 +49,14 @@ from cascade.low.core import (
     TaskInstance,
     WorkerId,
 )
-from cascade.ygg.transport import destroy_context
+from cascade.ygg.transport import ensure_clean_zmq_state
 
 logger = logging.getLogger(__name__)
 
 
 def launch_executor(job_instance: JobInstance, controller_address: BackboneAddress, portBase: int, test_name: str):
     dictConfig(logging_config)
-    destroy_context()
+    ensure_clean_zmq_state()
     executor = Executor(
         JobInstanceRich(jobInstance=job_instance, checkpointSpec=None),
         controller_address,

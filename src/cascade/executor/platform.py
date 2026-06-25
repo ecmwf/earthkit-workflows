@@ -12,6 +12,7 @@ import fcntl
 import multiprocessing as mp
 import os
 import socket
+import subprocess
 import sys
 import typing
 
@@ -103,3 +104,29 @@ else:
             os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_WILLNEED)
         except OSError:
             pass
+
+
+if sys.platform == "darwin":
+
+    def get_fdcount() -> int:
+        try:
+            # -p targets only this process ID
+            # -F f tells lsof to output file descriptor lines prefixed with 'f'
+            cmd = ["lsof", "-p", str(os.getpid()), "-F", "f"]
+            out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode()
+
+            # Strip the 'f' prefix to examine the raw FD value
+            # If it's purely digits (like '3' or '12'), it is a real numerical FD
+            # This safely ignores 'cwd', 'txt', 'rtd', and shared memory 'mem' tags
+            fd_count = sum(1 for line in out.splitlines() if line.startswith("f") and line[1:].isdigit())
+            return fd_count
+        except Exception:
+            return -1
+else:
+
+    def get_fdcount() -> int:
+        try:
+            # -1 because the listdir call itself opens an fd
+            return len(os.listdir("/proc/self/fd")) - 1
+        except FileNotFoundError:
+            return -1

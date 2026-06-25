@@ -70,6 +70,8 @@ class AllocatedBuffer:
 
     def close(self) -> None:
         if hasattr(self, "shm") and self.shm is not None:
+            if self.shm.buf is not None:
+                self.shm.buf.release()
             self.shm.close()
             if self.close_callback:
                 self.close_callback()
@@ -95,11 +97,13 @@ def _send_command(comm: api.Comm, resp_class: Type[T], timeout_sec: float = 60.0
     # eventually this busy-waits will go away as we switch to event driven behaviour
     while timeout_sec > 0:
         sock = api.get_client_socket()
-        logger.debug(f"sending message {comm}")
-        sock.send(api.ser(comm))
-        # TODO rewrite to poller with timeout
-        response_raw = sock.recv(1024)  # TODO or recv(4) + recv(int.from_bytes)?
-        sock.close()
+        try:
+            logger.debug(f"sending message {comm}")
+            sock.send(api.ser(comm))
+            # TODO rewrite to poller with timeout
+            response_raw = sock.recv(1024)  # TODO or recv(4) + recv(int.from_bytes)?
+        finally:
+            sock.close()
         response_com = api.deser(response_raw)
         logger.debug(f"received response {response_com}")
         # NOTE we first check for presence of error, and only then for Type,
