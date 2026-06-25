@@ -24,17 +24,19 @@ dependencies = [
     "cloudpickle",
     "numpy",
     "xarray",
-    "networkx",
     "array-api-compat",
     "sortedcontainers",
-    "pyvis",
-    "dill",
     "pyrsistent",
     "pydantic",
     "pyzmq",
     "fire",
     "orjson",
     "qubed>=0.3.0",
+]
+# NOTE optional dependencies are not needed for runtime and would only slow down new worker spin ups etc
+optional-dependencies.vizualize = [
+    "networkx",
+    "pyvis",
 ]
 optional-dependencies.dask = [
     "dask[distributed]>=2026.1.2",

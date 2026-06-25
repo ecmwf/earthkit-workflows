@@ -8,8 +8,6 @@
 
 import pkgutil
 
-import dill
-
 __path__ = pkgutil.extend_path(__path__, __name__)
 
 try:
@@ -33,17 +31,6 @@ class Cascade:
         for action in actions:
             graph += action.graph()
         return cls(deduplicate_nodes(graph))
-
-    @classmethod
-    def from_serialised(cls, filename: str):
-        with open(filename, "rb") as f:
-            data = dill.load(f)
-            return cls(deserialise(data))
-
-    def serialise(self, filename: str):
-        data = serialise(self._graph)
-        with open(filename, "wb") as f:
-            dill.dump(data, f)
 
     def visualise(self, *args, **kwargs):
         return _visualise_fn(self._graph, *args, **kwargs)
