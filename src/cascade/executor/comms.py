@@ -87,25 +87,23 @@ def get_socket(address: BackboneAddress) -> zmq.Socket:
 def callback(address: BackboneAddress, msg: Message):
     # NOTE should be used for local comms only, as does not prepend with Syn message
     # TODO enforce that -- but needs a refactor for executor to open more sockets & poll correctly
-    socket = get_socket(address)
-    try:
-        byt = ser_message(msg)
-        socket.send(byt)
-    finally:
-        # NOTE must close explicitly: relying on GC causes sockets to accumulate, exhausting fd limits
-        socket.close()
+    #
+    # NOTE use a cached socket per address. Creating a new socket per call and closing it
+    # immediately doesn't work because ZMQ's IO thread keeps the underlying transport fd alive
+    # for the full LINGER period (1000ms), causing hundreds of fds to accumulate when
+    # callback() is called frequently. One persistent socket per destination avoids this.
+    socket = cascade.ygg.transport.get_callback_socket(address, linger_ms=1000)
+    byt = ser_message(msg)
+    socket.send(byt)
 
 
 def send_data(address: BackboneAddress, data: DatasetTransmitPayload, syn: Syn) -> zmq.MessageTracker:
-    socket = get_socket(address)
-    try:
-        byt = (ser_message(syn), pickle.dumps(data.header), data.value)
-        tracker = socket.send_multipart(byt, copy=False, track=True)
-    finally:
-        # NOTE must close explicitly; LINGER ensures delivery before the OS fd is freed.
-        # The returned tracker remains valid after close — it tracks the message buffer lifecycle,
-        # not the socket lifecycle.
-        socket.close()
+    # NOTE same caching rationale as callback() above.
+    # The returned MessageTracker tracks the message buffer lifecycle independently of the socket,
+    # so keeping the socket open after send is safe.
+    socket = cascade.ygg.transport.get_callback_socket(address, linger_ms=1000)
+    byt = (ser_message(syn), pickle.dumps(data.header), data.value)
+    tracker = socket.send_multipart(byt, copy=False, track=True)
     return tracker
 
 
@@ -237,6 +235,8 @@ class ReliableSender:
         self.address = address
 
     def add_host(self, host: HostId, address: BackboneAddress) -> None:
+        if host in self.hosts:
+            self.hosts[host][0].close()
         self.hosts[host] = (get_socket(address), address)
 
     def send(self, host: HostId, m: Message) -> None:
