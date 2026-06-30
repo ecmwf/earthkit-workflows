@@ -20,7 +20,7 @@ class MockNode(Node):
         super().__init__(Payload(lambda name=name: name))
 
 
-def mock_action(shape: tuple, coords: Optional[dict[str, int]] = None, path: str = "/") -> Action:
+def mock_action(shape: tuple, coords: Optional[dict[str, list[int]]] = None, path: str = "/") -> Action:
     nodes = np.empty(shape, dtype=object)
     it = np.nditer(nodes, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
     for _ in it:

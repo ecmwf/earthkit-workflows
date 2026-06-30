@@ -32,8 +32,8 @@ def test_datacubes():
             [
                 mock_action((1, 1), coords={"dim": [0], "dim1": [0]}, path="/path1").nodes,
                 mock_action((1, 1), coords={"dim": [1], "dim1": [0]}, path="/path1").nodes,
-                mock_action((1), coords={"dim1": [1]}, path="/path2").nodes,
-                mock_action((1), coords={"dim1": [2]}, path="/path2").nodes,
+                mock_action((1,), coords={"dim1": [1]}, path="/path2").nodes,
+                mock_action((1,), coords={"dim1": [2]}, path="/path2").nodes,
             ],
             {"/path1": {"dim": [0, 1], "dim1": [0]}, "/path2": {"dim1": [1, 2]}},
         ],

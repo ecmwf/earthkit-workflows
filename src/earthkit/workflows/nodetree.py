@@ -78,8 +78,14 @@ def datacubes(nodetree: xr.DataTree) -> list[dict]:
 
 
 def combine_by_coords(nodetrees: list[xr.DataTree]) -> xr.DataTree:
-    combined = {}
+    arrays: dict[str, list[xr.DataArray]] = {}
     for tree in nodetrees:
         for npath, narray in nodetree_arrays(tree):
-            combined.setdefault(npath, []).append(narray)
-    return nodetree_from_dict({path: xr.combine_by_coords(arrays) for path, arrays in combined.items()})
+            arrays.setdefault(npath, []).append(narray)
+    combined: dict[str, xr.DataArray] = {}
+    for npath, narrays in arrays.items():
+        ncombined = xr.combine_by_coords(narrays)
+        if isinstance(ncombined, xr.Dataset):
+            ncombined = ncombined.to_dataarray()
+        combined[npath] = ncombined
+    return nodetree_from_dict(combined)
