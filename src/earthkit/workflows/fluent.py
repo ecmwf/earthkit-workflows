@@ -332,8 +332,7 @@ class Action:
             if match_coord_values:
                 for coord, values in narray.coords.items():
                     if coord in oarray.coords:
-                        assigned = oarray.assign_coords(**{str(coord): values})
-                        other_action.nodes[npath] = assigned.to_dataset()
+                        oarray = oarray.assign_coords(**{str(coord): values})
             node_arrays[npath] = xr.concat(
                 [narray, oarray],
                 dim=(dim if isinstance(dim, str) else xr.DataArray(dim[1], name=dim[0])),
@@ -462,7 +461,7 @@ class Action:
         dim: str or `Coord`, name of dimension or `Coord` specifying new dimension name and
         coordinate values
         internal_dim: int, str or DataArray, index or name of internal dimension to expand, or
-        `Coord` specifying dimension name and list of selection criteria
+        `Coord` specifying dimension name and list of selection criteria.
         dim_size: int | None, size of new dimension. If not given `internal_dim` must be `Coord`
         axis: int, position to insert new dimension
         path: Optional[str], path to select subset of nodes to operate on, if provided
@@ -478,6 +477,8 @@ class Action:
             params = [(i, internal_dim, backend_kwargs) for i in range(dim_size)]
         else:
             params = [(x, internal_dim[0], backend_kwargs) for x in internal_dim[1]]
+            if isinstance(dim, str):
+                dim = (dim, internal_dim[1])
 
         if not isinstance(dim, str) and len(params) != len(dim[1]):
             raise ValueError("Length of values in `dim` must match `dim_size` or length of values in `internal_dim`")

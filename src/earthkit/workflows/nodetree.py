@@ -10,6 +10,7 @@ from typing import Iterable, Optional, Tuple
 
 import numpy as np
 import xarray as xr
+from qubed import Qube
 
 
 def nodetree_from_dict(data: dict[str, xr.DataArray] | dict[str, xr.Dataset], *args, **kwargs) -> xr.DataTree:
@@ -67,3 +68,24 @@ def nodetree_new_dimension(nodetree: xr.DataTree, attempt: str = "tempindex") ->
         attempt = f"{attempt}{index}"
         index += 1
     return attempt
+
+
+def datacubes(nodetree: xr.DataTree) -> list[dict]:
+    qube = Qube.empty()
+    for _, narray in nodetree_arrays(nodetree):
+        qube = qube | Qube.from_datacube({dim: values.data.tolist() for dim, values in narray.coords.items()})
+    return list(qube.datacubes())
+
+
+def combine_by_coords(nodetrees: list[xr.DataTree]) -> xr.DataTree:
+    arrays: dict[str, list[xr.DataArray]] = {}
+    for tree in nodetrees:
+        for npath, narray in nodetree_arrays(tree):
+            arrays.setdefault(npath, []).append(narray)
+    combined: dict[str, xr.DataArray] = {}
+    for npath, narrays in arrays.items():
+        ncombined = xr.combine_by_coords(narrays)
+        if isinstance(ncombined, xr.Dataset):
+            ncombined = ncombined.to_dataarray()
+        combined[npath] = ncombined
+    return nodetree_from_dict(combined)
