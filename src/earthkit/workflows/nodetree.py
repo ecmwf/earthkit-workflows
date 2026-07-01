@@ -101,10 +101,13 @@ def datacubes(nodetree: xr.DataTree) -> list[dict]:
     return list(qube.datacubes())
 
 
-def combine_by_coords(nodetrees: list[xr.DataTree]) -> xr.DataTree:
+def combine_by_coords(nodetrees: list[xr.DataTree], expand_dims: bool = False) -> xr.DataTree:
     arrays: dict[str, list[xr.DataArray]] = {}
     for tree in nodetrees:
         for npath, narray in nodetree_arrays(tree):
+            if expand_dims:
+                expand_coords = {dim: [value.data.tolist()] for dim, value in narray.coords.items() if value.ndim == 0}
+                narray = narray.expand_dims(dim=expand_coords)
             arrays.setdefault(npath, []).append(narray)
     combined: dict[str, Union[xr.DataArray, xr.Dataset]] = {}
     for npath, narrays in arrays.items():
