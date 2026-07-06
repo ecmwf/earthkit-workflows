@@ -108,6 +108,6 @@ def combine_by_coords(nodetrees: list[xr.DataTree]) -> xr.DataTree:
             arrays.setdefault(npath, []).append(narray)
     combined: dict[str, Union[xr.DataArray, xr.Dataset]] = {}
     for npath, narrays in arrays.items():
-        combined[npath] = xr.combine_by_coords(narrays)
+        combined[npath] = xr.combine_by_coords(narrays, coords="different", compat="identical")
     nodetree = nodetree_from_dict(combined)
     return nodetree

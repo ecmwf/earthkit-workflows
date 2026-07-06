@@ -796,7 +796,7 @@ class Action:
                     except (KeyError, IndexError):
                         pass
             if len(selected_arrays) > 0:
-                new_nodes[npath] = xr.combine_by_coords(selected_arrays)
+                new_nodes[npath] = xr.combine_by_coords(selected_arrays, coords="different", compat="identical")
 
         if len(new_nodes) == 0:
             raise IndexError(f"No nodes match select criteria {crit}")
