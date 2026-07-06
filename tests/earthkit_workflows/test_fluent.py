@@ -492,3 +492,25 @@ def test_merge(args, kwargs, dims):
         for dim, values in dims[npath].items():
             assert dim in narray.coords
             assert np.all(values == narray.coords[dim])
+
+
+@pytest.mark.parametrize(
+    "args, shape_or_error, coords",
+    [
+        [[{"new_dim": "x"}], (1, 4), {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": "x"}],
+        [[{"new_dim": "x"}, False, True], (1, 1, 4), {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": ["x"]}],
+        [[{"dim_0": 2}], ValueError, {}],
+        [[{"dim_0": 2}, True, True], (1, 4), {"dim_0": [2], "dim_1": [0, 1, 2, 3]}],
+    ],
+    ids=["new-coord", "new-coord-expand", "existing-coord", "override-existing-coord"],
+)
+def test_set_coords(args, shape_or_error, coords):
+    action = mock_action((1, 4))
+    if isinstance(shape_or_error, type) and issubclass(shape_or_error, Exception):
+        with pytest.raises(shape_or_error):
+            action.set_scalar_coords(*args)
+    else:
+        action.set_scalar_coords(*args)
+        for _, narray in nodetree_arrays(action.nodes):
+            assert narray.shape == shape_or_error
+            assert {dim: val.data.tolist() for dim, val in narray.coords.items()} == coords

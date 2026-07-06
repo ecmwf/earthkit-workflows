@@ -1097,6 +1097,33 @@ class Action:
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
+    def set_scalar_coords(
+        self,
+        coords: dict[str, Union[int, str]],
+        override: bool = False,
+        make_dim: bool = False,
+    ):
+        """
+        Set scalar coordinates for the nodes in the action.
+
+        Parameters
+        ----------
+        coords : dict[str, Union[int, str]], dictionary of coordinates to set.
+        override : bool, optional, whether to override existing coordinates, by default False
+        make_dim : bool, optional, whether to create a new dimension for the coordinate, by default False
+        """
+        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        for dim, value in coords.items():
+            for npath, narray in nodetree.items():
+                if override and dim in narray.dims and len(narray.coords[dim]) == 1:
+                    narray = narray.squeeze(dim, drop=True)
+                narray = narray.expand_dims({dim: [value]})
+
+                if not make_dim:
+                    narray = narray.squeeze(dim, drop=False)
+                nodetree[npath] = narray
+        self.nodes = nodetree_from_dict(nodetree)
+
     def _add_dimension(self, name: str, value: Any, axis: Optional[int] = None, path: Optional[str] = None):
         new_tree = self.nodes.map_over_datasets(lambda ds: ds.expand_dims({name: [value]}, axis))
         assert isinstance(new_tree, xr.DataTree)
