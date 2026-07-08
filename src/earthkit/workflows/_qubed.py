@@ -7,9 +7,10 @@
 # nor does it submit to any jurisdiction.
 
 
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
 
-import numpy as np
+import json
+from typing import TYPE_CHECKING, Any, Optional
 
 from earthkit.workflows import fluent
 
@@ -33,14 +34,31 @@ def _convert_num_to_abc(num: int) -> str:
     return result
 
 
-def get_name(child: "Qube", index: int) -> str:
-    if "name" in child.metadata:
-        name_meta = child.metadata["name"]  # type: ignore[index]
-        return str(np.unique_values(name_meta).flatten()[0])
+def _get_name(node: dict[str, Any], index: int) -> str:
+    """Extract a branch name from a tree-JSON node's metadata.
+
+    Falls back to an alphabetical label (a, b, c, ...) when the ``name``
+    metadata is absent.
+
+    TODO: Once the Rust Qube supports metadata, the ``name`` field will be
+    populated automatically.  Until then callers that need named branches
+    should set metadata in the tree-JSON dict before calling
+    ``expand_as_qube``.
+    """
+    meta = node.get("metadata", {})
+    if "name" in meta:
+        name_entry = meta["name"]
+        # metadata "name" follows the tree-JSON shape: {"values": [...], ...}
+        if isinstance(name_entry, dict) and "values" in name_entry:
+            vals = name_entry["values"]
+            if vals:
+                return str(vals[0])
+        # Plain string / scalar metadata (future-proofing)
+        return str(name_entry)
     return _convert_num_to_abc(index)
 
 
-def expand_as_qube(action: "Action", qube: "Qube", dims: Optional[list[str]] = None) -> "Action":
+def expand_as_qube(action: Action, qube: Qube, dims: Optional[list[str]] = None) -> Action:
     """Expand an action according to a qube structure.
 
     This function recursively traverses the qube hierarchy and expands the action
@@ -77,7 +95,7 @@ def expand_as_qube(action: "Action", qube: "Qube", dims: Optional[list[str]] = N
     5. Child branches are named using the qube's "name" metadata or alphabetical
        fallback (a, b, c, ...)
 
-    **Important**: When combining qubes using the `|` operator, for a parent
+    **Important**: When combining qubes using the ``|`` operator, for a parent
     qube to have a dimension, BOTH children must share that dimension.
 
     Examples
@@ -97,44 +115,53 @@ def expand_as_qube(action: "Action", qube: "Qube", dims: Optional[list[str]] = N
     >>> # ├── name=surface, param=2t/10u/10v
     >>> # └── name=pressure, param=t/u/v, level=500/850/1000
     >>> surface = Qube.from_datacube({"step": [6, 12], "param": ["2t", "10u", "10v"]})
-    >>> surface.add_metadata({"name": "surface"})
     >>> pressure = Qube.from_datacube({"step": [6, 12], "param": ["t", "u", "v"], "level": [500, 850, 1000]})
-    >>> pressure.add_metadata({"name": "pressure"})
     >>> qube = surface | pressure  # Both have step, so parent has step
     >>> expanded_action = expand_as_qube(action, qube)
     # Result has hierarchical structure:
-    # /surface - expanded with (step, param)
-    # /pressure - expanded with (step, param, level)
+    # /a - expanded with (step, param)
+    # /b - expanded with (step, param, level)
 
     Drop an axis before expansion:
 
     >>> qube = Qube.from_datacube({"step": [6, 12], "param": ["t", "q"]})
-    >>> qube_without_step = qube.remove_by_key("step")
+    >>> qube_without_step = qube.drop(["step"])
     >>> expanded_action = expand_as_qube(action, qube_without_step)
     # Action expanded over param dimension only
     """
 
-    leaves: dict[str, Action] = {}
+    # Serialise the Qube into its tree-JSON representation so we can walk
+    # the node hierarchy without needing per-node Python bindings.
+    tree: dict[str, Any] = json.loads(qube.to_tree_json())
     expand_dims: list[str] = dims or list(qube.axes().keys())
 
-    def expand_fn(action: "Action", qube: "Qube", path: str, dims: list[str]) -> "Action":
-        """Recursively expand the action based on the qube structure."""
-        if qube.key in dims:
-            # Expand along the current qube's key and values
-            action = action.expand((qube.key, list(qube.values)), (qube.key, list(qube.values)), backend_kwargs={"method": "sel"})
+    leaves: dict[str, Action] = {}
 
-        match len(qube.children):
+    def _walk(action: Action, node: dict[str, Any], path: str) -> None:
+        """Recursively expand *action* by walking the tree-JSON *node*."""
+        key: str = node["key"]
+        values: list[Any] = node["values"]["values"]
+        children: list[dict[str, Any]] = node["children"]
+
+        if key != "root" and key in expand_dims and values:
+            action = action.expand(
+                (key, values),
+                (key, values),
+                backend_kwargs={"method": "sel"},
+            )
+
+        match len(children):
             case 0:
                 assert path not in leaves, f"Duplicate path detected: {path}"
                 leaves[path] = action
-            case 1:  # In the case of one child, no need to split, just continue expanding
-                expand_fn(action, qube.children[0], path, expand_dims)
-            case _:  # Multiple children, need to split into branches
-                for i, child in enumerate(qube.children):
-                    expand_fn(action, child, f"{path}/{get_name(child, i)}", expand_dims)
+            case 1:
+                _walk(action, children[0], path)
+            case _:
+                for i, child in enumerate(children):
+                    _walk(action, child, f"{path}/{_get_name(child, i)}")
 
-        return fluent.merge(**leaves)
-
-    if not qube.children:
+    if not tree.get("children"):
         return action
-    return expand_fn(action, qube, "", expand_dims)
+
+    _walk(action, tree, "")
+    return fluent.merge(**leaves)

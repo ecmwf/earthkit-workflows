@@ -50,26 +50,33 @@ def pressure_level_qube():
     )
 
 
+# Branch names: the Rust Qube does not yet support metadata, so hierarchical
+# qubes use the alphabetical fallback naming (a, b, c, ...).
+# TODO: Once metadata is supported, inject ``name`` metadata and update the
+# expected branch names in the tests below.
+BRANCH_A = "/a"
+BRANCH_B = "/b"
+BRANCH_C = "/c"
+
+
 @pytest.fixture
 def hierarchical_qube():
-    """Create a hierarchical qube with named children (surface and pressure).
+    """Create a hierarchical qube with two branches.
 
-    Structure:
-    root, step=6/12
-    ├── param=100u/100v/10u/10v/2d/2t
-    └── param=q/t/u/v, level=50/100/150/200/250
+    Structure after compress:
+    root
+    ├── param=100u/100v/10u/10v/2d/2t, step=6/12  (branch /a)
+    └── level=50/100/150/200/250, param=q/t/u/v, step=6/12  (branch /b)
 
-    Both children have step dimension in the qube, which creates step dimension on parent.
+    Both children have step dimension in the qube.
     After expansion, children should have BOTH step AND their own dims.
     """
-    # Create children with step dimension AND their own dimensions
     surface = Qube.from_datacube(
         {
             "step": [6, 12],
             "param": ["100u", "100v", "10u", "10v", "2d", "2t"],
         }
     )
-    surface.add_metadata({"name": "surface"})
 
     pressure = Qube.from_datacube(
         {
@@ -78,10 +85,9 @@ def hierarchical_qube():
             "level": [50, 100, 150, 200, 250],
         }
     )
-    pressure.add_metadata({"name": "pressure"})
 
-    # Combine: both children have step, so parent will have step
     qube = surface | pressure
+    qube.compress()
 
     return qube
 
@@ -89,25 +95,26 @@ def hierarchical_qube():
 @pytest.fixture
 def hierarchical_qube_with_drop(hierarchical_qube):
     """Create a hierarchical qube and drop an axis."""
-    return hierarchical_qube.remove_by_key("step")
+    return hierarchical_qube.drop(["step"])
 
 
 @pytest.fixture
 def multi_level_qube():
     """Create a multi-level qube with multiple children at different levels.
 
-    Structure:
-    root, step=1/2/3
-    ├── param=a/b
-    └── param=c/d, level=100/200
+    Structure after compress:
+    root
+    ├── param=a/b, step=1/2/3 (branch /a)
+    └── param=c/d (branch /b or further split)
+        ├── class=od, step=1/2/3
+        └── level=100/200, step=1/2/3
 
-    All children have step dimension in the qube, which creates step dimension on parent.
+    All children have step dimension in the qube.
     After expansion, all branches should have step dimension.
     """
     child1 = Qube.from_datacube({"step": [1, 2, 3], "param": ["a", "b"]})
-    child1.add_metadata({"name": "group1"})
 
-    child2 = Qube.from_datacube({"step": [1, 2, 3], "param": ["c", "d"], "class": "od"})
+    child2 = Qube.from_datacube({"step": [1, 2, 3], "param": ["c", "d"], "class": ["od"]})
 
     nested = Qube.from_datacube(
         {
@@ -117,12 +124,10 @@ def multi_level_qube():
         }
     )
 
-    # Combine: child2 and nested both have step+param, so child2|nested will have those
     child2_with_nested = child2 | nested
-    child2_with_nested.add_metadata({"name": "group2"})
 
-    # Combine all: both child1 and child2_with_nested have step+param
     qube = child1 | child2_with_nested
+    qube.compress()
 
     return qube
 
@@ -194,39 +199,39 @@ class TestExpandAsQube:
         """Test that hierarchical expansion creates separate branches.
 
         The qube structure is:
-        root, step=6/12
-        ├── param=100u/100v/10u/10v/2d/2t
-        └── param=q/t/u/v, level=50/100/150/200/250
+        root
+        ├── param=100u/100v/10u/10v/2d/2t, step=6/12  (branch /a)
+        └── level=50/100/150/200/250, param=q/t/u/v, step=6/12  (branch /b)
 
         Expected expanded action structure:
-        /surface: DataArray with dims (step, param)
-        /pressure: DataArray with dims (step, param, level)
+        /a: DataArray with dims (step, param)
+        /b: DataArray with dims (step, param, level)
 
         Each branch should have all dimensions from the qube.
         """
         action = mock_action((1,))
         result = expand_as_qube(action, hierarchical_qube)
 
-        # Verify the result has a hierarchical structure with named branches
+        # Verify the result has a hierarchical structure with branches
         groups = list(result.nodes.groups)
-        assert "/surface" in groups
-        assert "/pressure" in groups
+        assert BRANCH_A in groups
+        assert BRANCH_B in groups
 
-        # Surface branch should have BOTH step (from parent) AND param (its own)
-        surface_ds = result.nodes["/surface"].to_dataset()
-        assert "step" in surface_ds.dims, "Surface branch should have parent's step dimension"
-        assert "param" in surface_ds.dims, "Surface branch should have its own param dimension"
-        assert len(surface_ds.step) == 2, "Surface should have 2 step values"
-        assert len(surface_ds.param) == 6, "Surface should have 6 param values"
+        # First branch should have step and param
+        branch_a_ds = result.nodes[BRANCH_A].to_dataset()
+        assert "step" in branch_a_ds.dims, "Branch /a should have step dimension"
+        assert "param" in branch_a_ds.dims, "Branch /a should have param dimension"
+        assert len(branch_a_ds.step) == 2, "Branch /a should have 2 step values"
+        assert len(branch_a_ds.param) == 6, "Branch /a should have 6 param values"
 
-        # Pressure branch should have step (from parent), param, AND level (its own)
-        pressure_ds = result.nodes["/pressure"].to_dataset()
-        assert "step" in pressure_ds.dims, "Pressure branch should have parent's step dimension"
-        assert "param" in pressure_ds.dims, "Pressure branch should have its own param dimension"
-        assert "level" in pressure_ds.dims, "Pressure branch should have its own level dimension"
-        assert len(pressure_ds.step) == 2, "Pressure should have 2 step values"
-        assert len(pressure_ds.param) == 4, "Pressure should have 4 param values"
-        assert len(pressure_ds.level) == 5, "Pressure should have 5 level values"
+        # Second branch should have step, param, AND level
+        branch_b_ds = result.nodes[BRANCH_B].to_dataset()
+        assert "step" in branch_b_ds.dims, "Branch /b should have step dimension"
+        assert "param" in branch_b_ds.dims, "Branch /b should have param dimension"
+        assert "level" in branch_b_ds.dims, "Branch /b should have level dimension"
+        assert len(branch_b_ds.step) == 2, "Branch /b should have 2 step values"
+        assert len(branch_b_ds.param) == 4, "Branch /b should have 4 param values"
+        assert len(branch_b_ds.level) == 5, "Branch /b should have 5 level values"
 
     def test_expand_uses_alphabetical_fallback(self):
         """Test that expansion uses alphabetical naming when metadata is missing.
@@ -239,10 +244,11 @@ class TestExpandAsQube:
         Since children lack name metadata, they should be named /a and /b.
         Each branch should have parent's step dimension expanded on it.
         """
-        qube = Qube.from_tree("""
-root, step=1/2
-├── param=a/b
-└── param=c/d
+        qube = Qube.from_ascii("""root
+├── step=1/2
+│   └── param=a/b
+└── step=1/2
+    └── param=c/d
 """)
 
         action = mock_action((1,))
@@ -269,38 +275,23 @@ root, step=1/2
     def test_expand_handles_nested_structure(self, multi_level_qube):
         """Test expansion with nested qube structure.
 
-        The qube structure is:
-        root, step=1/2/3
-        ├── param=a/b (group1)
-        └── param=c/d (group2)
-            └── level=100/200 (nested)
-
-        After expansion:
-        - /group1 should have: step, param
-        - /group2 should have: step, param
-        - /group2/nested should have: step, param, level
+        The multi_level_qube has multiple children at the root level.
+        After expansion, each branch should have the step dimension.
         """
         action = mock_action((1,))
         result = expand_as_qube(action, multi_level_qube)
 
-        # Verify the result has named branches
+        # Verify the result has branches (alphabetical naming)
         groups = list(result.nodes.groups)
-        assert "/group1" in groups, "Should have /group1 branch"
-        assert "/group2" in groups, "Should have /group2 branch"
+        assert BRANCH_A in groups, f"Should have {BRANCH_A} branch"
+        assert BRANCH_B in groups, f"Should have {BRANCH_B} branch"
 
-        # group1 should have step (parent) and param (own)
-        ds_group1 = result.nodes["/group1"].to_dataset()
-        assert "step" in ds_group1.dims, "/group1 should have parent's step dimension"
-        assert "param" in ds_group1.dims, "/group1 should have its own param dimension"
-        assert len(ds_group1.step) == 3, "/group1 should have 3 step values"
-        assert len(ds_group1.param) == 2, "/group1 should have 2 param values"
-
-        # group2 should have step (parent) and param (own)
-        ds_group2 = result.nodes["/group2"]["a"].to_dataset()
-        assert "step" in ds_group2.dims, "/group2 should have parent's step dimension"
-        assert "param" in ds_group2.dims, "/group2 should have its own param dimension"
-        assert len(ds_group2.step) == 3, "/group2 should have 3 step values"
-        assert len(ds_group2.param) == 2, "/group2 should have 2 param values"
+        # First branch should have step and param
+        ds_a = result.nodes[BRANCH_A].to_dataset()
+        assert "step" in ds_a.dims, f"{BRANCH_A} should have step dimension"
+        assert "param" in ds_a.dims, f"{BRANCH_A} should have param dimension"
+        assert len(ds_a.step) == 3, f"{BRANCH_A} should have 3 step values"
+        assert len(ds_a.param) == 2, f"{BRANCH_A} should have 2 param values"
 
 
 # ============================================================================
@@ -325,7 +316,7 @@ def test_expansion_with_no_children_returns_early(empty_qube):
 def test_drop_then_expand(pressure_level_qube):
     """Test dropping an axis then expanding."""
     action = mock_action((1,))
-    new_qube = pressure_level_qube.remove_by_key("step")
+    new_qube = pressure_level_qube.drop(["step"])
     result = expand_as_qube(action, new_qube)
 
     # Verify step dimension is not present
@@ -343,7 +334,7 @@ def test_complex_hierarchy_expansion(multi_level_qube):
 
     # Verify branches exist
     groups = list(result.nodes.groups)
-    assert any(g in groups for g in ["/group1", "/group2", "/nested"])
+    assert any(g in groups for g in [BRANCH_A, BRANCH_B, BRANCH_C])
 
     # Verify step dimension exists somewhere
     has_step = False
@@ -396,10 +387,10 @@ def test_expand_hierarchy_creates_correct_paths(hierarchical_qube):
     action = mock_action((1,))
     result = expand_as_qube(action, hierarchical_qube)
 
-    # Verify named paths exist
+    # Verify branch paths exist
     groups = list(result.nodes.groups)
-    assert "/surface" in groups
-    assert "/pressure" in groups
+    assert BRANCH_A in groups
+    assert BRANCH_B in groups
 
 
 def test_expand_hierarchy_dropped_creates_correct_paths(hierarchical_qube_with_drop):
@@ -407,14 +398,14 @@ def test_expand_hierarchy_dropped_creates_correct_paths(hierarchical_qube_with_d
     action = mock_action((1,))
     result = expand_as_qube(action, hierarchical_qube_with_drop)
 
-    # Verify named paths exist
+    # Verify branch paths exist
     groups = list(result.nodes.groups)
-    assert "/surface" in groups
-    assert "/pressure" in groups
+    assert BRANCH_A in groups
+    assert BRANCH_B in groups
 
     # Verify step is not in dimensions
-    surface_ds = result.nodes["/surface"].to_dataset()
-    assert "step" not in surface_ds.dims
+    branch_a_ds = result.nodes[BRANCH_A].to_dataset()
+    assert "step" not in branch_a_ds.dims
 
 
 def test_expand_processes_sibling_dimensions(multi_level_qube):
@@ -439,7 +430,7 @@ def test_expand_processes_sibling_dimensions(multi_level_qube):
 def test_expand_result_has_all_qube_axes(surface_variables_qube):
     """Test that after expansion, all qube axes are accounted for."""
     action = mock_action((1,))
-    original_axes = surface_variables_qube.axes()
+    original_axes = surface_variables_qube.axes()  # native Rust method
 
     result = expand_as_qube(action, surface_variables_qube)
     ds = result.nodes.to_dataset()

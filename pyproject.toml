@@ -31,7 +31,7 @@ dependencies = [
     "pyzmq",
     "fire",
     "orjson",
-    "qubed>=0.3.0",
+    "qubed>0.4.4",
 ]
 # NOTE optional dependencies are not needed for runtime and would only slow down new worker spin ups etc
 optional-dependencies.vizualize = [
@@ -85,3 +85,6 @@ markers = ["concurrency_filelock"]
 line-length = 140
 lint.ignore = [ "E722", "E731", "E741" ]
 lint.select = ["I"]
+
+[tool.uv.sources]
+qubed = { path = "../fix_api-backward/py_qubed" }
