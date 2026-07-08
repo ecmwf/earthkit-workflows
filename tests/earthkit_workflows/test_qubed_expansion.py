@@ -504,7 +504,7 @@ def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
 
     assert da.param == "t"
 
-    with pytest.raises(KeyError):
+    with pytest.raises(IndexError):
         subset = result.select(param="nonexistent_param")
 
 
@@ -529,5 +529,5 @@ def test_expand_as_qube_with_real_action_post_select_level(qube_fixture, request
 
     assert da.level == 50
 
-    with pytest.raises(KeyError):
+    with pytest.raises(IndexError):
         subset = result.select(param="nonexistent_param")

@@ -10,19 +10,11 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import itertools
 import os
 import threading
 import types
-from typing import (
-    Any,
-    Callable,
-    Hashable,
-    Iterable,
-    Optional,
-    ParamSpec,
-    Sequence,
-    TypeVar,
-)
+from typing import Any, Callable, Hashable, Iterable, Literal, Optional, ParamSpec, Sequence, TypeVar, Union
 
 import numpy as np
 import xarray as xr
@@ -31,7 +23,7 @@ from . import backends
 from ._qubed import expand_as_qube
 from .graph import Graph, Output
 from .graph import Node as BaseNode
-from .nodetree import nodetree_array, nodetree_arrays, nodetree_from_dict, nodetree_new_dimension
+from .nodetree import combine_by_coords, nodetree_array, nodetree_arrays, nodetree_from_dict, nodetree_new_dimension
 
 PayloadFunc = Callable | str
 
@@ -627,7 +619,7 @@ class Action:
 
             new_coords = {key: batched_narray.coords[key] for key in new_dims}
             # Propagate scalar coords
-            new_coords.update({k: v for k, v in batched_narray.coords.items() if k not in batched_narray.dims})
+            new_coords.update({k: v for k, v in batched_narray.coords.items() if k not in batched_narray.dims and dim not in v.indexes})
             nodes = xr.DataArray(
                 new_nodes,
                 coords=new_coords,
@@ -766,11 +758,56 @@ class Action:
                     return False, {}
         return True, new_criteria
 
+    def _select(
+        self,
+        criteria: dict | None = None,
+        drop: bool = False,
+        path: Optional[str] = None,
+        expand: bool = False,
+        backend_method: Union[Literal["sel"], Literal["isel"]] = "sel",
+        **kwargs,
+    ) -> "Action":
+        if backend_method not in ["sel", "isel"]:
+            raise ValueError(f"backend_method must be 'sel' or 'isel', got {backend_method}")
+        crit: dict = criteria or {}
+        crit.update(kwargs)
+
+        nodes = self.nodes if path is None else self.nodes[path]
+        new_nodes = {}
+        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
+            if expand:
+                keys = list(crit.keys())
+                its = tuple(crit.values())
+                crits = [dict(zip(keys, vals)) for vals in itertools.product(*its)]
+            else:
+                crits = [crit]
+            selected_arrays = []
+            for icrit in crits:
+                valid, new_criteria = self._validate_criteria(narray, icrit)
+                if valid:
+                    try:
+                        if backend_method == "sel":
+                            selected_array = narray.sel(**new_criteria, drop=drop)
+                        else:
+                            selected_array = narray.isel(**new_criteria, drop=drop)
+                        if expand:
+                            selected_array = selected_array.expand_dims({k: [v] for k, v in new_criteria.items()})
+                        selected_arrays.append(selected_array)
+                    except (KeyError, IndexError):
+                        pass
+            if len(selected_arrays) > 0:
+                new_nodes[npath] = xr.combine_by_coords(selected_arrays, coords="different", compat="identical")
+
+        if len(new_nodes) == 0:
+            raise IndexError(f"No nodes match select criteria {crit}")
+        return type(self)(nodetree_from_dict(new_nodes))
+
     def select(
         self,
         criteria: dict | None = None,
         drop: bool = False,
         path: Optional[str] = None,
+        expand: bool = False,
         **kwargs,
     ) -> "Action":
         """Create action contaning nodes match selection criteria
@@ -780,27 +817,13 @@ class Action:
         criteria: dict, key-value pairs specifying selection criteria
         drop: bool, drop coord variables in criteria if True
         path: str, path to select subset of nodes to operate on, if provided
+        expand: bool, whether to expand the selection criteria into all possible combinations
 
         Return
         ------
         Action
         """
-        crit: dict = criteria or {}
-        crit.update(kwargs)
-
-        nodes = self.nodes if path is None else self.nodes[path]
-        new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
-            valid, new_criteria = self._validate_criteria(narray, crit)
-            if valid:
-                try:
-                    new_nodes[npath] = narray.sel(**new_criteria, drop=drop)
-                except KeyError:
-                    pass
-
-        if len(new_nodes) == 0:
-            raise KeyError(f"No nodes match select criteria {criteria}")
-        return type(self)(nodetree_from_dict(new_nodes))
+        return self._select(criteria=criteria, drop=drop, path=path, expand=expand, backend_method="sel", **kwargs)
 
     sel = select
 
@@ -809,6 +832,7 @@ class Action:
         criteria: dict | None = None,
         drop: bool = False,
         path: Optional[str] = None,
+        expand: bool = False,
         **kwargs,
     ) -> "Action":
         """Create action contaning nodes match index selection criteria
@@ -818,27 +842,13 @@ class Action:
         criteria: dict, key-value pairs specifying selection criteria
         drop: bool, drop coord variables in criteria if True
         path: str, path to select subset of nodes to operate on, if provided
+        expand: bool, whether to expand the selection criteria into all possible combinations
 
         Return
         ------
         Action
         """
-        crit: dict = criteria or {}
-        crit.update(kwargs)
-
-        nodes = self.nodes if path is None else self.nodes[path]
-        new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
-            valid, new_criteria = self._validate_criteria(narray, crit)
-            if valid:
-                try:
-                    new_nodes[npath] = narray.isel(**new_criteria, drop=drop)
-                except IndexError:
-                    pass
-
-        if len(new_nodes) == 0:
-            raise IndexError(f"No nodes match iselect criteria {criteria}")
-        return type(self)(nodetree_from_dict(new_nodes))
+        return self._select(criteria=criteria, drop=drop, path=path, expand=expand, backend_method="isel", **kwargs)
 
     isel = iselect
 
@@ -1087,7 +1097,34 @@ class Action:
     def add_attributes(self, attrs: dict):
         self.nodes.attrs.update(attrs)
 
-    def _add_dimension(self, name: str, value: Any, axis: int = 0, path: Optional[str] = None):
+    def set_scalar_coords(
+        self,
+        coords: dict[str, Union[int, str]],
+        override: bool = False,
+        make_dim: bool = False,
+    ):
+        """
+        Set scalar coordinates for the nodes in the action.
+
+        Parameters
+        ----------
+        coords : dict[str, Union[int, str]], dictionary of coordinates to set.
+        override : bool, optional, whether to override existing coordinates, by default False
+        make_dim : bool, optional, whether to create a new dimension for the coordinate, by default False
+        """
+        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        for dim, value in coords.items():
+            for npath, narray in nodetree.items():
+                if override and dim in narray.dims and len(narray.coords[dim]) == 1:
+                    narray = narray.squeeze(dim, drop=True)
+                narray = narray.expand_dims({dim: [value]})
+
+                if not make_dim:
+                    narray = narray.squeeze(dim, drop=False)
+                nodetree[npath] = narray
+        self.nodes = nodetree_from_dict(nodetree)
+
+    def _add_dimension(self, name: str, value: Any, axis: Optional[int] = None, path: Optional[str] = None):
         new_tree = self.nodes.map_over_datasets(lambda ds: ds.expand_dims({name: [value]}, axis))
         assert isinstance(new_tree, xr.DataTree)
         if path is not None:
@@ -1214,32 +1251,21 @@ def from_source(
 
 def merge(*args, **kwargs) -> Action:
     """Merge node arrays in actions. If provided as keyword arguments, the key
-    is used as the root path for the action's node arrays
+    is used as the root path for the action's node arrays. If multiple arrays exist along
+    the same path, they are combined by coordinates.
 
 
     Return
     ------
     Action
-
-    Raises
-    ------
-    ValueError if node paths overlap between actions
     """
-    new_nodes = {}
-    for action in args:
-        for npath, narray in nodetree_arrays(action.nodes):
-            if npath in new_nodes:
-                raise ValueError(f"Cannot merge actions with overlapping node paths {npath}")
-            new_nodes[npath] = narray
-
+    actions = list(args)
     for path, action in kwargs.items():
-        for npath, narray in nodetree_arrays(xr.DataTree.from_dict({path: action.nodes})):
-            if npath in new_nodes:
-                raise ValueError(f"Cannot merge actions with overlapping node paths {npath}")
-            new_nodes[npath] = narray
-
+        action = action.set_path(path)
+        actions.append(action)
+    new_nodes = combine_by_coords([action.nodes for action in actions])
     action_type = args[0].__class__ if len(args) > 0 else list(kwargs.values())[0].__class__
-    return action_type(nodetree_from_dict(new_nodes))
+    return action_type(new_nodes)
 
 
 Action.register("default", Action)

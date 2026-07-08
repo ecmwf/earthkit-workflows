@@ -385,18 +385,20 @@ def test_flatten_branches():
     "selection, num_arrays, shapes_or_error",
     [
         ({"dim_0": 1}, 3, [(5,), (4,), (4,)]),
-        ({"dim_1": 4}, 1, [(3,)]),
+        ({"dim_1": 4}, 1, [(2,)]),
         ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]),
         ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]),
-        ({"type": "A"}, 1, [(3, 5)]),
-        ({"dim_1": 10}, 0, KeyError),
+        ({"type": "A"}, 1, [(2, 5)]),
+        ({"dim_1": 10}, 0, IndexError),
+        ({"dim_0": [2], "dim_1": [0, 4]}, 0, IndexError),
+        ({"dim_0": [2], "dim_1": [0, 4], "expand": True}, 2, [(1, 1), (1, 1)]),
     ],
-    ids=["in-all", "in-one", "by-path", "by-path-and-dim", "by-coord", "nonexistent"],
+    ids=["in-all", "in-one", "by-path", "by-path-and-dim", "by-coord", "nonexistent", "no-expand", "expand"],
 )
 def test_select(selection, num_arrays, shapes_or_error):
     branches = merge(
         branch1=mock_action((3, 4)),
-        branch2=mock_action((3, 5)),
+        branch2=mock_action((2, 5)),
     )
     subbranches = branches.create_branches(
         {
@@ -447,13 +449,68 @@ def test_iselect(selection, num_arrays, shapes_or_error):
             subbranches.isel(**selection)
 
 
-def test_merge():
-    input_action = mock_action((3, 4))
-    merged = merge(branch1=input_action, branch2=input_action)
-    assert [x[0] for x in nodetree_arrays(merged.nodes)] == [
-        "/branch1",
-        "/branch2",
-    ]
+@pytest.mark.parametrize(
+    "args, kwargs, dims",
+    [
+        [
+            [],
+            {"branch1": mock_action((3, 4)), "branch2": mock_action((3, 4))},
+            {"/branch1": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}, "/branch2": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}},
+        ],
+        [
+            [mock_action((3, 4)).set_path("/branch1"), mock_action((3, 4)).set_path("/branch2")],
+            {},
+            {"/branch1": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}, "/branch2": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}},
+        ],
+        [[mock_action((1,), coords={"dim": [0]}), mock_action((1,), coords={"dim": [1]})], {}, {"/": {"dim": [0, 1]}}],
+        [
+            [
+                mock_action((1, 1), coords={"dim": [0], "dim1": [0]}),
+                mock_action((1, 1), coords={"dim": [1], "dim1": [0]}),
+                mock_action((1, 1), coords={"dim": [0], "dim1": [1]}),
+                mock_action((1, 1), coords={"dim": [1], "dim1": [1]}),
+            ],
+            {},
+            {"/": {"dim": [0, 1], "dim1": [0, 1]}},
+        ],
+        [
+            [
+                mock_action((1, 1), coords={"dim": [0], "dim1": [0]}, path="/path1"),
+                mock_action((1, 1), coords={"dim": [1], "dim1": [0]}, path="/path1"),
+                mock_action((1,), coords={"dim1": [1]}, path="/path2"),
+                mock_action((1,), coords={"dim1": [2]}, path="/path2"),
+            ],
+            {},
+            {"/path1": {"dim": [0, 1], "dim1": [0]}, "/path2": {"dim1": [1, 2]}},
+        ],
+    ],
+    ids=["branches-with-args", "branches-with-kwargs", "single-coord", "multi-coords", "branches-and-coords"],
+)
+def test_merge(args, kwargs, dims):
+    output = merge(*args, **kwargs)
+    for npath, narray in nodetree_arrays(output.nodes):
+        for dim, values in dims[npath].items():
+            assert dim in narray.coords
+            assert np.all(values == narray.coords[dim])
 
-    merged2 = merge(input_action.set_path("/branch1"), input_action.set_path("/branch2"))
-    assert merged.nodes == merged2.nodes
+
+@pytest.mark.parametrize(
+    "args, shape_or_error, coords",
+    [
+        [[{"new_dim": "x"}], (1, 4), {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": "x"}],
+        [[{"new_dim": "x"}, False, True], (1, 1, 4), {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": ["x"]}],
+        [[{"dim_0": 2}], ValueError, {}],
+        [[{"dim_0": 2}, True, True], (1, 4), {"dim_0": [2], "dim_1": [0, 1, 2, 3]}],
+    ],
+    ids=["new-coord", "new-coord-expand", "existing-coord", "override-existing-coord"],
+)
+def test_set_coords(args, shape_or_error, coords):
+    action = mock_action((1, 4))
+    if isinstance(shape_or_error, type) and issubclass(shape_or_error, Exception):
+        with pytest.raises(shape_or_error):
+            action.set_scalar_coords(*args)
+    else:
+        action.set_scalar_coords(*args)
+        for _, narray in nodetree_arrays(action.nodes):
+            assert narray.shape == shape_or_error
+            assert {dim: val.data.tolist() for dim, val in narray.coords.items()} == coords
