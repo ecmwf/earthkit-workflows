@@ -371,8 +371,7 @@ class Action:
 
         for index, param in enumerate(params):
             new_res = func(self.select(path=path), *param)
-            if dim_name not in new_res.nodes.coords:
-                new_res._add_dimension(dim_name, dim_values[index], axis, path=path)
+            new_res._add_dimension(dim_name, dim_values[index], axis, path=path, override=True)
             if res is None:
                 res = new_res
             else:
@@ -1132,10 +1131,12 @@ class Action:
                 nodetree[npath] = narray
         self.nodes = nodetree_from_dict(nodetree)
 
-    def _add_dimension(self, name: str, value: Any, axis: Optional[int] = None, path: Optional[str] = None):
+    def _add_dimension(self, name: str, value: Any, axis: Optional[int] = None, path: Optional[str] = None, override: bool = False):
         nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
         selection = self.select(path=path)
         for npath, narray in nodetree_arrays(selection.nodes):
+            if override and name in narray.dims and len(narray.coords[name]) == 1:
+                narray = narray.squeeze(name, drop=True)
             nodetree[npath] = narray.expand_dims({name: [value]}, axis)
         self.nodes = nodetree_from_dict(nodetree)
 
