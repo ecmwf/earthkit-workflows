@@ -751,11 +751,19 @@ class Action:
         keys = list(criteria.keys())
         new_criteria = criteria.copy()
         for key in keys:
+            if np.ndim(criteria[key]) == 1 and len(criteria[key]) == 1:
+                new_criteria[key] = criteria[key][0]
             if key not in array.dims:
-                if array.coords.get(key, None) == criteria[key]:
-                    new_criteria.pop(key)
-                else:
+                coords = array.coords.get(key, None)
+                if coords is None:
                     return False, {}
+                coords = coords.data.tolist()
+                if not isinstance(coords, list):
+                    coords = [coords]
+                if new_criteria[key] not in coords:
+                    return False, {}
+                if len(coords) == 1:
+                    new_criteria.pop(key)
         return True, new_criteria
 
     def _select(
@@ -777,7 +785,7 @@ class Action:
         for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
             if expand:
                 keys = list(crit.keys())
-                its = tuple(crit.values())
+                its = tuple([x] if np.ndim(x) == 0 else x for x in crit.values())
                 crits = [dict(zip(keys, vals)) for vals in itertools.product(*its)]
             else:
                 crits = [crit]
@@ -1125,22 +1133,19 @@ class Action:
         self.nodes = nodetree_from_dict(nodetree)
 
     def _add_dimension(self, name: str, value: Any, axis: Optional[int] = None, path: Optional[str] = None):
-        new_tree = self.nodes.map_over_datasets(lambda ds: ds.expand_dims({name: [value]}, axis))
-        assert isinstance(new_tree, xr.DataTree)
-        if path is not None:
-            self.nodes[path] = new_tree[path]
-        else:
-            self.nodes = new_tree
+        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        selection = self.select(path=path)
+        for npath, narray in nodetree_arrays(selection.nodes):
+            nodetree[npath] = narray.expand_dims({name: [value]}, axis)
+        self.nodes = nodetree_from_dict(nodetree)
 
     def _squeeze_dimension(self, dim_name: str, drop: bool = False, path: Optional[str] = None):
-        new_tree = self.nodes.map_over_datasets(
-            lambda ds: ds.squeeze(dim_name, drop=drop) if dim_name in ds.dims and len(ds.coords[dim_name]) == 1 else ds
-        )
-        assert isinstance(new_tree, xr.DataTree)
-        if path is not None:
-            self.nodes[path] = new_tree[path]
-        else:
-            self.nodes = new_tree
+        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
+        selection = self.select(path=path)
+        for npath, narray in nodetree_arrays(selection.nodes):
+            if dim_name in narray.dims and len(narray.coords[dim_name]) == 1:
+                nodetree[npath] = narray.squeeze(dim_name, drop=drop)
+        self.nodes = nodetree_from_dict(nodetree)
 
     def __getattr__(self, attr):
         if attr in Action.REGISTRY:
