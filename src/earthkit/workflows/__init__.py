@@ -18,7 +18,6 @@ except ImportError:
 from . import fluent, mark
 from .graph import Graph, deduplicate_nodes
 from .graph.export import deserialise, serialise
-from .visualise import visualise as _visualise_fn
 
 
 class Cascade:
@@ -33,6 +32,8 @@ class Cascade:
         return cls(deduplicate_nodes(graph))
 
     def visualise(self, *args, **kwargs):
+        from .visualise import visualise as _visualise_fn
+
         return _visualise_fn(self._graph, *args, **kwargs)
 
     def __add__(self, other: "Cascade") -> "Cascade":
