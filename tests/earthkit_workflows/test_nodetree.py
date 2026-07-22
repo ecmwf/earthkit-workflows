@@ -16,10 +16,9 @@ def test_datacubes():
 
 
 @pytest.mark.parametrize(
-    "inputs, dims, expand_dims",
+    "inputs, dims",
     [
-        [[mock_action((1,), coords={"dim": [0]}).nodes, mock_action((1,), coords={"dim": [1]}).nodes], {"/": {"dim": [0, 1]}}, False],
-        [[mock_action((), coords={"dim": [0]}).nodes, mock_action((), coords={"dim": [1]}).nodes], {"/": {"dim": [0, 1]}}, True],
+        [[mock_action((1,), coords={"dim": [0]}).nodes, mock_action((1,), coords={"dim": [1]}).nodes], {"/": {"dim": [0, 1]}}],
         [
             [
                 mock_action((1, 1), coords={"dim": [0], "dim1": [0]}).nodes,
@@ -28,7 +27,6 @@ def test_datacubes():
                 mock_action((1, 1), coords={"dim": [1], "dim1": [1]}).nodes,
             ],
             {"/": {"dim": [0, 1], "dim1": [0, 1]}},
-            False,
         ],
         [
             [
@@ -38,12 +36,11 @@ def test_datacubes():
                 mock_action((1,), coords={"dim1": [2]}, path="/path2").nodes,
             ],
             {"/path1": {"dim": [0, 1], "dim1": [0]}, "/path2": {"dim1": [1, 2]}},
-            False,
         ],
     ],
 )
-def test_combine(inputs, dims, expand_dims):
-    outputs = combine_by_coords(inputs, expand_dims)
+def test_combine(inputs, dims):
+    outputs = combine_by_coords(inputs)
     for npath, narray in nodetree_arrays(outputs):
         for dim, values in dims[npath].items():
             assert dim in narray.coords
