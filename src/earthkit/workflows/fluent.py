@@ -764,6 +764,12 @@ class Action:
                     return False, {}
                 if len(coords) == 1:
                     new_criteria.pop(key)
+
+        # Remove from criteria coords that are dependent on other coords in criteria
+        dependencies = {name: [x for x in val.indexes.keys() if x != name] for name, val in array.coords.items()}
+        for key, dep in dependencies.items():
+            if key in new_criteria and any(d in new_criteria for d in dep):
+                new_criteria.pop(key)
         return True, new_criteria
 
     def _select(
