@@ -23,7 +23,7 @@ from . import backends
 from ._qubed import expand_as_qube
 from .graph import Graph, Output
 from .graph import Node as BaseNode
-from .nodetree import combine_by_coords, nodetree_array, nodetree_arrays, nodetree_from_dict, nodetree_new_dimension
+from .nodetree import combine_by_coords, nodetree_array, nodetree_arrays, nodetree_dimensions, nodetree_from_dict, nodetree_new_dimension
 
 PayloadFunc = Callable | str
 
@@ -371,7 +371,8 @@ class Action:
 
         for index, param in enumerate(params):
             new_res = func(self.select(path=path), *param)
-            new_res._add_dimension(dim_name, dim_values[index], axis, path=path, override=True)
+            if dim_name not in nodetree_dimensions(new_res.nodes):
+                new_res._add_dimension(dim_name, dim_values[index], axis, path=path, override=True)
             if res is None:
                 res = new_res
             else:
