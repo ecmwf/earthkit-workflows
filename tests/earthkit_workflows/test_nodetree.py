@@ -19,7 +19,7 @@ def test_datacubes():
     "inputs, dims, expand_dims",
     [
         [[mock_action((1,), coords={"dim": [0]}).nodes, mock_action((1,), coords={"dim": [1]}).nodes], {"/": {"dim": [0, 1]}}, False],
-        [[mock_action((), coords={"dim": 0}).nodes, mock_action((), coords={"dim": 1}).nodes], {"/": {"dim": [0, 1]}}, True],
+        [[mock_action((), coords={"dim": [0]}).nodes, mock_action((), coords={"dim": [1]}).nodes], {"/": {"dim": [0, 1]}}, True],
         [
             [
                 mock_action((1, 1), coords={"dim": [0], "dim1": [0]}).nodes,
