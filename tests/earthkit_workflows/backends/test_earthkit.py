@@ -55,7 +55,8 @@ def test_multi_arg(func, input_generator, values):
     concat = backends.concat(*arr)
     assert len(concat) == 5
     assert values(concat).shape == (5, 20)
-    nested = func(concat)
+    nested = func(concat, metadata={"key": "value"})
+    assert nested.metadata()[0].get("key") == "value"
     assert values(nested).shape == (1, 20)
 
     with pytest.raises(ValueError):

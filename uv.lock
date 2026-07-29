@@ -479,13 +479,12 @@ wheels = [
 
 [[package]]
 name = "earthkit-data"
-version = "0.19.0"
+version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cfgrib" },
     { name = "dask" },
     { name = "deprecation" },
-    { name = "earthkit-meteo" },
     { name = "earthkit-utils" },
     { name = "eccodes" },
     { name = "entrypoints" },
@@ -502,34 +501,22 @@ dependencies = [
     { name = "tqdm" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/5a/8bb64690a3e920a39ec45c031dde104a3de0ebb86c24376e98cf332ecb9a/earthkit_data-0.19.0.tar.gz", hash = "sha256:2dedfc97a207b28c752ba0ed754313485b46adc40d244062504efb808267c58a", size = 5653925, upload-time = "2026-02-16T10:24:47.766Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/66/623d201df141f5bb2800d55b6bff0493c7a0d4fd6d1af86ee27c338e4243/earthkit_data-0.20.0.tar.gz", hash = "sha256:17eff8ce863722c016b0d9456d5fe76353dc8c7671ec1091aa7e7189615e80e9", size = 5656819, upload-time = "2026-05-13T12:22:44.707Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/b7/e6b466edd0438b9e3d875a98d0aeb2cdf89acbfd4eaaf5906d2456341e2c/earthkit_data-0.19.0-py3-none-any.whl", hash = "sha256:3697238beeeec94209ecb86ac133bdd6c3f66dad734955edd3c0fd07bc5875e1", size = 396017, upload-time = "2026-02-16T10:24:46.212Z" },
-]
-
-[[package]]
-name = "earthkit-meteo"
-version = "0.6.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "earthkit-utils" },
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/43/89/324733e6b2a02d4c336e4579c8899d301ba3b576a8a540071cd095b38183/earthkit_meteo-0.6.1.tar.gz", hash = "sha256:82a89983c8ed9302ca07fc040c2787033c98188ce75fe9332f5ca7808379c60e", size = 370291, upload-time = "2026-02-18T16:04:11.567Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/34/eb/c10deda542516f679a20f1cb641a13094fc9e80bc13e54f4cebcfb9f8173/earthkit_meteo-0.6.1-py3-none-any.whl", hash = "sha256:fcb425e23d1827d2fd85ad4b31bfd41eb8f1dcfc7fb78da4b03d69037e8e1d49", size = 57080, upload-time = "2026-02-18T16:04:10.074Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/d3/a00aeee76005909eaa1f7fcb1e1f2333d9f4b53866666e1bb7f9e9e15148/earthkit_data-0.20.0-py3-none-any.whl", hash = "sha256:e1df4d93354bb5bd30b967ad17d52454b4df4d6a37511fc91f950aebba592056", size = 398525, upload-time = "2026-05-13T12:22:43.362Z" },
 ]
 
 [[package]]
 name = "earthkit-utils"
-version = "0.2.1"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "array-api-compat" },
+    { name = "pint" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/6c/f78f7288f3e7a5ba376ec2e35c051f567e796ab7eef75695b02044e81c2c/earthkit_utils-0.2.1.tar.gz", hash = "sha256:f7607aa5d9d418554dc53dc1e140fbd86cdf5f26a6a009168834742ef779f323", size = 24475, upload-time = "2026-02-17T12:58:41.354Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/0b/1a834f5e57294b163aba0713b371810ba28ef5ef73f43ee0cafbeab54e07/earthkit_utils-0.3.0.tar.gz", hash = "sha256:1f49e792683ddd7b40642c41839718d25d101b0f5fbe63a372d0fcd33a7e3cd0", size = 43013, upload-time = "2026-03-24T14:57:10.184Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/24/1f869196bceb97a702e938a36f0e24593b640cebe4fffae9b39975d24ab9/earthkit_utils-0.2.1-py3-none-any.whl", hash = "sha256:0a26cad5d6505afb187afd0f3f50545cd81c65a590f41302b292caba179d81da", size = 25410, upload-time = "2026-02-17T12:58:40.423Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/cb/0c9f59b0ca2a5ed941b65c52a4a005a7e16511f52fc3965eb45c53565b76/earthkit_utils-0.3.0-py3-none-any.whl", hash = "sha256:167e0385e062800d6c9f2d25a2a3075d7d91b67c3a02af52d772175b2313aa89", size = 35650, upload-time = "2026-03-24T14:57:08.869Z" },
 ]
 
 [[package]]
@@ -574,7 +561,7 @@ requires-dist = [
     { name = "array-api-compat" },
     { name = "cloudpickle" },
     { name = "dask", extras = ["distributed"], marker = "extra == 'dask'", specifier = ">=2026.1.2" },
-    { name = "earthkit-data" },
+    { name = "earthkit-data", specifier = "<1" },
     { name = "fire" },
     { name = "networkx", marker = "extra == 'vizualize'" },
     { name = "numpy" },
@@ -583,7 +570,7 @@ requires-dist = [
     { name = "pyrsistent" },
     { name = "pyvis", marker = "extra == 'vizualize'" },
     { name = "pyzmq" },
-    { name = "qubed", specifier = ">=0.3.0" },
+    { name = "qubed", specifier = ">=0.3.0,<0.4.4" },
     { name = "sortedcontainers" },
     { name = "xarray" },
 ]
@@ -601,7 +588,7 @@ dev = [
 
 [[package]]
 name = "eccodes"
-version = "2.45.0"
+version = "2.47.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -609,12 +596,12 @@ dependencies = [
     { name = "findlibs" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/c3/41378ba5547fbbb08db9efc7c520bfd0ccf2684bf7fbba0e09eab53b9eff/eccodes-2.45.0.tar.gz", hash = "sha256:08fe1544e6fa597a416bde9a630af4b6e34a021bc3c209f0ece4f7ed5990f992", size = 2466789, upload-time = "2026-01-15T16:27:08.418Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/8d/63d8287e912a99a73fa37b9c821883fb8f09a900187a8c917ba72e3743be/eccodes-2.47.0.tar.gz", hash = "sha256:ae9207ef27c67656d068aab97f172abeb85fc3620f56faa22fdac5b1be75de69", size = 2467378, upload-time = "2026-04-22T11:30:08.465Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/1b/903f014d0645811253384f2056f00e9a1c8936a4c158c83f69acf564a4ec/eccodes-2.45.0-cp311-cp311-win_amd64.whl", hash = "sha256:99162409c6ff7e1c2a4836ad246c54ffab8157b6a738e4ed856cf236ea0a8c6e", size = 7406737, upload-time = "2026-01-15T16:26:39.928Z" },
-    { url = "https://files.pythonhosted.org/packages/76/2a/721b05d551f90ed198aa05c2455fd056f4f1742967cee154347eaada2745/eccodes-2.45.0-cp312-cp312-win_amd64.whl", hash = "sha256:b661ce2d0e73ce0724f137606bf6b579fb2eba4db0f5b466b4345170cb4bf5f2", size = 7406814, upload-time = "2026-01-15T16:26:42.454Z" },
-    { url = "https://files.pythonhosted.org/packages/6b/33/3dceb280fbbacb10f8f1e2e1a249a7fd80ce7cc532b69d56c981df21a348/eccodes-2.45.0-cp313-cp313-win_amd64.whl", hash = "sha256:2f07d8892cca722cf67528d3f82d25c851f298cb9b9c6de4c79cb8698857a8ef", size = 7406811, upload-time = "2026-01-15T16:26:39.689Z" },
-    { url = "https://files.pythonhosted.org/packages/7f/40/0a42c7441d76c373a7bef7ec1f535f26910a8c82a37e745ffcd3ea0cdf79/eccodes-2.45.0-py3-none-any.whl", hash = "sha256:0ba61dbd2844843f1fd466c8ca24107932cc40088338f6176428cf38c533c08c", size = 91433, upload-time = "2026-01-15T16:27:06.601Z" },
+    { url = "https://files.pythonhosted.org/packages/09/40/42bb2d98bc6103194d25fa8da141cd43cabf32277cbf2ab513fe35532196/eccodes-2.47.0-cp311-cp311-win_amd64.whl", hash = "sha256:3b71ae31bca13e4b62712405d7eb3c988b71b0b0bbd85fe4d3eacac7fc67ae27", size = 7435928, upload-time = "2026-04-22T11:29:40.702Z" },
+    { url = "https://files.pythonhosted.org/packages/31/01/d8bfb2ac2ec4831789a82cc06afc609a599f5f545dc885da1c8671a308e5/eccodes-2.47.0-cp312-cp312-win_amd64.whl", hash = "sha256:7ab3b689fd3caa07451f7bcf07329b2268acdc7434bcedac8b13d1f20d3389c0", size = 7436009, upload-time = "2026-04-22T11:29:36.343Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/ba/4cbca5157e90d90c318b2acae178d38b0c6c6df73b434e6a2b6a8cb23a2b/eccodes-2.47.0-cp313-cp313-win_amd64.whl", hash = "sha256:f5f9b71b6e2cb8c9b8349b88a09791e8fb6d51a4396d7160b3da2a83149a4973", size = 7436001, upload-time = "2026-04-22T11:29:36.596Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/a3/f58ff573ba0f678ff8116686e868afe436627b19b457a2aba62cd463c9ad/eccodes-2.47.0-py3-none-any.whl", hash = "sha256:13d0b28bd58e94e2c303f42415ca0dcc56ab3febf0f52b1fb0f1d4aa5e7db8e1", size = 91567, upload-time = "2026-04-22T11:30:06.789Z" },
 ]
 
 [[package]]

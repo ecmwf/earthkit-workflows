@@ -20,7 +20,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "earthkit-data",
+    "earthkit-data<1",
     "cloudpickle",
     "numpy",
     "xarray",
@@ -31,7 +31,7 @@ dependencies = [
     "pyzmq",
     "fire",
     "orjson",
-    "qubed>=0.3.0",
+    "qubed>=0.3.0,<0.4.4",
 ]
 # NOTE optional dependencies are not needed for runtime and would only slow down new worker spin ups etc
 optional-dependencies.vizualize = [
