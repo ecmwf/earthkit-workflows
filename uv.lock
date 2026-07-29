@@ -570,7 +570,7 @@ requires-dist = [
     { name = "pyrsistent" },
     { name = "pyvis", marker = "extra == 'vizualize'" },
     { name = "pyzmq" },
-    { name = "qubed", specifier = ">=0.3.0" },
+    { name = "qubed", specifier = ">=0.3.0,<0.4.4" },
     { name = "sortedcontainers" },
     { name = "xarray" },
 ]
