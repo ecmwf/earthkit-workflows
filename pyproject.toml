@@ -20,7 +20,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "earthkit-data",
+    "earthkit-data<1",
     "cloudpickle",
     "numpy",
     "xarray",
