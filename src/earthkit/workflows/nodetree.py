@@ -18,18 +18,28 @@ NodetreeMappings = Union[dict[str, xr.DataArray], dict[str, xr.Dataset], dict[st
 
 def nodetree_from_dict(data: NodetreeMappings, *args, **kwargs) -> xr.DataTree:
     new_data = {}
-    for nindex, (k, v) in enumerate(data.items()):
-        if isinstance(v, xr.Dataset):
+    name: str = ""
+    for k, v in data.items():
+        if isinstance(v, xr.DataArray):
+            if v.size == 0:
+                raise ValueError(f"Attempting to add empty node array at path {k}")
+            if len(name) == 0:
+                name = "nodeset"
+            new_data[k] = v.to_dataset(name=name)
+        elif isinstance(v, xr.Dataset):
+            if len(v.data_vars) != 1:
+                raise ValueError(f"NodeTree can only be created from dict with xr.Dataset with one variable, got {len(v.data_vars)}")
+            if len(name) == 0:
+                name = str(list(v.data_vars.keys())[0])
             new_data[k] = v
-        elif isinstance(v, xr.DataArray):
-            new_data[k] = v.to_dataset(name=f"nodeset{nindex}")
         else:
             raise ValueError("NodeTree can only be created from dict of xr.DataArray or xr.Dataset")
+        if name != list(new_data[k].data_vars.keys())[0]:
+            raise ValueError("NodeTree can only be created from dict of xr.DataArray or xr.Dataset with same variable name")
     tree = xr.DataTree.from_dict(new_data, *args, **kwargs)
     for leaf in tree.leaves:
-        var: str = list(leaf.dataset.data_vars.keys())[0]  # type: ignore[assignment]
-        if np.any(leaf[var].isnull()):
-            raise ValueError(f"Nodes in Action can not contain NaNs. Found NaN in nodeset {leaf.path}, variable {var}")
+        if np.any(leaf[name].isnull()):
+            raise ValueError(f"Nodes in Action can not contain NaNs. Found NaN in nodeset {leaf.path}")
     if not tree.is_hollow:
         raise ValueError("Nodes in Action must be hollow datatree")
     return tree
@@ -108,6 +118,6 @@ def combine_by_coords(nodetrees: list[xr.DataTree]) -> xr.DataTree:
             arrays.setdefault(npath, []).append(narray)
     combined: dict[str, Union[xr.DataArray, xr.Dataset]] = {}
     for npath, narrays in arrays.items():
-        combined[npath] = xr.combine_by_coords(narrays, coords="different", compat="identical")
+        combined[npath] = xr.combine_by_coords(narrays, coords="different", compat="identical", join="exact")
     nodetree = nodetree_from_dict(combined)
     return nodetree
