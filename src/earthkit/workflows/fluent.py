@@ -252,9 +252,9 @@ class Action:
                 )
                 new_array.coords[ydim] = ycoords
                 new_nodes[npath] = new_array
+            self.nodes = nodetree_from_dict(new_nodes)
         else:
-            new_nodes = nodetree.to_dict()
-        self.nodes = nodetree_from_dict(new_nodes)
+            self.nodes = nodetree
 
     def graph(self) -> Graph:
         """Creates graph from the nodes of the action.
