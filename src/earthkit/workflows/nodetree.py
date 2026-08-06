@@ -84,7 +84,7 @@ def nodetree_new_dimension(nodetree: xr.DataTree, attempt: str = "tempindex") ->
 
 
 def coords_to_list(data: np.ndarray) -> list[Any]:
-    if isinstance(data.dtype, np.datetime64):
+    if np.issubdtype(data.dtype, np.datetime64):
         data = data.astype("datetime64[us]")
     out = data.tolist()
     if not isinstance(out, list):

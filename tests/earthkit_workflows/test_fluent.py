@@ -7,12 +7,13 @@
 # nor does it submit to any jurisdiction.
 
 import functools
+from datetime import datetime
 
 import numpy as np
 import pytest
 
 from earthkit.workflows.fluent import Action, Payload, custom_hash, from_source, merge
-from earthkit.workflows.graph import deserialise, serialise
+from earthkit.workflows.graph import serialise
 from earthkit.workflows.nodetree import (
     nodetree_array,
     nodetree_arrays,
@@ -388,7 +389,7 @@ def test_flatten_branches():
         ({"dim_1": 4}, 1, [(2,)]),
         ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]),
         ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]),
-        ({"type": ["AB"]}, 1, [(2, 5)]),
+        ({"date": [datetime(2024, 1, 1)]}, 1, [(2, 5)]),
         ({"dim_1": 10}, 0, IndexError),
         ({"dim_0": [2], "dim_1": [0, 4]}, 0, IndexError),
         ({"dim_0": [2], "dim_1": [0, 4], "expand": True}, 2, [(1, 1), (1, 1)]),
@@ -406,7 +407,7 @@ def test_select(selection, num_arrays, shapes_or_error):
             "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
         }
     )
-    subbranches.nodes["/branch2"].coords["type"] = "AB"
+    subbranches.nodes["/branch2"].coords["date"] = datetime(2024, 1, 1)
     if num_arrays > 0:
         select_dim = subbranches.sel(**selection)
         assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
