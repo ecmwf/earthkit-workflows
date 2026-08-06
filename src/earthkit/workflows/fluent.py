@@ -23,7 +23,15 @@ from . import backends
 from ._qubed import expand_as_qube
 from .graph import Graph, Output
 from .graph import Node as BaseNode
-from .nodetree import combine_by_coords, nodetree_array, nodetree_arrays, nodetree_dimensions, nodetree_from_dict, nodetree_new_dimension
+from .nodetree import (
+    combine_by_coords,
+    coords_to_list,
+    nodetree_array,
+    nodetree_arrays,
+    nodetree_dimensions,
+    nodetree_from_dict,
+    nodetree_new_dimension,
+)
 
 PayloadFunc = Callable | str
 
@@ -757,9 +765,7 @@ class Action:
                 coords = array.coords.get(key, None)
                 if coords is None:
                     return False, {}
-                coords = coords.data.tolist()
-                if not isinstance(coords, list):
-                    coords = [coords]
+                coords = coords_to_list(coords.data)
                 if new_criteria[key] not in coords:
                     return False, {}
                 if len(coords) == 1:
