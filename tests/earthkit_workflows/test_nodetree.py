@@ -1,18 +1,43 @@
+from datetime import datetime
+
 import numpy as np
 import pytest
+import xarray as xr
 
-from earthkit.workflows.fluent import merge
-from earthkit.workflows.nodetree import combine_by_coords, datacubes, nodetree_arrays
+from earthkit.workflows.nodetree import combine_by_coords, coords_to_list, datacubes, nodetree_arrays, nodetree_from_dict
 
 from .helpers import mock_action
 
 
-def test_datacubes():
-    action = merge(
-        mock_action((2, 1), coords={"dim": [0, 1], "dim1": [0]}, path="/path1"),
-        mock_action((2,), coords={"dim1": [1, 2]}, path="/path2"),
-    )
-    assert len(datacubes(action.nodes)) == 2
+@pytest.mark.parametrize(
+    "datatree",
+    [
+        {
+            "/path1": xr.DataArray(np.empty((2, 1)), coords={"dim": [0, 1], "dim1": [0]}),
+            "/path2": xr.DataArray(
+                np.empty(
+                    2,
+                ),
+                coords={"dim1": [1, 2]},
+            ),
+        },
+        {
+            "/path1": xr.DataArray(np.empty((2, 1)), coords={"dim": [datetime(2024, 1, 1), datetime(2024, 1, 2)], "dim1": [0]}),
+            "/path2": xr.DataArray(
+                np.empty(
+                    2,
+                ),
+                coords={"dim": [datetime(2024, 1, 3), datetime(2024, 1, 4)]},
+            ),
+        },
+    ],
+    ids=["numeric", "datetime"],
+)
+def test_datacubes(datatree: dict):
+    tree = nodetree_from_dict(datatree)
+    cubes = datacubes(tree)
+    assert len(cubes) == 2
+    assert cubes[0]["dim"] == coords_to_list(datatree["/path1"].coords["dim"].data)
 
 
 @pytest.mark.parametrize(

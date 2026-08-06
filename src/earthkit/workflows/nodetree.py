@@ -7,7 +7,7 @@
 # nor does it submit to any jurisdiction.
 
 import itertools
-from typing import Iterable, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
@@ -83,6 +83,15 @@ def nodetree_new_dimension(nodetree: xr.DataTree, attempt: str = "tempindex") ->
     return attempt
 
 
+def coords_to_list(data: np.ndarray) -> list[Any]:
+    if isinstance(data.dtype, np.datetime64):
+        data = data.astype("datetime64[us]")
+    out = data.tolist()
+    if not isinstance(out, list):
+        out = [out]
+    return out
+
+
 def datacubes(nodetree: xr.DataTree) -> list[dict]:
     qube = Qube.empty()
     for _, narray in nodetree_arrays(nodetree):
@@ -92,18 +101,18 @@ def datacubes(nodetree: xr.DataTree) -> list[dict]:
         for coord_name in narray.coords.keys():
             coord = narray.coords[coord_name]
             if len(coord.indexes) == 0:
-                base_datacube[coord_name] = coord.data.tolist()
+                base_datacube[coord_name] = coords_to_list(coord.data)
             else:
                 assert len(coord.indexes) == 1
                 index = list(coord.indexes.keys())[0]
                 if index != coord_name:
                     indexes.setdefault(index, []).append(coord_name)
-        base_datacube.update({dim: narray.coords[dim].data.tolist() for dim in dimensions if dim not in indexes})
+        base_datacube.update({dim: coords_to_list(narray.coords[dim].data) for dim in dimensions if dim not in indexes})
         updates = []
         for index, dependants in indexes.items():
             index_update = []
             combined = [index] + dependants
-            for combination in zip(*[narray.coords[dep].data.tolist() for dep in combined]):
+            for combination in zip(*[coords_to_list(narray.coords[dep].data) for dep in combined]):
                 index_update.append({combined[index]: combination[index] for index in range(len(combined))})
             updates.append(index_update)
         for unique_updates in itertools.product(*updates):
