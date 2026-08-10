@@ -14,10 +14,13 @@ import itertools
 import os
 import threading
 import types
-from typing import Any, Callable, Hashable, Iterable, Literal, Optional, ParamSpec, Sequence, TypeVar, Union
+from dataclasses import dataclass
+from typing import Any, Callable, Hashable, Literal, Optional, ParamSpec, Sequence, TypeVar, Union, cast
 
 import numpy as np
 import xarray as xr
+
+from cascade.low.core import DefaultTaskOutput, TaskDefinition, TaskInstance
 
 from . import backends
 from ._qubed import expand_as_qube
@@ -33,7 +36,7 @@ from .nodetree import (
     nodetree_new_dimension,
 )
 
-PayloadFunc = Callable | str
+Payload = Callable | str | TaskInstance
 
 _payload_context = threading.local()
 
@@ -105,66 +108,6 @@ class PayloadBuildingContext:
         _pop_context_stack()
 
 
-class Payload:
-    """Class for detailing function, args and kwargs to be computing in a graph node"""
-
-    def __init__(
-        self,
-        func: PayloadFunc,
-        args: Iterable | None = None,
-        kwargs: dict | None = None,
-        metadata: dict[str, Any] | None = None,
-    ):
-        """Metadata is proccessed in addition to what comes from PayloadBuildingContexts.
-        Note that for 'environment' metadata, we always append, not override. If you
-        need to override, modify *afterwards* on the instance directly"""
-        self.args: list
-        if isinstance(func, functools.partial):
-            if args is not None or kwargs is not None:
-                raise ValueError("Partial function should not have args or kwargs")
-            self.func = func.func
-            self.args = list(func.args)
-            self.kwargs = func.keywords
-        else:
-            self.func = func
-            self.args = [] if args is None else list(args)
-            self.kwargs = kwargs or {}
-
-        self.metadata = getattr(self.func, "_cascade", {})
-        _metadata_update(self.metadata, _get_context_metadata())
-        _metadata_update(self.metadata, metadata or {})
-
-    def to_tuple(self) -> tuple:
-        """Return
-        ------
-        tuple, containing function, arguments and kwargs
-        """
-        return (self.func, self.args, self.kwargs, self.metadata)
-
-    def name(self) -> str:
-        """Return
-        ------
-        str, name of function, or if a partial function, the function name and partial
-        arguments
-        """
-        if isinstance(self.func, str):
-            return self.func
-        if hasattr(self.func, "__name__"):
-            return self.func.__name__  # type: ignore[union-attr]
-        return ""
-
-    def __str__(self) -> str:
-        return f"{self.name()}{self.args}{self.kwargs}:{self.metadata}:{repr(self.func)}"
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, Payload):
-            return False
-        return str(self) == str(other)
-
-    def copy(self) -> "Payload":
-        return Payload(self.func, self.args, self.kwargs, metadata=self.metadata)
-
-
 def custom_hash(string: str) -> str:
     ret = hashlib.sha256()
     ret.update(string.encode())
@@ -178,64 +121,98 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def capture_payload_metadata(func: Callable[P, R]) -> Callable[P, R]:
-    """Wrap a function which returns a new action and insert
-    given `payload_metadata`
+def create_task_instance(
+    payload: Payload,
+    static_input_ps: Optional[list[Any]] = None,
+    static_input_kw: Optional[dict[str, Any]] = None,
+    payload_metadata: Optional[dict[str, Any]] = None,
+) -> TaskInstance:
     """
+    Create a TaskInstance from a payload.
 
-    # @functools.wraps(func)
-    def decorator(*args, **kwargs):
-        metadata = kwargs.pop("payload_metadata", {})
-        result = func(*args, **kwargs)
+    Parameters
+    ----------
+    payload : Payload
+        The payload to create the task instance with
+    static_input_ps : Optional[list[Any]], optional
+        Positional static inputs, by default None. To refer to a node at a particular
+        position in the list of inputs, use `Node.Index(index)` where `index` is the
+        position of the input node in the list of inputs.
+    static_input_kw : Optional[dict[str, Any]], optional
+        Keyword static inputs, by default None
+    payload_metadata : Optional[dict[str, Any]], optional
+        Metadata (`environment`, `needs_gpu`) for the payload, by default None
 
-        if isinstance(result, Action):
-            for _, narray in nodetree_arrays(result.nodes):
-                for node in np.atleast_1d(narray.values).flatten():
-                    node.payload.metadata.update(metadata)
-        elif isinstance(result, Node):
-            result.payload.metadata.update(metadata)
-        else:
-            raise TypeError(f"Expected Action or Node, got {type(result)}")
-        return result
+    Returns
+    -------
+    TaskInstance
+    """
+    metadata: dict[str, Any] = {"environment": []}
+    _metadata_update(metadata, getattr(payload, "_cascade", {}))
+    _metadata_update(metadata, _get_context_metadata())
+    _metadata_update(metadata, payload_metadata or {})
 
-    return decorator
+    if isinstance(payload, TaskInstance):
+        _metadata_update(metadata, {"environment": payload.definition.environment, "needs_gpu": payload.definition.needs_gpu})
+        task = payload.model_copy(update=metadata)
+    elif isinstance(payload, str):
+        task = TaskInstance(
+            definition=TaskDefinition(entrypoint=payload, func=None, input_schema={}, output_schema=[], **metadata),
+            static_input_ps={str(i): v for i, v in enumerate(static_input_ps or [])},
+            static_input_kw=static_input_kw or {},
+        )
+    else:
+        task = TaskInstance(
+            definition=TaskDefinition(
+                entrypoint="", func=TaskDefinition.func_enc(cast(Callable, payload)), input_schema={}, output_schema=[], **metadata
+            ),
+            static_input_ps={str(i): v for i, v in enumerate(static_input_ps or [])},
+            static_input_kw=static_input_kw or {},
+        )
+    return task
 
 
 class Node(BaseNode):
+    @dataclass
+    class Index:
+        value: int
+
     def __init__(
         self,
-        payload: PayloadFunc | Payload,
+        payload: Payload,
         inputs: Input | Sequence[Input] = [],
         num_outputs: int = 1,
-        name: str | None = None,
+        name: Optional[str] = None,
     ):
-        self._for_copy = (payload, inputs, num_outputs, name)
-        if not isinstance(payload, Payload):
-            payload = Payload(payload)
-        else:
-            payload = payload.copy()
+        self._for_copy = (payload, inputs, num_outputs)
         if isinstance(inputs, Input):
             inputs = [inputs]
-        # Insert inputs not already present in args
-        for x in range(len(inputs)):
-            if self.input_name(x) not in payload.args:
-                payload.args.append(self.input_name(x))
+        task = create_task_instance(payload)
+        node_outputs = None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
+        if len(task.definition.input_schema) == 0:
+            task.definition.input_schema = {k: "Any" for k in task.static_input_kw.keys()}
+        if len(task.definition.output_schema) == 0:
+            task.definition.output_schema = [(e, "Any") for e in node_outputs or [DefaultTaskOutput]]
+        if len(task.static_input_ps) == 0:
+            task.static_input_ps = {str(i): Node.Index(i) for i in range(len(inputs))}
 
-        if name is None:
-            name = payload.name()
-        name += ":" + custom_hash(f"{payload}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
+        node_inputs = {}
+        for pos, index in task.static_input_ps.items():
+            if isinstance(index, Node.Index):
+                if index.value >= len(inputs):
+                    raise ValueError(f"Node static_input_ps index {index.value} exceeds number of input nodes {len(inputs)}")
+                node_inputs[pos] = inputs[index.value]
+                task.static_input_ps[pos] = None
+
+        name = name or ""
+        name += custom_hash(f"{task}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
 
         super().__init__(
             name,
-            outputs=(None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]),
-            payload=payload,
-            **{self.input_name(x): node for x, node in enumerate(inputs)},
+            outputs=node_outputs,
+            payload=task,
+            **node_inputs,
         )
-        self.attributes: dict[str, Any] = {}
-
-    @staticmethod
-    def input_name(index: int):
-        return f"input{index}"
 
     def __str__(self) -> str:
         return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
@@ -429,7 +406,7 @@ class Action:
                 flags=["multi_index", "refs_ok"],
             )
             for node in it:
-                new_nodes[it.multi_index] = Node(Payload(backends.trivial), node[()])  # type: ignore
+                new_nodes[it.multi_index] = Node(backends.trivial, node[()])  # type: ignore
 
             node_arrays[npath] = xr.DataArray(
                 new_nodes,
@@ -488,7 +465,7 @@ class Action:
 
     def map(
         self,
-        payload: PayloadFunc | Payload | np.ndarray[Any, Any] | list,
+        payload: Payload | np.ndarray[Any, Any] | list,
         yields: Coord | None = None,
         path: Optional[str] = None,
     ) -> Action:
@@ -516,7 +493,7 @@ class Action:
         # NOTE this method is really not mypy friendly, just ignore everything
         node_arrays = {}
         for npath, narray in nodetree_arrays(self.select(path=path).nodes):
-            if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
+            if not isinstance(payload, Payload):  # type: ignore
                 payload = np.asarray(payload)
                 assert payload.shape == narray.shape, (
                     f"For unique payloads for each node, payload shape {payload.shape}must match node array shape {narray.shape}"
@@ -527,7 +504,7 @@ class Action:
             it = np.nditer(narray, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
             node_payload = payload
             for node in it:
-                if not isinstance(payload, PayloadFunc | Payload):  # type: ignore
+                if not isinstance(payload, Payload):  # type: ignore
                     node_payload = payload[it.multi_index]  # type: ignore
                 new_nodes[it.multi_index] = Node(
                     node_payload,  # type: ignore
@@ -548,7 +525,7 @@ class Action:
 
     def reduce(
         self,
-        payload: PayloadFunc | Payload,
+        payload: Payload,
         yields: Coord | None = None,
         dim: str = "",
         batch_size: int = 0,
@@ -591,30 +568,6 @@ class Action:
                 continue
 
             batched = self.select(path=npath)
-            level = 0
-            if not isinstance(payload, Payload):
-                payload = Payload(payload)
-            if yields and batch_size != 0:
-                raise ValueError("Can not batch the execution of a generator")
-            if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
-                if not getattr(payload.func, "batchable", False):
-                    raise ValueError(
-                        f"Function {payload.func.name()} is not batchable, but batch_size {batch_size} is specified"  # type: ignore[union-attr]
-                    )
-
-                while batch_size < nodetree_array(batched.nodes).sizes[dim]:
-                    lst = nodetree_array(batched.nodes).coords[dim].data
-                    batched = batched.transform(
-                        _batch_transform,
-                        [
-                            ({dim: lst[i : i + batch_size]}, payload)  # noqa: E203
-                            for i in range(0, len(lst), batch_size)
-                        ],
-                        f"batch.{level}.{dim}",
-                        path=npath,
-                    )
-                    dim = f"batch.{level}.{dim}"
-                    level += 1
 
             batched_narray = nodetree_array(batched.nodes)
             new_dims = [x for x in batched_narray.dims if x != dim]
@@ -645,7 +598,6 @@ class Action:
         new_nodes.update(node_arrays)
         return type(self)(nodetree_from_dict(new_nodes), yields)
 
-    @capture_payload_metadata
     def flatten(
         self,
         new_dim: str,
@@ -697,13 +649,13 @@ class Action:
             raise NotImplementedError("Multiple node arrays present, can not set single path")
         return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes)}))
 
-    def create_branches(self, expansion: dict[str, PayloadFunc | Payload]) -> Action:
+    def create_branches(self, expansion: dict[str, Payload]) -> Action:
         """Create action containing new node arrays by splitting an existing node array
         by the specified functions in expansion
 
         Parameters
         ----------
-        expansion: dict[str, PayloadFunc | Payload], dictionary of paths and functions to create
+        expansion: dict[str, Payload], dictionary of paths and functions to create
         new node arrays. All paths must be branches extending from an existing path, and the functions
         will be applied to the node array at the existing path to create the new node arrays at the
         branched paths
@@ -872,7 +824,6 @@ class Action:
 
     isel = iselect
 
-    @capture_payload_metadata
     def concatenate(
         self,
         dim: str,
@@ -882,9 +833,10 @@ class Action:
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> Action:
-        return _combine_nodes(self, "concat", dim, batch_size, keep_dim, path, backend_kwargs)
+        return _combine_nodes(
+            self, "concat", dim, batch_size, keep_dim, path, payload_metadata=payload_metadata, backend_kwargs=backend_kwargs
+        )
 
-    @capture_payload_metadata
     def stack(
         self,
         dim: str,
@@ -902,10 +854,10 @@ class Action:
             batch_size,
             keep_dim,
             path,
+            payload_metadata=payload_metadata,
             backend_kwargs={"axis": axis, **backend_kwargs},
         )
 
-    @capture_payload_metadata
     def sum(
         self,
         dim: str = "",
@@ -916,14 +868,17 @@ class Action:
         payload_metadata: dict | None = None,
     ) -> Action:
         return self.reduce(
-            Payload(backends.sum, kwargs=backend_kwargs),
+            create_task_instance(
+                backends.sum,
+                static_input_kw=backend_kwargs,
+                payload_metadata=payload_metadata,
+            ),
             dim=dim,
             path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
         )
 
-    @capture_payload_metadata
     def mean(
         self,
         dim: str = "",
@@ -941,7 +896,11 @@ class Action:
 
             if batch_size <= 1 or batch_size >= size:
                 action = action.reduce(
-                    Payload(backends.mean, kwargs=backend_kwargs),
+                    create_task_instance(
+                        backends.mean,
+                        static_input_kw=backend_kwargs,
+                        payload_metadata=payload_metadata,
+                    ),
                     dim=dim,
                     path=npath,
                     keep_dim=keep_dim,
@@ -953,10 +912,10 @@ class Action:
                     batch_size=batch_size,
                     keep_dim=keep_dim,
                     **backend_kwargs,
+                    payload_metadata=payload_metadata,
                 ).divide(size, path=npath)
         return action
 
-    @capture_payload_metadata
     def std(
         self,
         dim: str = "",
@@ -973,7 +932,15 @@ class Action:
             size = narray.sizes[dim]
 
             if batch_size <= 1 or batch_size >= size:
-                action = action.reduce(Payload(backends.std, kwargs=backend_kwargs), dim=dim, path=npath)
+                action = action.reduce(
+                    create_task_instance(
+                        backends.std,
+                        static_input_kw=backend_kwargs,
+                        payload_metadata=payload_metadata,
+                    ),
+                    dim=dim,
+                    path=npath,
+                )
 
             else:
                 mean_sq = action.mean(
@@ -982,22 +949,18 @@ class Action:
                     batch_size=batch_size,
                     keep_dim=keep_dim,
                     **backend_kwargs,
-                ).power(2, path=npath)
+                    payload_metadata=payload_metadata,
+                ).power(2, payload_metadata=payload_metadata, path=npath)
                 norm = (
-                    action.power(2, path=npath)
-                    .sum(
-                        dim=dim,
-                        path=npath,
-                        batch_size=batch_size,
-                        keep_dim=keep_dim,
-                        **backend_kwargs,
-                    )
-                    .divide(size, path=npath)
+                    action.power(2, payload_metadata=payload_metadata, path=npath)
+                    .sum(dim=dim, path=npath, batch_size=batch_size, keep_dim=keep_dim, **backend_kwargs, payload_metadata=payload_metadata)
+                    .divide(size, payload_metadata=payload_metadata, path=npath)
                 )
-                action = norm.subtract(mean_sq, path=npath).power(0.5, path=npath)
+                action = norm.subtract(mean_sq, payload_metadata=payload_metadata, path=npath).power(
+                    0.5, payload_metadata=payload_metadata, path=npath
+                )
         return action
 
-    @capture_payload_metadata
     def max(
         self,
         dim: str = "",
@@ -1008,14 +971,17 @@ class Action:
         payload_metadata: dict | None = None,
     ) -> Action:
         return self.reduce(
-            Payload(backends.max, kwargs=backend_kwargs),
+            create_task_instance(
+                backends.max,
+                static_input_kw=backend_kwargs,
+                payload_metadata=payload_metadata,
+            ),
             dim=dim,
             path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
         )
 
-    @capture_payload_metadata
     def min(
         self,
         dim: str = "",
@@ -1026,14 +992,17 @@ class Action:
         payload_metadata: dict | None = None,
     ) -> Action:
         return self.reduce(
-            Payload(backends.min, kwargs=backend_kwargs),
+            create_task_instance(
+                backends.min,
+                static_input_kw=backend_kwargs,
+                payload_metadata=payload_metadata,
+            ),
             dim=dim,
             path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
         )
 
-    @capture_payload_metadata
     def prod(
         self,
         dim: str = "",
@@ -1044,7 +1013,11 @@ class Action:
         payload_metadata: dict | None = None,
     ) -> Action:
         return self.reduce(
-            Payload(backends.prod, kwargs=backend_kwargs),
+            create_task_instance(
+                backends.prod,
+                static_input_kw=backend_kwargs,
+                payload_metadata=payload_metadata,
+            ),
             dim=dim,
             path=path,
             batch_size=batch_size,
@@ -1056,15 +1029,29 @@ class Action:
         method: Callable,
         other: Union[Action, float],
         path: Optional[str] = None,
+        payload_metadata: dict | None = None,
         **kwargs,
     ) -> Action:
         if isinstance(other, Action):
             return self.join(other, "**datatype**", match_coord_values=True).reduce(
-                Payload(method, kwargs=kwargs), dim="**datatype**", path=path
+                create_task_instance(
+                    method,
+                    static_input_kw=kwargs,
+                    payload_metadata=payload_metadata,
+                ),
+                dim="**datatype**",
+                path=path,
             )
-        return self.map(Payload(method, args=(Node.input_name(0), other), kwargs=kwargs), path=path)
+        return self.map(
+            create_task_instance(
+                method,
+                static_input_ps=[Node.Index(0), other],
+                static_input_kw=kwargs,
+                payload_metadata=payload_metadata,
+            ),
+            path=path,
+        )
 
-    @capture_payload_metadata
     def subtract(
         self,
         other: Union[Action, float],
@@ -1072,9 +1059,8 @@ class Action:
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> Action:
-        return self.__two_arg_method(backends.subtract, other, path=path, **backend_kwargs)
+        return self.__two_arg_method(backends.subtract, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
 
-    @capture_payload_metadata
     def divide(
         self,
         other: Union[Action, float],
@@ -1082,9 +1068,8 @@ class Action:
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> Action:
-        return self.__two_arg_method(backends.divide, other, path=path, **backend_kwargs)
+        return self.__two_arg_method(backends.divide, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
 
-    @capture_payload_metadata
     def add(
         self,
         other: Union[Action, float],
@@ -1092,9 +1077,8 @@ class Action:
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> Action:
-        return self.__two_arg_method(backends.add, other, path=path, **backend_kwargs)
+        return self.__two_arg_method(backends.add, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
 
-    @capture_payload_metadata
     def multiply(
         self,
         other: Union[Action, float],
@@ -1102,9 +1086,8 @@ class Action:
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> Action:
-        return self.__two_arg_method(backends.multiply, other, path=path, **backend_kwargs)
+        return self.__two_arg_method(backends.multiply, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
 
-    @capture_payload_metadata
     def power(
         self,
         other: Union[Action, float],
@@ -1112,10 +1095,7 @@ class Action:
         backend_kwargs: dict = {},
         payload_metadata: dict | None = None,
     ) -> Action:
-        return self.__two_arg_method(backends.pow, other, path=path, **backend_kwargs)
-
-    def add_attributes(self, attrs: dict):
-        self.nodes.attrs.update(attrs)
+        return self.__two_arg_method(backends.pow, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
 
     def set_scalar_coords(
         self,
@@ -1193,21 +1173,14 @@ class RegisteredAction:
         return f"Registered action: {self._name!r} at {self.action.__qualname__}"
 
 
-def _batch_transform(action: Action, selection: dict, payload: PayloadFunc | Payload) -> Action:
-    selected = action.select(selection, drop=True)
-    dim = list(selection.keys())[0]
-    for npath, narray in nodetree_arrays(selected.nodes):
-        if dim not in narray.dims:
-            continue
-        if narray.sizes[dim] == 1:
-            selected._squeeze_dimension(dim, drop=True, path=npath)
-        else:
-            selected = selected.reduce(payload, dim=dim, path=npath)
-    return selected
-
-
 def _expand_transform(action: Action, index: int | Hashable, dim: int | str, backend_kwargs: dict = {}) -> Action:
-    ret = action.map(Payload(backends.take, [Node.input_name(0), index], {"dim": dim, **backend_kwargs}))
+    ret = action.map(
+        create_task_instance(
+            payload=backends.take,
+            static_input_ps=[Node.Index(0), index],
+            static_input_kw={"dim": dim, **backend_kwargs},
+        ),
+    )
     return ret
 
 
@@ -1219,11 +1192,12 @@ def _combine_nodes(
     keep_dim: bool = False,
     path: Optional[str] = None,
     backend_kwargs: dict = {},
+    payload_metadata: dict | None = None,
 ) -> Action:
     if backend_method not in ["stack", "concat"]:
         raise ValueError(f"Unknown method {backend_method} for combining nodes")
     return action.reduce(
-        Payload(getattr(backends, backend_method), kwargs=backend_kwargs),
+        create_task_instance(payload=getattr(backends, backend_method), payload_metadata=payload_metadata, static_input_kw=backend_kwargs),
         dim=dim,
         path=path,
         batch_size=batch_size,
@@ -1232,7 +1206,7 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]] | list[Any] | PayloadFunc | Payload),  # values are Callables
+    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]] | list[Any] | Payload),  # values are Callables
     yields: Coord | None = None,
     dims: list | None = None,
     coords: dict | None = None,
@@ -1251,11 +1225,8 @@ def from_source(
         node_names = set()
         for item in it:
             pit = item[()]  # type: ignore
-            if not isinstance(pit, Payload):
-                payload = Payload(pit)
-            else:
-                payload = pit
-            name = payload.name()
+            payload = pit
+            name = str(payload)
             if name in node_names:
                 name += str(it.multi_index)
             node_names.add(name)
