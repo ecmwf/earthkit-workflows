@@ -568,6 +568,30 @@ class Action:
                 continue
 
             batched = self.select(path=npath)
+            level = 0
+            payload = create_task_instance(payload)
+            if yields and batch_size != 0:
+                raise ValueError("Can not batch the execution of a generator")
+            if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
+                payload_func = payload.definition.func
+                if payload_func is not None and not getattr(payload_func, "batchable", False):
+                    raise ValueError(
+                        f"Function {payload_func} is not batchable, but batch_size {batch_size} is specified"  # type: ignore[union-attr]
+                    )
+
+                while batch_size < nodetree_array(batched.nodes).sizes[dim]:
+                    lst = nodetree_array(batched.nodes).coords[dim].data
+                    batched = batched.transform(
+                        _batch_transform,
+                        [
+                            ({dim: lst[i : i + batch_size]}, payload)  # noqa: E203
+                            for i in range(0, len(lst), batch_size)
+                        ],
+                        f"batch.{level}.{dim}",
+                        path=npath,
+                    )
+                    dim = f"batch.{level}.{dim}"
+                    level += 1
 
             batched_narray = nodetree_array(batched.nodes)
             new_dims = [x for x in batched_narray.dims if x != dim]
@@ -1171,6 +1195,19 @@ class RegisteredAction:
 
     def __repr__(self):
         return f"Registered action: {self._name!r} at {self.action.__qualname__}"
+
+
+def _batch_transform(action: Action, selection: dict, payload: Payload) -> Action:
+    selected = action.select(selection, drop=True)
+    dim = list(selection.keys())[0]
+    for npath, narray in nodetree_arrays(selected.nodes):
+        if dim not in narray.dims:
+            continue
+        if narray.sizes[dim] == 1:
+            selected._squeeze_dimension(dim, drop=True, path=npath)
+        else:
+            selected = selected.reduce(payload, dim=dim, path=npath)
+    return selected
 
 
 def _expand_transform(action: Action, index: int | Hashable, dim: int | str, backend_kwargs: dict = {}) -> Action:
