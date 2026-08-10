@@ -9,7 +9,9 @@
 from functools import wraps
 from typing import Any, Callable, Concatenate, ParamSpec, ParamSpecArgs, TypeVar
 
-from .fluent import Payload
+from cascade.low.core import TaskInstance
+
+from .fluent import create_task_instance
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -38,7 +40,7 @@ def as_payload(func: Callable[Concatenate[ParamSpecArgs, P], R]):
     """
 
     @wraps(func, assigned=["__name__", "__doc__"])
-    def decorator(*, metadata: dict[str, Any] | None = None, **kwargs) -> Payload:
-        return Payload(func, args=None, kwargs=kwargs, metadata=metadata)
+    def decorator(*, metadata: dict[str, Any] | None = None, **kwargs) -> TaskInstance:
+        return create_task_instance(func, static_input_kw=kwargs, payload_metadata=metadata)
 
     return decorator

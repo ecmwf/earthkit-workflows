@@ -11,7 +11,7 @@ import functools
 import numpy as np
 import pytest
 
-from earthkit.workflows.fluent import Payload, from_source
+from earthkit.workflows.fluent import create_task_instance, from_source
 
 
 @pytest.fixture(scope="function")
@@ -31,6 +31,6 @@ def task_graph(request):
         .mean("x")
         .min("y")
         .expand("z", internal_dim=1, dim_size=3, axis=0)
-        .map([Payload(lambda x, a=a: x * a) for a in range(1, 4)])
+        .map([create_task_instance(lambda x, a=a: x * a) for a in range(1, 4)])
         .graph()
     )

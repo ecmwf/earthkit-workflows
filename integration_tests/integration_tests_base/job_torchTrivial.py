@@ -9,7 +9,7 @@ from integration_tests_runtime import sink_file, source_tensor, transform_tensor
 
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, JobInstanceRich, TaskId
 from earthkit.workflows.compilers import graph2job
-from earthkit.workflows.fluent import Payload, from_source
+from earthkit.workflows.fluent import create_task_instance, from_source
 from integration_tests_base.base import JobSpec
 
 
@@ -23,7 +23,7 @@ def _task_id(ji: JobInstance, prefix: str) -> TaskId:
 def job() -> JobInstanceRich:
     source = from_source(source_tensor)
     trans = source.map(transform_tensorsum)
-    sink = trans.map(Payload(sink_file, kwargs={"fname": "/tmp/torchTrivial.txt"}))
+    sink = trans.map(create_task_instance(sink_file, static_input_kw={"fname": "/tmp/torchTrivial.txt"}))
 
     graph = sink.graph()
     ji = graph2job(graph)
