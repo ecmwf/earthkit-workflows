@@ -193,8 +193,16 @@ class Node(BaseNode):
             task.definition.input_schema = {k: "Any" for k in task.static_input_kw.keys()}
         if len(task.definition.output_schema) == 0:
             task.definition.output_schema = [(e, "Any") for e in node_outputs or [DefaultTaskOutput]]
-        if len(task.static_input_ps) == 0:
-            task.static_input_ps = {str(i): Node.Index(i) for i in range(len(inputs))}
+
+        # Insert in input nodes not already present in task.static_input_ps
+        insert_index = 0
+        for i in range(len(inputs)):
+            node_index = Node.Index(i)
+            if node_index in task.static_input_ps.values():
+                continue
+            while str(insert_index) in task.static_input_ps:
+                insert_index += 1
+            task.static_input_ps[str(insert_index)] = node_index
 
         node_inputs = {}
         for pos, index in task.static_input_ps.items():
@@ -406,7 +414,13 @@ class Action:
                 flags=["multi_index", "refs_ok"],
             )
             for node in it:
-                new_nodes[it.multi_index] = Node(backends.trivial, node[()])  # type: ignore
+                new_nodes[it.multi_index] = Node(
+                    create_task_instance(
+                        backends.method,
+                        static_input_ps=["trivial"],
+                    ),
+                    node[()],  # type: ignore
+                )
 
             node_arrays[npath] = xr.DataArray(
                 new_nodes,
@@ -893,8 +907,9 @@ class Action:
     ) -> Action:
         return self.reduce(
             create_task_instance(
-                backends.sum,
-                static_input_kw=backend_kwargs,
+                backends.method,
+                static_input_ps=["sum"],
+                static_input_kw={"backend_kwargs": backend_kwargs},
                 payload_metadata=payload_metadata,
             ),
             dim=dim,
@@ -921,8 +936,9 @@ class Action:
             if batch_size <= 1 or batch_size >= size:
                 action = action.reduce(
                     create_task_instance(
-                        backends.mean,
-                        static_input_kw=backend_kwargs,
+                        backends.method,
+                        static_input_ps=["mean"],
+                        static_input_kw={"backend_kwargs": backend_kwargs},
                         payload_metadata=payload_metadata,
                     ),
                     dim=dim,
@@ -958,8 +974,9 @@ class Action:
             if batch_size <= 1 or batch_size >= size:
                 action = action.reduce(
                     create_task_instance(
-                        backends.std,
-                        static_input_kw=backend_kwargs,
+                        backends.method,
+                        static_input_ps=["std"],
+                        static_input_kw={"backend_kwargs": backend_kwargs},
                         payload_metadata=payload_metadata,
                     ),
                     dim=dim,
@@ -996,8 +1013,9 @@ class Action:
     ) -> Action:
         return self.reduce(
             create_task_instance(
-                backends.max,
-                static_input_kw=backend_kwargs,
+                backends.method,
+                static_input_ps=["max"],
+                static_input_kw={"backend_kwargs": backend_kwargs},
                 payload_metadata=payload_metadata,
             ),
             dim=dim,
@@ -1017,8 +1035,9 @@ class Action:
     ) -> Action:
         return self.reduce(
             create_task_instance(
-                backends.min,
-                static_input_kw=backend_kwargs,
+                backends.method,
+                static_input_ps=["min"],
+                static_input_kw={"backend_kwargs": backend_kwargs},
                 payload_metadata=payload_metadata,
             ),
             dim=dim,
@@ -1038,8 +1057,9 @@ class Action:
     ) -> Action:
         return self.reduce(
             create_task_instance(
-                backends.prod,
-                static_input_kw=backend_kwargs,
+                backends.method,
+                static_input_ps=["prod"],
+                static_input_kw={"backend_kwargs": backend_kwargs},
                 payload_metadata=payload_metadata,
             ),
             dim=dim,
@@ -1050,17 +1070,18 @@ class Action:
 
     def __two_arg_method(
         self,
-        method: Callable,
+        method: str,
         other: Union[Action, float],
         path: Optional[str] = None,
         payload_metadata: dict | None = None,
-        **kwargs,
+        backend_kwargs: Optional[dict] = None,
     ) -> Action:
         if isinstance(other, Action):
             return self.join(other, "**datatype**", match_coord_values=True).reduce(
                 create_task_instance(
-                    method,
-                    static_input_kw=kwargs,
+                    backends.method,
+                    static_input_ps=[method],
+                    static_input_kw={"backend_kwargs": backend_kwargs},
                     payload_metadata=payload_metadata,
                 ),
                 dim="**datatype**",
@@ -1068,9 +1089,9 @@ class Action:
             )
         return self.map(
             create_task_instance(
-                method,
-                static_input_ps=[Node.Index(0), other],
-                static_input_kw=kwargs,
+                backends.method,
+                static_input_ps=[method, Node.Index(0), other],
+                static_input_kw={"backend_kwargs": backend_kwargs},
                 payload_metadata=payload_metadata,
             ),
             path=path,
@@ -1080,46 +1101,46 @@ class Action:
         self,
         other: Union[Action, float],
         path: Optional[str] = None,
-        backend_kwargs: dict = {},
-        payload_metadata: dict | None = None,
+        backend_kwargs: Optional[dict] = None,
+        payload_metadata: Optional[dict] = None,
     ) -> Action:
-        return self.__two_arg_method(backends.subtract, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
+        return self.__two_arg_method("subtract", other, path=path, payload_metadata=payload_metadata, backend_kwargs=backend_kwargs)
 
     def divide(
         self,
         other: Union[Action, float],
         path: Optional[str] = None,
-        backend_kwargs: dict = {},
-        payload_metadata: dict | None = None,
+        backend_kwargs: Optional[dict] = None,
+        payload_metadata: Optional[dict] = None,
     ) -> Action:
-        return self.__two_arg_method(backends.divide, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
+        return self.__two_arg_method("divide", other, path=path, payload_metadata=payload_metadata, backend_kwargs=backend_kwargs)
 
     def add(
         self,
         other: Union[Action, float],
         path: Optional[str] = None,
-        backend_kwargs: dict = {},
-        payload_metadata: dict | None = None,
+        backend_kwargs: Optional[dict] = None,
+        payload_metadata: Optional[dict] = None,
     ) -> Action:
-        return self.__two_arg_method(backends.add, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
+        return self.__two_arg_method("add", other, path=path, payload_metadata=payload_metadata, backend_kwargs=backend_kwargs)
 
     def multiply(
         self,
         other: Union[Action, float],
         path: Optional[str] = None,
-        backend_kwargs: dict = {},
-        payload_metadata: dict | None = None,
+        backend_kwargs: Optional[dict] = None,
+        payload_metadata: Optional[dict] = None,
     ) -> Action:
-        return self.__two_arg_method(backends.multiply, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
+        return self.__two_arg_method("multiply", other, path=path, payload_metadata=payload_metadata, backend_kwargs=backend_kwargs)
 
     def power(
         self,
         other: Union[Action, float],
         path: Optional[str] = None,
-        backend_kwargs: dict = {},
-        payload_metadata: dict | None = None,
+        backend_kwargs: Optional[dict] = None,
+        payload_metadata: Optional[dict] = None,
     ) -> Action:
-        return self.__two_arg_method(backends.pow, other, path=path, payload_metadata=payload_metadata, **backend_kwargs)
+        return self.__two_arg_method("pow", other, path=path, payload_metadata=payload_metadata, backend_kwargs=backend_kwargs)
 
     def set_scalar_coords(
         self,
@@ -1213,9 +1234,9 @@ def _batch_transform(action: Action, selection: dict, payload: Payload) -> Actio
 def _expand_transform(action: Action, index: int | Hashable, dim: int | str, backend_kwargs: dict = {}) -> Action:
     ret = action.map(
         create_task_instance(
-            payload=backends.take,
-            static_input_ps=[Node.Index(0), index],
-            static_input_kw={"dim": dim, **backend_kwargs},
+            payload=backends.method,
+            static_input_ps=["take", Node.Index(0), index],
+            static_input_kw={"dim": dim, "backend_kwargs": backend_kwargs},
         ),
     )
     return ret
@@ -1228,13 +1249,18 @@ def _combine_nodes(
     batch_size: int = 0,
     keep_dim: bool = False,
     path: Optional[str] = None,
-    backend_kwargs: dict = {},
-    payload_metadata: dict | None = None,
+    backend_kwargs: Optional[dict] = None,
+    payload_metadata: Optional[dict] = None,
 ) -> Action:
     if backend_method not in ["stack", "concat"]:
         raise ValueError(f"Unknown method {backend_method} for combining nodes")
     return action.reduce(
-        create_task_instance(payload=getattr(backends, backend_method), payload_metadata=payload_metadata, static_input_kw=backend_kwargs),
+        create_task_instance(
+            payload=backends.method,
+            static_input_ps=[backend_method],
+            static_input_kw=backend_kwargs,
+            payload_metadata=payload_metadata,
+        ),
         dim=dim,
         path=path,
         batch_size=batch_size,
