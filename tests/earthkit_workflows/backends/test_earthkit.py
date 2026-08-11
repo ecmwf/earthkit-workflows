@@ -41,63 +41,63 @@ def values():
 @pytest.mark.parametrize(
     "func",
     [
-        backends.mean,
-        backends.std,
-        backends.max,
-        backends.min,
-        backends.prod,
-        backends.sum,
-        backends.norm,
+        "mean",
+        "std",
+        "max",
+        "min",
+        "prod",
+        "sum",
+        "norm",
     ],
 )
 def test_multi_arg(func, input_generator, values):
     arr = [input_generator(2, 20), input_generator(2, 20), input_generator(1, 20)]
-    concat = backends.concat(*arr)
+    concat = backends.method("concat", *arr)
     assert len(concat) == 5
     assert values(concat).shape == (5, 20)
-    nested = func(concat, metadata={"key": "value"})
+    nested = backends.method(func, concat, backend_kwargs={"metadata": {"key": "value"}})
     assert nested.metadata()[0].get("key") == "value"
     assert values(nested).shape == (1, 20)
 
     with pytest.raises(ValueError):
-        func(*arr)
+        backends.method(func, *arr)
 
     # Field lists with multiple fields
     arr2 = [input_generator(3, 20) for _ in range(5)]
-    assert values(func(*arr2)).shape == (3, 20)
+    assert values(backends.method(func, *arr2)).shape == (3, 20)
 
 
 @pytest.mark.parametrize(
     "func",
     [
-        backends.add,
-        backends.subtract,
-        backends.multiply,
-        backends.divide,
-        backends.diff,
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "diff",
     ],
 )
 def test_two_arg(input_generator, values, func):
     # Single field in each field list
     arr = [input_generator(1, 5) for _ in range(2)]
-    assert values(func(*arr)).shape == (1, 5)
+    assert values(backends.method(func, *arr)).shape == (1, 5)
 
     # Multiple fields in each field list
     arr = [input_generator(3, 5), 2]
-    unnested = func(*arr)
+    unnested = backends.method(func, *arr)
     assert values(unnested).shape == (3, 5)
 
     # Raises on too many arguments
     arr = [input_generator(1, 5) for _ in range(3)]
-    with pytest.raises(AssertionError):
-        func(*arr)
-    with pytest.raises(AssertionError):
-        func(backends.concat(*arr))
+    with pytest.raises(TypeError, match="takes 2 positional arguments but 3 were given"):
+        backends.method(func, *arr)
+    with pytest.raises(TypeError, match="missing 1 required positional argument: 'arr2'"):
+        backends.method(func, backends.method("concat", *arr))
 
 
 def test_concat(input_generator, values):
     arr = [input_generator(1, 5) for _ in range(3)]
-    res = backends.concat(*arr)
+    res = backends.method("concat", *arr)
     assert len(res) == 3
     assert np.all(values(res[0]) == values(arr[0]))
     assert np.all(values(res[-1]) == values(arr[-1]))
@@ -113,5 +113,5 @@ def test_concat(input_generator, values):
 )
 def test_take(input_generator, values, args, kwargs, output_shape):
     input = input_generator(3, 6)
-    output = backends.take(input, *args, **kwargs)
+    output = backends.method("take", input, *args, **kwargs)
     assert values(output).shape == output_shape

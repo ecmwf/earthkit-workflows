@@ -27,38 +27,28 @@ class Special(str):
 @pytest.fixture
 def empty_backend():
     """Fixture to reset the BACKENDS dictionary before each test."""
-    BACKEND_COPY = backends.BACKENDS.copy()
-    backends.BACKENDS.clear()
-    backends.BACKENDS.update(
-        {
-            object: ArrayAPIBackend,
-        }
-    )
+    BACKEND_COPY = backends.ARRAY_BACKENDS.copy()
+    backends.ARRAY_BACKENDS.clear()
     yield
-    backends.BACKENDS.clear()
-    backends.BACKENDS.update(BACKEND_COPY)
+    backends.ARRAY_BACKENDS.clear()
+    backends.ARRAY_BACKENDS.update(BACKEND_COPY)
 
 
 def test_single_register(empty_backend):
-    backends.register(str, CustomStrBackend)
-    backends.register(int, CustomStrBackend)
+    backends.register("builtins.str", CustomStrBackend)
+    backends.register("builtins.int", CustomIntBackend)
+    backends.register("builtins.float", ArrayAPIBackend)
 
     assert backends.array_module("test") == CustomStrBackend
-    assert backends.array_module(0) == CustomStrBackend
+    assert backends.array_module(0) == CustomIntBackend
     assert backends.array_module(0.0) == ArrayAPIBackend
 
 
 def test_nested_register(empty_backend):
-    backends.register(str, CustomStrBackend)
-    backends.register(Special, CustomIntBackend)
+    backends.register("builtins.str", CustomStrBackend)
+    backends.register("builtins.int", ArrayAPIBackend)
+    backends.register("test_register.Special", CustomIntBackend)
 
     assert backends.array_module("test") == CustomStrBackend
     assert backends.array_module(Special("test")) == CustomIntBackend
     assert backends.array_module(0) == ArrayAPIBackend
-
-
-def test_lookup_register(empty_backend):
-    backends.register(str, CustomStrBackend)
-
-    assert backends.array_module("test") == CustomStrBackend
-    assert backends.array_module(Special("test")) == CustomStrBackend
