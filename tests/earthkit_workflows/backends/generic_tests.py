@@ -27,7 +27,7 @@ class BackendBase:
     )
     def test_multi_arg(self, num_inputs, input_shape, kwargs, output_shape):
         for func in ["mean", "std", "max", "min", "sum", "prod", "var"]:
-            assert self.shape(getattr(backends, func)(*self.input_generator(num_inputs, input_shape), **kwargs)) == output_shape
+            assert self.shape(backends.method(func, *self.input_generator(num_inputs, input_shape), backend_kwargs=kwargs)) == output_shape
 
     @pytest.mark.parametrize(
         ["num_inputs", "input_shape", "output_shape"],
@@ -37,7 +37,7 @@ class BackendBase:
     )
     def test_two_arg(self, num_inputs, input_shape, output_shape):
         for func in ["add", "subtract", "multiply", "divide", "pow"]:
-            assert self.shape(getattr(backends, func)(*self.input_generator(num_inputs, input_shape))) == output_shape
+            assert self.shape(backends.method(func, *self.input_generator(num_inputs, input_shape))) == output_shape
 
     @pytest.mark.parametrize(
         ["num_inputs", "shape"],
@@ -48,7 +48,7 @@ class BackendBase:
     )
     def test_two_arg_raises(self, num_inputs, shape):
         with pytest.raises(Exception):
-            backends.add(*self.input_generator(num_inputs, shape))
+            backends.method("add", *self.input_generator(num_inputs, shape))
 
     @pytest.mark.parametrize(
         ["args", "kwargs", "output_shape"],
@@ -59,9 +59,9 @@ class BackendBase:
         ],
     )
     def test_take(self, args, kwargs, output_shape):
-        output = backends.take(*self.input_generator(1), *args, **kwargs)
+        output = backends.method("take", *self.input_generator(1), *args, **kwargs)
         assert self.shape(output) == output_shape
 
     def test_batchable(self):
         for func in ["max", "min", "sum", "prod", "concat"]:
-            assert getattr(backends, func).batchable
+            assert backends.batchable(func)
