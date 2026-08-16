@@ -156,7 +156,8 @@ def _parse_pip_install(pip_output: str) -> dict[str, Version]:
 
 
 def _maybe_imported_version(mod_name: str) -> Version | None:
-    if mod_name in ("eccodes", "gribapi"):
+    # TODO presumably cacheable, unless None
+    if mod_name in ("eccodes", "gribapi", "mir-python"):
         # the eccodes/gribapi __version__ is wrong, reporting that of eccodeslib
         # => we must go to the importlib. This *invalidates* the post install
         # check -- TODO after eccodes wheel fixed, remove this
