@@ -12,7 +12,6 @@ import pytest
 from qubed import Qube
 
 from earthkit.workflows._qubed import _convert_num_to_abc, expand_as_qube
-from earthkit.workflows.nodetree import nodetree_array
 
 from .helpers import mock_action
 
@@ -324,8 +323,8 @@ def test_expansion_with_no_children_returns_early(empty_qube):
 
 def test_drop_then_expand(pressure_level_qube):
     """Test dropping an axis then expanding."""
-    action = mock_action((1,))
-    new_qube = pressure_level_qube.remove_by_key("step")
+    action = mock_action({"dim_1": [1]})
+    new_qube = pressure_level_qube.drop(["step"])
     result = expand_as_qube(action, new_qube)
 
     # Verify step dimension is not present
@@ -492,17 +491,16 @@ def test_expand_as_qube_with_real_action():
 )
 def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
-    action = mock_action(shape=(2, 2))
+    action = mock_action({"dim_1": [1, 2], "dim_2": [1, 2]})
 
     result = expand_as_qube(action, qube)
     subset = result.select(param="t")
 
-    da = nodetree_array(subset.nodes)
-    assert "step" in da.dims
-    assert "param" not in da.dims
-    assert "param" in da.coords
+    dims = subset.qube.dimensions()
+    assert "step" in dims
+    assert "param" in dims
 
-    assert da.param == "t"
+    assert dims["param"] == {"t"}
 
     with pytest.raises(IndexError):
         subset = result.select(param="nonexistent_param")
@@ -517,17 +515,16 @@ def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
 )
 def test_expand_as_qube_with_real_action_post_select_level(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
-    action = mock_action(shape=(2, 2))
+    action = mock_action({"dim_1": [1, 2], "dim_2": [1, 2]})
 
     result = expand_as_qube(action, qube)
     subset = result.select(level=50)
 
-    da = nodetree_array(subset.nodes)
-    assert "step" in da.dims
-    assert "level" not in da.dims
-    assert "level" in da.coords
+    dims = subset.qube.dimensions()
+    assert "step" in dims
+    assert "level" in dims
 
-    assert da.level == 50
+    assert dims["level"] == {50}
 
     with pytest.raises(IndexError):
         subset = result.select(param="nonexistent_param")

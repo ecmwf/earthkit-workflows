@@ -6,24 +6,13 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import Optional
+from typing import Any
 
-import numpy as np
-import xarray as xr
+from earthkit.workflows.fluent import Action, from_source
 
-from earthkit.workflows.fluent import Action, Node
-from earthkit.workflows.nodetree import nodetree_from_dict
+DataCube = dict[str, Any]
 
-
-class MockNode(Node):
-    def __init__(self, name: str):
-        super().__init__("test")
-
-
-def mock_action(shape: tuple, coords: Optional[dict[str, list[int]]] = None, path: str = "/") -> Action:
-    nodes = np.empty(shape, dtype=object)
-    it = np.nditer(nodes, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
-    for _ in it:
-        nodes[it.multi_index] = MockNode(f"{it.multi_index}")
-    nodes_xr = xr.DataArray(nodes, coords=coords or {f"dim_{x}": list(range(dim)) for x, dim in enumerate(shape)})
-    return Action(nodetree_from_dict({path: nodes_xr}))
+def mock_action(datacubes: DataCube | list[DataCube]) -> Action:
+    if not isinstance(datacubes, list):
+        datacubes = [datacubes]
+    return from_source("test", datacubes=datacubes)

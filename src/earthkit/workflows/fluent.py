@@ -464,7 +464,6 @@ class Action:
                     backends.method,
                     static_input_ps=["mean"],
                     static_input_kw={"backend_kwargs": backend_kwargs},
-                    node_metadata=node_metadata,
                 ),
                 dim=dim,
                 keep_dim=keep_dim,
@@ -495,9 +494,10 @@ class Action:
                     backends.method,
                     static_input_ps=["std"],
                     static_input_kw={"backend_kwargs": backend_kwargs},
-                    node_metadata=node_metadata,
                 ),
                 dim=dim,
+                keep_dim=keep_dim,
+                node_metadata=node_metadata,
             )
 
         else:
@@ -595,9 +595,9 @@ class Action:
                         backends.method,
                         static_input_ps=[method],
                         static_input_kw={"backend_kwargs": backend_kwargs},
-                        node_metadata=node_metadata,
                     ),
                     dim="**datatype**",
+                    node_metadata=node_metadata,
                 )
             )
         return self.map(
@@ -747,10 +747,11 @@ def from_source(
             qube.append_datacube(datacube)
     else:
         for datacube in datacubes:
+            print(f"Appending datacube: {datacube}")
             qube.append_datacube(datacube)
 
     nodes = {}
-    for index, unique_datacube in enumerate(expand(qube.datacubes())):
+    for index, unique_datacube in enumerate(functools.reduce(sum, [expand(x) for x in qube.to_datacubes()])):
         key = NodeQube.key(unique_datacube)
         nodes[key] = Node(payloads[key] if isinstance(payloads, dict) else payloads, num_outputs=len(yields[1]) if yields else 1, name=str(index), metadata=node_metadata)
 

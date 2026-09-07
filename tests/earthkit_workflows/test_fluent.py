@@ -14,10 +14,6 @@ import pytest
 
 from earthkit.workflows.fluent import Action, from_source, merge
 from earthkit.workflows.graph import serialise
-from earthkit.workflows.nodetree import (
-    nodetree_array,
-    nodetree_arrays,
-)
 
 from .helpers import mock_action
 
