@@ -10,7 +10,8 @@
 import numpy as np
 
 from earthkit.workflows import mark as ekw_mark
-from earthkit.workflows.fluent import NodeMetadataContext
+from earthkit.workflows.fluent import NodeMetadataContext, create_task_instance
+from earthkit.workflows.graph import nodes
 from earthkit.workflows.metadata import Artifacts, BuilderMetadata, NodeMetadata, Requirements
 from earthkit.workflows.nodetree import nodetree_array
 
@@ -19,6 +20,32 @@ from .helpers import mock_action
 
 def test_node_metadata():
     """Test node metadata is passed to the node and task definition"""
+    action = mock_action((1, 1))
+
+    task = create_task_instance(
+        lambda x: x,
+        requirements=Requirements(needs_gpu=True, environment=["test"]),
+        artifacts=Artifacts(artifact_urls={"test_artifact": "http://example.com/artifact"}),
+    )
+    mapped_action = action.map(task)
+
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
+    assert all(
+        x.metadata.requirements.needs_gpu
+        and x.metadata.requirements.environment == ["test"]
+        and x.payload.definition.needs_gpu
+        and x.metadata.requirements.environment == x.payload.definition.environment
+        for x in nodes
+    )
+    assert all(
+        x.metadata.artifacts.artifact_urls == {"test_artifact": "http://example.com/artifact"}
+        and x.metadata.artifacts.artifact_urls == x.payload.artifact_urls
+        for x in nodes
+    )
+
+
+def test_node_metadata_with_function():
+    """Test node metadata is passed in the action"""
     action = mock_action((1, 1))
 
     mapped_action = action.map(
@@ -31,9 +58,12 @@ def test_node_metadata():
     )
 
     nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
-
     assert all(
-        x.metadata.requirements.needs_gpu and x.payload.definition.needs_gpu and x.payload.definition.environment == ["test"] for x in nodes
+        x.metadata.requirements.needs_gpu
+        and x.metadata.requirements.environment == ["test"]
+        and x.payload.definition.needs_gpu
+        and x.metadata.requirements.environment == x.payload.definition.environment
+        for x in nodes
     )
     assert all(
         x.metadata.artifacts.artifact_urls == {"test_artifact": "http://example.com/artifact"}
