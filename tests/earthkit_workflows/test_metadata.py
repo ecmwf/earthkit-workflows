@@ -11,7 +11,6 @@ import numpy as np
 
 from earthkit.workflows import mark as ekw_mark
 from earthkit.workflows.fluent import NodeMetadataContext, create_task_instance
-from earthkit.workflows.graph import nodes
 from earthkit.workflows.metadata import Artifacts, BuilderMetadata, NodeMetadata, Requirements
 from earthkit.workflows.nodetree import nodetree_array
 
