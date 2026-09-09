@@ -10,8 +10,8 @@
 import pytest
 
 from cascade.low.core import TaskInstance
-from earthkit.workflows.metadata import Requirements
 from earthkit.workflows.decorators import as_task_instance
+from earthkit.workflows.metadata import Requirements
 
 
 @as_task_instance

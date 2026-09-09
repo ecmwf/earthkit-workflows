@@ -4,8 +4,8 @@ import numpy as np
 from cascade.low.core import JobInstanceRich
 from cascade.main import run_locally
 from earthkit.workflows.compilers import graph2job
-from earthkit.workflows.metadata import Requirements
 from earthkit.workflows.fluent import NodeMetadataContext, create_task_instance, from_source
+from earthkit.workflows.metadata import Requirements
 
 
 def earthkit_source(name: str, requests: list[dict], **kwargs) -> earthkit.data.SimpleFieldList:
