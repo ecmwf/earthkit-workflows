@@ -113,7 +113,7 @@ def test_payload_metadata_from_marks_explicit():
 # ---------------------------------------------------------------------------
 
 
-def test_payload_building_context_basic():
+def test_node_building_context_basic():
     """Metadata from the context is injected into every Payload/Node created inside."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(environment=["test"]), builder=BuilderMetadata(blockId="test_block")):
@@ -130,7 +130,7 @@ def test_payload_building_context_basic():
     )
 
 
-def test_payload_building_context_not_applied_outside():
+def test_node_building_context_not_applied_outside():
     """Metadata is NOT injected into Payloads/Nodes created outside the context."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(environment=["test"])):
@@ -145,7 +145,7 @@ def test_payload_building_context_not_applied_outside():
     )
 
 
-def test_payload_building_context_nested_merge():
+def test_node_building_context_nested_merge():
     """Inner context values override outer ones; all keys are present."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(needs_gpu=False, environment=["outer"])):
@@ -159,7 +159,7 @@ def test_payload_building_context_nested_merge():
     assert all(n.metadata.builder.blockId == "test_block" for n in nodes)
 
 
-def test_payload_building_context_direct_param_wins():
+def test_node_building_context_direct_param_wins():
     """Direct metadata= argument overrides context-provided metadata."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(needs_gpu=False, environment=["from_context"])):
@@ -175,7 +175,7 @@ def test_payload_building_context_direct_param_wins():
     assert all(set(n.payload.definition.environment) == {"direct", "from_context"} for n in nodes)
 
 
-def test_payload_building_context_full_example():
+def test_node_building_context_full_example():
     """Reproduces the docstring example with all three sources combined."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(needs_gpu=False), builder=BuilderMetadata(blockId="test_block")):
@@ -199,7 +199,7 @@ def test_payload_building_context_full_example():
     )
 
 
-def test_payload_building_context_does_not_bleed_between_sibling_contexts():
+def test_node_building_context_does_not_bleed_between_sibling_contexts():
     """Sibling contexts do not interfere with each other."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(environment=["first"])):
