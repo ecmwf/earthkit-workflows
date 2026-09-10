@@ -11,6 +11,7 @@ from typing import Any
 from typing_extensions import Self
 
 from earthkit.workflows.adapters import DefaultNodeOutput
+from earthkit.workflows.metadata import NodeMetadata
 
 
 class Output:
@@ -63,6 +64,8 @@ class Node:
         default output
     payload: Any
         Node payload
+    metadata: NodeMetadata | None
+        Node metadata, by default None
     **inputs: Node | Output
         Node outputs to use as inputs. If a `Node` object is passed, the input
         will be connected to its default output.
@@ -74,17 +77,20 @@ class Node:
     inputs: dict[str, Output]
     outputs: list[str]
     payload: Any
+    metadata: NodeMetadata
 
     def __init__(
         self,
         name: str,
         outputs: list[str] | None = None,
         payload: Any = None,
+        metadata: NodeMetadata | None = None,
         **kwargs: "Node | Output",  # NOTE can't declare Self due to children. Fix hiearchy instead
     ):
         self.name = name
         self.outputs = [Node.DEFAULT_OUTPUT] if outputs is None else outputs
         self.payload = payload
+        self.metadata = metadata or NodeMetadata()
         self.inputs = {iname: (inp if isinstance(inp, Output) else inp.get_output()) for iname, inp in kwargs.items()}
 
     def __getattr__(self, name: str) -> Output:
@@ -142,4 +148,4 @@ class Node:
 
     def copy(self) -> Self:
         """Shallow copy of the node (the payload is not copied)"""
-        return self.__class__(self.name, self.outputs.copy(), self.payload, **self.inputs)
+        return self.__class__(self.name, self.outputs.copy(), self.payload, metadata=self.metadata, **self.inputs)

@@ -32,7 +32,7 @@ def fuse_linear(parent: Node, pout: str, child: Node, cin: str) -> Node | None:
         payload.extend(parent.payload)
     payload.append(child.name)
     print(f"Fuse {parent.name} ({parent.payload}) with {child.name} -> {payload}")
-    return Node(f"{parent.name}+{child.name}", child.outputs, payload=payload, **parent.inputs)
+    return Node(f"{parent.name}+{child.name}", child.outputs, payload=payload, metadata=None, **parent.inputs)
 
 
 def test_fuse_linear():
