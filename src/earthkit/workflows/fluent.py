@@ -129,7 +129,6 @@ def _resolve_node_metadata(payload: Payload, node_metadata: Optional[NodeMetadat
             metadata,
             NodeMetadata(
                 requirements=Requirements(environment=payload.definition.environment, needs_gpu=payload.definition.needs_gpu),
-                artifacts=Artifacts(artifact_urls=payload.artifact_urls),
             ),
         )
     return metadata
@@ -140,7 +139,6 @@ def create_task_instance(
     static_input_ps: Optional[list[Any]] = None,
     static_input_kw: Optional[dict[str, Any]] = None,
     requirements: Optional[Requirements] = None,
-    artifacts: Optional[Artifacts] = None,
 ) -> TaskInstance:
     """
     Create a TaskInstance from a payload.
@@ -173,7 +171,6 @@ def create_task_instance(
             ),
             static_input_ps={str(i): v for i, v in enumerate(static_input_ps or [])},
             static_input_kw=static_input_kw or {},
-            artifact_urls=artifacts.artifact_urls if artifacts is not None else {},
         )
     else:
         task = TaskInstance(
@@ -186,7 +183,6 @@ def create_task_instance(
             ),
             static_input_ps={str(i): v for i, v in enumerate(static_input_ps or [])},
             static_input_kw=static_input_kw or {},
-            artifact_urls=artifacts.artifact_urls if artifacts is not None else {},
         )
     return task
 
@@ -208,7 +204,7 @@ class Node(BaseNode):
         if isinstance(inputs, Input):
             inputs = [inputs]
         metadata = _resolve_node_metadata(payload, node_metadata=metadata)
-        task = create_task_instance(payload, requirements=metadata.requirements, artifacts=metadata.artifacts)
+        task = create_task_instance(payload, requirements=metadata.requirements)
         node_outputs = None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
         if len(task.definition.input_schema) == 0:
             task.definition.input_schema = {k: "Any" for k in task.static_input_kw.keys()}

@@ -103,7 +103,6 @@ class TaskInstance(CascadeBaseModel):
     definition: TaskDefinition
     static_input_kw: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
     static_input_ps: dict[str, Any] = Field(description="input parameters for the entrypoint. Must be json/msgpack-serializable")
-    artifact_urls: dict[str, str] = {}
 
 
 # Type can't be json serialized directly -- use these two functions with `serdes` on JobInstance

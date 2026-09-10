@@ -42,12 +42,11 @@ def as_task_instance(func: Callable[Concatenate[ParamSpecArgs, P], R]):
     """
 
     @wraps(func, assigned=["__name__", "__doc__"])
-    def decorator(*, requirements: Requirements | None = None, artifacts: Artifacts | None = None, **kwargs) -> TaskInstance:
+    def decorator(*, requirements: Requirements | None = None, **kwargs) -> TaskInstance:
         return create_task_instance(
             func,
             static_input_kw=kwargs,
             requirements=requirements or Requirements(),
-            artifacts=artifacts or Artifacts(),
         )
 
     return decorator

@@ -24,7 +24,6 @@ def test_node_metadata():
     task = create_task_instance(
         lambda x: x,
         requirements=Requirements(needs_gpu=True, environment=["test"]),
-        artifacts=Artifacts(artifact_urls={"test_artifact": "http://example.com/artifact"}),
     )
     mapped_action = action.map(task)
 
@@ -34,11 +33,6 @@ def test_node_metadata():
         and x.metadata.requirements.environment == ["test"]
         and x.payload.definition.needs_gpu
         and x.metadata.requirements.environment == x.payload.definition.environment
-        for x in nodes
-    )
-    assert all(
-        x.metadata.artifacts.artifact_urls == {"test_artifact": "http://example.com/artifact"}
-        and x.metadata.artifacts.artifact_urls == x.payload.artifact_urls
         for x in nodes
     )
 
@@ -64,11 +58,7 @@ def test_node_metadata_with_function():
         and x.metadata.requirements.environment == x.payload.definition.environment
         for x in nodes
     )
-    assert all(
-        x.metadata.artifacts.artifact_urls == {"test_artifact": "http://example.com/artifact"}
-        and x.metadata.artifacts.artifact_urls == x.payload.artifact_urls
-        for x in nodes
-    )
+    assert all(x.metadata.artifacts.artifact_urls == {"test_artifact": "http://example.com/artifact"} for x in nodes)
     assert all(x.metadata.builder.blockId == "test_block" for x in nodes)
 
 
@@ -192,10 +182,7 @@ def test_node_building_context_full_example():
     assert all(n.payload.definition.needs_gpu and n.metadata.requirements.needs_gpu for n in nodes)
     assert all(set(n.payload.definition.environment) == {"value4"} for n in nodes)
     assert all(n.metadata.builder.blockId == "inner_block" for n in nodes)
-    assert all(
-        n.metadata.artifacts.artifact_urls == {"test_artifact": "url_1"} and n.metadata.artifacts.artifact_urls == n.payload.artifact_urls
-        for n in nodes
-    )
+    assert all(n.metadata.artifacts.artifact_urls == {"test_artifact": "url_1"} for n in nodes)
 
 
 def test_node_building_context_does_not_bleed_between_sibling_contexts():
