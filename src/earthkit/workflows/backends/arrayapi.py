@@ -6,70 +6,107 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-import array_api_compat
+from typing import Optional, Tuple
+
+from .base import Backend
 
 
-def _xp_multi_args(name: str, *args, **kwargs):
-    xp = array_api_compat.array_namespace(*args)
-    if len(args) > 1:
-        kwargs["axis"] = 0
+def _xp_multi_args(name: str, *arrays, axis: int | Tuple[int, ...] | None = None, keepdims: bool = False):
+    import array_api_compat
+
+    xp = array_api_compat.array_namespace(*arrays)
+    if len(arrays) > 1 and axis is None:
+        axis = 0
     else:
-        args = args[0]
-    return getattr(xp, name)(xp.asarray(args), **kwargs)
+        arrays = arrays[0]
+    return getattr(xp, name)(xp.asarray(arrays), axis=axis, keepdims=keepdims)
 
 
-class ArrayAPIBackend:
-    def mean(*args, **kwargs):
-        return _xp_multi_args("mean", *args, **kwargs)
+class ArrayAPIBackend(Backend):
+    @staticmethod
+    def mean(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("mean", *arrays, **(backend_kwargs or {}))
 
-    def std(*args, **kwargs):
-        return _xp_multi_args("std", *args, **kwargs)
+    @staticmethod
+    def std(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("std", *arrays, **(backend_kwargs or {}))
 
-    def max(*args, **kwargs):
-        return _xp_multi_args("max", *args, **kwargs)
+    @staticmethod
+    def max(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("max", *arrays, **(backend_kwargs or {}))
 
-    def min(*args, **kwargs):
-        return _xp_multi_args("min", *args, **kwargs)
+    @staticmethod
+    def min(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("min", *arrays, **(backend_kwargs or {}))
 
-    def sum(*args, **kwargs):
-        return _xp_multi_args("sum", *args, **kwargs)
+    @staticmethod
+    def sum(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("sum", *arrays, **(backend_kwargs or {}))
 
-    def prod(*args, **kwargs):
-        return _xp_multi_args("prod", *args, **kwargs)
+    @staticmethod
+    def prod(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("prod", *arrays, **(backend_kwargs or {}))
 
-    def var(*args, **kwargs):
-        return _xp_multi_args("var", *args, **kwargs)
+    @staticmethod
+    def var(*arrays, backend_kwargs: Optional[dict] = None):
+        return _xp_multi_args("var", *arrays, **(backend_kwargs or {}))
 
-    def stack(*args, axis: int = 0):
-        xp = array_api_compat.array_namespace(*args)
-        broadcasted = xp.broadcast_arrays(*args)
-        return xp.stack(broadcasted, axis=axis)
+    @staticmethod
+    def stack(*arrays, backend_kwargs: Optional[dict] = None):
+        import array_api_compat
 
-    def concat(*args, **kwargs):
-        xp = array_api_compat.array_namespace(*args)
-        return xp.concat(args, **kwargs)
+        xp = array_api_compat.array_namespace(*arrays)
+        broadcasted = xp.broadcast_arrays(*arrays)
+        backend_kwargs = backend_kwargs or {}
+        backend_kwargs.setdefault("axis", 0)
+        return xp.stack(broadcasted, **backend_kwargs)
 
-    def add(*args):
-        return args[0] + args[1]
+    @staticmethod
+    def concat(*arrays, backend_kwargs: Optional[dict] = None):
+        import array_api_compat
 
-    def subtract(*args):
-        return args[0] - args[1]
+        xp = array_api_compat.array_namespace(*arrays)
+        return xp.concat(arrays, **(backend_kwargs or {}))
 
-    def multiply(*args):
-        return args[0] * args[1]
+    @staticmethod
+    def add(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+        if backend_kwargs:
+            raise TypeError(f"ArrayAPIBackend.add does not accept keyword arguments: {sorted(backend_kwargs)}")
+        return arr1 + arr2
 
-    def divide(*args):
-        return args[0] / args[1]
+    @staticmethod
+    def subtract(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+        if backend_kwargs:
+            raise TypeError(f"ArrayAPIBackend.subtract does not accept keyword arguments: {sorted(backend_kwargs)}")
+        return arr1 - arr2
 
-    def pow(*args):
-        return args[0] ** args[1]
+    @staticmethod
+    def multiply(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+        if backend_kwargs:
+            raise TypeError(f"ArrayAPIBackend.multiply does not accept keyword arguments: {sorted(backend_kwargs)}")
+        return arr1 * arr2
 
-    def take(array, indices, *, dim: int, **kwargs):
+    @staticmethod
+    def divide(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+        if backend_kwargs:
+            raise TypeError(f"ArrayAPIBackend.divide does not accept keyword arguments: {sorted(backend_kwargs)}")
+        return arr1 / arr2
+
+    @staticmethod
+    def pow(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+        if backend_kwargs:
+            raise TypeError(f"ArrayAPIBackend.pow does not accept keyword arguments: {sorted(backend_kwargs)}")
+        return arr1**arr2
+
+    @staticmethod
+    def take(array, indices, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None):
+        import array_api_compat
+
         if not isinstance(dim, int):
             raise ValueError("Must provide `dim` as an integer")
         xp = array_api_compat.array_namespace(array)
 
         if hasattr(indices, "__iter__"):
-            return xp.take(array, indices, axis=dim, **kwargs)
-        ret = xp.take(array, [indices], axis=dim, **kwargs)
+            return xp.take(array, indices, axis=dim, **(backend_kwargs or {}))
+        ret = xp.take(array, [indices], axis=dim, **(backend_kwargs or {}))
         return xp.squeeze(ret, axis=dim)
