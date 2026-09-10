@@ -9,26 +9,27 @@
 
 import pytest
 
-from earthkit.workflows.decorators import as_payload
-from earthkit.workflows.fluent import Payload
+from cascade.low.core import TaskInstance
+from earthkit.workflows.decorators import as_task_instance
+from earthkit.workflows.metadata import Requirements
 
 
-@as_payload
+@as_task_instance
 def mock_payload_function(x, y, *, keyword):
     return x + y
 
 
-def test_as_payload():
-    """Test the `as_payload` decorator"""
-    payload = mock_payload_function(metadata={"test_metadata": True}, keyword="test")
+def test_as_task_instance():
+    """Test the `as_task_instance` decorator"""
+    payload = mock_payload_function(requirements=Requirements(needs_gpu=True), keyword="test")
 
-    assert isinstance(payload, Payload)
-    assert payload.metadata["test_metadata"]
-    assert payload.args == []
-    assert payload.kwargs == {"keyword": "test"}
+    assert isinstance(payload, TaskInstance)
+    assert payload.definition.needs_gpu
+    assert payload.static_input_ps == {}
+    assert payload.static_input_kw == {"keyword": "test"}
 
 
-def test_as_payload_with_args():
+def test_as_task_instance_with_args():
     """Test that calling the function with positional arguments raises an error."""
     with pytest.raises(TypeError):
-        mock_payload_function(1, 2, metadata={"test_metadata": True})
+        mock_payload_function(1, 2, requirements=Requirements(needs_gpu=True))

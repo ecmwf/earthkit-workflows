@@ -9,24 +9,28 @@
 from functools import wraps
 from typing import Any, Callable, Concatenate, ParamSpec, ParamSpecArgs, TypeVar
 
-from .fluent import Payload
+from cascade.low.core import TaskInstance
+
+from .fluent import create_task_instance
+from .metadata import Artifacts, Requirements
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def as_payload(func: Callable[Concatenate[ParamSpecArgs, P], R]):
-    """Wrap a function and return a Payload object.
+def as_task_instance(func: Callable[Concatenate[ParamSpecArgs, P], R]):
+    """Wrap a function and return a TaskInstance object.
 
     Forces the function to be called with keyword arguments only, with args being passed
     once the payload is executed from earlier Nodes.
 
-    Set `metadata` to pass metadata to the payload.
+    Set `requirements` and/or `artifacts` to pass execution and artifacts related
+    metadata to the task instance.
 
     Examples
     --------
         ```python
-        @as_payload
+        @as_task_instance
         def my_function(a, b, *, keyword):
             pass
 
@@ -38,7 +42,11 @@ def as_payload(func: Callable[Concatenate[ParamSpecArgs, P], R]):
     """
 
     @wraps(func, assigned=["__name__", "__doc__"])
-    def decorator(*, metadata: dict[str, Any] | None = None, **kwargs) -> Payload:
-        return Payload(func, args=None, kwargs=kwargs, metadata=metadata)
+    def decorator(*, requirements: Requirements | None = None, **kwargs) -> TaskInstance:
+        return create_task_instance(
+            func,
+            static_input_kw=kwargs,
+            requirements=requirements or Requirements(),
+        )
 
     return decorator

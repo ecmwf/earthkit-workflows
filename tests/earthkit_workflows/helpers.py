@@ -11,13 +11,13 @@ from typing import Optional
 import numpy as np
 import xarray as xr
 
-from earthkit.workflows.fluent import Action, Node, Payload
+from earthkit.workflows.fluent import Action, Node
 from earthkit.workflows.nodetree import nodetree_from_dict
 
 
 class MockNode(Node):
     def __init__(self, name: str):
-        super().__init__(Payload(lambda name=name: name))
+        super().__init__("test")
 
 
 def mock_action(shape: tuple, coords: Optional[dict[str, list[int]]] = None, path: str = "/") -> Action:

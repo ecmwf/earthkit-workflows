@@ -12,7 +12,7 @@ from datetime import datetime
 import numpy as np
 import pytest
 
-from earthkit.workflows.fluent import Action, Payload, custom_hash, from_source, merge
+from earthkit.workflows.fluent import Action, from_source, merge
 from earthkit.workflows.graph import serialise
 from earthkit.workflows.nodetree import (
     nodetree_array,
@@ -20,19 +20,6 @@ from earthkit.workflows.nodetree import (
 )
 
 from .helpers import mock_action
-
-
-def test_payload():
-    payload = Payload(np.random.rand, (2, 3, 4))
-    hash1 = custom_hash(f"{payload}")
-    payload2 = Payload(np.random.rand, (2, 3, 4), {})
-    hash2 = custom_hash(f"{payload2}")
-    payload3 = Payload(np.random.rand, (2, 3, 4), {"test": 1})
-    hash3 = custom_hash(f"{payload3}")
-    assert hash1 == hash2
-    assert payload == payload2
-    assert hash1 != hash3
-    assert payload != payload3
 
 
 @pytest.mark.parametrize(
@@ -123,7 +110,7 @@ def test_broadcast():
     it = np.nditer(out_array, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
     for _ in it:
         print(it.multi_index)
-        assert out_array[it.multi_index].item(0).inputs["input0"].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
+        assert out_array[it.multi_index].item(0).inputs["0"].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
 
 
 def test_flatten_expand():
@@ -156,16 +143,16 @@ def test_flatten_expand():
 @pytest.mark.parametrize(
     "input_nodes_shape, func, inputs, output_nodes_shape, node_inputs",
     [
-        [(3, 4), "map", [Payload("test")], (3, 4), 1],  # type: ignore
-        [(3, 4, 5), "reduce", [Payload("func")], (4, 5), 3],  # type: ignore
+        [(3, 4), "map", ["test"], (3, 4), 1],  # type: ignore
+        [(3, 4, 5), "reduce", ["func"], (4, 5), 3],  # type: ignore
         [
             (3, 4, 5),
             "reduce",
-            [Payload("func"), None, "dim_1"],  # type: ignore
+            ["func", None, "dim_1"],  # type: ignore
             (3, 5),
             4,
         ],
-        [(3,), "reduce", [Payload("func")], (), 3],  # type: ignore
+        [(3,), "reduce", ["func"], (), 3],  # type: ignore
         [
             (3,),
             "join",
@@ -222,14 +209,6 @@ def test_join_fail():
         input_action.join(second_action, "new_dim")
 
     input_action.join(second_action, "dim_1")
-
-
-def test_attributes():
-    action = mock_action((3,))
-
-    # Set attributes global to all nodes
-    action.add_attributes({"expver": "0001"})
-    assert action.nodes.attrs["expver"] == "0001"
 
 
 def test_invalid_registration():

@@ -19,7 +19,7 @@ import earthkit.data
 from earthkit.workflows.plugins.pproc.fluent import from_source  # ty: ignore
 from earthkit.workflows.plugins.pproc.utils.window import Range  # ty: ignore
 
-from earthkit.workflows.fluent import Payload
+from earthkit.workflows.fluent import create_task_instance
 
 # *** PARAMS ***
 
@@ -38,9 +38,9 @@ CLIM_DATE = "20241110"
 
 files = [f"{data_root}/data_{number}_{step}.grib" for number in range(1, NUM_ENSEMBLES + 1) for step in range(0, END_STEP + 1, 3)]
 payloads = [
-    Payload(
+    create_task_instance(
         lambda f: earthkit.data.from_source("file", f),
-        (f,),
+        static_input_ps=[f],
     )
     for f in files
 ]

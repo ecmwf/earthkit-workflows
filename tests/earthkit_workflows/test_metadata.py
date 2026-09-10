@@ -10,47 +10,63 @@
 import numpy as np
 
 from earthkit.workflows import mark as ekw_mark
-from earthkit.workflows.fluent import Payload, PayloadBuildingContext
+from earthkit.workflows.fluent import NodeMetadataContext, create_task_instance
+from earthkit.workflows.metadata import Artifacts, BuilderMetadata, NodeMetadata, Requirements
 from earthkit.workflows.nodetree import nodetree_array
 
 from .helpers import mock_action
 
 
-def test_payload_metadata():
-    """Test payload metadata is passed to the action"""
+def test_node_metadata():
+    """Test node metadata is passed to the node and task definition"""
     action = mock_action((1, 1))
 
-    test_payload = Payload(lambda x: x, metadata={"test_metadata": True})
+    task = create_task_instance(
+        lambda x: x,
+        requirements=Requirements(needs_gpu=True, environment=["test"]),
+    )
+    mapped_action = action.map(task)
 
-    mapped_action = action.map(test_payload)
-
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
     assert all(
-        map(
-            lambda x: x.payload.metadata["test_metadata"],
-            np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
-        )
+        x.metadata.requirements.needs_gpu
+        and x.metadata.requirements.environment == ["test"]
+        and x.payload.definition.needs_gpu
+        and x.metadata.requirements.environment == x.payload.definition.environment
+        for x in nodes
     )
 
 
-def test_payload_metadata_with_function():
-    """Test payload metadata is passed to the action"""
+def test_node_metadata_with_function():
+    """Test node metadata is passed in the action"""
     action = mock_action((1, 1))
 
-    mult_action = action.multiply(2, payload_metadata={"test_metadata": True})
-
-    assert all(
-        map(
-            lambda x: x.payload.metadata["test_metadata"],
-            np.atleast_1d(nodetree_array(mult_action.nodes).values).flatten(),
-        )
+    mapped_action = action.map(
+        lambda x: x,
+        node_metadata=NodeMetadata(
+            requirements=Requirements(needs_gpu=True, environment=["test"]),
+            builder=BuilderMetadata(blockId="test_block"),
+            artifacts=Artifacts(artifact_urls={"test_artifact": "http://example.com/artifact"}),
+        ),
     )
+
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
+    assert all(
+        x.metadata.requirements.needs_gpu
+        and x.metadata.requirements.environment == ["test"]
+        and x.payload.definition.needs_gpu
+        and x.metadata.requirements.environment == x.payload.definition.environment
+        for x in nodes
+    )
+    assert all(x.metadata.artifacts.artifact_urls == {"test_artifact": "http://example.com/artifact"} for x in nodes)
+    assert all(x.metadata.builder.blockId == "test_block" for x in nodes)
 
 
 def test_payload_metadata_from_marks_generic():
     """Test payload metadata from generic mark"""
     action = mock_action((1, 1))
 
-    @ekw_mark.add_execution_metadata(test_metadata=True)
+    @ekw_mark.add_execution_metadata(needs_gpu=True)
     def test_function(x):
         return x
 
@@ -58,7 +74,7 @@ def test_payload_metadata_from_marks_generic():
 
     assert all(
         map(
-            lambda x: x.payload.metadata["test_metadata"],
+            lambda x: x.payload.definition.needs_gpu,
             np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
         )
     )
@@ -75,85 +91,108 @@ def test_payload_metadata_from_marks_explicit():
 
     assert all(
         map(
-            lambda x: x.payload.metadata["needs_gpu"],
+            lambda x: x.payload.definition.needs_gpu,
             np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
         )
     )
 
 
 # ---------------------------------------------------------------------------
-# PayloadBuildingContext tests
+# NodeMetadataContext tests
 # ---------------------------------------------------------------------------
 
 
-def test_payload_building_context_basic():
-    """Metadata from the context is injected into every Payload created inside."""
-    with PayloadBuildingContext(env="test"):
-        p = Payload(lambda x: x)
+def test_node_building_context_basic():
+    """Metadata from the context is injected into every Payload/Node created inside."""
+    action = mock_action((1, 1))
+    with NodeMetadataContext(requirements=Requirements(environment=["test"]), builder=BuilderMetadata(blockId="test_block")):
+        mapped_action = action.map(lambda x: x)
+    assert all(
+        map(
+            lambda x: (
+                x.metadata.builder.blockId == "test_block"
+                and not x.payload.definition.needs_gpu
+                and x.payload.definition.environment == ["test"]
+            ),
+            np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
+        )
+    )
 
-    assert p.metadata["env"] == "test"
 
-
-def test_payload_building_context_not_applied_outside():
-    """Metadata is NOT injected into Payloads created outside the context."""
-    with PayloadBuildingContext(env="test"):
+def test_node_building_context_not_applied_outside():
+    """Metadata is NOT injected into Payloads/Nodes created outside the context."""
+    action = mock_action((1, 1))
+    with NodeMetadataContext(requirements=Requirements(environment=["test"])):
         pass
 
-    p = Payload(lambda x: x)
-    assert "env" not in p.metadata
+    mapped_action = action.map(lambda x: x)
+    assert all(
+        map(
+            lambda x: x.metadata.builder.blockId is None and not x.payload.definition.needs_gpu and x.payload.definition.environment == [],
+            np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten(),
+        )
+    )
 
 
-def test_payload_building_context_nested_merge():
+def test_node_building_context_nested_merge():
     """Inner context values override outer ones; all keys are present."""
-    with PayloadBuildingContext(key1="outer"):
-        with PayloadBuildingContext(key2="middle"):
-            with PayloadBuildingContext(key1="inner"):
-                p = Payload(lambda x: x)
+    action = mock_action((1, 1))
+    with NodeMetadataContext(requirements=Requirements(needs_gpu=False, environment=["outer"])):
+        with NodeMetadataContext(requirements=Requirements(environment=["middle"]), builder=BuilderMetadata(blockId="test_block")):
+            with NodeMetadataContext(requirements=Requirements(needs_gpu=True)):
+                mapped_action = action.map(lambda x: x)
 
-    assert p.metadata["key1"] == "inner"
-    assert p.metadata["key2"] == "middle"
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
+    assert all(n.payload.definition.needs_gpu and n.metadata.requirements.needs_gpu for n in nodes)
+    assert all(set(n.payload.definition.environment) == {"middle", "outer"} for n in nodes)
+    assert all(n.metadata.builder.blockId == "test_block" for n in nodes)
 
 
-def test_payload_building_context_direct_param_wins():
+def test_node_building_context_direct_param_wins():
     """Direct metadata= argument overrides context-provided metadata."""
-    with PayloadBuildingContext(key1="from_context", key2="from_context"):
-        p = Payload(lambda x: x, metadata={"key1": "direct", "key3": "direct"})
+    action = mock_action((1, 1))
+    with NodeMetadataContext(requirements=Requirements(needs_gpu=False, environment=["from_context"])):
 
-    assert p.metadata["key1"] == "direct"
-    assert p.metadata["key2"] == "from_context"
-    assert p.metadata["key3"] == "direct"
+        @ekw_mark.add_execution_metadata(needs_gpu=True, environment=["direct"])
+        def test_function(x):
+            return x
+
+        mapped_action = action.map(test_function)
+
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
+    assert all(n.payload.definition.needs_gpu for n in nodes)
+    assert all(set(n.payload.definition.environment) == {"direct", "from_context"} for n in nodes)
 
 
-def test_payload_building_context_full_example():
+def test_node_building_context_full_example():
     """Reproduces the docstring example with all three sources combined."""
-    with PayloadBuildingContext(key1="value1"):
-        with PayloadBuildingContext(key2="value2"):
-            with PayloadBuildingContext(key1="value3"):
-                p = Payload(lambda x: x, metadata={"key3": "value4"})
+    action = mock_action((1, 1))
+    with NodeMetadataContext(requirements=Requirements(needs_gpu=False), builder=BuilderMetadata(blockId="test_block")):
+        with NodeMetadataContext(requirements=Requirements(environment=[]), artifacts=Artifacts(artifact_urls={"test_artifact": "url_1"})):
+            with NodeMetadataContext(requirements=Requirements(needs_gpu=True), builder=BuilderMetadata(blockId="inner_block")):
+                mapped_action = action.map(
+                    lambda x: x,
+                    node_metadata=NodeMetadata(
+                        requirements=Requirements(environment=["value4"]),
+                        artifacts=Artifacts(artifact_urls={"test_artifact": "url_1"}),
+                    ),
+                )
 
-    assert p.metadata["key1"] == "value3"
-    assert p.metadata["key2"] == "value2"
-    assert p.metadata["key3"] == "value4"
-
-
-def test_payload_building_context_on_action_map():
-    """Context metadata propagates to nodes created via Action.map."""
-    action = mock_action((2, 2))
-
-    with PayloadBuildingContext(stage="production"):
-        mapped = action.map(lambda x: x)
-
-    nodes = np.atleast_1d(nodetree_array(mapped.nodes).values).flatten()
-    assert all(n.payload.metadata["stage"] == "production" for n in nodes)
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
+    assert all(n.payload.definition.needs_gpu and n.metadata.requirements.needs_gpu for n in nodes)
+    assert all(set(n.payload.definition.environment) == {"value4"} for n in nodes)
+    assert all(n.metadata.builder.blockId == "inner_block" for n in nodes)
+    assert all(n.metadata.artifacts.artifact_urls == {"test_artifact": "url_1"} for n in nodes)
 
 
-def test_payload_building_context_does_not_bleed_between_sibling_contexts():
+def test_node_building_context_does_not_bleed_between_sibling_contexts():
     """Sibling contexts do not interfere with each other."""
-    with PayloadBuildingContext(key="first"):
-        p1 = Payload(lambda x: x)
+    action = mock_action((1, 1))
+    with NodeMetadataContext(requirements=Requirements(environment=["first"])):
+        a1 = action.map(lambda x: x)
 
-    with PayloadBuildingContext(key="second"):
-        p2 = Payload(lambda x: x)
+    with NodeMetadataContext(requirements=Requirements(environment=["second"])):
+        a2 = action.map(lambda x: x)
 
-    assert p1.metadata["key"] == "first"
-    assert p2.metadata["key"] == "second"
+    assert all(set(n.payload.definition.environment) == {"first"} for n in np.atleast_1d(nodetree_array(a1.nodes).values).flatten())
+    assert all(set(n.payload.definition.environment) == {"second"} for n in np.atleast_1d(nodetree_array(a2.nodes).values).flatten())
