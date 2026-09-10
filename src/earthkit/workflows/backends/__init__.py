@@ -32,7 +32,7 @@ ARRAY_BACKENDS = {
 BackendType = type[Backend]
 
 
-def register(name: str, backend: Backend):
+def register(name: str, backend: Any):
     """
     Register a new backend. Backend is matched based on the module name and class name of the array
     type. For example, to register a backend for numpy arrays, you would use "numpy.ndarray"
@@ -42,8 +42,8 @@ def register(name: str, backend: Backend):
     ----------
     name : str
         The name of the backend.
-    backend : Backend
-        The backend class to register.
+    backend : Any
+        The backend class to register. Can be subclass of Backend, or custom type
     """
     if not issubclass(type(backend), Backend):
         logger.warning(f"Backend {backend} does not implement the Backend interface. It may not work as expected.")
