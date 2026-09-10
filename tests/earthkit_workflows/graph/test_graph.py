@@ -77,6 +77,7 @@ class NameMangler(Transformer):
         return Node(
             self.mangle_name(processor.name),
             [self.mangle_output(out) for out in processor.outputs],
+            metadata=processor.metadata,
             **{self.mangle_input(iname): isrc for iname, isrc in inputs.items()},
         )
 
@@ -84,6 +85,7 @@ class NameMangler(Transformer):
         return Node(
             self.mangle_name(sink.name),
             outputs=[],
+            metadata=sink.metadata,
             **{self.mangle_input(iname): isrc for iname, isrc in inputs.items()},
         )
 
