@@ -61,7 +61,3 @@ class BackendBase:
     def test_take(self, args, kwargs, output_shape):
         output = backends.method("take", *self.input_generator(1), *args, **kwargs)
         assert self.shape(output) == output_shape
-
-    def test_batchable(self):
-        for func in ["max", "min", "sum", "prod", "concat"]:
-            assert backends.batchable(func)

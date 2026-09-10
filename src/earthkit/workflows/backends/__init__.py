@@ -82,7 +82,3 @@ def array_module(*arrays) -> BackendType:
 def method(name: str, *args, **kwargs) -> Any:
     backend = array_module(*args)
     return getattr(backend, name)(*args, **kwargs)
-
-
-def batchable(name: str) -> bool:
-    return name in ["max", "min", "sum", "prod", "var", "concat"]
