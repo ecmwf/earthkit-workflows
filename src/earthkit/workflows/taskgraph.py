@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterator, cast
 from typing_extensions import Self
 
 from .graph import Graph, Node, Output
+from .metadata import NodeMetadata
 from .utility import predecessors
 
 
@@ -36,10 +37,11 @@ class Task(Node):
         name: str,
         outputs: list[str] | None = None,
         payload: Any = None,
+        metadata: NodeMetadata | None = None,
         resources: Resources | None = None,
         **kwargs: Self | Output,
     ):
-        super().__init__(name, outputs, payload, **kwargs)
+        super().__init__(name, outputs, payload, metadata=metadata, **kwargs)
         if resources is None:
             resources = Resources()
         self.resources = resources
@@ -70,7 +72,7 @@ class Task(Node):
         self.resources.cpu_cycles = value
 
     def copy(self) -> "Task":
-        newnode = Task(self.name, self.outputs.copy(), self.payload, self.resources, **self.inputs)
+        newnode = Task(self.name, self.outputs.copy(), self.payload, self.metadata, self.resources, **self.inputs)
         return newnode
 
 

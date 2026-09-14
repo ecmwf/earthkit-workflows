@@ -10,6 +10,8 @@ import graphlib
 import json
 from typing import Any, Protocol
 
+from earthkit.workflows.metadata import NodeMetadata
+
 from .graph import Graph
 from .nodes import Node, Output
 
@@ -19,12 +21,12 @@ class NodeFactory(Protocol):
         pass
 
 
-def default_node_factory(name: str, outputs: list[str], payload: Any, **inputs: Output) -> Node:
+def default_node_factory(name: str, outputs: list[str], payload: Any, metadata: NodeMetadata | None = None, **inputs: Output) -> Node:
     # NOTE this logic is rather fragile; necessary due to the existence of default output. Remove it and simplify here
     if not outputs:
-        return Node(name, payload=payload, outputs=[], **inputs)
+        return Node(name, payload=payload, outputs=[], metadata=metadata, **inputs)
     else:
-        return Node(name, outputs, payload, **inputs)
+        return Node(name, outputs, payload, metadata=metadata, **inputs)
 
 
 def _deserialise_node(

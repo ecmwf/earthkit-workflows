@@ -157,7 +157,7 @@ class Splicer(Transformer):
         Node
             Replacement for the sink
         """
-        return Node(name, outputs=None, payload=s.payload, **inputs)
+        return Node(name, outputs=None, payload=s.payload, metadata=s.metadata, **inputs)
 
 
 ExpanderType = Callable[[Node], Graph | tuple[Graph, dict[str, str] | None, dict[str, str | None]] | None]

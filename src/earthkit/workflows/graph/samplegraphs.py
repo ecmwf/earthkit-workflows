@@ -59,7 +59,7 @@ def simple(nread: int = 5, nproc: int = 3) -> Graph:
     ws = []
     for i in range(nproc):
         pi = {f"input{j}": r for j, r in enumerate(rs)}
-        p = Node(f"process-{i}", outputs=None, payload=None, **pi)
+        p = Node(f"process-{i}", outputs=None, payload=None, metadata=None, **pi)
         ps.append(p)
         ws.append(Node(f"writer-{i}", outputs=[], input=p))
     return Graph(ws)
@@ -80,7 +80,7 @@ def multi(nread: int = 5, nout1: int = 3, nout2: int = 2) -> Graph:
     assert nout1 >= 3
     rs = [Node(f"reader-{i}") for i in range(nread)]
     p0i = {f"input{i}": r for i, r in enumerate(rs)}
-    p0 = Node("process-0", outputs=[f"output{i}" for i in range(nout1)], **p0i)
+    p0 = Node("process-0", outputs=[f"output{i}" for i in range(nout1)], metadata=None, **p0i)
     p1s = []
     for i in range(2, nout1):
         p = Node(f"process-{i - 1}", input1=p0.output0, input2=p0.get_output(f"output{i}"))

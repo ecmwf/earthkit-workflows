@@ -228,9 +228,9 @@ class Node(BaseNode):
             name,
             outputs=node_outputs,
             payload=task,
+            metadata=metadata,
             **node_inputs,
         )
-        self.metadata: NodeMetadata = metadata
 
     def __str__(self) -> str:
         return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
