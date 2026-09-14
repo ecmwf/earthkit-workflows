@@ -221,7 +221,7 @@ class Node(BaseNode):
                 node_inputs[pos] = inputs[index.value]
                 task.static_input_ps[pos] = None
 
-        name = name or ""
+        name = name or task.definition.func or task.definition.entrypoint
         name += custom_hash(f"{task}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
 
         super().__init__(
