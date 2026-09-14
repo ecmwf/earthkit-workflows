@@ -7,84 +7,85 @@
 # nor does it submit to any jurisdiction.
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 
 
 class Backend(ABC):
-    def trivial(array):
+    @classmethod
+    def trivial(cls, array: Any) -> Any:
         return array
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def mean(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def mean(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def std(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def std(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def max(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def max(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def min(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def min(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def sum(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def sum(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def prod(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def prod(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def var(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def var(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def stack(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def stack(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def concat(*array, backend_kwargs: Optional[dict] = None):
-        pass
+    def concat(cls, *array: Any, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def add(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
-        pass
+    def add(cls, arr1: Any, arr2: Any, *, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def subtract(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
-        pass
+    def subtract(cls, arr1: Any, arr2: Any, *, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def multiply(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
-        pass
+    def multiply(cls, arr1: Any, arr2: Any, *, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def divide(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
-        pass
+    def divide(cls, arr1: Any, arr2: Any, *, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def pow(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
-        pass
+    def pow(cls, arr1: Any, arr2: Any, *, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def take(array, indices, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None):
-        pass
+    def take(cls, array: Any, indices: Any, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None) -> Any:
+        raise NotImplementedError

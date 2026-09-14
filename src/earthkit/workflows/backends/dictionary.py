@@ -37,36 +37,36 @@ def _delegate(name: str, *dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any
 
 
 class DictBackend(Backend):
-    @staticmethod
-    def mean(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def mean(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("mean", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def std(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def std(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("std", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def max(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def max(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("max", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def min(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def min(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("min", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def sum(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def sum(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("sum", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def prod(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def prod(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("prod", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def var(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def var(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("var", *dicts, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def stack(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def stack(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         """Merge multiple dicts into one. Later dicts overwrite earlier keys."""
         if backend_kwargs:
             raise TypeError(f"DictBackend.stack does not accept keyword arguments: {sorted(backend_kwargs)}")
@@ -75,8 +75,8 @@ class DictBackend(Backend):
             result.update(d)
         return result
 
-    @staticmethod
-    def concat(*dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def concat(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         """Merge multiple dicts into one. Later dicts overwrite earlier keys."""
         if backend_kwargs:
             raise TypeError(f"DictBackend.concat does not accept keyword arguments: {sorted(backend_kwargs)}")
@@ -85,29 +85,29 @@ class DictBackend(Backend):
             result.update(d)
         return result
 
-    @staticmethod
-    def add(arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def add(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("add", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def subtract(arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def subtract(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("subtract", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def multiply(arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def multiply(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("multiply", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def divide(arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def divide(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("divide", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    @staticmethod
-    def pow(arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+    @classmethod
+    def pow(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         return _delegate("pow", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    @staticmethod
+    @classmethod
     def take(
-        array: dict[str, Any], indices: Any, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None
+        cls, array: dict[str, Any], indices: Any, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None
     ) -> dict[str, Any] | Any:
         if dim is not None:
             raise TypeError("DictBackend.take does not support the 'dim' argument")

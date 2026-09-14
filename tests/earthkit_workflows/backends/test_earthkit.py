@@ -89,7 +89,7 @@ def test_two_arg(input_generator, values, func):
 
     # Raises on too many arguments
     arr = [input_generator(1, 5) for _ in range(3)]
-    with pytest.raises(TypeError, match="takes 2 positional arguments but 3 were given"):
+    with pytest.raises(TypeError, match="takes 3 positional arguments but 4 were given"):
         backends.method(func, *arr)
     with pytest.raises(TypeError, match="missing 1 required positional argument: 'arr2'"):
         backends.method(func, backends.method("concat", *arr))

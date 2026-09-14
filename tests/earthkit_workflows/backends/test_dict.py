@@ -243,5 +243,5 @@ class TestDictBackendArithmetic:
     def test_two_arg_enforced(self, func: str) -> None:
         """Arithmetic ops require exactly two arguments."""
         dicts = _make_scalar_dicts(3)
-        with pytest.raises(TypeError, match="takes 2 positional arguments but 3 were given"):
+        with pytest.raises(TypeError, match="takes 3 positional arguments but 4 were given"):
             backends.method(func, *dicts)

@@ -6,20 +6,24 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import Callable, Optional, TypeAlias
+from typing import TYPE_CHECKING, Callable, Optional, Sequence, TypeAlias
+
+if TYPE_CHECKING:
+    import numpy as np
+    from earthkit.data import FieldList
 
 from .base import Backend
 
+Indexer: TypeAlias = int | str | Sequence[int] | Sequence[str]
+Metadata: TypeAlias = dict | Callable | None
 
-def standardise_output(data):
+
+def standardise_output(data: "np.ndarray") -> "np.ndarray":
     # Also, nest the data to avoid problems with not finding geography attribute
     if len(data.shape) == 1:
         data = data.reshape((1, *data.shape))
     assert len(data.shape) == 2
     return data
-
-
-Metadata: TypeAlias = dict | Callable | None
 
 
 def resolve_metadata(metadata: Metadata, *args) -> dict:
@@ -30,7 +34,7 @@ def resolve_metadata(metadata: Metadata, *args) -> dict:
     return metadata(*args)
 
 
-def new_fieldlist(data, metadata: list, overrides: dict):
+def new_fieldlist(data: "np.ndarray", metadata: list, overrides: dict) -> "FieldList":
     from earthkit.data import FieldList
 
     if len(overrides) > 0:
@@ -52,7 +56,7 @@ def new_fieldlist(data, metadata: list, overrides: dict):
 
 
 class FieldListBackend(Backend):
-    def _merge(*fieldlists):
+    def _merge(*fieldlists: "FieldList") -> "FieldList":
         """Merge fieldlist elements into a single array. fieldlists with
         different number of fields must be concatenated, otherwise, the
         elements in each fieldlist are stacked along a new dimension
@@ -66,7 +70,8 @@ class FieldListBackend(Backend):
         xp = array_api_compat.array_namespace(*values)
         return xp.asarray(values)
 
-    def multi_arg_function(func: str, *arrays, metadata: Metadata = None):
+    @classmethod
+    def multi_arg_function(cls, func: str, *arrays: "FieldList", metadata: Metadata = None) -> "FieldList":
         import array_api_compat
 
         merged_array = FieldListBackend._merge(*arrays)
@@ -79,7 +84,8 @@ class FieldListBackend(Backend):
             resolve_metadata(metadata, *arrays),
         )
 
-    def two_arg_function(func: str, arr1, arr2, metadata: Metadata = None):
+    @classmethod
+    def two_arg_function(cls, func: str, arr1: "FieldList", arr2: "FieldList | np.ndarray", metadata: Metadata = None) -> "FieldList":
         import array_api_compat
         from earthkit.data import FieldList
 
@@ -96,70 +102,70 @@ class FieldListBackend(Backend):
         res = getattr(xp, func)(val1, val2)
         return new_fieldlist(res, [arr1[x].metadata() for x in range(len(res))], metadata)
 
-    @staticmethod
-    def mean(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def mean(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("mean", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def std(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def std(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("std", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def min(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def min(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("min", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def max(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def max(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("max", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def sum(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def sum(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("sum", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def prod(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def prod(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("prod", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def var(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def var(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multi_arg_function("var", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def stack(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def stack(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         if backend_kwargs:
             raise TypeError(f"FieldListBackend.stack does not accept keyword arguments: {sorted(backend_kwargs)}")
         assert all([len(x) == 1 for x in arrays]), "Can not stack FieldLists with more than one element, use concat"
         return FieldListBackend.concat(*arrays)
 
-    @staticmethod
-    def add(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def add(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("add", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
-    def subtract(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def subtract(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("subtract", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
-    def diff(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def diff(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.multiply(
             FieldListBackend.subtract(arr1, arr2, backend_kwargs=backend_kwargs),
             -1,  # type: ignore[arg-type]
         )
 
-    @staticmethod
-    def multiply(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def multiply(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("multiply", arr1, arr2, **(backend_kwargs or {}))
 
     @staticmethod
-    def divide(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    def divide(arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("divide", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
-    def pow(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def divide(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("pow", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
-    def concat(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def concat(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         """Concatenates the list of fields inside each FieldList into a single
         FieldList object
 
@@ -176,14 +182,15 @@ class FieldListBackend(Backend):
         ret = sum(arrays[1:], arrays[0])
         return ret
 
-    @staticmethod
+    @classmethod
     def take(
-        array,
-        indices: int | tuple,
+        cls,
+        array: "FieldList",
+        indices: Indexer,
         dim: Optional[int | str] = None,
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "FieldList":
         from earthkit.data import FieldList
 
         backend_kwargs = (backend_kwargs or {}).copy()
@@ -208,7 +215,8 @@ class FieldListBackend(Backend):
             raise ValueError(f"Take along dim {dim} resulted in empty fieldlist: indices {indices}, method {method}")
         return FieldList.from_array(ret.values, ret.metadata())
 
-    def norm(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def norm(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         backend_kwargs = (backend_kwargs or {}).copy()
         metadata = backend_kwargs.pop("metadata", None)
         import array_api_compat
@@ -222,14 +230,15 @@ class FieldListBackend(Backend):
             resolve_metadata(metadata, *arrays),
         )
 
-    @staticmethod
+    @classmethod
     def filter(
-        arr1,
-        mask,
+        cls,
+        arr1: "FieldList",
+        mask: "FieldList",
         replacement: float = 0,
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "FieldList":
         import array_api_compat
 
         backend_kwargs = (backend_kwargs or {}).copy()
@@ -238,6 +247,6 @@ class FieldListBackend(Backend):
         res = xp.where(mask.values, replacement, arr1.values)
         return new_fieldlist(res, arr1.metadata(), resolve_metadata(metadata, arr1, mask))
 
-    @staticmethod
-    def set_metadata(data, metadata: dict):
+    @classmethod
+    def set_metadata(cls, data: "FieldList", metadata: dict) -> "FieldList":
         return new_fieldlist(data.values, data.metadata(), metadata)

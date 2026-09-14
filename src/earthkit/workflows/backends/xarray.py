@@ -6,14 +6,20 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Sequence, TypeAlias
 
 from .base import Backend
+
+if TYPE_CHECKING:
+    import xarray as xr
+
+
+Indexer: TypeAlias = int | str | Sequence[int] | Sequence[str]
 
 
 class XArrayBackend(Backend):
     @staticmethod
-    def multi_arg_function(name: str, *arrays, **method_kwargs):
+    def multi_arg_function(name: str, *arrays: "xr.DataArray | xr.Dataset", **method_kwargs) -> "xr.DataArray | xr.Dataset":
         """Apply named function on DataArrays or Datasets. If only a single
         DataArrays or Datasetst then function is applied
         along an dimension specified in method_kwargs. If multiple  DataArrays
@@ -41,12 +47,12 @@ class XArrayBackend(Backend):
     @staticmethod
     def two_arg_function(
         name: str,
-        arr1,
-        arr2,
+        arr1: "xr.DataArray | xr.Dataset",
+        arr2: "xr.DataArray | xr.Dataset",
         *,
         keep_attrs: bool | str = False,
         **method_kwargs,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         """Apply named function in numpy on list of DataArrays or Datasets.
 
         Parameters
@@ -70,60 +76,68 @@ class XArrayBackend(Backend):
         with xr.set_options(keep_attrs=keep_attrs):
             return getattr(np, name)(arr1, arr2, **method_kwargs)
 
-    @staticmethod
+    @classmethod
     def mean(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.multi_arg_function("mean", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def std(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
     ):
         return XArrayBackend.multi_arg_function("std", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def min(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.multi_arg_function("min", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def max(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.multi_arg_function("max", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def sum(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.multi_arg_function("sum", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def prod(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.multi_arg_function("prod", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def var(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.multi_arg_function("var", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def concat(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         import numpy as np
         import xarray as xr
 
@@ -135,11 +149,12 @@ class XArrayBackend(Backend):
             raise ValueError("Concat must be used on existing dimensions only. Try stack instead.")
         return xr.concat(arrays, dim=dim, **(backend_kwargs or {}))  # type: ignore # xr/mypy dont coop
 
-    @staticmethod
+    @classmethod
     def stack(
-        *arrays,
+        cls,
+        *arrays: "xr.DataArray | xr.Dataset",
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         import numpy as np
         import xarray as xr
 
@@ -160,65 +175,71 @@ class XArrayBackend(Backend):
             ret = ret.transpose(*dims[:axis], dim, *dims[axis:])
         return ret
 
-    @staticmethod
+    @classmethod
     def add(
-        arr1,
-        arr2,
+        cls,
+        arr1: "xr.DataArray | xr.Dataset",
+        arr2: "xr.DataArray | xr.Dataset",
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.two_arg_function("add", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def subtract(
-        arr1,
-        arr2,
+        cls,
+        arr1: "xr.DataArray | xr.Dataset",
+        arr2: "xr.DataArray | xr.Dataset",
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.two_arg_function("subtract", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def multiply(
-        arr1,
-        arr2,
+        cls,
+        arr1: "xr.DataArray | xr.Dataset",
+        arr2: "xr.DataArray | xr.Dataset",
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.two_arg_function("multiply", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def pow(
-        arr1,
-        arr2,
+        cls,
+        arr1: "xr.DataArray | xr.Dataset",
+        arr2: "xr.DataArray | xr.Dataset",
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.two_arg_function("power", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def divide(
-        arr1,
-        arr2,
+        cls,
+        arr1: "xr.DataArray | xr.Dataset",
+        arr2: "xr.DataArray | xr.Dataset",
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         return XArrayBackend.two_arg_function("divide", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
+    @classmethod
     def take(
-        array,
-        indices,
+        cls,
+        array: "xr.DataArray | xr.Dataset",
+        indices: Indexer,
         dim: Optional[int | str] = None,
         *,
         backend_kwargs: Optional[dict] = None,
-    ):
+    ) -> "xr.DataArray | xr.Dataset":
         if dim is None:
             raise TypeError("XArrayBackend.take requires a 'dim' to be specified")
         kwargs: dict[str, Any] = {"drop": True}
         kwargs.update(backend_kwargs or {})
         method: str = kwargs.pop("method", "isel")
         if isinstance(dim, int):
-            dim = list(array.sizes.keys())[dim]
+            dim = str(list(array.sizes.keys())[dim])
 
         return getattr(array, method)({dim: indices}, **kwargs)

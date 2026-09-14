@@ -6,53 +6,61 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, TypeAlias
 
 from .base import Backend
 
+if TYPE_CHECKING:
+    # TODO: use array_api_typing.Array instead of np.ndarray when available
+    import numpy as np
 
-def _xp_multi_args(name: str, *arrays, axis: int | Tuple[int, ...] | None = None, keepdims: bool = False):
+    Array: TypeAlias = "np.ndarray"
+
+
+def _xp_multi_args(name: str, *arrays: "Array", axis: int | Tuple[int, ...] | None = None, keepdims: bool = False) -> "Array":
     import array_api_compat
 
     xp = array_api_compat.array_namespace(*arrays)
+    array: "Array"
     if len(arrays) > 1 and axis is None:
         axis = 0
+        array = xp.asarray(arrays)
     else:
-        arrays = arrays[0]
-    return getattr(xp, name)(xp.asarray(arrays), axis=axis, keepdims=keepdims)
+        array = arrays[0]
+    return getattr(xp, name)(array, axis=axis, keepdims=keepdims)
 
 
 class ArrayAPIBackend(Backend):
-    @staticmethod
-    def mean(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def mean(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("mean", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def std(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def std(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("std", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def max(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def max(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("max", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def min(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def min(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("min", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def sum(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def sum(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("sum", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def prod(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def prod(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("prod", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def var(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def var(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         return _xp_multi_args("var", *arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def stack(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def stack(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         import array_api_compat
 
         xp = array_api_compat.array_namespace(*arrays)
@@ -61,45 +69,52 @@ class ArrayAPIBackend(Backend):
         backend_kwargs.setdefault("axis", 0)
         return xp.stack(broadcasted, **backend_kwargs)
 
-    @staticmethod
-    def concat(*arrays, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def concat(cls, *arrays: "Array", backend_kwargs: Optional[dict] = None) -> "Array":
         import array_api_compat
 
         xp = array_api_compat.array_namespace(*arrays)
         return xp.concat(arrays, **(backend_kwargs or {}))
 
-    @staticmethod
-    def add(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def add(cls, arr1: "Array", arr2: "Array", *, backend_kwargs: Optional[dict] = None) -> "Array":
         if backend_kwargs:
             raise TypeError(f"ArrayAPIBackend.add does not accept keyword arguments: {sorted(backend_kwargs)}")
         return arr1 + arr2
 
-    @staticmethod
-    def subtract(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def subtract(cls, arr1: "Array", arr2: "Array", *, backend_kwargs: Optional[dict] = None) -> "Array":
         if backend_kwargs:
             raise TypeError(f"ArrayAPIBackend.subtract does not accept keyword arguments: {sorted(backend_kwargs)}")
         return arr1 - arr2
 
-    @staticmethod
-    def multiply(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def multiply(cls, arr1: "Array", arr2: "Array", *, backend_kwargs: Optional[dict] = None) -> "Array":
         if backend_kwargs:
             raise TypeError(f"ArrayAPIBackend.multiply does not accept keyword arguments: {sorted(backend_kwargs)}")
         return arr1 * arr2
 
-    @staticmethod
-    def divide(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def divide(cls, arr1: "Array", arr2: "Array", *, backend_kwargs: Optional[dict] = None) -> "Array":
         if backend_kwargs:
             raise TypeError(f"ArrayAPIBackend.divide does not accept keyword arguments: {sorted(backend_kwargs)}")
         return arr1 / arr2
 
-    @staticmethod
-    def pow(arr1, arr2, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def pow(cls, arr1: "Array", arr2: "Array", *, backend_kwargs: Optional[dict] = None) -> "Array":
         if backend_kwargs:
             raise TypeError(f"ArrayAPIBackend.pow does not accept keyword arguments: {sorted(backend_kwargs)}")
         return arr1**arr2
 
-    @staticmethod
-    def take(array, indices, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None):
+    @classmethod
+    def take(
+        cls,
+        array: "Array",
+        indices: "int | Array",
+        dim: Optional[str | int] = None,
+        *,
+        backend_kwargs: Optional[dict] = None,
+    ) -> "Array":
         import array_api_compat
 
         if not isinstance(dim, int):
