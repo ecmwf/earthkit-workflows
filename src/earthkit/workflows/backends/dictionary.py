@@ -5,7 +5,9 @@
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-from typing import Any
+from typing import Any, Optional
+
+from .base import Backend
 
 
 def _common_keys(*dicts: dict[str, Any]) -> list[str]:
@@ -28,71 +30,89 @@ def _delegate(name: str, *dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any
     correct backend for the value type.
     """
     # exceptional in-body import -- circular dependency with backends dispatcher
-    from earthkit.workflows import backends
+    from earthkit.workflows.backends import method
 
-    op = getattr(backends, name)
     keys = _common_keys(*dicts)
-    return {k: op(*(d[k] for d in dicts), **kwargs) for k in keys}
+    return {k: method(name, *(d[k] for d in dicts), **kwargs) for k in keys}
 
 
-class DictBackend:
-    def mean(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("mean", *dicts, **kwargs)
+class DictBackend(Backend):
+    @classmethod
+    def mean(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("mean", *dicts, backend_kwargs=backend_kwargs)
 
-    def std(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("std", *dicts, **kwargs)
+    @classmethod
+    def std(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("std", *dicts, backend_kwargs=backend_kwargs)
 
-    def max(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("max", *dicts, **kwargs)
+    @classmethod
+    def max(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("max", *dicts, backend_kwargs=backend_kwargs)
 
-    def min(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("min", *dicts, **kwargs)
+    @classmethod
+    def min(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("min", *dicts, backend_kwargs=backend_kwargs)
 
-    def sum(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("sum", *dicts, **kwargs)
+    @classmethod
+    def sum(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("sum", *dicts, backend_kwargs=backend_kwargs)
 
-    def prod(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("prod", *dicts, **kwargs)
+    @classmethod
+    def prod(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("prod", *dicts, backend_kwargs=backend_kwargs)
 
-    def var(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        return _delegate("var", *dicts, **kwargs)
+    @classmethod
+    def var(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("var", *dicts, backend_kwargs=backend_kwargs)
 
-    def stack(*dicts: dict[str, Any], axis: int = 0, **kwargs: Any) -> dict[str, Any]:
+    @classmethod
+    def stack(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         """Merge multiple dicts into one. Later dicts overwrite earlier keys."""
-        if axis != 0:
-            raise ValueError("DictBackend.stack does not support axis != 0")
-        if kwargs:
-            raise TypeError(f"DictBackend.stack does not accept keyword arguments: {sorted(kwargs)}")
+        if backend_kwargs:
+            raise TypeError(f"DictBackend.stack does not accept keyword arguments: {sorted(backend_kwargs)}")
         result: dict[str, Any] = {}
         for d in dicts:
             result.update(d)
         return result
 
-    def concat(*dicts: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    @classmethod
+    def concat(cls, *dicts: dict[str, Any], backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
         """Merge multiple dicts into one. Later dicts overwrite earlier keys."""
-        if kwargs:
-            raise TypeError(f"DictBackend.concat does not accept keyword arguments: {sorted(kwargs)}")
+        if backend_kwargs:
+            raise TypeError(f"DictBackend.concat does not accept keyword arguments: {sorted(backend_kwargs)}")
         result: dict[str, Any] = {}
         for d in dicts:
             result.update(d)
         return result
 
-    def add(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-        return _delegate("add", a, b)
+    @classmethod
+    def add(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("add", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    def subtract(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-        return _delegate("subtract", a, b)
+    @classmethod
+    def subtract(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("subtract", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    def multiply(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-        return _delegate("multiply", a, b)
+    @classmethod
+    def multiply(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("multiply", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    def divide(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-        return _delegate("divide", a, b)
+    @classmethod
+    def divide(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("divide", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    def pow(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-        return _delegate("pow", a, b)
+    @classmethod
+    def pow(cls, arr1: dict[str, Any], arr2: dict[str, Any], *, backend_kwargs: Optional[dict] = None) -> dict[str, Any]:
+        return _delegate("pow", arr1, arr2, backend_kwargs=backend_kwargs)
 
-    def take(array: dict[str, Any], indices: Any, *, dim: int, **kwargs: Any) -> dict[str, Any] | Any:
+    @classmethod
+    def take(
+        cls, array: dict[str, Any], indices: Any, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None
+    ) -> dict[str, Any] | Any:
+        if dim is not None:
+            raise TypeError("DictBackend.take does not support the 'dim' argument")
+        if backend_kwargs:
+            raise TypeError(f"DictBackend.take does not accept keyword arguments: {sorted(backend_kwargs)}")
         if isinstance(indices, str):
             indices = [indices]
         if any(i not in array for i in indices):
