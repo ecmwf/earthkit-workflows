@@ -16,41 +16,8 @@ except ImportError:
     # assuming editable install etc
     pass
 from . import fluent, mark
-from .graph import Graph, deduplicate_nodes
-from .graph.export import deserialise, serialise
-
-
-class Cascade:
-    def __init__(self, graph: Graph = Graph([])):
-        self._graph = graph
-
-    @classmethod
-    def from_actions(cls, actions):
-        graph = Graph([])
-        for action in actions:
-            graph += action.graph()
-        return cls(deduplicate_nodes(graph))
-
-    def visualise(self, *args, **kwargs):
-        from .visualise import visualise as _visualise_fn
-
-        return _visualise_fn(self._graph, *args, **kwargs)
-
-    def __add__(self, other: "Cascade") -> "Cascade":
-        if not isinstance(other, Cascade):
-            return NotImplemented
-        return Cascade(deduplicate_nodes(self._graph + other._graph))
-
-    def __iadd__(self, other: "Cascade") -> "Cascade":
-        if not isinstance(other, Cascade):
-            return NotImplemented
-        self._graph += other._graph
-        self._graph = deduplicate_nodes(self._graph)
-        return self
-
 
 __all__ = [
     "mark",
     "fluent",
-    "Cascade",
 ]

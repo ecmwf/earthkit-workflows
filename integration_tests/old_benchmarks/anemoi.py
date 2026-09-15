@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from earthkit.workflows import Cascade
+from earthkit.workflows.visualise import visualise
 
 
 def get_graph(lead_time, ensemble_members, CKPT=None, date="2024-12-02T00:00"):
@@ -18,7 +18,7 @@ def get_graph(lead_time, ensemble_members, CKPT=None, date="2024-12-02T00:00"):
     result = model_action.mean(dim="ensemble_member")
     result = result.map(print)
 
-    cascade_model = Cascade.from_actions([result.sel(param="2t")])
+    cascade_model = result.sel(param="2t").graph()
 
-    cascade_model.visualise("model_running.html", preset="blob", cdn_resources="in_line")
-    return cascade_model._graph
+    visualise(cascade_model, "model_running.html", preset="blob", cdn_resources="in_line")
+    return cascade_model
