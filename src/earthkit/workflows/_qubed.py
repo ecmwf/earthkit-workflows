@@ -114,10 +114,10 @@ def expand_as_qube(action: "Action", qube: "Qube", dims: Optional[list[str]] = N
     # Action expanded over param dimension only
     """
 
-    leaves: dict[str, Action] = {}
+    leaves: list[Action] = []
     expand_dims: list[str] = dims or list(qube.axes().keys())
 
-    def expand_fn(action: "Action", qube: "Qube", path: str, dims: list[str]) -> "Action":
+    def expand_fn(action: "Action", qube: "Qube", dims: list[str]) -> "Action":
         """Recursively expand the action based on the qube structure."""
         if qube.key in dims:
             # Expand along the current qube's key and values
@@ -125,16 +125,15 @@ def expand_as_qube(action: "Action", qube: "Qube", dims: Optional[list[str]] = N
 
         match len(qube.children):
             case 0:
-                assert path not in leaves, f"Duplicate path detected: {path}"
-                leaves[path] = action
+                leaves.append(action)
             case 1:  # In the case of one child, no need to split, just continue expanding
-                expand_fn(action, qube.children[0], path, expand_dims)
+                expand_fn(action, qube.children[0], expand_dims)
             case _:  # Multiple children, need to split into branches
                 for i, child in enumerate(qube.children):
-                    expand_fn(action, child, f"{path}/{get_name(child, i)}", expand_dims)
+                    expand_fn(action, child, expand_dims)
 
-        return fluent.merge(**leaves)
+        return fluent.merge(*leaves)
 
     if not qube.children:
         return action
-    return expand_fn(action, qube, "", expand_dims)
+    return expand_fn(action, qube, expand_dims)
