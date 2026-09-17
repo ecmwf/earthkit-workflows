@@ -37,7 +37,7 @@ def test_datacubes(datatree: dict):
     tree = nodetree_from_dict(datatree)
     cubes = datacubes(tree)
     assert len(cubes) == 2
-    assert cubes[0]["dim"] == coords_to_list(datatree["/path1"].coords["dim"].data)
+    assert list(map(str, cubes[0]["dim"])) == list(map(str, coords_to_list(datatree["/path1"].coords["dim"].data)))
 
 
 @pytest.mark.parametrize(

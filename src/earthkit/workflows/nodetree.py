@@ -11,7 +11,7 @@ from typing import Any, Iterable, Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
-from qubed import Qube # type: ignore
+from qubed import Qube  # type: ignore
 
 NodetreeMappings = Union[dict[str, xr.DataArray], dict[str, xr.Dataset], dict[str, Union[xr.DataArray, xr.Dataset]]]
 
@@ -85,7 +85,7 @@ def nodetree_new_dimension(nodetree: xr.DataTree, attempt: str = "tempindex") ->
 
 def coords_to_list(data: np.ndarray) -> list[Any]:
     if np.issubdtype(data.dtype, np.datetime64):
-        data = np.datetime_as_string(data, unit='s')
+        data = data.astype("datetime64[us]")
     out = data.tolist()
     if not isinstance(out, list):
         out = [out]

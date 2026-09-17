@@ -9,7 +9,7 @@
 
 
 import pytest
-from qubed import Qube # type: ignore
+from qubed import Qube  # type: ignore
 
 from earthkit.workflows._qubed import _convert_num_to_abc, expand_as_qube
 from earthkit.workflows.nodetree import nodetree_array

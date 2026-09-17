@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from earthkit.workflows import fluent
 
 if TYPE_CHECKING:
-    from qubed import Qube # type: ignore
+    from qubed import Qube  # type: ignore
 
     from earthkit.workflows.fluent import Action
 
