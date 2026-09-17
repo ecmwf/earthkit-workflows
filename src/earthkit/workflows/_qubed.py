@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from earthkit.workflows import fluent
 
 if TYPE_CHECKING:
-    from qubed import Qube
+    from qubed import Qube # type: ignore
 
     from earthkit.workflows.fluent import Action
 
@@ -132,7 +132,7 @@ def expand_as_qube(action: Action, qube: Qube, dims: Optional[list[str]] = None)
 
     # Serialise the Qube into its tree-JSON representation so we can walk
     # the node hierarchy without needing per-node Python bindings.
-    tree: dict[str, Any] = json.loads(qube.to_tree_json())
+    tree: dict[str, Any] = json.loads(qube.to_tree_json())["tree"]
     expand_dims: list[str] = dims or list(qube.axes().keys())
 
     leaves: dict[str, Action] = {}
