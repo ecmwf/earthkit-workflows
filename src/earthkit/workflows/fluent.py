@@ -205,6 +205,7 @@ class Node(BaseNode):
             inputs = [inputs]
         metadata = _resolve_node_metadata(payload, node_metadata=metadata)
         task = create_task_instance(payload, requirements=metadata.requirements)
+        task = task.model_copy(deep=True)
         node_outputs = None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
         if len(task.definition.input_schema) == 0:
             task.definition.input_schema = {k: "Any" for k in task.static_input_kw.keys()}
