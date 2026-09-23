@@ -109,8 +109,6 @@ class DictBackend(Backend):
     def take(
         cls, array: dict[str, Any], indices: Any, dim: Optional[str | int] = None, *, backend_kwargs: Optional[dict] = None
     ) -> dict[str, Any] | Any:
-        if dim is not None:
-            raise TypeError("DictBackend.take does not support the 'dim' argument")
         if backend_kwargs:
             raise TypeError(f"DictBackend.take does not accept keyword arguments: {sorted(backend_kwargs)}")
         if isinstance(indices, str):
