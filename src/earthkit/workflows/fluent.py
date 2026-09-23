@@ -1347,7 +1347,7 @@ Action.register("default", Action)
 __all__ = [
     "Action",
     "Payload",
-    "PayloadBuildingContext",
+    "NodeMetadataContext",
     "Node",
     "from_source",
     "merge",
