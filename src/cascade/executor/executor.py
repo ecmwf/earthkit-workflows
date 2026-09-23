@@ -99,8 +99,6 @@ class Executor:
         self.param_source = param_source(job_rich.jobInstance.edges)
         self.controller_address = controller_address
         self.host = host
-        self.workers_per_host = workers
-        self.host_idx = hostId2localIdx(host)
         self.gpu_info = gpu.get_gpu_info()
         label("host", self.host)
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
@@ -144,7 +142,7 @@ class Executor:
             ),
         )
         self.data_server.start()
-        gpus = self.gpu_info.count_at_host(self.host_idx, self.workers_per_host)
+        gpus = self.gpu_info.count_at_host(hostId2localIdx(self.host), len(self.workers))
         self.registration = ExecutorRegistration(
             host=self.host,
             maddress=self.mlistener.address,
@@ -236,7 +234,7 @@ class Executor:
         )
         worker_log_paths = process_log_paths(self.loggingConfig, f"worker_{worker.worker}")
         envvars = {runner_setup.WORKER_SETUP_ENVVAR: worker_setup.to_str()}
-        cuda_visible_devices = self.gpu_info.cuda_visible_at(self.host_idx, self.workers_per_host, worker.worker_num())
+        cuda_visible_devices = self.gpu_info.cuda_visible_at(hostId2localIdx(self.host), len(self.workers), worker.worker_num())
         if cuda_visible_devices is not None:
             envvars["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
         p = runner_setup.launch_in_venv(

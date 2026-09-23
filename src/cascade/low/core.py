@@ -158,15 +158,6 @@ def localIdx2hostId(idx: int) -> HostId:
     return HostId(f"l{idx}")
 
 
-def hostId2idx(host: HostId) -> int:
-    """Extracts the numeric index encoded in a HostId built via `globalIdx2hostId` or
-    `localIdx2hostId`."""
-    m = _HOST_ID_IDX_RE.fullmatch(host)
-    if m is None:
-        raise CascadeInternalError(f"unable to extract index from {host=}")
-    return int(m[1])
-
-
 def hostId2localIdx(host: HostId) -> int:
     """Returns the position of `host` among other hosts sharing the same physical machine,
     for eg gpu-accounting purposes. Hosts built via `localIdx2hostId` (prefix `l`) return
