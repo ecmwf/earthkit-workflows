@@ -110,11 +110,11 @@ class GetResponse:
     deser_fun: str
 
     def ser(self) -> bytes:
-        return self.l.to_bytes(4, "big") + ser_str(self.deser_fun) + ser_str(self.shmid) + ser_str(self.rdid) + ser_str(self.error)
+        return self.l.to_bytes(8, "big") + ser_str(self.deser_fun) + ser_str(self.shmid) + ser_str(self.rdid) + ser_str(self.error)
 
     @classmethod
     def deser(cls, data: memoryview) -> Self:
-        l, data = int.from_bytes(data[:4], "big"), data[4:]
+        l, data = int.from_bytes(data[:8], "big"), data[8:]
         deser_fun, data = deser_str(data)
         shmid, data = deser_str(data)
         rdid, data = deser_str(data)
