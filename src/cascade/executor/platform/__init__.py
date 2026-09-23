@@ -38,15 +38,6 @@ def get_bindabble_self():
         return socket.gethostname()  # socket.getfqdn()
 
 
-def gpu_init(worker_num: int):
-    if sys.platform != "darwin":
-        # TODO there is implicit coupling with executor.executor and cascade.main -- make it cleaner!
-        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(worker_num) if worker_num < gpus else ""
-    else:
-        pass  # no macos specific gpu init due to unified mem model
-
-
 MpSituation = typing.Literal["worker", "executor-loc", "executor-shm", "executor-dataserver", "gateway", "other"]
 _MpSituation = typing.get_args(MpSituation)
 

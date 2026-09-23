@@ -15,7 +15,6 @@ import os
 import zmq
 from packaging.version import Version
 
-import cascade.executor.platform as platform
 import cascade.executor.serde as serde
 from cascade.deployment.logging import init_from_obj
 from cascade.executor.comms import callback, worker_address
@@ -164,8 +163,6 @@ def entrypoint(workerSetup: WorkerSetup, runnerContext: RunnerContext) -> None:
     ):
         label("host", workerSetup.workerId.host)
         label("worker", repr(workerSetup.workerId))
-        worker_num = workerSetup.workerId.worker_num()
-        platform.gpu_init(worker_num)
         # TODO configure OMP_NUM_THREADS, blas, mkl, etc -- not clear how tho
 
         for serdeTypeEnc, (serdeSer, serdeDes) in runnerContext.job.serdes.items():

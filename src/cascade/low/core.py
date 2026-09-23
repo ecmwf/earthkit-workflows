@@ -18,6 +18,7 @@ import cloudpickle
 from pydantic import Field
 from typing_extensions import Self
 
+from cascade.low.exceptions import CascadeInternalError
 from cascade.low.func import CascadeBaseModel
 
 # NOTE it would be tempting to dict[str|int, ...] at places where we deal with kwargs/args, instead of
@@ -141,6 +142,31 @@ class JobInstance(CascadeBaseModel):
 
 
 HostId = NewType("HostId", str)
+
+_HOST_ID_IDX_RE = re.compile(r"^[a-zA-Z]+([0-9]+)$")
+
+
+def globalIdx2hostId(idx: int) -> HostId:
+    """Builds a HostId for a host which occupies its own physical machine (eg one host
+    per node in a distributed deployment)."""
+    return HostId(f"h{idx}")
+
+
+def localIdx2hostId(idx: int) -> HostId:
+    """Builds a HostId for a host which shares its physical machine with other hosts
+    (eg multiple executors launched locally within a single process, for local/dev runs)."""
+    return HostId(f"l{idx}")
+
+
+def hostId2localIdx(host: HostId) -> int:
+    """Returns the position of `host` among other hosts sharing the same physical machine,
+    for eg gpu-accounting purposes. Hosts built via `localIdx2hostId` (prefix `l`) return
+    their encoded index; any other HostId (eg `globalIdx2hostId`'s `h{i}`, or the literal
+    `controller`) is assumed to be alone on its machine, and thus returns 0.
+    """
+    if host.startswith("l") and host[1:].isdigit():
+        return int(host[1:])
+    return 0
 
 
 @dataclass(frozen=True)

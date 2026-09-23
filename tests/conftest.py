@@ -5,6 +5,19 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True, scope="session")
+def cuda_visible_devices():
+    original_value = os.getenv("CUDA_VISIBLE_DEVICES", None)
+    try:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        yield
+    finally:
+        if original_value is not None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = original_value
+        else:
+            del os.environ["CUDA_VISIBLE_DEVICES"]
+
+
 @pytest.fixture(autouse=True)
 def lock_resource(request, tmp_path_factory):
     """
