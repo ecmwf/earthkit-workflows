@@ -8,6 +8,7 @@
 
 
 import numpy as np
+import pytest
 
 from earthkit.workflows import mark as ekw_mark
 from earthkit.workflows.fluent import NodeMetadataContext, create_task_instance
@@ -164,14 +165,17 @@ def test_node_building_context_direct_param_wins():
     assert all(set(n.payload.definition.environment) == {"direct", "from_context"} for n in nodes)
 
 
-def test_node_building_context_full_example():
+@pytest.mark.parametrize(
+    "func", [lambda x: x, "test_func", create_task_instance("test_func")], ids=["callable", "entrypoint", "task_instance"]
+)
+def test_node_building_context_full_example(func):
     """Reproduces the docstring example with all three sources combined."""
     action = mock_action((1, 1))
     with NodeMetadataContext(requirements=Requirements(needs_gpu=False), builder=BuilderMetadata(blockId="test_block")):
         with NodeMetadataContext(requirements=Requirements(environment=[]), artifacts=Artifacts(artifact_urls={"test_artifact": "url_1"})):
             with NodeMetadataContext(requirements=Requirements(needs_gpu=True), builder=BuilderMetadata(blockId="inner_block")):
                 mapped_action = action.map(
-                    lambda x: x,
+                    func,
                     node_metadata=NodeMetadata(
                         requirements=Requirements(environment=["value4"]),
                         artifacts=Artifacts(artifact_urls={"test_artifact": "url_1"}),

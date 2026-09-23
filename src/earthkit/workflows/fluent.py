@@ -163,7 +163,8 @@ def create_task_instance(
 
     if isinstance(payload, TaskInstance):
         update_requirements(requirements, Requirements(environment=payload.definition.environment, needs_gpu=payload.definition.needs_gpu))
-        task = payload.model_copy(update=requirements.model_dump(exclude_none=True))
+        task = payload.model_copy(deep=True)
+        task.definition = task.definition.model_copy(update=requirements.model_dump(exclude_none=True))
     elif isinstance(payload, str):
         task = TaskInstance(
             definition=TaskDefinition(
