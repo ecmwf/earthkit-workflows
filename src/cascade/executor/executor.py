@@ -17,7 +17,6 @@ the tasks themselves.
 
 import atexit
 import logging
-import os
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from multiprocessing.shared_memory import SharedMemory
 from typing import Iterable
 
 import cascade.executor.platform as platform
+import cascade.executor.platform.gpu as gpu
 import cascade.executor.runner.setup as runner_setup
 import cascade.shm.api as shm_api
 import cascade.shm.client as shm_client
@@ -57,7 +57,7 @@ from cascade.executor.msg import (
     WorkerShutdown,
 )
 from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
-from cascade.low.core import DatasetId, HostId, JobInstanceRich, TaskId, WorkerId
+from cascade.low.core import DatasetId, HostId, JobInstanceRich, TaskId, WorkerId, hostId2localIdx
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
 from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, label, mark
@@ -99,6 +99,9 @@ class Executor:
         self.param_source = param_source(job_rich.jobInstance.edges)
         self.controller_address = controller_address
         self.host = host
+        self.workers_per_host = workers
+        self.host_idx = hostId2localIdx(host)
+        self.gpu_info = gpu.get_gpu_info()
         label("host", self.host)
         self.workers: dict[WorkerId, WorkerHandle | None] = {WorkerId(host, f"w{i}"): None for i in range(workers)}
         self.worker_awaits: dict[WorkerId, None | TaskSequence] = {}
@@ -141,7 +144,7 @@ class Executor:
             ),
         )
         self.data_server.start()
-        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
+        gpus = self.gpu_info.count_at_host(self.host_idx, self.workers_per_host)
         self.registration = ExecutorRegistration(
             host=self.host,
             maddress=self.mlistener.address,
@@ -232,10 +235,14 @@ class Executor:
             initial_installed=initial_installed,
         )
         worker_log_paths = process_log_paths(self.loggingConfig, f"worker_{worker.worker}")
+        envvars = {runner_setup.WORKER_SETUP_ENVVAR: worker_setup.to_str()}
+        cuda_visible_devices = self.gpu_info.cuda_visible_at(self.host_idx, self.workers_per_host, worker.worker_num())
+        if cuda_visible_devices is not None:
+            envvars["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
         p = runner_setup.launch_in_venv(
             "cascade.executor.runner.entrypoint",
             venv_td.name,
-            {runner_setup.WORKER_SETUP_ENVVAR: worker_setup.to_str()},
+            envvars,
             stdout_path=worker_log_paths.stdout if worker_log_paths is not None else None,
             stderr_path=worker_log_paths.stderr if worker_log_paths is not None else None,
         )

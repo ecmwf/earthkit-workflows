@@ -11,8 +11,6 @@
 import logging
 import logging.config
 import os
-import subprocess
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter_ns
 from typing import Any
@@ -27,7 +25,7 @@ from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
 from cascade.executor.executor import Executor
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich
+from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich, globalIdx2hostId, localIdx2hostId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
@@ -35,56 +33,23 @@ from cascade.scheduler.precompute import precompute
 logger = logging.getLogger(__name__)
 
 
-def _get_cuda_count() -> int:
-    try:
-        if "CUDA_VISIBLE_DEVICES" in os.environ:
-            # TODO we dont want to just count, we want to actually use literally these ids
-            # NOTE this is particularly useful for "" value -- careful when refactoring
-            visible = os.environ["CUDA_VISIBLE_DEVICES"]
-            visible_count = sum(1 for e in visible if e == ",") + (1 if visible else 0)
-            return visible_count
-        gpus = sum(
-            1
-            for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True).stdout.decode("ascii").split("\n")
-            if "GPU" in l
-        )
-    except:
-        logger.exception("unable to determine available gpus")
-        gpus = 0
-    return gpus
-
-
-def _get_gpu_count(host_idx: int, worker_count: int) -> int:
-    if sys.platform == "darwin":
-        # we should inspect some gpu capabilities details to prevent overcommit
-        return worker_count
-    else:
-        if host_idx == 0:
-            return _get_cuda_count()
-        else:
-            return 0
-
-
 def launch_executor(
     job: JobInstanceRich,
     controller_address: BackboneAddress,
     workers_per_host: int,
     portBase: int,
-    i: int,
+    host: HostId,
     shm_vol_gb: int | None,
-    gpu_count: int,
     loggingConfig: LoggingConfig,
     url_base: str,
 ):
     init_from_obj(loggingConfig, "executor")
     try:
-        logger.info(f"will set {gpu_count} gpus on host {i}")
-        os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
         executor = Executor(
             job,
             controller_address,
             workers_per_host,
-            HostId(f"h{i}"),
+            host,
             portBase,
             shm_vol_gb,
             loggingConfig,
@@ -120,7 +85,6 @@ def run_locally(
     try:
         # executors forking
         for i, executor in enumerate(range(hosts)):
-            gpu_count = _get_gpu_count(i, workers)
             # NOTE forkserver/spawn seem to forget venv, we need fork
             logger.debug(f"forking into executor on host {i}")
             p = platform.get_mp_ctx("executor-loc").Process(
@@ -130,9 +94,8 @@ def run_locally(
                     c,
                     workers,
                     portBase + 1 + i * 10,
-                    i,
+                    localIdx2hostId(i),
                     None,
-                    gpu_count,
                     loggingConfig.withContext(f"host_{i}"),
                     "tcp://localhost",
                 ),
@@ -233,15 +196,13 @@ def main_dist(
         print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
     else:
         loggingConfig = init_from_cliparam(loggingConfigSer, f"executor_{idx}")
-        gpu_count = _get_gpu_count(0, workers_per_host)
         launch_executor(
             jobInstanceRich,
             controller_url,
             workers_per_host,
             12345,
-            idx,
+            globalIdx2hostId(idx),
             shm_vol_gb,
-            gpu_count,
             loggingConfig=loggingConfig,
             url_base=f"tcp://{platform.get_bindabble_self()}",
         )
