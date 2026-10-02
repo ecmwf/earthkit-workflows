@@ -98,10 +98,20 @@ class ReporterChannel:
 class Reporter:
     def __init__(self, report_address: str | None) -> None:
         self.channel = ReporterChannel(report_address) if report_address is not None else None
+        # whether success or failure has been reported -- the gateway considers the job active until then
+        self.finalized = False
 
     def close(self) -> None:
+        """Idempotent"""
         if self.channel is not None:
-            self.channel.close()
+            channel, self.channel = self.channel, None
+            channel.close()
+
+    def ensure_finalized(self, failure: str) -> None:
+        """Reports failure unless success/failure has been reported already. Meant to be used as
+        atexit, to cover for unexpected terminations, and followed by `close`"""
+        if not self.finalized:
+            self.send_failure(failure)
 
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.channel is None:
@@ -126,6 +136,7 @@ class Reporter:
         self.channel.send(report)
 
     def send_failure(self, failure: str) -> None:
+        self.finalized = True
         if self.channel is None:
             return
         logger.debug(f"reporting failure {failure=}")
@@ -133,6 +144,7 @@ class Reporter:
         self.channel.send(report)
 
     def success(self) -> None:
+        self.finalized = True
         if self.channel is None:
             return
         logger.debug("reporter sending shutdown")

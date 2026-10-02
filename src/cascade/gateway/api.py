@@ -121,7 +121,9 @@ class ResultDeletionResponse(CascadeGatewayAPI):
 
 
 class ShutdownRequest(CascadeGatewayAPI):
-    pass
+    # None: terminate all jobs and shut down the gateway itself
+    # list of job ids: terminate only those jobs (queued or running), gateway keeps running. Empty list is a no-op
+    only_these: list[JobId] | None = None
 
 
 class ShutdownResponse(CascadeGatewayAPI):

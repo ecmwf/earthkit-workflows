@@ -17,6 +17,7 @@ the tasks themselves.
 
 import atexit
 import logging
+import subprocess
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -71,6 +72,22 @@ heartbeat_grace_ms = 2 * comms_default_timeout_ms
 JustForwardToController = DatasetTransmitFailure | DatasetPersistSuccess | DatasetPersistFailure | DatasetRetrieveFailure
 
 
+# how long to wait for a worker to gracefully exit before killing it. Kept short so that the whole executor
+# termination fits within the gateway's job termination grace
+worker_shutdown_grace_s = 5.0
+
+
+def _await_or_kill(proc: WorkerProcessHandle, grace_s: float) -> None:
+    try:
+        proc.wait(grace_s)
+    except subprocess.TimeoutExpired:
+        pass
+    if proc.is_alive():
+        logger.warning(f"process {proc.pid} did not exit within {grace_s}s, killing")
+        proc.kill()
+        proc.wait()
+
+
 def address_of(port: int) -> BackboneAddress:
     return f"tcp://{platform.get_bindabble_self()}:{port}"
 
@@ -112,6 +129,16 @@ class Executor:
         self.terminating = False
         logger.debug("register terminate function")
         atexit.register(self.terminate)
+        try:
+            self._init_side_effects(controller_address, portBase, shm_vol_gb, url_base)
+        except BaseException:
+            # NOTE we may be in a forked/spawned process where atexit does not fire, so we clean up explicitly
+            logger.exception("failed during executor construction, terminating")
+            self.terminate()
+            raise
+        logger.debug("constructed executor")
+
+    def _init_side_effects(self, controller_address: BackboneAddress, portBase: int, shm_vol_gb: int | None, url_base: str) -> None:
         # NOTE following inits are with potential side effects
         self.mlistener = Listener(address_of(portBase))
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
@@ -124,8 +151,8 @@ class Executor:
             target=shm_server,
             kwargs={
                 "capacity": shm_vol_gb * (1024**3) if shm_vol_gb else None,
-                "logging_config": as_dict_config(loggingConfig, "shm"),
-                "shm_pref": f"sCasc{host}",
+                "logging_config": as_dict_config(self.loggingConfig, "shm"),
+                "shm_pref": f"sCasc{self.host}",
                 "socket_addr": shm_port,
             },
         )
@@ -138,7 +165,7 @@ class Executor:
                 self.mlistener.address,
                 self.daddress,
                 self.host,
-                as_dict_config(loggingConfig, "dsr"),
+                as_dict_config(self.loggingConfig, "dsr"),
             ),
         )
         self.data_server.start()
@@ -162,7 +189,7 @@ class Executor:
         # All workers on this executor share this object; only per-worker identity (WorkerSetup)
         # is passed per-process via envvar.
         # The key is host-unique, but quick restarts are problematic on mac, and we cant have too long key for mac
-        self.runner_ctx_shm_key = md5hash24(f"sCascRnrCtx{host}" + str(uuid.uuid4()))
+        self.runner_ctx_shm_key = md5hash24(f"sCascRnrCtx{self.host}" + str(uuid.uuid4()))
         runner_ctx = RunnerContext(
             job=self.job_rich.jobInstance,
             callback=self.mlistener.address,
@@ -172,7 +199,6 @@ class Executor:
             pip_indices=self.job_rich.custom_pip_indices,
         )
         self.runner_ctx_shm: SharedMemory = runner_setup.save_runner_ctx_to_shm(runner_ctx, self.runner_ctx_shm_key)
-        logger.debug("constructed executor")
 
     def terminate(self) -> None:
         # NOTE a bit care here:
@@ -189,7 +215,7 @@ class Executor:
             try:
                 if (handle := self.workers[worker]) is not None:
                     callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
-                    handle.process.wait()
+                    _await_or_kill(handle.process, worker_shutdown_grace_s)
                     try:
                         handle.venv_dir.cleanup()
                     except Exception as e:
@@ -199,7 +225,7 @@ class Executor:
         for proc, venv in self.old_workers:
             logger.debug(f"cleanup old process {proc.pid}")
             try:
-                proc.wait()
+                _await_or_kill(proc, worker_shutdown_grace_s)
                 venv.cleanup()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
@@ -411,8 +437,18 @@ class Executor:
                     else:
                         # NOTE transmit and store are handled in DataServer (which has its own socket)
                         raise CascadeInternalError(f"unexpected message type in executor recv_loop: {type(m)}")
-                self.healthcheck()
+                if not self.terminating:
+                    # NOTE after terminate, processes are expected to be gone (or killed)
+                    self.healthcheck()
             except Exception as e:
                 logger.exception("executor exited, about to report to controller, propagating")
                 self.to_controller(ExecutorFailure(self.host, ser(e)))
                 self.terminate()
+            except BaseException as e:
+                # NOTE eg SystemExit due to sigterm, or KeyboardInterrupt -- we report & cleanup, but propagate
+                logger.warning(f"executor interrupted by {repr(e)}, reporting to controller and terminating")
+                try:
+                    self.to_controller(ExecutorFailure(self.host, ser(CascadeInfrastructureError(f"executor interrupted: {repr(e)}"))))
+                finally:
+                    self.terminate()
+                raise

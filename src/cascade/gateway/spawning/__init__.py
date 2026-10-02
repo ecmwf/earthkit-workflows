@@ -9,11 +9,11 @@
 """Spawning new processes for each SubmitJobRequest, locally or remotely."""
 
 import logging
-import subprocess
 
 from cascade.controller.report import JobId
 from cascade.deployment.logging import LoggingConfig
 from cascade.gateway.api import JobSpec, LocalProcesses, SlurmCluster, SshCluster
+from cascade.gateway.spawning.common import SpawnedJob
 from cascade.gateway.spawning.local import spawn_local
 from cascade.gateway.spawning.slurm import spawn_slurm
 from cascade.gateway.spawning.ssh import spawn_ssh
@@ -23,7 +23,7 @@ from cascade.low.exceptions import CascadeUserError
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["EkwInstallSpec", "prepare_install_spec", "spawn_subprocess"]
+__all__ = ["EkwInstallSpec", "SpawnedJob", "prepare_install_spec", "spawn_subprocess"]
 
 
 def spawn_subprocess(
@@ -34,7 +34,7 @@ def spawn_subprocess(
     troika_config: str | None,
     shared_path: str | None,
     install_spec: EkwInstallSpec | None,
-) -> subprocess.Popen[bytes]:
+) -> SpawnedJob:
     infra = job_spec.infra_spec
     if isinstance(infra, SlurmCluster):
         if infra.troika is not None:

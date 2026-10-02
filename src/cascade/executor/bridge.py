@@ -8,6 +8,7 @@
 
 """Handles communication between controller and remote executors"""
 
+import atexit
 import logging
 import time
 from typing import cast
@@ -45,6 +46,13 @@ from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
+# grace for executors to confirm shutdown when invoked via regular controller exit
+shutdown_grace_s = 3 * 60
+# grace when invoked via atexit -- regular exit already called shutdown, so this is a backup in case of
+# unexpected termination (eg sigterm, or before the controller loop started). Kept short to fit in the
+# gateway's termination grace
+atexit_shutdown_grace_s = 5
+
 Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess | RunnerRestartRequest
 # TODO consider retries here, esp on the Persist/Retrieve Failures
 ToShutdown = TaskFailure | ExecutorFailure | DatasetRetrieveFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
@@ -58,6 +66,9 @@ class Bridge:
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
         self.transmit_idx_counter = 0
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
+        # NOTE we register right away, before awaiting registrations, so that any already registered
+        # executor gets shut down in case of termination during that phase
+        atexit.register(self.shutdown, atexit_shutdown_grace_s)
         registered = 0
         self.environment = Environment(workers={}, host_url_base={})
         logger.debug("about to start receiving registrations")
@@ -180,12 +191,14 @@ class Bridge:
         self.transmit_idx_counter += 1
         self.sender.send(HostId("data." + source), m)
 
-    def shutdown(self) -> None:
+    def shutdown(self, grace_s: float = shutdown_grace_s) -> None:
+        """Sends shutdown to all registered executors, awaits their confirmation for up to `grace_s`.
+        Idempotent -- once executors confirmed, or grace elapsed, subsequent calls are no-op"""
         m = ExecutorShutdown()
         for host in self.sender.hosts.keys():
             if not host.startswith("data."):
                 self._send(host, m)
-        shutdown_grace = time.time_ns() + 3 * 60 * 1_000_000_000
+        shutdown_grace = time.time_ns() + int(grace_s * 1_000_000_000)
         while self.sender.hosts and time.time_ns() < shutdown_grace:
             # we want to consume all those exit messages
             for message in self.mlistener.recv_messages():
@@ -197,3 +210,4 @@ class Bridge:
                     logger.warning(f"ignoring {type(message)}")
         if self.sender.hosts:
             logger.warning(f"not all hosts exited during grace period: {self.sender.hosts.keys()}, quitting anyway")
+            self.sender.hosts.clear()

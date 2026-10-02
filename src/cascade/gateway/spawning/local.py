@@ -17,7 +17,7 @@ import orjson
 from cascade.controller.report import JobId
 from cascade.deployment.logging import LoggingConfig
 from cascade.gateway.api import JobSpec, LocalProcesses
-from cascade.gateway.spawning.common import allocate_port_range
+from cascade.gateway.spawning.common import SpawnedJob, allocate_port_range
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def spawn_local(
     job_id: JobId,
     loggingConfig: LoggingConfig,
     infra: LocalProcesses,
-) -> subprocess.Popen[bytes]:
+) -> SpawnedJob:
     base = ["python", "-m", "cascade.main", "local"]
 
     with open(f"/tmp/{job_id}.json", "wb") as f:
@@ -39,8 +39,12 @@ def spawn_local(
     report = ["--report_address", f"{addr},{job_id}"]
     logs = ["--loggingConfigSer", loggingConfig.withContext(f"job_{job_id}").ser_cliparam()]
     port_base = allocate_port_range(1 + infra.hosts * infra.workers_per_host * 10)
-    return subprocess.Popen(
+    # NOTE new session => own process group, so that we can kill the whole tree (executors, workers, ...)
+    # in case the controller fails to shut them down
+    proc = subprocess.Popen(
         base + infra_args + report + ["--port_base", str(port_base)] + logs,
         env={**os.environ, **job_spec.envvars},
         close_fds=True,
+        start_new_session=True,
     )
+    return SpawnedJob(procs=[proc], pgid=proc.pid)

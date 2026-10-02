@@ -31,7 +31,11 @@ def run(
     bridge: Bridge,
     preschedule: Preschedule,
     report_address: str | None = None,
+    reporter: Reporter | None = None,
 ) -> State:
+    """Runs the job to completion, shutting down the executors via `bridge` at the end. Reports to gateway
+    via `reporter` if given, otherwise constructs one from `report_address`. The reporter is closed at the end.
+    """
     env = bridge.get_environment()
     persisted = list_persisted_datasets(job.checkpointSpec) if job.checkpointSpec is not None else []
     jobInstance, preschedule, persisted_valid = trim_with_persisted(job, preschedule, set(persisted))
@@ -47,7 +51,8 @@ def run(
     events: list[Event] = []
     for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
         serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
-    reporter = Reporter(report_address)
+    if reporter is None:
+        reporter = Reporter(report_address)
     notify_wrapper = lambda events: notify(state, schedule, context, events, reporter)
 
     try:
@@ -87,6 +92,11 @@ def run(
         else:
             # unknown at this stage is assumed to be InfrastructureError
             raise CascadeInfrastructureError("crash in controller", parent=ex) from ex
+    except BaseException as ex:
+        # NOTE eg SystemExit due to sigterm, or KeyboardInterrupt -- we report, but dont wrap
+        logger.error(f"controller interrupted by {repr(ex)}, shutting down & propagating")
+        reporter.send_failure(f"controller interrupted: {repr(ex)}")
+        raise
     else:
         reporter.success()
     finally:

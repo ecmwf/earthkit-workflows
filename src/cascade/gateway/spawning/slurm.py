@@ -21,7 +21,7 @@ import orjson
 from cascade.controller.report import JobId
 from cascade.deployment.logging import LoggingConfig
 from cascade.gateway.api import JobSpec, SlurmCluster
-from cascade.gateway.spawning.common import allocate_port_range
+from cascade.gateway.spawning.common import SpawnedJob, allocate_port_range
 from cascade.gateway.spawning.wheels import EkwInstallSpec
 from cascade.low.exceptions import CascadeUserError
 
@@ -67,7 +67,7 @@ def spawn_slurm(
     infra: SlurmCluster,
     shared_path: str | None,
     install_spec: EkwInstallSpec | None,
-) -> subprocess.Popen[bytes]:
+) -> SpawnedJob:
     if shared_path is None:
         raise CascadeUserError("Slurm jobs require gateway shared_path")
     if install_spec is None or install_spec.shared_spec is None:
@@ -103,4 +103,5 @@ def spawn_slurm(
     write_slurm_exports(config_path, exports)
 
     launcher = scripts_dir / "launch_slurm.sh"
-    return subprocess.Popen([str(launcher), str(config_path)])
+    # NOTE the launcher execs into srun, which forwards the termination signal to all the job steps
+    return SpawnedJob(procs=[subprocess.Popen([str(launcher), str(config_path)])])

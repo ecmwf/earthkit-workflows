@@ -9,12 +9,16 @@
 """Unit tests for gateway.router update semantics."""
 
 import os
+import subprocess
+import sys
 from time import monotonic_ns
 
 from cascade.controller.report import JobId, JobProgress, JobProgressStarted
 from cascade.deployment.logging import DefaultLoggingConfig
+from cascade.gateway.api import JobSpec, LocalProcesses
 from cascade.gateway.router import Job, JobRouter
-from cascade.low.core import TaskId
+from cascade.gateway.spawning import SpawnedJob
+from cascade.low.core import JobInstance, JobInstanceRich, TaskId
 from cascade.ygg.api import YggNode
 from cascade.ygg.types import RetryPolicy, YggConfig
 
@@ -110,3 +114,52 @@ def test_maybe_update_active_jobs_decremented_on_completion() -> None:
 
         router.maybe_update(job_id, JobProgress.succeeded(), monotonic_ns())
         assert router.active_jobs == 0
+
+
+def test_maybe_update_completed_is_final() -> None:
+    with _make_ygg() as ygg:
+        router = _make_router(ygg)
+        job_id = JobId("job-final")
+        router.jobs[job_id] = _make_job()
+        router.active_jobs = 1
+
+        router.maybe_update(job_id, JobProgress.succeeded(), monotonic_ns())
+        router.maybe_update(job_id, JobProgress.failed("late"), monotonic_ns())
+        assert router.jobs[job_id].progress.failure is None
+        assert router.active_jobs == 0
+
+
+def test_shutdown_selected() -> None:
+    with _make_ygg() as ygg:
+        router = _make_router(ygg)
+        running = JobId("job-running")
+        queued = JobId("job-queued")
+        other = JobId("job-other")
+        router.jobs[running] = _make_job()
+        router.jobs[other] = _make_job()
+        router.active_jobs = 2
+        router.jobs_queue[queued] = JobSpec(
+            job_instance=JobInstanceRich(jobInstance=JobInstance(tasks={}, edges=[]), checkpointSpec=None),
+            envvars={},
+            infra_spec=LocalProcesses(workers_per_host=1, hosts=1),
+        )
+        router.job_submission_order = [running, other, queued]
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+        router.procs[running] = SpawnedJob(procs=[proc], pgid=proc.pid)
+
+        assert router.shutdown([]) == []
+        assert proc.poll() is None
+
+        errors = router.shutdown([running, queued, JobId("job-unknown")])
+        assert len(errors) == 1 and "job-unknown" in errors[0]
+        assert proc.poll() is not None
+        assert running not in router.procs
+        assert not router.jobs_queue
+        assert router.jobs[running].progress.completed and router.jobs[running].progress.failure is not None
+        assert router.jobs[queued].progress.completed and router.jobs[queued].progress.failure is not None
+        assert not router.jobs[other].progress.completed
+        assert router.active_jobs == 1
+
+        # idempotent
+        assert router.shutdown([running, queued]) == []
+        assert router.active_jobs == 1

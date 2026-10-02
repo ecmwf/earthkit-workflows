@@ -8,10 +8,13 @@
 
 """Main entrypoints for cluster or local starting for executors and controllers"""
 
+import atexit
 import logging
 import logging.config
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing.process import BaseProcess
 from time import perf_counter_ns
 from typing import Any
 
@@ -20,10 +23,11 @@ import orjson
 
 import cascade.executor.platform as platform
 from cascade.controller.impl import run
+from cascade.controller.report import Reporter
 from cascade.deployment.logging import DefaultLoggingConfig, LoggingConfig, init_from_cliparam, init_from_obj
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
-from cascade.executor.executor import Executor
+from cascade.executor.executor import Executor, address_of
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich, globalIdx2hostId, localIdx2hostId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
@@ -31,6 +35,9 @@ from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
 logger = logging.getLogger(__name__)
+
+# executors themselves await their workers for a few seconds, so this should be larger
+local_executor_shutdown_grace_s = 10.0
 
 
 def launch_executor(
@@ -44,6 +51,9 @@ def launch_executor(
     url_base: str,
 ):
     init_from_obj(loggingConfig, "executor")
+    # NOTE we install explicitly as we may be a forkserver/spawn child, or a standalone process
+    platform.install_sigterm_exit()
+    executor: Executor | None = None
     try:
         executor = Executor(
             job,
@@ -64,6 +74,38 @@ def launch_executor(
             raise
         else:
             raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+    finally:
+        # NOTE atexit does not fire in mp children, so we call explicitly. Idempotent
+        if executor is not None:
+            executor.terminate()
+
+
+def _make_reporter(report_address: str | None) -> Reporter:
+    """Constructs the reporter early, and makes sure the gateway learns about the job's end even
+    if we get terminated before the controller loop starts"""
+    reporter = Reporter(report_address)
+    # NOTE atexit is LIFO -- we want finalize to be called before close
+    atexit.register(reporter.close)
+    atexit.register(reporter.ensure_finalized, "controller terminated unexpectedly")
+    return reporter
+
+
+def _cleanup_local_executors(ps: list[BaseProcess], portBase: int) -> None:
+    """Makes sure no locally launched executor outlives us. On regular exit, they have all
+    exited already due to bridge shutdown, so this is a no-op"""
+    alive = [(i, p) for i, p in enumerate(ps) if p.is_alive()]
+    for i, _ in alive:
+        try:
+            callback(address_of(portBase + 1 + i * 10), ExecutorShutdown())
+        except Exception as e:
+            logger.warning(f"failed to send shutdown to executor {i}: {repr(e)}")
+    deadline = time.monotonic() + local_executor_shutdown_grace_s
+    for i, p in alive:
+        p.join(max(deadline - time.monotonic(), 0))
+        if p.is_alive():
+            logger.warning(f"executor {i} did not exit within grace, killing")
+            p.kill()
+            p.join()
 
 
 def run_locally(
@@ -73,6 +115,7 @@ def run_locally(
     portBase: int = 12345,
     loggingConfigSer: str | None = None,
     report_address: str | None = None,
+    reporter: Reporter | None = None,
 ) -> dict[DatasetId, Any]:
     # NOTE the provided job may cary traces of imports we dont want to pollute executor with
     job = JobInstanceRich(**orjson.loads(job.model_dump_json().encode()))
@@ -80,8 +123,7 @@ def run_locally(
     logger.debug(f"local run starting with {hosts=} and {workers=} on {portBase=}")
     launch = perf_counter_ns()
     c = f"tcp://localhost:{portBase}"
-    m = f"tcp://localhost:{portBase + 1}"
-    ps = []
+    ps: list[BaseProcess] = []
     try:
         # executors forking
         for i, executor in enumerate(range(hosts)):
@@ -118,7 +160,7 @@ def run_locally(
         logger.debug("starting bridge")
         b = Bridge(c, hosts, job.checkpointSpec)
         start = perf_counter_ns()
-        result = run(job, b, preschedule, report_address=report_address)
+        result = run(job, b, preschedule, report_address=report_address, reporter=reporter)
         end = perf_counter_ns()
         print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
         if os.environ.get("CASCADE_DEBUG_PRINT"):
@@ -128,17 +170,13 @@ def run_locally(
     except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
         logger.exception("controller failure, proceed with executor shutdown")
-        for p in ps:
-            if p.is_alive():
-                callback(m, ExecutorShutdown())
-                import time
-
-                time.sleep(1)
-                p.kill()
         if isinstance(e, CascadeError):
             raise
         else:
             raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+    finally:
+        # NOTE covers also non-Exception exits, such as SystemExit due to sigterm
+        _cleanup_local_executors(ps, portBase)
 
 
 def _deserialize(instance_path: str) -> JobInstanceRich:
@@ -155,14 +193,16 @@ def main_local(
     port_base: int = 12345,
     loggingConfigSer: str | None = None,
 ) -> None:
+    platform.install_sigterm_exit()
+    reporter = _make_reporter(report_address)
     jobInstanceRich = _deserialize(instance)
     run_locally(
         jobInstanceRich,
         hosts,
         workers_per_host,
-        report_address=report_address,
         portBase=port_base,
         loggingConfigSer=loggingConfigSer,
+        reporter=reporter,
     )
 
 
@@ -180,18 +220,20 @@ def main_dist(
     controller, 1+ for worker. Assumed to come from slurm procid.
     """
     launch = perf_counter_ns()
+    platform.install_sigterm_exit()
 
     jobInstanceRich = _deserialize(instance)
 
     if idx == 0:
         loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
+        reporter = _make_reporter(report_address)
         tp = ThreadPoolExecutor(max_workers=1)
         preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
         b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
         preschedule = preschedule_fut.result()
         tp.shutdown()
         start = perf_counter_ns()
-        run(jobInstanceRich, b, preschedule, report_address=report_address)
+        run(jobInstanceRich, b, preschedule, reporter=reporter)
         end = perf_counter_ns()
         print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
     else:
