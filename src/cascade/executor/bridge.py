@@ -8,7 +8,6 @@
 
 """Handles communication between controller and remote executors"""
 
-import atexit
 import logging
 import time
 from typing import cast
@@ -46,12 +45,9 @@ from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
-# grace for executors to confirm shutdown when invoked via regular controller exit
+# grace for executors to confirm shutdown
 shutdown_grace_s = 3 * 60
-# grace when invoked via atexit -- regular exit already called shutdown, so this is a backup in case of
-# unexpected termination (eg sigterm, or before the controller loop started). Kept short to fit in the
-# gateway's termination grace
-atexit_shutdown_grace_s = 5
+
 
 Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess | RunnerRestartRequest
 # TODO consider retries here, esp on the Persist/Retrieve Failures
@@ -66,12 +62,17 @@ class Bridge:
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
         self.transmit_idx_counter = 0
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
-        # NOTE we register right away, before awaiting registrations, so that any already registered
-        # executor gets shut down in case of termination during that phase
-        atexit.register(self.shutdown, atexit_shutdown_grace_s)
-        registered = 0
         self.environment = Environment(workers={}, host_url_base={})
         logger.debug("about to start receiving registrations")
+        try:
+            self._await_registrations(expected_executors)
+        except BaseException:
+            # NOTE the already registered executors must not be left behind, eg due to sigterm
+            self.shutdown()
+            raise
+
+    def _await_registrations(self, expected_executors: int) -> None:
+        registered = 0
         registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
         while registered < expected_executors:
             messages = self.mlistener.recv_messages(timeout_ms=10_000)
@@ -92,7 +93,6 @@ class Bridge:
                 self.heartbeat_checker[message.host] = GraceWatcher(2 * executor_heartbeat_grace_ms)
                 self.heartbeat_checker[message.host].step()
             if time.time_ns() > registration_grace:
-                self.shutdown()
                 # most likely means start failures or bad network -> InfrastructureError
                 raise CascadeInfrastructureError("failed to receive registration in due time")
 

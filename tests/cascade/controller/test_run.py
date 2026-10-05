@@ -23,6 +23,7 @@ from logging.config import dictConfig
 from multiprocessing import Process
 
 from cascade.controller.impl import run
+from cascade.controller.report import Reporter
 from cascade.deployment.logging import DefaultLoggingConfig
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
@@ -87,7 +88,7 @@ def run_cluster(
         ps.append(p)
     try:
         b = Bridge(c, executors, job.checkpointSpec)
-        run(job, b, preschedule)
+        run(job, b, preschedule, Reporter(None))
     except:
         for p in ps:
             if p.is_alive():

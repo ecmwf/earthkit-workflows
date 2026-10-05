@@ -70,14 +70,16 @@ _CLASS_MAP: dict[str, type[CascadeError]] = {
 }
 
 
-def ser(e: Exception, extra_context: dict[str, str] | None = None) -> str:
+def ser(e: BaseException, extra_context: dict[str, str] | None = None) -> str:
     """Serialize error to a JSON string, converting to CascadeError first if needed.
 
     The serialized format preserves description and context as separate fields so
     that consumers can distinguish the original error message from propagated context.
     """
     # we go with InternalError, because context-aware conversions should have happened prior
-    cascade_e = e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e)
+    cascade_e = (
+        e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e if isinstance(e, Exception) else None)
+    )
     if extra_context:
         cascade_e.add_context(extra_context)
     data: dict[str, object] = {

@@ -15,7 +15,6 @@ the tasks themselves.
 # NOTE this is an intermediate step toward long lived runners -- they would need to
 # have their own zmq server as well as run the callables themselves
 
-import atexit
 import logging
 import subprocess
 import tempfile
@@ -127,12 +126,10 @@ class Executor:
         self.heartbeat_watcher = GraceWatcher(grace_ms=heartbeat_grace_ms)
 
         self.terminating = False
-        logger.debug("register terminate function")
-        atexit.register(self.terminate)
         try:
             self._init_side_effects(controller_address, portBase, shm_vol_gb, url_base)
         except BaseException:
-            # NOTE we may be in a forked/spawned process where atexit does not fire, so we clean up explicitly
+            # NOTE the caller has no handle to us yet, so we must clean up whatever got started
             logger.exception("failed during executor construction, terminating")
             self.terminate()
             raise
@@ -203,7 +200,7 @@ class Executor:
     def terminate(self) -> None:
         # NOTE a bit care here:
         # 1/ the call itself can cause another terminate invocation, so we prevent that with a guard var
-        # 2/ we can get here during the object construction (due to atexit), so we need to `hasattr`
+        # 2/ we can get here during the object construction, so we need to `hasattr`
         # 3/ we try catch everyhting since we dont want to leave any process dangling etc
         #    TODO it would be more reliable to use `prctl` + PR_SET_PDEATHSIG in shm, or check the ppid in there
         logger.debug("terminating")
@@ -440,15 +437,8 @@ class Executor:
                 if not self.terminating:
                     # NOTE after terminate, processes are expected to be gone (or killed)
                     self.healthcheck()
-            except Exception as e:
+            except BaseException as e:
+                # NOTE includes eg SystemExit due to sigterm. The caller is responsible for `terminate`
                 logger.exception("executor exited, about to report to controller, propagating")
                 self.to_controller(ExecutorFailure(self.host, ser(e)))
-                self.terminate()
-            except BaseException as e:
-                # NOTE eg SystemExit due to sigterm, or KeyboardInterrupt -- we report & cleanup, but propagate
-                logger.warning(f"executor interrupted by {repr(e)}, reporting to controller and terminating")
-                try:
-                    self.to_controller(ExecutorFailure(self.host, ser(CascadeInfrastructureError(f"executor interrupted: {repr(e)}"))))
-                finally:
-                    self.terminate()
                 raise

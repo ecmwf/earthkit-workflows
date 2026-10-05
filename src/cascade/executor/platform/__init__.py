@@ -81,8 +81,8 @@ def _sigterm_to_exit(signum: int, frame: FrameType | None) -> None:
 
 
 def install_sigterm_exit() -> None:
-    """Converts SIGTERM into SystemExit, so that `finally` blocks and `atexit` handlers run. By default,
-    python just dies on SIGTERM without running either.
+    """Converts SIGTERM into SystemExit, so that `finally` blocks and context managers
+    get to run. By default, python just dies on SIGTERM without running either.
 
     Must be called explicitly in every process entrypoint that needs it -- do not rely on inheritance
     via fork, as the start method may be forkserver/spawn. Only effective in the main thread.

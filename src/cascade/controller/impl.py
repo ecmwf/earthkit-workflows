@@ -30,32 +30,29 @@ def run(
     job: JobInstanceRich,
     bridge: Bridge,
     preschedule: Preschedule,
-    report_address: str | None = None,
-    reporter: Reporter | None = None,
+    reporter: Reporter,
 ) -> State:
-    """Runs the job to completion, shutting down the executors via `bridge` at the end. Reports to gateway
-    via `reporter` if given, otherwise constructs one from `report_address`. The reporter is closed at the end.
+    """Runs the job to completion. Always shuts down the executors via `bridge` at the end. Reports success or
+    failure via `reporter`, which is thereby finalized -- but its lifecycle is owned by the caller.
     """
-    env = bridge.get_environment()
-    persisted = list_persisted_datasets(job.checkpointSpec) if job.checkpointSpec is not None else []
-    jobInstance, preschedule, persisted_valid = trim_with_persisted(job, preschedule, set(persisted))
-    job.jobInstance = jobInstance
-    context = init_context(env, job, preschedule.edge_o, preschedule.edge_i)
-    outputs = set(context.job_instance.ext_outputs)
-    logger.debug(f"starting with {env=} and {report_address=}")
-    schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
-    to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
-    state = init_state(outputs, to_persist, context.edge_o)
-
-    label("host", "controller")
-    events: list[Event] = []
-    for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
-        serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
-    if reporter is None:
-        reporter = Reporter(report_address)
-    notify_wrapper = lambda events: notify(state, schedule, context, events, reporter)
-
     try:
+        env = bridge.get_environment()
+        persisted = list_persisted_datasets(job.checkpointSpec) if job.checkpointSpec is not None else []
+        jobInstance, preschedule, persisted_valid = trim_with_persisted(job, preschedule, set(persisted))
+        job.jobInstance = jobInstance
+        context = init_context(env, job, preschedule.edge_o, preschedule.edge_i)
+        outputs = set(context.job_instance.ext_outputs)
+        logger.debug(f"starting with {env=}")
+        schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
+        to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
+        state = init_state(outputs, to_persist, context.edge_o)
+
+        label("host", "controller")
+        events: list[Event] = []
+        for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
+            serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
+        notify_wrapper = lambda events: notify(state, schedule, context, events, reporter)
+
         total_gpus = sum(worker.gpu for worker in env.workers.values())
         needs_gpus = any(task.definition.needs_gpu for task in job.jobInstance.tasks.values())
         if needs_gpus and total_gpus == 0:
@@ -84,24 +81,19 @@ def run(
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")
-    except Exception as ex:
-        logger.error("crash in controller, shutting down & propagating")
+    except BaseException as ex:
+        # NOTE includes eg SystemExit due to sigterm
+        logger.error(f"crash in controller, shutting down & propagating: {ex!r}")
         reporter.send_failure(repr(ex))
         if isinstance(ex, CascadeError):
             raise
         else:
             # unknown at this stage is assumed to be InfrastructureError
-            raise CascadeInfrastructureError("crash in controller", parent=ex) from ex
-    except BaseException as ex:
-        # NOTE eg SystemExit due to sigterm, or KeyboardInterrupt -- we report, but dont wrap
-        logger.error(f"controller interrupted by {repr(ex)}, shutting down & propagating")
-        reporter.send_failure(f"controller interrupted: {repr(ex)}")
-        raise
+            raise CascadeInfrastructureError("crash in controller", parent=ex if isinstance(ex, Exception) else None) from ex
     else:
         reporter.success()
     finally:
         mark({"action": ControllerPhases.shutdown})
         logger.debug("shutting down executors")
         bridge.shutdown()
-        reporter.close()
     return state

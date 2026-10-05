@@ -12,6 +12,7 @@ import logging
 import pickle
 from dataclasses import dataclass
 from time import monotonic_ns
+from types import TracebackType
 from typing import NewType
 
 from typing_extensions import Self
@@ -96,10 +97,21 @@ class ReporterChannel:
 
 
 class Reporter:
+    """Reports to the gateway. Intended to be used as a context manager around the whole controller lifecycle.
+
+    Sending success or failure finalizes the reporter: the channel is closed (awaiting acks) and set to None,
+    and any subsequent report is dropped -- the gateway ignores them anyway. Thus `channel is None` means
+    either no gateway to report to, or finalized. Leaving the context without having finalized reports failure.
+    """
+
     def __init__(self, report_address: str | None) -> None:
         self.channel = ReporterChannel(report_address) if report_address is not None else None
-        # whether success or failure has been reported -- the gateway considers the job active until then
-        self.finalized = False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
+        self.send_failure(f"controller terminated: {exc!r}" if exc is not None else "controller terminated unexpectedly")
 
     def close(self) -> None:
         """Idempotent"""
@@ -107,11 +119,13 @@ class Reporter:
             channel, self.channel = self.channel, None
             channel.close()
 
-    def ensure_finalized(self, failure: str) -> None:
-        """Reports failure unless success/failure has been reported already. Meant to be used as
-        atexit, to cover for unexpected terminations, and followed by `close`"""
-        if not self.finalized:
-            self.send_failure(failure)
+    def _finalize(self, report: ControllerReport) -> None:
+        if self.channel is None:
+            return
+        try:
+            self.channel.send(report)
+        finally:
+            self.close()
 
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.channel is None:
@@ -136,17 +150,13 @@ class Reporter:
         self.channel.send(report)
 
     def send_failure(self, failure: str) -> None:
-        self.finalized = True
         if self.channel is None:
             return
         logger.debug(f"reporting failure {failure=}")
-        report = ControllerReport(self.channel.job_id, JobProgress.failed(failure), monotonic_ns(), [])
-        self.channel.send(report)
+        self._finalize(ControllerReport(self.channel.job_id, JobProgress.failed(failure), monotonic_ns(), []))
 
     def success(self) -> None:
-        self.finalized = True
         if self.channel is None:
             return
-        logger.debug("reporter sending shutdown")
-        report = ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), [])
-        self.channel.send(report)
+        logger.debug("reporter sending success")
+        self._finalize(ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), []))
