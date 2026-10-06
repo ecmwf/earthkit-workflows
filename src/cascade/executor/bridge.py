@@ -79,10 +79,9 @@ class Bridge:
             logger.debug(f"received {messages=}")
             for message in messages:
                 if isinstance(message, ExecutorFailure):
-                    # propagate only
-                    raise des(ExecutorFailure.detail)
+                    raise des(message.detail)
                 elif not isinstance(message, ExecutorRegistration):
-                    # we make sure that even with bad netw we dont send anything else -> InternalError
+                    # we make sure that even with bad netw we dont send anything else except succ/fail -> InternalError
                     raise CascadeInternalError(f"expected ExecutorRegistration during init, got {type(message)}")
                 if message.host in self.sender.hosts or "data." + message.host in self.sender.hosts:
                     logger.warning(f"double registration of {message.host}, suggesting network congestion")

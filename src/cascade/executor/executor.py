@@ -130,7 +130,7 @@ class Executor:
             self._init_side_effects(controller_address, portBase, shm_vol_gb, url_base)
         except BaseException as e:
             # NOTE the caller has no handle to us yet, so we must clean up whatever got started
-            logger.error("failed during executor construction on {e!r}, terminating")
+            logger.error(f"failed during executor construction on {e!r}, terminating")
             try:
                 self.terminate()
             except BaseException as _e:
@@ -147,9 +147,9 @@ class Executor:
                     # NOTE this is unhealthy -- consider forcing non zero exit code instead,
                     # which risks shutting down eg slurm job without report to gw, and have gw
                     # check eg slurmctl in case no heartbeats etc
+                    # NOTE we just log warning, otherwise swallow teh exception -- the original more important
                     logger.warning(f"failed to report to controller! This will stall the whole job: {_e!r}")
-                    # NOTE otherwise swallowing, we want the
-            raise e
+            raise
         logger.debug("constructed executor")
 
     def _init_side_effects(self, controller_address: BackboneAddress, portBase: int, shm_vol_gb: int | None, url_base: str) -> None:
@@ -397,8 +397,12 @@ class Executor:
                             self.datasets.remove(m.ds)
                             callback(self.daddress, m)
                     elif isinstance(m, ExecutorShutdown):
-                        self.to_controller(ExecutorExit(self.host))
-                        self.terminate()
+                        # NOTE we first terminate, then send Exit, because Exits at controller cause
+                        # exitcode != 0, which could forcibly kill this in case of slurm etc
+                        try:
+                            self.terminate()
+                        finally:
+                            self.to_controller(ExecutorExit(self.host))
                         break
                     # from entrypoint
                     elif isinstance(m, WorkerReady):
