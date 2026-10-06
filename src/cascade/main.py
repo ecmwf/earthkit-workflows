@@ -62,7 +62,8 @@ def launch_executor(
         executor.recv_loop()
     except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
-        # NOTE we do *not* raise -- we keep system exit 0. Otherwise, the orchestrator (eg slurm) could have killed the whole job before the controller has the chance to receive and report the message to the gateway
+        # NOTE we do *not* raise -- we keep system exit 0. Otherwise, the orchestrator (eg slurm) could have killed
+        # the whole job before the controller has the chance to receive and report the message to the gateway
         logger.exception("executor failure, swallowing")
     finally:
         # NOTE safe to call even if already terminated

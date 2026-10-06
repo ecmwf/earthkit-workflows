@@ -88,7 +88,8 @@ def run(
         reporter.send_failure_and_log(e)
         # NOTE unlike in executor, we dont swallow here, because we want to trigger slurm wide kill in the
         # distributed case. The bridge shutdown grace should be high enough to allow executors close shm
-        # etc in time, but if not, we prefer an explicit kill by slurm
+        # etc in time, but if not, we prefer an explicit kill by slurm. Executors which haven't to register
+        # (yet) are not covered by this, unfortunately
         raise
     finally:
         mark({"action": ControllerPhases.shutdown})

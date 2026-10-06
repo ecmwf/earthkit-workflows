@@ -130,17 +130,26 @@ class Executor:
             self._init_side_effects(controller_address, portBase, shm_vol_gb, url_base)
         except BaseException as e:
             # NOTE the caller has no handle to us yet, so we must clean up whatever got started
-            logger.exception("failed during executor construction, terminating")
-            if HostId("controller") in self.sender.hosts:
-                logger.debug("best effort reporting failure")
-                self.to_controller(ExecutorFailure(self.host, ser(e)))
-            else:
-                # NOTE this is unhealthy -- consider forcing non zero exit code instead,
-                # which risks shutting down eg slurm job without report to gw, and have gw
-                # check eg slurmctl in case no heartbeats etc
-                logger.warning("failed to report to controller! This will stall the job")
-            self.terminate()
-            raise
+            logger.error("failed during executor construction on {e!r}, terminating")
+            try:
+                self.terminate()
+            except BaseException as _e:
+                # NOTE we just log for posterity to perhaps help understand leaks, but we dont
+                # want to propagage -- the original exception is more important
+                logger.exception(f"failure during terminate: {_e!r}")
+            finally:
+                try:
+                    logger.debug("best effort reporting failure")
+                    # NOTE we dont even check initialization etc -- we just try and log in case of
+                    # *any* failure
+                    self.to_controller(ExecutorFailure(self.host, ser(e)))
+                except Exception as _e:
+                    # NOTE this is unhealthy -- consider forcing non zero exit code instead,
+                    # which risks shutting down eg slurm job without report to gw, and have gw
+                    # check eg slurmctl in case no heartbeats etc
+                    logger.warning(f"failed to report to controller! This will stall the whole job: {_e!r}")
+                    # NOTE otherwise swallowing, we want the
+            raise e
         logger.debug("constructed executor")
 
     def _init_side_effects(self, controller_address: BackboneAddress, portBase: int, shm_vol_gb: int | None, url_base: str) -> None:

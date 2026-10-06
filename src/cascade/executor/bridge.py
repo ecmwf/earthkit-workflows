@@ -78,7 +78,10 @@ class Bridge:
             messages = self.mlistener.recv_messages(timeout_ms=10_000)
             logger.debug(f"received {messages=}")
             for message in messages:
-                if not isinstance(message, ExecutorRegistration):
+                if isinstance(message, ExecutorFailure):
+                    # propagate only
+                    raise des(ExecutorFailure.detail)
+                elif not isinstance(message, ExecutorRegistration):
                     # we make sure that even with bad netw we dont send anything else -> InternalError
                     raise CascadeInternalError(f"expected ExecutorRegistration during init, got {type(message)}")
                 if message.host in self.sender.hosts or "data." + message.host in self.sender.hosts:
