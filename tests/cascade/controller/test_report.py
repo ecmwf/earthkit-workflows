@@ -106,9 +106,8 @@ def test_reporter_channel_close_is_idempotent() -> None:
 def test_reporter_none_address_is_noop() -> None:
     """Reporter with no address silently skips all send methods."""
     reporter = Reporter(None)
-    reporter.send_failure("some error")
+    reporter.send_failure(ValueError("some error"))
     reporter.success()
-    reporter.close()
 
 
 def test_reporter_sends_result() -> None:
@@ -130,7 +129,7 @@ def test_reporter_sends_result() -> None:
             assert len(received) == 1
             assert received[0].results == [(dataset_id, b"result-bytes")]
         finally:
-            reporter.close()
+            reporter._close()
 
 
 def test_reporter_dedup_retries_not_delivered_twice() -> None:

@@ -19,7 +19,7 @@ from typing_extensions import Self
 
 import cascade.executor.platform as platform
 from cascade.low.core import DatasetId, TaskId
-from cascade.low.exceptions import CascadeInternalError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext
 from cascade.ygg.api import YggNode
 from cascade.ygg.types import HostEndpoints
@@ -97,7 +97,7 @@ class ReporterChannel:
 
 
 class Reporter:
-    """Reports to the gateway. Intended to be used as a context manager around the whole controller lifecycle.
+    """Reports to the gateway. Intended to be used around the whole controller lifecycle.
 
     Sending success or failure finalizes the reporter: the channel is closed (awaiting acks) and set to None,
     and any subsequent report is dropped -- the gateway ignores them anyway. Thus `channel is None` means
@@ -107,14 +107,8 @@ class Reporter:
     def __init__(self, report_address: str | None) -> None:
         self.channel = ReporterChannel(report_address) if report_address is not None else None
 
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
-        self.send_failure(f"controller terminated: {exc!r}" if exc is not None else "controller terminated unexpectedly")
-
-    def close(self) -> None:
-        """Idempotent"""
+    def _close(self) -> None:
+        # NOTE idempotent on purpose
         if self.channel is not None:
             channel, self.channel = self.channel, None
             channel.close()
@@ -125,7 +119,7 @@ class Reporter:
         try:
             self.channel.send(report)
         finally:
-            self.close()
+            self._close()
 
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.channel is None:
@@ -149,14 +143,20 @@ class Reporter:
         report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [(dataset, result)])
         self.channel.send(report)
 
-    def send_failure(self, failure: str) -> None:
-        if self.channel is None:
-            return
-        logger.debug(f"reporting failure {failure=}")
-        self._finalize(ControllerReport(self.channel.job_id, JobProgress.failed(failure), monotonic_ns(), []))
+    def send_failure(self, ex: BaseException) -> None:
+        # NOTE we log this to get the stacktrace into the logfile
+        if self.channel is not None:
+            logger.exception("reporting a controller crash: {ex!r}")
+            if isinstance(ex, CascadeError):
+                ex = CascadeInfrastructureError("crash in controller", parent=ex)
+            report = ControllerReport(self.channel.job_id, JobProgress.failed(repr(ex)), monotonic_ns(), [])
+            self._finalize(report)
+        else:
+            logger.warning("ignoring a controller crash: {ex!r}")
 
     def success(self) -> None:
-        if self.channel is None:
-            return
-        logger.debug("reporter sending success")
-        self._finalize(ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), []))
+        if self.channel is not None:
+            logger.debug("reporter sending success")
+            self._finalize(ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), []))
+        else:
+            logger.warning("reporter ignoring a success due to no channel")

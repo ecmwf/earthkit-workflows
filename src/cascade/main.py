@@ -63,13 +63,10 @@ def launch_executor(
         executor.recv_loop()
     except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
-        logger.exception("executor failure, propagating")
-        if isinstance(e, CascadeError):
-            raise
-        else:
-            raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+        # NOTE we do *not* raise -- we keep system exit 0. Otherwise, the orchestrator (eg slurm) could have killed the whole job before the controller has the chance to receive and report the message to the gateway
+        logger.exception("executor failure, swallowing")
     finally:
-        # NOTE idempotent
+        # NOTE safe to call even if already terminated
         if executor is not None:
             executor.terminate()
 
@@ -89,58 +86,49 @@ def run_locally(
     launch = perf_counter_ns()
     c = f"tcp://localhost:{portBase}"
     # NOTE the reporter context makes sure the gateway learns of failure even if we die before `run` starts
-    with Reporter(report_address) as reporter:
+    reporter = Reporter(report_address)
+    try:
         ps = []
-        try:
-            # executors forking
-            for i, executor in enumerate(range(hosts)):
-                # NOTE forkserver/spawn seem to forget venv, we need fork
-                logger.debug(f"forking into executor on host {i}")
-                p = platform.get_mp_ctx("executor-loc").Process(
-                    target=launch_executor,
-                    args=(
-                        job,
-                        c,
-                        workers,
-                        portBase + 1 + i * 10,
-                        localIdx2hostId(i),
-                        None,
-                        loggingConfig.withContext(f"host_{i}"),
-                        "tcp://localhost",
-                    ),
-                )
-                p.start()
-                ps.append(p)
+        # executors forking
+        for i, executor in enumerate(range(hosts)):
+            # NOTE forkserver/spawn seem to forget venv, we need fork
+            logger.debug(f"forking into executor on host {i}")
+            p = platform.get_mp_ctx("executor-loc").Process(
+                target=launch_executor,
+                args=(
+                    job,
+                    c,
+                    workers,
+                    portBase + 1 + i * 10,
+                    localIdx2hostId(i),
+                    None,
+                    loggingConfig.withContext(f"host_{i}"),
+                    "tcp://localhost",
+                ),
+            )
+            p.start()
+            ps.append(p)
 
-            # compute preschedule
-            preschedule = precompute(job.jobInstance)
+        # compute preschedule
+        preschedule = precompute(job.jobInstance)
 
-            # check processes started healthy
-            for i, p in enumerate(ps):
-                if not p.is_alive():
-                    # TODO ideally we would somehow connect this with the Register message
-                    # consumption in the Controller -- but there we don't assume that
-                    # executors are on the same physical host
-                    raise CascadeInfrastructureError(description=f"executor {i} failed to live due to {p.exitcode}")
+        # check processes started healthy
+        for i, p in enumerate(ps):
+            if not p.is_alive():
+                # TODO ideally we would somehow connect this with the Register message
+                # consumption in the Controller -- but there we don't assume that
+                # executors are on the same physical host
+                raise CascadeInfrastructureError(description=f"executor {i} failed to live due to {p.exitcode}")
 
-            # start bridge itself
-            logger.debug("starting bridge")
-            b = Bridge(c, hosts, job.checkpointSpec)
-            start = perf_counter_ns()
-            result = run(job, b, preschedule, reporter)
-            end = perf_counter_ns()
-            print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
-            if os.environ.get("CASCADE_DEBUG_PRINT"):
-                for key, value in result.outputs.items():
-                    print(f"{key} => {value}")
-            return result.outputs
-        except Exception as e:
-            # NOTE we log this to get the stacktrace into the logfile
-            logger.exception("controller failure, propagating")
-            if isinstance(e, CascadeError):
-                raise
-            else:
-                raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+        # start bridge itself
+        logger.debug("starting bridge")
+        b = Bridge(c, hosts, job.checkpointSpec)
+        result = run(job, b, preschedule, reporter)
+        return result.outputs
+    except BaseException as e:
+        # NOTE includes eg SystemExit due to sigterm
+        reporter.send_failure(e)
+        raise
 
 
 def _deserialize(instance_path: str) -> JobInstanceRich:
@@ -189,21 +177,23 @@ def main_dist(
 
     if idx == 0:
         loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
-        with Reporter(report_address) as reporter:
+        reporter = Reporter(report_address)
+        b = None
+        try:
             tp = ThreadPoolExecutor(max_workers=1)
             preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
             b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
-            try:
-                preschedule = preschedule_fut.result()
-                tp.shutdown()
-            except BaseException:
-                # NOTE `run` shuts the bridge down, but we are not there yet
-                b.shutdown()
-                raise
-            start = perf_counter_ns()
+            preschedule = preschedule_fut.result()
+            tp.shutdown()
             run(jobInstanceRich, b, preschedule, reporter)
-            end = perf_counter_ns()
-            print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
+        except BaseException as e:
+            # NOTE includes eg SystemExit due to sigterm
+            reporter.send_failure(e)
+            # NOTE if the exception happened *before* we got into run, then bridge is not shutdown there, which would have left executors hanging
+            if b is not None:
+                b.shutdown()
+            raise
+
     else:
         loggingConfig = init_from_cliparam(loggingConfigSer, f"executor_{idx}")
         launch_executor(

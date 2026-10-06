@@ -439,6 +439,6 @@ class Executor:
                     self.healthcheck()
             except BaseException as e:
                 # NOTE includes eg SystemExit due to sigterm. The caller is responsible for `terminate`
-                logger.exception("executor exited, about to report to controller, propagating")
+                logger.warning("executor exited, about to report to controller, propagating")
                 self.to_controller(ExecutorFailure(self.host, ser(e)))
                 raise
