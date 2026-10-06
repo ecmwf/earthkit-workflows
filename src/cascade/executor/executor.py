@@ -128,9 +128,17 @@ class Executor:
         self.terminating = False
         try:
             self._init_side_effects(controller_address, portBase, shm_vol_gb, url_base)
-        except BaseException:
+        except BaseException as e:
             # NOTE the caller has no handle to us yet, so we must clean up whatever got started
             logger.exception("failed during executor construction, terminating")
+            if HostId("controller") in self.sender.hosts:
+                logger.debug("best effort reporting failure")
+                self.to_controller(ExecutorFailure(self.host, ser(e)))
+            else:
+                # NOTE this is unhealthy -- consider forcing non zero exit code instead,
+                # which risks shutting down eg slurm job without report to gw, and have gw
+                # check eg slurmctl in case no heartbeats etc
+                logger.warning("failed to report to controller! This will stall the job")
             self.terminate()
             raise
         logger.debug("constructed executor")

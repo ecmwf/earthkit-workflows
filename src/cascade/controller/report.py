@@ -12,7 +12,6 @@ import logging
 import pickle
 from dataclasses import dataclass
 from time import monotonic_ns
-from types import TracebackType
 from typing import NewType
 
 from typing_extensions import Self
@@ -143,20 +142,22 @@ class Reporter:
         report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [(dataset, result)])
         self.channel.send(report)
 
-    def send_failure(self, ex: BaseException) -> None:
+    def send_failure_and_log(self, ex: BaseException) -> None:
+        """Assumed to be called from inside an except block to log trace"""
         # NOTE we log this to get the stacktrace into the logfile
         if self.channel is not None:
-            logger.exception("reporting a controller crash: {ex!r}")
-            if isinstance(ex, CascadeError):
+            logger.exception(f"reporting a controller crash: {ex!r}")
+            if not isinstance(ex, CascadeError):
                 ex = CascadeInfrastructureError("crash in controller", parent=ex)
             report = ControllerReport(self.channel.job_id, JobProgress.failed(repr(ex)), monotonic_ns(), [])
             self._finalize(report)
         else:
-            logger.warning("ignoring a controller crash: {ex!r}")
+            logger.warning(f"ignoring a controller crash: {ex!r}")
 
     def success(self) -> None:
         if self.channel is not None:
             logger.debug("reporter sending success")
             self._finalize(ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), []))
         else:
+            # NOTE this warns even in the no-gateway case where its expected, but we dont care
             logger.warning("reporter ignoring a success due to no channel")

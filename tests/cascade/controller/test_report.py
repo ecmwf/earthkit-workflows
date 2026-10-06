@@ -106,7 +106,7 @@ def test_reporter_channel_close_is_idempotent() -> None:
 def test_reporter_none_address_is_noop() -> None:
     """Reporter with no address silently skips all send methods."""
     reporter = Reporter(None)
-    reporter.send_failure(ValueError("some error"))
+    reporter.send_failure_and_log(ValueError("some error"))
     reporter.success()
 
 

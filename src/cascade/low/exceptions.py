@@ -77,9 +77,7 @@ def ser(e: BaseException, extra_context: dict[str, str] | None = None) -> str:
     that consumers can distinguish the original error message from propagated context.
     """
     # we go with InternalError, because context-aware conversions should have happened prior
-    cascade_e = (
-        e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e if isinstance(e, Exception) else None)
-    )
+    cascade_e = e if isinstance(e, CascadeError) else CascadeInternalError(description=repr(e), parent=e)
     if extra_context:
         cascade_e.add_context(extra_context)
     data: dict[str, object] = {

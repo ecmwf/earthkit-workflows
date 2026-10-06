@@ -81,9 +81,17 @@ def run(
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")
+        reporter.success()
+    except BaseException as e:
+        # NOTE includes eg SystemExit due to sigterm
+        # NOTE we want to send failure early, before bridge shutdown concludes
+        reporter.send_failure_and_log(e)
+        # NOTE unlike in executor, we dont swallow here, because we want to trigger slurm wide kill in the
+        # distributed case. The bridge shutdown grace should be high enough to allow executors close shm
+        # etc in time, but if not, we prefer an explicit kill by slurm
+        raise
     finally:
         mark({"action": ControllerPhases.shutdown})
         logger.debug("shutting down executors")
         bridge.shutdown()
-    reporter.success()
     return state

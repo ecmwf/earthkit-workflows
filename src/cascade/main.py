@@ -10,7 +10,6 @@
 
 import logging
 import logging.config
-import os
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter_ns
 from typing import Any
@@ -27,7 +26,7 @@ from cascade.executor.comms import callback
 from cascade.executor.executor import Executor, address_of
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
 from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich, globalIdx2hostId, localIdx2hostId
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
+from cascade.low.exceptions import CascadeInfrastructureError
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
@@ -83,9 +82,8 @@ def run_locally(
     job = JobInstanceRich(**orjson.loads(job.model_dump_json().encode()))
     loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
     logger.debug(f"local run starting with {hosts=} and {workers=} on {portBase=}")
-    launch = perf_counter_ns()
     c = f"tcp://localhost:{portBase}"
-    # NOTE the reporter context makes sure the gateway learns of failure even if we die before `run` starts
+    # NOTE the reporter makes sure the gateway learns of failure even if we die before `run` starts
     reporter = Reporter(report_address)
     try:
         ps = []
@@ -123,12 +121,12 @@ def run_locally(
         # start bridge itself
         logger.debug("starting bridge")
         b = Bridge(c, hosts, job.checkpointSpec)
-        result = run(job, b, preschedule, reporter)
-        return result.outputs
     except BaseException as e:
         # NOTE includes eg SystemExit due to sigterm
-        reporter.send_failure(e)
+        reporter.send_failure_and_log(e)
         raise
+    result = run(job, b, preschedule, reporter)
+    return result.outputs
 
 
 def _deserialize(instance_path: str) -> JobInstanceRich:
@@ -170,7 +168,6 @@ def main_dist(
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
     controller, 1+ for worker. Assumed to come from slurm procid.
     """
-    launch = perf_counter_ns()
     platform.install_sigterm_exit()
 
     jobInstanceRich = _deserialize(instance)
@@ -179,20 +176,21 @@ def main_dist(
         loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
         reporter = Reporter(report_address)
         b = None
+        tp = None
         try:
             tp = ThreadPoolExecutor(max_workers=1)
             preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
             b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
             preschedule = preschedule_fut.result()
-            tp.shutdown()
-            run(jobInstanceRich, b, preschedule, reporter)
         except BaseException as e:
             # NOTE includes eg SystemExit due to sigterm
-            reporter.send_failure(e)
-            # NOTE if the exception happened *before* we got into run, then bridge is not shutdown there, which would have left executors hanging
+            reporter.send_failure_and_log(e)
             if b is not None:
                 b.shutdown()
             raise
+        finally:
+            tp.shutdown()
+        run(jobInstanceRich, b, preschedule, reporter)
 
     else:
         loggingConfig = init_from_cliparam(loggingConfigSer, f"executor_{idx}")
