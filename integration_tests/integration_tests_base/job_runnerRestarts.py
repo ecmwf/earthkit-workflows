@@ -23,7 +23,7 @@ def job() -> JobInstanceRich:
             [f"numpy=={version}"],
         ).with_values(expected=version)
 
-    ji = JobBuilder().with_node("t1", fac("2.0.1")).with_node("t2", fac("2.4.1")).with_node("t3", fac("2.4.2")).build().get_or_raise()
+    ji = JobBuilder().with_node("t1", fac("2.3.5")).with_node("t2", fac("2.4.1")).with_node("t3", fac("2.4.2")).build().get_or_raise()
     ji.ext_outputs = [
         DatasetId(task=TaskId("t1"), output=DefaultTaskOutput),
         DatasetId(task=TaskId("t2"), output=DefaultTaskOutput),
