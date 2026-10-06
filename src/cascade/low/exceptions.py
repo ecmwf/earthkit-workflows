@@ -25,7 +25,7 @@ import cascade.low.tracing as tracing
 class CascadeError(Exception):
     """Base class for all Cascade exceptions."""
 
-    def __init__(self, description: str, parent: Exception | None = None, _context: dict[str, str] | None = None) -> None:
+    def __init__(self, description: str, parent: BaseException | None = None, _context: dict[str, str] | None = None) -> None:
         self.description = description
         self.context: dict[str, str] = _context if _context is not None else dict(tracing.d)
         self.parent = parent
@@ -70,7 +70,7 @@ _CLASS_MAP: dict[str, type[CascadeError]] = {
 }
 
 
-def ser(e: Exception, extra_context: dict[str, str] | None = None) -> str:
+def ser(e: BaseException, extra_context: dict[str, str] | None = None) -> str:
     """Serialize error to a JSON string, converting to CascadeError first if needed.
 
     The serialized format preserves description and context as separate fields so

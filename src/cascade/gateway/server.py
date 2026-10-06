@@ -20,7 +20,6 @@ import zmq
 
 import cascade.executor.platform as platform
 import cascade.gateway.api as api
-from cascade.controller.report import deserialize
 from cascade.deployment.logging import init_from_cliparam
 from cascade.gateway.client import parse_request, serialize_response
 from cascade.gateway.router import JobRouter
@@ -70,24 +69,17 @@ def handle_fe(sock: zmq.Socket, jobs: JobRouter) -> bool:
             logger.exception(f"failed to get result: {m}")
             rv = api.ResultDeletionResponse(error=repr(e))
     elif isinstance(m, api.ShutdownRequest):
-        jobs.shutdown()
-        rv = api.ShutdownResponse(error=None)
+        try:
+            errors = jobs.shutdown(m.only_these)
+            rv = api.ShutdownResponse(error="\n".join(errors) if errors else None)
+        except Exception as e:
+            logger.exception(f"failed to shutdown: {m}")
+            rv = api.ShutdownResponse(error=repr(e))
     else:
         raise CascadeInternalError(f"unexpected message type in gateway handle_fe: {type(m)}")
     response = serialize_response(rv)
     sock.send(response)
-    return isinstance(rv, api.ShutdownResponse)
-
-
-def handle_controller(ygg: YggNode, jobs: JobRouter) -> None:
-    while msgs := ygg.poll_messages(timeout_ms=0):
-        for msg in msgs:
-            raw_report = msg.payload
-            report = deserialize(raw_report)
-            logger.debug(f"received controller message {report}")
-            for dataset_id, result in report.results:
-                jobs.put_result(report.job_id, dataset_id, result)
-            jobs.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
+    return isinstance(m, api.ShutdownRequest) and m.only_these is None
 
 
 def serve(
@@ -101,6 +93,8 @@ def serve(
     report_transport: str = "tcp",
 ) -> None:
     loggingConfig = init_from_cliparam(loggingConfigSer, roleLoggingStr())
+    # NOTE so that on sigterm we get to the `finally` below and terminate all jobs
+    platform.install_sigterm_exit()
     logger.info(f"gateway starting to serve on host {socket.getfqdn()}")
     install_spec = prepare_install_spec(shared_path)
     if report_transport == "tcp":
@@ -146,10 +140,15 @@ def serve(
                 if sock == fe:
                     is_break = handle_fe(sock, jobs)
                 elif sock == ygg_control_socket:
-                    handle_controller(ygg, jobs)
+                    jobs.handle_reports()
                 else:
                     raise CascadeInternalError(f"unexpected socket in gateway poller loop: {sock=}")
     finally:
+        # NOTE covers regular shutdown (where its a no-op), exceptions, sigterm and keyboard interrupt
+        try:
+            jobs.shutdown(None)
+        except Exception:
+            logger.exception("failed to shutdown jobs")
         fe.close()
         ygg.close()
 

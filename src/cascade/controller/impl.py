@@ -16,7 +16,7 @@ from cascade.controller.report import Reporter
 from cascade.executor.bridge import Bridge, Event
 from cascade.executor.checkpoints import list_persisted_datasets
 from cascade.low.core import JobInstance, JobInstanceRich, type_dec
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeUserError
+from cascade.low.exceptions import CascadeUserError
 from cascade.low.execution_context import init_context
 from cascade.low.tracing import ControllerPhases, Microtrace, label, mark, timer
 from cascade.scheduler.api import assign, init_schedule, plan
@@ -30,27 +30,29 @@ def run(
     job: JobInstanceRich,
     bridge: Bridge,
     preschedule: Preschedule,
-    report_address: str | None = None,
+    reporter: Reporter,
 ) -> State:
-    env = bridge.get_environment()
-    persisted = list_persisted_datasets(job.checkpointSpec) if job.checkpointSpec is not None else []
-    jobInstance, preschedule, persisted_valid = trim_with_persisted(job, preschedule, set(persisted))
-    job.jobInstance = jobInstance
-    context = init_context(env, job, preschedule.edge_o, preschedule.edge_i)
-    outputs = set(context.job_instance.ext_outputs)
-    logger.debug(f"starting with {env=} and {report_address=}")
-    schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
-    to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
-    state = init_state(outputs, to_persist, context.edge_o)
-
-    label("host", "controller")
-    events: list[Event] = []
-    for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
-        serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
-    reporter = Reporter(report_address)
-    notify_wrapper = lambda events: notify(state, schedule, context, events, reporter)
-
+    """Runs the job to completion. Starts the executors, shuts them down via bridge in a `finally`. Reports
+    success or failure via `reporter`, which is thereby finalized -- but the lifecycle is owned by the caller.
+    """
     try:
+        env = bridge.get_environment()
+        persisted = list_persisted_datasets(job.checkpointSpec) if job.checkpointSpec is not None else []
+        jobInstance, preschedule, persisted_valid = trim_with_persisted(job, preschedule, set(persisted))
+        job.jobInstance = jobInstance
+        context = init_context(env, job, preschedule.edge_o, preschedule.edge_i)
+        outputs = set(context.job_instance.ext_outputs)
+        logger.debug(f"starting with {env=}")
+        schedule = timer(init_schedule, Microtrace.ctrl_init)(preschedule, context)
+        to_persist = set(job.checkpointSpec.to_persist) if job.checkpointSpec is not None else set()
+        state = init_state(outputs, to_persist, context.edge_o)
+
+        label("host", "controller")
+        events: list[Event] = []
+        for serdeTypeEnc, (serdeSer, serdeDes) in context.job_instance.serdes.items():
+            serde.SerdeRegistry.register(type_dec(serdeTypeEnc), serdeSer, serdeDes)
+        notify_wrapper = lambda events: notify(state, schedule, context, events, reporter)
+
         total_gpus = sum(worker.gpu for worker in env.workers.values())
         needs_gpus = any(task.definition.needs_gpu for task in job.jobInstance.tasks.values())
         if needs_gpus and total_gpus == 0:
@@ -79,19 +81,18 @@ def run(
                 events = timer(bridge.recv_events, Microtrace.ctrl_wait)()
                 timer(notify_wrapper, Microtrace.ctrl_notify)(events)
                 logger.debug(f"received {len(events)} events")
-    except Exception as ex:
-        logger.error("crash in controller, shutting down & propagating")
-        reporter.send_failure(repr(ex))
-        if isinstance(ex, CascadeError):
-            raise
-        else:
-            # unknown at this stage is assumed to be InfrastructureError
-            raise CascadeInfrastructureError("crash in controller", parent=ex) from ex
-    else:
         reporter.success()
+    except BaseException as e:
+        # NOTE includes eg SystemExit due to sigterm
+        # NOTE we want to send failure early, before bridge shutdown concludes
+        reporter.send_failure_and_log(e)
+        # NOTE unlike in executor, we dont swallow here, because we want to trigger slurm wide kill in the
+        # distributed case. The bridge shutdown grace should be high enough to allow executors close shm
+        # etc in time, but if not, we prefer an explicit kill by slurm. Executors which haven't registered
+        # (yet) are not covered by this, unfortunately
+        raise
     finally:
         mark({"action": ControllerPhases.shutdown})
         logger.debug("shutting down executors")
         bridge.shutdown()
-        reporter.close()
     return state

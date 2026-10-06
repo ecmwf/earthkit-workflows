@@ -18,7 +18,7 @@ from typing_extensions import Self
 
 import cascade.executor.platform as platform
 from cascade.low.core import DatasetId, TaskId
-from cascade.low.exceptions import CascadeInternalError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
 from cascade.low.execution_context import JobExecutionContext
 from cascade.ygg.api import YggNode
 from cascade.ygg.types import HostEndpoints
@@ -96,12 +96,29 @@ class ReporterChannel:
 
 
 class Reporter:
+    """Reports to the gateway. Intended to be used around the whole controller lifecycle.
+
+    Sending success or failure finalizes the reporter: the channel is closed (awaiting acks) and set to None,
+    and any subsequent report is dropped -- the gateway ignores them anyway. Thus `channel is None` means
+    either no gateway to report to, or finalized. Leaving the context without having finalized reports failure.
+    """
+
     def __init__(self, report_address: str | None) -> None:
         self.channel = ReporterChannel(report_address) if report_address is not None else None
 
-    def close(self) -> None:
+    def _close(self) -> None:
+        # NOTE idempotent on purpose
         if self.channel is not None:
-            self.channel.close()
+            channel, self.channel = self.channel, None
+            channel.close()
+
+    def _finalize(self, report: ControllerReport) -> None:
+        if self.channel is None:
+            return
+        try:
+            self.channel.send(report)
+        finally:
+            self._close()
 
     def send_task_completed(self, context: JobExecutionContext, completed_task: TaskId) -> None:
         if self.channel is None:
@@ -125,16 +142,22 @@ class Reporter:
         report = ControllerReport(self.channel.job_id, None, monotonic_ns(), [(dataset, result)])
         self.channel.send(report)
 
-    def send_failure(self, failure: str) -> None:
-        if self.channel is None:
-            return
-        logger.debug(f"reporting failure {failure=}")
-        report = ControllerReport(self.channel.job_id, JobProgress.failed(failure), monotonic_ns(), [])
-        self.channel.send(report)
+    def send_failure_and_log(self, ex: BaseException) -> None:
+        """Assumed to be called from inside an except block to log trace"""
+        # NOTE we log this to get the stacktrace into the logfile
+        if self.channel is not None:
+            logger.exception(f"reporting a controller crash: {ex!r}")
+            if not isinstance(ex, CascadeError):
+                ex = CascadeInfrastructureError("crash in controller", parent=ex)
+            report = ControllerReport(self.channel.job_id, JobProgress.failed(repr(ex)), monotonic_ns(), [])
+            self._finalize(report)
+        else:
+            logger.warning(f"ignoring a controller crash: {ex!r}")
 
     def success(self) -> None:
-        if self.channel is None:
-            return
-        logger.debug("reporter sending shutdown")
-        report = ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), [])
-        self.channel.send(report)
+        if self.channel is not None:
+            logger.debug("reporter sending success")
+            self._finalize(ControllerReport(self.channel.job_id, JobProgress.succeeded(), monotonic_ns(), []))
+        else:
+            # NOTE this warns even in the no-gateway case where its expected, but we dont care
+            logger.warning("reporter ignoring a success due to no channel")

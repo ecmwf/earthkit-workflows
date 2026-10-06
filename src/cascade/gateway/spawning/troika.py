@@ -17,7 +17,7 @@ import orjson
 
 from cascade.controller.report import JobId
 from cascade.gateway.api import JobSpec, SlurmCluster, TroikaSpec
-from cascade.gateway.spawning.common import allocate_port_range
+from cascade.gateway.spawning.common import SpawnedJob, allocate_port_range
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def spawn_troika_singlehost(
     infra: SlurmCluster,
     troika: TroikaSpec,
     troika_config: str,
-) -> subprocess.Popen[bytes]:
+) -> SpawnedJob:
     script = "#!/bin/bash\n"
     script += f"source {troika.venv}\n"
     for k, v in job_spec.envvars.items():
@@ -54,7 +54,8 @@ def spawn_troika_singlehost(
         script_path,
         stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
     )
-    return subprocess.Popen(
+    # TODO this is just the submit command, terminating it does not terminate the job itself
+    proc = subprocess.Popen(
         [
             "troika",
             "-c",
@@ -66,3 +67,4 @@ def spawn_troika_singlehost(
             script_path,
         ]
     )
+    return SpawnedJob(procs=[proc])

@@ -11,6 +11,7 @@ get sent out. In essence, we build a pseudo-controller in this test.
 """
 
 import logging
+import time
 from logging.config import dictConfig
 
 import numpy as np
@@ -213,8 +214,12 @@ def test_executor():
 
         # shutdown
         callback(m1, ExecutorShutdown())
-        ms = l.recv_messages()
-        assert ExecutorExit(host=HostId("executor1executor")) in ms
+        # NOTE the executor sends Exit only after its cleanup finished, which takes a while
+        exit_received = False
+        deadline = time.monotonic() + 30
+        while not exit_received and time.monotonic() < deadline:
+            exit_received = ExecutorExit(host=HostId("executor1executor")) in l.recv_messages()
+        assert exit_received
         p.join()
     except:
         if p.is_alive():

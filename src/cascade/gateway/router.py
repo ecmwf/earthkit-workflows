@@ -14,7 +14,9 @@
 """
 
 import logging
-import subprocess
+import os
+import signal
+import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -26,15 +28,20 @@ from cascade.controller.report import (
     JobProgress,
     JobProgressEnqueued,
     JobProgressStarted,
+    deserialize,
 )
 from cascade.deployment.logging import LoggingConfig
-from cascade.gateway.spawning import EkwInstallSpec, spawn_subprocess
+from cascade.gateway.spawning import EkwInstallSpec, SpawnedJob, spawn_subprocess
 from cascade.low.core import DatasetId, TaskId
 from cascade.low.exceptions import CascadeUserError
 from cascade.low.func import next_uuid
 from cascade.ygg.api import YggNode
 
 logger = logging.getLogger(__name__)
+
+# total time given to jobs to terminate gracefully before they get killed
+job_termination_grace_s = 10.0
+job_termination_poll_s = 0.1
 
 
 @dataclass
@@ -71,7 +78,8 @@ class JobRouter:
         self.max_jobs_history = max_jobs_history
         self.max_queue_length = max_queue_length
         self.jobs_queue: OrderedDict[JobId, api.JobSpec] = OrderedDict()
-        self.procs: dict[JobId, subprocess.Popen] = {}
+        # NOTE may contain jobs already evicted from `jobs`, if their processes are still running
+        self.procs: dict[JobId, SpawnedJob] = {}
         self.job_submission_order: list[JobId] = []
         self.completed_jobs = 0
         self.loggingConfig = loggingConfig
@@ -125,7 +133,10 @@ class JobRouter:
                 index += 1
                 continue
             del self.jobs[job_id]
-            self.procs.pop(job_id, None)
+            spawned = self.procs.get(job_id)
+            if spawned is not None and all(proc.poll() is not None for proc in spawned.procs):
+                # NOTE otherwise we keep it, to be terminated at shutdown
+                self.procs.pop(job_id)
             self.job_submission_order.pop(index)
             self.completed_jobs -= 1
         if self.completed_jobs > self.max_jobs_history:
@@ -195,6 +206,9 @@ class JobRouter:
             job.planned_task_ids.update(planned_tasks - job.completed_task_ids)
         if progress is None:
             return
+        if job.progress.completed:
+            # NOTE we dont allow eg a late failure to override success, or a terminated job to be revived
+            return
         if timestamp <= job.last_seen:
             return
         job.last_seen = timestamp
@@ -211,6 +225,9 @@ class JobRouter:
             self.job_became_completed()
 
     def put_result(self, job_id: JobId, dataset_id: DatasetId, result: bytes) -> None:
+        if job_id not in self.jobs:
+            logger.warning(f"result {dataset_id=} for unknown {job_id=}, ignoring")
+            return
         if dataset_id not in self.jobs[job_id].results:
             self.jobs[job_id].results[dataset_id] = result
 
@@ -234,12 +251,87 @@ class JobRouter:
                     del self.jobs[job_id].results[dataset]
         return errs
 
-    def shutdown(self):
-        for job_id, proc in self.procs.items():
-            logger.debug(f"awaiting job {job_id}")
-            try:
-                proc.terminate()
-                proc.wait(2)
-            except subprocess.TimeoutExpired:
-                logger.error(f"{job_id=} failed to terminate, killing")
+    def handle_reports(self) -> None:
+        """Consumes all controller reports that have arrived so far"""
+        while msgs := self._ygg.poll_messages(timeout_ms=0):
+            for msg in msgs:
+                report = deserialize(msg.payload)
+                logger.debug(f"received controller message {report}")
+                for dataset_id, result in report.results:
+                    self.put_result(report.job_id, dataset_id, result)
+                self.maybe_update(report.job_id, report.current_status, report.timestamp, report.completed_task, report.planned_tasks)
+
+    def _mark_terminated(self, job_id: JobId) -> None:
+        job = self.jobs.get(job_id)
+        if job is None or job.progress.completed:
+            return
+        job.progress = JobProgress.failed("terminated by gateway")
+        self.job_became_completed()
+
+    def _kill_remaining(self, job_id: JobId, spawned: SpawnedJob) -> None:
+        for proc in spawned.procs:
+            if proc.poll() is None:
+                logger.warning(f"{job_id=} process {proc.pid} failed to terminate in time, killing")
                 proc.kill()
+            proc.wait()
+        if spawned.pgid is not None:
+            # NOTE whatever remains in the group, eg executors orphaned by a killed controller. If the group is
+            # already empty, we get ProcessLookupError. Reuse of the pgid by an unrelated group is very unlikely
+            try:
+                os.killpg(spawned.pgid, signal.SIGKILL)
+                # NOTE usually just lingering helpers such as forkserver or resource tracker
+                logger.info(f"{job_id=} had remaining processes in group {spawned.pgid}, killed")
+            except (ProcessLookupError, PermissionError):
+                pass
+
+    def shutdown(self, only_these: list[JobId] | None) -> list[str]:
+        """Terminates the selected jobs, or all jobs (both queued and spawned) if None. Blocks until all
+        are terminated -- first signals all, then awaits them for up to `job_termination_grace_s` in total,
+        then kills the remaining ones. Idempotent. Returns errors, such as for unknown job ids.
+        """
+        # TODO we signal the locally spawned processes, which for the local spawn is the controller itself,
+        # but for remote spawns (ssh, troika) its only the connection/submission client, and the remote job
+        # keeps running. Rework this to send a termination message to the controller via Ygg, once we have
+        # a bidirectional channel. That would also allow us to not block here, but keep per-job deadlines
+        errors: list[str] = []
+        if only_these is None:
+            queued = list(self.jobs_queue.keys())
+            spawned = list(self.procs.keys())
+        else:
+            queued = [job_id for job_id in only_these if job_id in self.jobs_queue]
+            spawned = [job_id for job_id in only_these if job_id in self.procs]
+            for job_id in only_these:
+                if job_id not in self.jobs_queue and job_id not in self.jobs and job_id not in self.procs:
+                    errors.append(f"{job_id=} not found")
+
+        # NOTE we dequeue first, so that no new job gets spawned as the terminated ones complete
+        for job_id in queued:
+            self.jobs_queue.pop(job_id)
+            self.jobs[job_id] = Job(JobProgress.failed("terminated by gateway before start"), -1, {}, set(), set())
+            self.completed_jobs += 1
+
+        to_terminate = {job_id: self.procs[job_id] for job_id in spawned}
+        for job_id, spawned_job in to_terminate.items():
+            for proc in spawned_job.procs:
+                logger.debug(f"terminating {job_id=} process {proc.pid}")
+                proc.terminate()  # NOTE no-op if already reaped
+
+        deadline = time.monotonic() + job_termination_grace_s
+        is_running = lambda: any(proc.poll() is None for spawned_job in to_terminate.values() for proc in spawned_job.procs)
+        while is_running() and time.monotonic() < deadline:
+            # NOTE we keep consuming reports, so that the terminating controllers get their final reports acked
+            try:
+                self.handle_reports()
+            except Exception:
+                logger.exception("failed to handle reports during shutdown, continuing")
+            time.sleep(job_termination_poll_s)
+
+        for job_id, spawned_job in to_terminate.items():
+            try:
+                self._kill_remaining(job_id, spawned_job)
+            except Exception:
+                logger.exception(f"failed to kill remaining processes of {job_id=}, continuing")
+            self.procs.pop(job_id, None)
+            self._mark_terminated(job_id)
+        self.maybe_evict_old_jobs()
+        return errors
