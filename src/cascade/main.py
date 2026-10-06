@@ -69,6 +69,8 @@ def launch_executor(
         # NOTE safe to call even if already terminated
         if executor is not None:
             executor.terminate()
+            # NOTE the last messages to controller (Exit/Failure) may still be in zmq buffers
+            executor.drain_messages()
 
 
 def run_locally(

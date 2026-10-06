@@ -18,11 +18,13 @@ the tasks themselves.
 import logging
 import subprocess
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass
 from multiprocessing.shared_memory import SharedMemory
 from typing import Iterable
 
+import cascade.executor.comms
 import cascade.executor.platform as platform
 import cascade.executor.platform.gpu as gpu
 import cascade.executor.runner.setup as runner_setup
@@ -74,6 +76,12 @@ JustForwardToController = DatasetTransmitFailure | DatasetPersistSuccess | Datas
 # how long to wait for a worker to gracefully exit before killing it. Kept short so that the whole executor
 # termination fits within the gateway's job termination grace
 worker_shutdown_grace_s = 5.0
+
+
+shm_shutdown_grace_s = 1.0
+
+# how long we give the zmq to push out the pending messages at the very end. See `Executor.drain_messages`
+drain_linger_ms = 1000
 
 
 def _await_or_kill(proc: WorkerProcessHandle, grace_s: float) -> None:
@@ -147,8 +155,11 @@ class Executor:
                     # NOTE this is unhealthy -- consider forcing non zero exit code instead,
                     # which risks shutting down eg slurm job without report to gw, and have gw
                     # check eg slurmctl in case no heartbeats etc
-                    # NOTE we just log warning, otherwise swallow teh exception -- the original more important
+                    # NOTE we just log warning, otherwise swallow the exception -- the original more important
                     logger.warning(f"failed to report to controller! This will stall the whole job: {_e!r}")
+                finally:
+                    # NOTE the caller has no handle to us in this case, so it cannot drain
+                    self.drain_messages()
             raise
         logger.debug("constructed executor")
 
@@ -224,12 +235,21 @@ class Executor:
         if self.terminating:
             return
         self.terminating = True
+        # NOTE we first signal everyone, and only then await, so that the workers shut down in parallel
+        # and the whole wait is bounded by a single grace -- the controller (and the gateway above it) waits for us
+        for worker in self.workers.keys():
+            try:
+                if (handle := self.workers[worker]) is not None:
+                    logger.debug(f"signalling worker {worker}")
+                    callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
+            except Exception as e:
+                logger.warning(f"gotten {repr(e)} when signalling shutdown to {worker}")
+        deadline = time.monotonic() + worker_shutdown_grace_s
         for worker in self.workers.keys():
             logger.debug(f"cleanup worker {worker}")
             try:
                 if (handle := self.workers[worker]) is not None:
-                    callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
-                    _await_or_kill(handle.process, worker_shutdown_grace_s)
+                    _await_or_kill(handle.process, max(deadline - time.monotonic(), 0))
                     try:
                         handle.venv_dir.cleanup()
                     except Exception as e:
@@ -239,7 +259,7 @@ class Executor:
         for proc, venv in self.old_workers:
             logger.debug(f"cleanup old process {proc.pid}")
             try:
-                _await_or_kill(proc, worker_shutdown_grace_s)
+                _await_or_kill(proc, max(deadline - time.monotonic(), 0))
                 venv.cleanup()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down old worker {proc.pid}")
@@ -254,7 +274,11 @@ class Executor:
         if hasattr(self, "shm_process") and self.shm_process is not None and self.shm_process.is_alive():
             try:
                 shm_client.shutdown()
-                self.shm_process.join()
+                self.shm_process.join(shm_shutdown_grace_s)
+                if self.shm_process.is_alive():
+                    logger.warning(f"shm server {self.shm_process.pid} did not exit within {shm_shutdown_grace_s}s, killing")
+                    self.shm_process.kill()
+                    self.shm_process.join()
             except Exception as e:
                 logger.warning(f"gotten {repr(e)} when shutting down shm server")
         if hasattr(self, "data_server") and self.data_server is not None and self.data_server.is_alive():
@@ -263,6 +287,22 @@ class Executor:
     def to_controller(self, m: Message) -> None:
         self.heartbeat_watcher.step()
         self.sender.send(HostId("controller"), m)
+
+    def drain_messages(self) -> None:
+        """Best effort to let the already sent messages (notably the last ones to controller, such as ExecutorExit
+        or ExecutorFailure) leave the process, by closing all the sockets cleanly with a linger. Without this, the
+        process may exit before zmq's io thread pushed them out, and the controller would never learn about it.
+        Meant to be called once, right before the process exits -- the zmq context is unusable afterwards.
+
+        NOTE this is not an ack wait -- delivery is still not guaranteed. The executor <-> controller comms layer
+        needs a rework to handle the process end reliably (eg wait for acks of the final messages, resend of
+        Exit from the controller side)
+        """
+        try:
+            platform_context = cascade.executor.comms.get_context()
+            platform_context.destroy(linger=drain_linger_ms)
+        except Exception as e:
+            logger.warning(f"failed to drain messages: {repr(e)}")
 
     def _start_worker(self, worker: WorkerId, attempt_cnt: int, seq: None | TaskSequence) -> WorkerHandle:
         venv_td, initial_installed = runner_setup.create_venv(self.job_rich.custom_pip_indices)
@@ -397,8 +437,10 @@ class Executor:
                             self.datasets.remove(m.ds)
                             callback(self.daddress, m)
                     elif isinstance(m, ExecutorShutdown):
-                        # NOTE we first terminate, then send Exit, because Exits at controller cause
-                        # exitcode != 0, which could forcibly kill this in case of slurm etc
+                        # NOTE we first terminate, then send Exit: once the controller has all the Exits, its
+                        # shutdown returns and the controller may exit (non zero in the failure case, which can
+                        # trigger a slurm-wide kill, or the gateway's group kill) -- so our cleanup must be finished
+                        # by then. Note this is the opposite order than in the except branch below
                         try:
                             self.terminate()
                         finally:
@@ -460,6 +502,10 @@ class Executor:
                     self.healthcheck()
             except BaseException as e:
                 # NOTE includes eg SystemExit due to sigterm. The caller is responsible for `terminate`
+                # NOTE here we report first, and terminate later (in the caller) -- the opposite order than in the
+                # ExecutorShutdown branch above. This is intentional: here *we* are the ones initiating the crash,
+                # so the controller needs to learn about it asap. After our message, it starts sending shutdown to
+                # the other executors first, which leaves us enough time to terminate
                 logger.warning("executor exited, about to report to controller, propagating")
                 self.to_controller(ExecutorFailure(self.host, ser(e)))
                 raise
