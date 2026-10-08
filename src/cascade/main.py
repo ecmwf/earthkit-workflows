@@ -10,9 +10,6 @@
 
 import logging
 import logging.config
-import os
-import subprocess
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter_ns
 from typing import Any
@@ -22,47 +19,18 @@ import orjson
 
 import cascade.executor.platform as platform
 from cascade.controller.impl import run
+from cascade.controller.report import Reporter
 from cascade.deployment.logging import DefaultLoggingConfig, LoggingConfig, init_from_cliparam, init_from_obj
 from cascade.executor.bridge import Bridge
 from cascade.executor.comms import callback
-from cascade.executor.executor import Executor
+from cascade.executor.executor import Executor, address_of
 from cascade.executor.msg import BackboneAddress, ExecutorShutdown
-from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError
+from cascade.low.core import DatasetId, HostId, JobInstance, JobInstanceRich, globalIdx2hostId, localIdx2hostId
+from cascade.low.exceptions import CascadeInfrastructureError
 from cascade.low.func import msum
 from cascade.scheduler.precompute import precompute
 
 logger = logging.getLogger(__name__)
-
-
-def _get_cuda_count() -> int:
-    try:
-        if "CUDA_VISIBLE_DEVICES" in os.environ:
-            # TODO we dont want to just count, we want to actually use literally these ids
-            # NOTE this is particularly useful for "" value -- careful when refactoring
-            visible = os.environ["CUDA_VISIBLE_DEVICES"]
-            visible_count = sum(1 for e in visible if e == ",") + (1 if visible else 0)
-            return visible_count
-        gpus = sum(
-            1
-            for l in subprocess.run(["nvidia-smi", "--list-gpus"], check=True, capture_output=True).stdout.decode("ascii").split("\n")
-            if "GPU" in l
-        )
-    except:
-        logger.exception("unable to determine available gpus")
-        gpus = 0
-    return gpus
-
-
-def _get_gpu_count(host_idx: int, worker_count: int) -> int:
-    if sys.platform == "darwin":
-        # we should inspect some gpu capabilities details to prevent overcommit
-        return worker_count
-    else:
-        if host_idx == 0:
-            return _get_cuda_count()
-        else:
-            return 0
 
 
 def launch_executor(
@@ -70,21 +38,21 @@ def launch_executor(
     controller_address: BackboneAddress,
     workers_per_host: int,
     portBase: int,
-    i: int,
+    host: HostId,
     shm_vol_gb: int | None,
-    gpu_count: int,
     loggingConfig: LoggingConfig,
     url_base: str,
 ):
     init_from_obj(loggingConfig, "executor")
+    # NOTE we install explicitly as we may be a forkserver/spawn child, or a standalone process
+    platform.install_sigterm_exit()
+    executor: Executor | None = None
     try:
-        logger.info(f"will set {gpu_count} gpus on host {i}")
-        os.environ["CASCADE_GPU_COUNT"] = str(gpu_count)
         executor = Executor(
             job,
             controller_address,
             workers_per_host,
-            HostId(f"h{i}"),
+            host,
             portBase,
             shm_vol_gb,
             loggingConfig,
@@ -94,11 +62,15 @@ def launch_executor(
         executor.recv_loop()
     except Exception as e:
         # NOTE we log this to get the stacktrace into the logfile
-        logger.exception("executor failure, propagating")
-        if isinstance(e, CascadeError):
-            raise
-        else:
-            raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+        # NOTE we do *not* raise -- we keep system exit 0. Otherwise, the orchestrator (eg slurm) could have killed
+        # the whole job before the controller has the chance to receive and report the message to the gateway
+        logger.exception("executor failure, swallowing")
+    finally:
+        # NOTE safe to call even if already terminated
+        if executor is not None:
+            executor.terminate()
+            # NOTE the last messages to controller (Exit/Failure) may still be in zmq buffers
+            executor.drain_messages()
 
 
 def run_locally(
@@ -113,14 +85,13 @@ def run_locally(
     job = JobInstanceRich(**orjson.loads(job.model_dump_json().encode()))
     loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
     logger.debug(f"local run starting with {hosts=} and {workers=} on {portBase=}")
-    launch = perf_counter_ns()
     c = f"tcp://localhost:{portBase}"
-    m = f"tcp://localhost:{portBase + 1}"
-    ps = []
+    # NOTE the reporter makes sure the gateway learns of failure even if we die before `run` starts
+    reporter = Reporter(report_address)
     try:
+        ps = []
         # executors forking
         for i, executor in enumerate(range(hosts)):
-            gpu_count = _get_gpu_count(i, workers)
             # NOTE forkserver/spawn seem to forget venv, we need fork
             logger.debug(f"forking into executor on host {i}")
             p = platform.get_mp_ctx("executor-loc").Process(
@@ -130,9 +101,8 @@ def run_locally(
                     c,
                     workers,
                     portBase + 1 + i * 10,
-                    i,
+                    localIdx2hostId(i),
                     None,
-                    gpu_count,
                     loggingConfig.withContext(f"host_{i}"),
                     "tcp://localhost",
                 ),
@@ -154,28 +124,12 @@ def run_locally(
         # start bridge itself
         logger.debug("starting bridge")
         b = Bridge(c, hosts, job.checkpointSpec)
-        start = perf_counter_ns()
-        result = run(job, b, preschedule, report_address=report_address)
-        end = perf_counter_ns()
-        print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
-        if os.environ.get("CASCADE_DEBUG_PRINT"):
-            for key, value in result.outputs.items():
-                print(f"{key} => {value}")
-        return result.outputs
-    except Exception as e:
-        # NOTE we log this to get the stacktrace into the logfile
-        logger.exception("controller failure, proceed with executor shutdown")
-        for p in ps:
-            if p.is_alive():
-                callback(m, ExecutorShutdown())
-                import time
-
-                time.sleep(1)
-                p.kill()
-        if isinstance(e, CascadeError):
-            raise
-        else:
-            raise CascadeInfrastructureError(parent=e, description=repr(e)) from e
+    except BaseException as e:
+        # NOTE includes eg SystemExit due to sigterm
+        reporter.send_failure_and_log(e)
+        raise
+    result = run(job, b, preschedule, reporter)
+    return result.outputs
 
 
 def _deserialize(instance_path: str) -> JobInstanceRich:
@@ -192,6 +146,7 @@ def main_local(
     port_base: int = 12345,
     loggingConfigSer: str | None = None,
 ) -> None:
+    platform.install_sigterm_exit()
     jobInstanceRich = _deserialize(instance)
     run_locally(
         jobInstanceRich,
@@ -216,32 +171,39 @@ def main_dist(
     """Entrypoint for *both* controller and worker -- they are on different hosts! Distinguished by idx: 0 for
     controller, 1+ for worker. Assumed to come from slurm procid.
     """
-    launch = perf_counter_ns()
+    platform.install_sigterm_exit()
 
     jobInstanceRich = _deserialize(instance)
 
     if idx == 0:
         loggingConfig = init_from_cliparam(loggingConfigSer, "controller")
-        tp = ThreadPoolExecutor(max_workers=1)
-        preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
-        b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
-        preschedule = preschedule_fut.result()
-        tp.shutdown()
-        start = perf_counter_ns()
-        run(jobInstanceRich, b, preschedule, report_address=report_address)
-        end = perf_counter_ns()
-        print(f"compute took {(end - start) / 1e9:.3f}s, including startup {(end - launch) / 1e9:.3f}s")
+        reporter = Reporter(report_address)
+        b = None
+        tp = None
+        try:
+            tp = ThreadPoolExecutor(max_workers=1)
+            preschedule_fut = tp.submit(precompute, jobInstanceRich.jobInstance)
+            b = Bridge(controller_url, hosts, jobInstanceRich.checkpointSpec)
+            preschedule = preschedule_fut.result()
+        except BaseException as e:
+            # NOTE includes eg SystemExit due to sigterm
+            reporter.send_failure_and_log(e)
+            if b is not None:
+                b.shutdown()
+            raise
+        finally:
+            tp.shutdown()
+        run(jobInstanceRich, b, preschedule, reporter)
+
     else:
         loggingConfig = init_from_cliparam(loggingConfigSer, f"executor_{idx}")
-        gpu_count = _get_gpu_count(0, workers_per_host)
         launch_executor(
             jobInstanceRich,
             controller_url,
             workers_per_host,
             12345,
-            idx,
+            globalIdx2hostId(idx),
             shm_vol_gb,
-            gpu_count,
             loggingConfig=loggingConfig,
             url_base=f"tcp://{platform.get_bindabble_self()}",
         )

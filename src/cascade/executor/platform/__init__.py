@@ -9,14 +9,20 @@
 """Macos-vs-Linux specific code"""
 
 import fcntl
+import logging
 import multiprocessing as mp
 import os
+import signal
 import socket
 import subprocess
 import sys
+import threading
 import typing
+from types import FrameType
 
 from cascade.low.exceptions import CascadeInternalError
+
+logger = logging.getLogger(__name__)
 
 NewWorkerMethod = typing.Literal["popen", "multiprocessing"]
 
@@ -36,15 +42,6 @@ def get_bindabble_self():
     else:
         # NOTE not sure if fqdn or hostname is better -- all we need is for it to be resolvable within cluster
         return socket.gethostname()  # socket.getfqdn()
-
-
-def gpu_init(worker_num: int):
-    if sys.platform != "darwin":
-        # TODO there is implicit coupling with executor.executor and cascade.main -- make it cleaner!
-        gpus = int(os.environ.get("CASCADE_GPU_COUNT", "0"))
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(worker_num) if worker_num < gpus else ""
-    else:
-        pass  # no macos specific gpu init due to unified mem model
 
 
 MpSituation = typing.Literal["worker", "executor-loc", "executor-shm", "executor-dataserver", "gateway", "other"]
@@ -74,6 +71,26 @@ def get_mp_ctx(situation: MpSituation) -> mp.context.ForkContext | mp.context.Sp
         return mp.get_context("forkserver")
     else:
         return mp.get_context("fork")
+
+
+SIGTERM_EXIT_CODE = 128 + signal.SIGTERM
+
+
+def _sigterm_to_exit(signum: int, frame: FrameType | None) -> None:
+    raise SystemExit(SIGTERM_EXIT_CODE)
+
+
+def install_sigterm_exit() -> None:
+    """Converts SIGTERM into SystemExit, so that `finally` blocks and context managers
+    get to run. By default, python just dies on SIGTERM without running either.
+
+    Must be called explicitly in every process entrypoint that needs it -- do not rely on inheritance
+    via fork, as the start method may be forkserver/spawn. Only effective in the main thread.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        logger.warning("not in main thread, cannot install sigterm handler")
+        return
+    signal.signal(signal.SIGTERM, _sigterm_to_exit)
 
 
 def get_new_worker_method() -> NewWorkerMethod:

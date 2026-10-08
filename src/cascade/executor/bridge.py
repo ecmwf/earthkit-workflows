@@ -45,6 +45,10 @@ from cascade.low.func import assert_never
 
 logger = logging.getLogger(__name__)
 
+# grace for executors to confirm shutdown
+shutdown_grace_s = 3 * 60
+
+
 Event = DatasetPublished | DatasetTransmitPayload | DatasetPersistSuccess | DatasetRetrieveSuccess | RunnerRestartRequest
 # TODO consider retries here, esp on the Persist/Retrieve Failures
 ToShutdown = TaskFailure | ExecutorFailure | DatasetRetrieveFailure | DatasetTransmitFailure | DatasetPersistFailure | ExecutorExit
@@ -58,16 +62,26 @@ class Bridge:
         self.heartbeat_checker: dict[HostId, GraceWatcher] = {}
         self.transmit_idx_counter = 0
         self.sender = ReliableSender(self.mlistener.address, resend_grace_ms)
-        registered = 0
         self.environment = Environment(workers={}, host_url_base={})
         logger.debug("about to start receiving registrations")
+        try:
+            self._await_registrations(expected_executors)
+        except BaseException:
+            # NOTE the already registered executors must not be left behind, eg due to sigterm
+            self.shutdown()
+            raise
+
+    def _await_registrations(self, expected_executors: int) -> None:
+        registered = 0
         registration_grace = time.time_ns() + 3 * 60 * 1_000_000_000
         while registered < expected_executors:
             messages = self.mlistener.recv_messages(timeout_ms=10_000)
             logger.debug(f"received {messages=}")
             for message in messages:
-                if not isinstance(message, ExecutorRegistration):
-                    # we make sure that even with bad netw we dont send anything else -> InternalError
+                if isinstance(message, ExecutorFailure):
+                    raise des(message.detail)
+                elif not isinstance(message, ExecutorRegistration):
+                    # we make sure that even with bad netw we dont send anything else except succ/fail -> InternalError
                     raise CascadeInternalError(f"expected ExecutorRegistration during init, got {type(message)}")
                 if message.host in self.sender.hosts or "data." + message.host in self.sender.hosts:
                     logger.warning(f"double registration of {message.host}, suggesting network congestion")
@@ -81,7 +95,6 @@ class Bridge:
                 self.heartbeat_checker[message.host] = GraceWatcher(2 * executor_heartbeat_grace_ms)
                 self.heartbeat_checker[message.host].step()
             if time.time_ns() > registration_grace:
-                self.shutdown()
                 # most likely means start failures or bad network -> InfrastructureError
                 raise CascadeInfrastructureError("failed to receive registration in due time")
 
@@ -180,12 +193,14 @@ class Bridge:
         self.transmit_idx_counter += 1
         self.sender.send(HostId("data." + source), m)
 
-    def shutdown(self) -> None:
+    def shutdown(self, grace_s: float = shutdown_grace_s) -> None:
+        """Sends shutdown to all registered executors, awaits their confirmation for up to `grace_s`.
+        Idempotent -- once executors confirmed, or grace elapsed, subsequent calls are no-op"""
         m = ExecutorShutdown()
         for host in self.sender.hosts.keys():
             if not host.startswith("data."):
                 self._send(host, m)
-        shutdown_grace = time.time_ns() + 3 * 60 * 1_000_000_000
+        shutdown_grace = time.time_ns() + int(grace_s * 1_000_000_000)
         while self.sender.hosts and time.time_ns() < shutdown_grace:
             # we want to consume all those exit messages
             for message in self.mlistener.recv_messages():
@@ -197,3 +212,4 @@ class Bridge:
                     logger.warning(f"ignoring {type(message)}")
         if self.sender.hosts:
             logger.warning(f"not all hosts exited during grace period: {self.sender.hosts.keys()}, quitting anyway")
+            self.sender.hosts.clear()

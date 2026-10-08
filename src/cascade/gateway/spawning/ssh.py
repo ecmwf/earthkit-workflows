@@ -16,7 +16,7 @@ import orjson
 from cascade.controller.report import JobId
 from cascade.deployment.logging import LoggingConfig
 from cascade.gateway.api import JobSpec, SshCluster
-from cascade.gateway.spawning.common import allocate_port_range, ssh_args
+from cascade.gateway.spawning.common import SpawnedJob, allocate_port_range, ssh_args
 from cascade.gateway.spawning.wheels import EkwInstallSpec, node_install_spec
 from cascade.low.exceptions import CascadeUserError
 
@@ -50,7 +50,7 @@ def spawn_ssh(
     loggingConfig: LoggingConfig,
     infra: SshCluster,
     install_spec: EkwInstallSpec | None,
-) -> subprocess.Popen[bytes]:
+) -> SpawnedJob:
     """Spawn controller and executors on remote nodes via SSH.
 
     The controller is launched on infra.controller_url and executors on each of
@@ -109,7 +109,8 @@ def spawn_ssh(
         uv_cmd = " ".join(["uv", "run", "--with", node_ek] + dist_args)
         return [env_exports + uv_cmd]
 
-    # Launch controller (idx=0) -- this is the "primary" process we track
+    # Launch controller (idx=0)
+    # NOTE we track all the ssh clients, but terminating them does not necessarily terminate the remote processes
     ctrl_cmd = ["ssh", *ssh_args(ssh_key, ssh_config), infra.controller_url] + _build_dist_cmd(
         infra.controller_url, 0, ["--report_address", f"{addr},{job_id}"]
     )
@@ -117,9 +118,10 @@ def spawn_ssh(
     ctrl_proc = subprocess.Popen(ctrl_cmd, shell=False)
 
     # Launch executors (idx=1, 2, ...)
+    exec_procs: list[subprocess.Popen[bytes]] = []
     for i, worker_url in enumerate(infra.worker_urls):
         exec_cmd = ["ssh", *ssh_args(ssh_key, ssh_config), worker_url] + _build_dist_cmd(worker_url, i + 1, [])
         logger.debug(f"Launching executor {i + 1} on {worker_url}: {exec_cmd}")
-        subprocess.Popen(exec_cmd, shell=False)
+        exec_procs.append(subprocess.Popen(exec_cmd, shell=False))
 
-    return ctrl_proc
+    return SpawnedJob(procs=[ctrl_proc] + exec_procs)

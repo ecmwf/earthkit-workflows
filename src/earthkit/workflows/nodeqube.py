@@ -20,7 +20,7 @@ Input = BaseNode | Output
 Payload = Callable | str | TaskInstance
 
 
-def _custom_hash(string: str) -> str:
+def custom_hash(string: str) -> str:
     ret = hashlib.sha256()
     ret.update(string.encode())
     return ret.hexdigest()
@@ -55,7 +55,8 @@ def create_task_instance(
 
     if isinstance(payload, TaskInstance):
         update_requirements(requirements, Requirements(environment=payload.definition.environment, needs_gpu=payload.definition.needs_gpu))
-        task = payload.model_copy(update=requirements.model_dump(exclude_none=True))
+        task = payload.model_copy(deep=True)
+        task.definition = task.definition.model_copy(update=requirements.model_dump(exclude_none=True))
     elif isinstance(payload, str):
         task = TaskInstance(
             definition=TaskDefinition(
@@ -112,6 +113,7 @@ class Node(BaseNode):
             inputs = [inputs]
         metadata = _resolve_node_metadata(payload, node_metadata=metadata)
         task = create_task_instance(payload, requirements=metadata.requirements)
+        task = task.model_copy(deep=True)
         node_outputs = None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
         if len(task.definition.input_schema) == 0:
             task.definition.input_schema = {k: "Any" for k in task.static_input_kw.keys()}
@@ -137,7 +139,7 @@ class Node(BaseNode):
                 task.static_input_ps[pos] = None
 
         name = name or task.definition.func or task.definition.entrypoint
-        name += _custom_hash(f"{task}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
+        name += custom_hash(f"{task}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
 
         super().__init__(
             name,
