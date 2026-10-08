@@ -12,8 +12,9 @@ import pytest
 from qubed import Qube  # type: ignore
 
 from earthkit.workflows._qubed import _convert_num_to_abc, expand_as_qube
+from earthkit.workflows.fluent import from_source
 
-from .helpers import mock_action
+SOURCE_ACTION = from_source("test", datacubes={"dim": [0]})
 
 # ============================================================================
 # Fixtures for creating test qubes
@@ -49,23 +50,14 @@ def pressure_level_qube():
     )
 
 
-# Branch names: the Rust Qube does not yet support metadata, so hierarchical
-# qubes use the alphabetical fallback naming (a, b, c, ...).
-# TODO: Once metadata is supported, inject ``name`` metadata and update the
-# expected branch names in the tests below.
-BRANCH_A = "/a"
-BRANCH_B = "/b"
-BRANCH_C = "/c"
-
-
 @pytest.fixture
 def hierarchical_qube():
     """Create a hierarchical qube with two branches.
 
     Structure after compress:
     root
-    ├── param=100u/100v/10u/10v/2d/2t, step=6/12  (branch /a)
-    └── level=50/100/150/200/250, param=q/t/u/v, step=6/12  (branch /b)
+    ├── param=100u/100v/10u/10v/2d/2t, step=6/12
+    └── level=50/100/150/200/250, param=q/t/u/v, step=6/12
 
     Both children have step dimension in the qube.
     After expansion, children should have BOTH step AND their own dims.
@@ -103,8 +95,8 @@ def multi_level_qube():
 
     Structure after compress:
     root
-    ├── param=a/b, step=1/2/3 (branch /a)
-    └── param=c/d (branch /b or further split)
+    ├── param=a/b, step=1/2/3
+    └── param=c/d
         ├── class=od, step=1/2/3
         └── level=100/200, step=1/2/3
 
@@ -173,64 +165,29 @@ class TestExpandAsQube:
 
     def test_expand_simple_qube(self, simple_qube):
         """Test expanding with a simple single-axis qube."""
-        action = mock_action((1,))
-        result = expand_as_qube(action, simple_qube)
-
-        # Verify the result has the step dimension
-        ds = result.nodes.to_dataset()
-        assert "step" in ds.dims
-        assert len(ds.step) == 2
-        assert list(ds.step.values) == [6, 12]
+        result = expand_as_qube(SOURCE_ACTION, simple_qube)
+        for dim, values in simple_qube.axes().items():
+            assert result.qube.axes()[dim] == values
 
     def test_expand_multi_dimensional_no_split(self, pressure_level_qube):
         """Test expanding with a multi-dimensional qube (no hierarchy)."""
-        action = mock_action((1,))
-        result = expand_as_qube(action, pressure_level_qube)
-
-        # Verify the result has both dimensions
-        ds = result.nodes.to_dataset()
-        assert "step" in ds.dims
-        assert "param" in ds.dims
-        assert len(ds.step) == 2
-        assert len(ds.param) == 4
+        result = expand_as_qube(SOURCE_ACTION, pressure_level_qube)
+        for dim, values in pressure_level_qube.axes().items():
+            assert result.qube.axes()[dim] == values
 
     def test_expand_hierarchical_creates_branches(self, hierarchical_qube):
         """Test that hierarchical expansion creates separate branches.
 
         The qube structure is:
         root
-        ├── param=100u/100v/10u/10v/2d/2t, step=6/12  (branch /a)
-        └── level=50/100/150/200/250, param=q/t/u/v, step=6/12  (branch /b)
-
-        Expected expanded action structure:
-        /a: DataArray with dims (step, param)
-        /b: DataArray with dims (step, param, level)
+        ├── param=100u/100v/10u/10v/2d/2t, step=6/12
+        └── level=50/100/150/200/250, param=q/t/u/v, step=6/12
 
         Each branch should have all dimensions from the qube.
         """
-        action = mock_action((1,))
-        result = expand_as_qube(action, hierarchical_qube)
-
-        # Verify the result has a hierarchical structure with branches
-        groups = list(result.nodes.groups)
-        assert BRANCH_A in groups
-        assert BRANCH_B in groups
-
-        # First branch should have step and param
-        branch_a_ds = result.nodes[BRANCH_A].to_dataset()
-        assert "step" in branch_a_ds.dims, "Branch /a should have step dimension"
-        assert "param" in branch_a_ds.dims, "Branch /a should have param dimension"
-        assert len(branch_a_ds.step) == 2, "Branch /a should have 2 step values"
-        assert len(branch_a_ds.param) == 6, "Branch /a should have 6 param values"
-
-        # Second branch should have step, param, AND level
-        branch_b_ds = result.nodes[BRANCH_B].to_dataset()
-        assert "step" in branch_b_ds.dims, "Branch /b should have step dimension"
-        assert "param" in branch_b_ds.dims, "Branch /b should have param dimension"
-        assert "level" in branch_b_ds.dims, "Branch /b should have level dimension"
-        assert len(branch_b_ds.step) == 2, "Branch /b should have 2 step values"
-        assert len(branch_b_ds.param) == 4, "Branch /b should have 4 param values"
-        assert len(branch_b_ds.level) == 5, "Branch /b should have 5 level values"
+        result = expand_as_qube(SOURCE_ACTION, hierarchical_qube)
+        for dim, values in hierarchical_qube.axes().items():
+            assert result.qube.axes()[dim] == values
 
     def test_expand_uses_alphabetical_fallback(self):
         """Test that expansion uses alphabetical naming when metadata is missing.
@@ -250,26 +207,9 @@ class TestExpandAsQube:
     └── param=c/d
 """)
 
-        action = mock_action((1,))
-        result = expand_as_qube(action, qube)
-
-        # Verify alphabetical branch names are used (a, b for first two children)
-        groups = list(result.nodes.groups)
-        assert "/a" in groups, "First child should be named /a"
-        assert "/b" in groups, "Second child should be named /b"
-
-        # Each branch should have BOTH step (parent) and param (child) dimensions
-        ds_a = result.nodes["/a"].to_dataset()
-        assert "step" in ds_a.dims, "Branch /a should have parent's step dimension"
-        assert "param" in ds_a.dims, "Branch /a should have its own param dimension"
-        assert len(ds_a.step) == 2, "Branch /a should have 2 step values"
-        assert len(ds_a.param) == 2, "Branch /a should have 2 param values"
-
-        ds_b = result.nodes["/b"].to_dataset()
-        assert "step" in ds_b.dims, "Branch /b should have parent's step dimension"
-        assert "param" in ds_b.dims, "Branch /b should have its own param dimension"
-        assert len(ds_b.step) == 2, "Branch /b should have 2 step values"
-        assert len(ds_b.param) == 2, "Branch /b should have 2 param values"
+        result = expand_as_qube(SOURCE_ACTION, qube)
+        for dim, values in qube.axes().items():
+            assert result.qube.axes()[dim] == values
 
     def test_expand_handles_nested_structure(self, multi_level_qube):
         """Test expansion with nested qube structure.
@@ -277,20 +217,9 @@ class TestExpandAsQube:
         The multi_level_qube has multiple children at the root level.
         After expansion, each branch should have the step dimension.
         """
-        action = mock_action((1,))
-        result = expand_as_qube(action, multi_level_qube)
-
-        # Verify the result has branches (alphabetical naming)
-        groups = list(result.nodes.groups)
-        assert BRANCH_A in groups, f"Should have {BRANCH_A} branch"
-        assert BRANCH_B in groups, f"Should have {BRANCH_B} branch"
-
-        # First branch should have step and param
-        ds_a = result.nodes[BRANCH_A].to_dataset()
-        assert "step" in ds_a.dims, f"{BRANCH_A} should have step dimension"
-        assert "param" in ds_a.dims, f"{BRANCH_A} should have param dimension"
-        assert len(ds_a.step) == 3, f"{BRANCH_A} should have 3 step values"
-        assert len(ds_a.param) == 2, f"{BRANCH_A} should have 2 param values"
+        result = expand_as_qube(SOURCE_ACTION, multi_level_qube)
+        for dim, values in multi_level_qube.axes().items():
+            assert result.qube.axes()[dim] == values
 
 
 # ============================================================================
@@ -300,11 +229,10 @@ class TestExpandAsQube:
 
 def test_expansion_with_no_children_returns_early(empty_qube):
     """Test that expansion with no children returns immediately."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, empty_qube)
+    result = expand_as_qube(SOURCE_ACTION, empty_qube)
 
     # Action should be returned unchanged
-    assert result is action
+    assert result is SOURCE_ACTION
 
 
 # ============================================================================
@@ -314,38 +242,17 @@ def test_expansion_with_no_children_returns_early(empty_qube):
 
 def test_drop_then_expand(pressure_level_qube):
     """Test dropping an axis then expanding."""
-    action = mock_action({"dim_1": [1]})
     new_qube = pressure_level_qube.drop(["step"])
-    result = expand_as_qube(action, new_qube)
-
-    # Verify step dimension is not present
-    ds = result.nodes.to_dataset()
-    assert "step" not in ds.dims
-    # But other dimensions should be present
-    assert "param" in ds.dims
-    assert "level" in ds.dims
+    result = expand_as_qube(SOURCE_ACTION, new_qube)
+    for dim, values in new_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 def test_complex_hierarchy_expansion(multi_level_qube):
     """Test expansion with complex nested hierarchy."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, multi_level_qube)
-
-    # Verify branches exist
-    groups = list(result.nodes.groups)
-    assert any(g in groups for g in [BRANCH_A, BRANCH_B, BRANCH_C])
-
-    # Verify step dimension exists somewhere
-    has_step = False
-    for path in groups:
-        try:
-            ds = result.nodes[path].to_dataset()
-            if "step" in ds.dims:
-                has_step = True
-                break
-        except:
-            pass
-    assert has_step
+    result = expand_as_qube(SOURCE_ACTION, multi_level_qube)
+    for dim, values in multi_level_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 # ============================================================================
@@ -355,98 +262,37 @@ def test_complex_hierarchy_expansion(multi_level_qube):
 
 def test_expand_verifies_correct_dimensions(surface_variables_qube):
     """Test that expansion results in correct dimensions being expanded."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, surface_variables_qube)
-
-    ds = result.nodes.to_dataset()
-    assert "step" in ds.dims
-    assert "param" in ds.dims
+    result = expand_as_qube(SOURCE_ACTION, surface_variables_qube)
+    for dim, values in surface_variables_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 def test_expand_verifies_dimension_values(pressure_level_qube):
     """Test that expansion uses correct values for each dimension."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, pressure_level_qube)
-
-    ds = result.nodes.to_dataset()
-
-    # Check dimension values
-    assert "step" in ds.dims
-    assert 6 in ds.step.values and 12 in ds.step.values
-
-    assert "param" in ds.dims
-    assert "q" in ds.param.values
-
-    assert "level" in ds.dims
-    assert 50 in ds.level.values and 250 in ds.level.values
-
-
-def test_expand_hierarchy_creates_correct_paths(hierarchical_qube):
-    """Test that hierarchical expansion creates correct path structure."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, hierarchical_qube)
-
-    # Verify branch paths exist
-    groups = list(result.nodes.groups)
-    assert BRANCH_A in groups
-    assert BRANCH_B in groups
-
-
-def test_expand_hierarchy_dropped_creates_correct_paths(hierarchical_qube_with_drop):
-    """Test that hierarchical expansion creates correct path structure."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, hierarchical_qube_with_drop)
-
-    # Verify branch paths exist
-    groups = list(result.nodes.groups)
-    assert BRANCH_A in groups
-    assert BRANCH_B in groups
-
-    # Verify step is not in dimensions
-    branch_a_ds = result.nodes[BRANCH_A].to_dataset()
-    assert "step" not in branch_a_ds.dims
+    result = expand_as_qube(SOURCE_ACTION, pressure_level_qube)
+    for dim, values in pressure_level_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 def test_expand_processes_sibling_dimensions(multi_level_qube):
     """Test that expansion handles qube with multiple sibling dimensions."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, multi_level_qube)
-
-    # Check for nested level dimension
-    found_level = False
-    for path in result.nodes.groups:
-        try:
-            ds = result.nodes[path].to_dataset()
-            if "level" in ds.dims:
-                found_level = True
-                break
-        except:
-            pass
-
-    assert found_level
+    result = expand_as_qube(SOURCE_ACTION, multi_level_qube)
+    for dim, values in multi_level_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 def test_expand_result_has_all_qube_axes(surface_variables_qube):
     """Test that after expansion, all qube axes are accounted for."""
-    action = mock_action((1,))
-    original_axes = surface_variables_qube.axes()  # native Rust method
-
-    result = expand_as_qube(action, surface_variables_qube)
-    ds = result.nodes.to_dataset()
-
-    for axis in original_axes:
-        assert axis in ds.dims, f"Axis {axis} was not expanded"
+    result = expand_as_qube(SOURCE_ACTION, surface_variables_qube)
+    for dim, values in surface_variables_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 def test_expand_correct_value_count(simple_qube):
     """Test that expansion includes all values for each dimension."""
-    action = mock_action((1,))
-    result = expand_as_qube(action, simple_qube)
-
-    ds = result.nodes.to_dataset()
-    assert len(ds.step) == 2
-    assert 6 in ds.step.values
-    assert 12 in ds.step.values
+    result = expand_as_qube(SOURCE_ACTION, simple_qube)
+    for dim, values in simple_qube.axes().items():
+        assert result.qube.axes()[dim] == values
 
 
 # ============================================================================
@@ -458,7 +304,7 @@ def test_expand_as_qube_with_real_action():
     """Test that expand_as_qube works with a real Action object."""
     from earthkit.workflows.fluent import Action
 
-    action = mock_action(shape=(2, 1))
+    action = from_source("test", datacubes={"dim_0": [0, 1], "dim_1": [0]})
 
     # Create a simple qube
     qube = Qube.from_datacube({"step": [6, 12]})
@@ -470,7 +316,7 @@ def test_expand_as_qube_with_real_action():
     assert isinstance(result, Action)
 
     # Verify that the action has been expanded with the step dimension
-    assert "step" in result.nodes.to_dataset().dims
+    assert "step" in result.nodeqube.dimensions()
 
 
 @pytest.mark.parametrize(
@@ -482,18 +328,18 @@ def test_expand_as_qube_with_real_action():
 )
 def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
-    action = mock_action({"dim_1": [1, 2], "dim_2": [1, 2]})
+    action = from_source("test", datacubes={"dim_0": [0, 1], "dim_1": [0, 1]})
 
     result = expand_as_qube(action, qube)
     subset = result.select(param="t")
 
-    dims = subset.qube.dimensions()
+    dims = subset.qube.axes()
     assert "step" in dims
     assert "param" in dims
 
-    assert dims["param"] == {"t"}
+    assert dims["param"] == ["t"]
 
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError):
         subset = result.select(param="nonexistent_param")
 
 
@@ -506,16 +352,16 @@ def test_expand_as_qube_with_real_action_post_select(qube_fixture, request):
 )
 def test_expand_as_qube_with_real_action_post_select_level(qube_fixture, request):
     qube = request.getfixturevalue(qube_fixture)
-    action = mock_action({"dim_1": [1, 2], "dim_2": [1, 2]})
+    action = from_source("test", datacubes={"dim_0": [0, 1], "dim_1": [0, 1]})
 
     result = expand_as_qube(action, qube)
     subset = result.select(level=50)
 
-    dims = subset.qube.dimensions()
+    dims = subset.qube.axes()
     assert "step" in dims
     assert "level" in dims
 
-    assert dims["level"] == {50}
+    assert dims["level"] == [50]
 
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError):
         subset = result.select(param="nonexistent_param")

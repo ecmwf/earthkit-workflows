@@ -570,7 +570,7 @@ requires-dist = [
     { name = "pyrsistent" },
     { name = "pyvis", marker = "extra == 'vizualize'" },
     { name = "pyzmq" },
-    { name = "qubed", specifier = ">0.4.4" },
+    { name = "qubed", specifier = ">=0.4.13" },
     { name = "sortedcontainers" },
     { name = "xarray" },
 ]
@@ -1928,14 +1928,14 @@ wheels = [
 
 [[package]]
 name = "qubed"
-version = "0.4.11"
+version = "0.4.13"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/14/99/e35d262b1a919f199dcfe71390006fa71159396103e7f839cb3a0a1e63e8/qubed-0.4.11.tar.gz", hash = "sha256:bb3437e695b9553db20d67985eb5981e4edd2bdfd68b53456087c99516b88349", size = 104542, upload-time = "2026-08-11T14:56:52.874Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/98/974a57df400728988a49b80545230b73ba1e2694800f3befc97710d47b80/qubed-0.4.13.tar.gz", hash = "sha256:dbae950238f71fa67ae14850a103614798a865cfc9280bb8365cf907a2cac6f6", size = 127362, upload-time = "2026-10-08T08:40:56.631Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/20/be6a1f74507657571a688cb73dec457ad29315015c9fc4e254a92fb5cb4f/qubed-0.4.11-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:1575c870b0e0645bffe20c93a05cb9ad4e6dcf5527f700e3384eedf8aa403070", size = 682092, upload-time = "2026-08-11T14:56:46.772Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/a2/c50772f0fb16f0e445c050769f4081757104caaa97bb3cc221ff9738a0c7/qubed-0.4.11-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:091e218979b6c7791b602482d6e3d82edad48f2f7421c2d125af3ed8dc9fd432", size = 644052, upload-time = "2026-08-11T14:56:47.828Z" },
-    { url = "https://files.pythonhosted.org/packages/36/6f/bc78489cb84d3dad904c3b59cec6d84d8009f26710b233f7943bc21127de/qubed-0.4.11-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9b31aa265167dcb653466bba54704f232c6df90e6e3ee4f258ddaea4a5dff9b4", size = 699810, upload-time = "2026-08-11T14:56:43.946Z" },
-    { url = "https://files.pythonhosted.org/packages/cb/e5/d78dc4ae90b06d5a5715104cc045dcdbbdf4d63b59db9b709f75bb6f0024/qubed-0.4.11-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4bb5c242b36a8de08846d41e47769e61410154652f07dd60c5e09c804cc6bcef", size = 741064, upload-time = "2026-08-11T14:56:48.976Z" },
+    { url = "https://files.pythonhosted.org/packages/60/0d/a513238dfa88f21ae9bf3e3967a06bda8c40170d660788919c087b69c02a/qubed-0.4.13-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6b67ded1c9b4b0a97872d2643fc318e936569c4c8e0bd898d44660ca975fb762", size = 763234, upload-time = "2026-10-08T08:40:45.562Z" },
+    { url = "https://files.pythonhosted.org/packages/56/c6/655c8ae720615cd038192e79e42865293c028ff3c1747997d22675a80f20/qubed-0.4.13-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:ee1d23797fafc6955b6566470b61d50fc8ba9fb84dd3a1f089c8fec8b9428a11", size = 729213, upload-time = "2026-10-08T08:40:51.364Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/4a/069c8454dcace347f204325aae76bc064d26225b6a6adb3a7a0c6126da30/qubed-0.4.13-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:81667f4ce7821e4b2b12eb76b4778a40805ef387a6188a1518256a6a1ec6210f", size = 786724, upload-time = "2026-10-08T08:40:47.429Z" },
+    { url = "https://files.pythonhosted.org/packages/68/a3/0fa0391c7459cc48360eb0f1be62bad5987f7dcaf2c7b61d4af21a5a15c8/qubed-0.4.13-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b4831448d43da3dce2826356b230112b725115faaa4e4e751eb45899e5ef50a6", size = 833068, upload-time = "2026-10-08T08:40:55.503Z" },
 ]
 
 [[package]]

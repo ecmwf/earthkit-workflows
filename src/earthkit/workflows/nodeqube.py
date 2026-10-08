@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Optional, Callable, Sequence, cast, Iterator
 import hashlib
+from dataclasses import dataclass
+from typing import Any, Callable, Iterator, NewType, Optional, Sequence, cast
 
-from qubed import Qube 
-
+from qubed import Qube  # type: ignore
 
 from cascade.low.core import DefaultTaskOutput, TaskDefinition, TaskInstance
+from earthkit.workflows import utils
 from earthkit.workflows.context import _get_context_metadata
 from earthkit.workflows.graph import Node as BaseNode
 from earthkit.workflows.graph import Output
-from earthkit.workflows.metadata import NodeMetadata, Requirements, update_requirements, update_node_metadata
-from earthkit.workflows import utils
-
+from earthkit.workflows.metadata import NodeMetadata, Requirements, update_node_metadata, update_requirements
 
 Coord = tuple[str, list[Any]]
 Input = BaseNode | Output
 Payload = Callable | str | TaskInstance
+Datacube = dict[str, Any]
 
 
 def custom_hash(string: str) -> str:
@@ -95,6 +94,25 @@ def _resolve_node_metadata(payload: Payload, node_metadata: Optional[NodeMetadat
         )
     return metadata
 
+
+class NodeKey:
+    def __init__(self, datacube: Datacube):
+        if len(list(utils.expand_datacube(datacube))) != 1:
+            raise ValueError("Datacube must contain only single values for each dimension to generate a unique key.")
+        self.key = str(sorted(datacube.items()))
+
+    def to_datacube(self) -> Datacube:
+        return dict(eval(self.key))
+
+    def __eq__(self, value) -> bool:
+        if not isinstance(value, NodeKey):
+            return False
+        return self.key == value.key
+
+    def __hash__(self) -> int:
+        return hash(self.key)
+
+
 class Node(BaseNode):
     @dataclass
     class Index:
@@ -157,24 +175,23 @@ class Node(BaseNode):
 
 
 class NodeQube:
-
-    def __init__(self, qube: Qube, nodes: dict[str, Node]):
+    def __init__(self, qube: Qube, nodes: dict[NodeKey, Node]):
+        leaves = list(utils.qube_to_datacubes(qube, expand=True))
+        if len(nodes) != len(leaves):
+            raise ValueError(f"Number of nodes must match the number of elements in the qube: {len(nodes)} != {len(leaves)}")
+        for leaf in leaves:
+            key = NodeKey(leaf)
+            if key not in nodes:
+                raise ValueError(f"NodeQube is missing node for datacube {leaf} with key {key}")
         self.qube = qube
         self.nodes = nodes
-
-    @staticmethod
-    def key(datacube: dict[str, Any]) -> str:
-        if list(utils.expand(datacube)) != 1:
-            raise ValueError("Datacube must contain only single values for each dimension to generate a unique key.")
-        return str(sorted(datacube.items()))
 
     @staticmethod
     def empty() -> NodeQube:
         return NodeQube(Qube.empty(), {})
 
-    @staticmethod
-    def datacube(key: str) -> dict[str, Any]:
-        return dict(eval(key))
+    def __len__(self) -> int:
+        return len(self.nodes)
 
     def is_empty(self) -> bool:
         return self.qube.is_empty()
@@ -186,33 +203,32 @@ class NodeQube:
         return self.qube.axes()
 
     def datacubes(self, expand: bool = False) -> Iterator[dict[str, Any]]:
-        datacubes = self.qube.datacubes()
-        if not expand:
-            return datacubes
-        for datacube in datacubes:
-            yield from utils.expand(datacube)
+        yield from utils.qube_to_datacubes(self.qube, expand=expand)
 
-    def get_nodes(self, qube: Qube) -> dict[str, Node]:
+    def get_nodes(self, qube: Qube) -> dict[NodeKey, Node]:
         nodes = {}
-        for unique_cube in qube.datacubes(expand=True):
-            key = self.key(unique_cube)
+        for unique_cube in utils.qube_to_datacubes(qube, expand=True):
+            key = NodeKey(unique_cube)
             nodes[key] = self.nodes[key]
         return nodes
 
-    def _reindex_nodes(self, new_qube: Qube) -> dict[str, Node]:
+    def _reindex_nodes(self, new_qube: Qube) -> dict[NodeKey, Node]:
         new_dimensions = new_qube.dimensions()
         in_new_dims = set(new_dimensions) - set(self.qube.dimensions())
         nodes = {}
-        for unique_cube in new_qube.datacubes(expand=True):
-            new_key = self.key(unique_cube)
+        for unique_cube in utils.qube_to_datacubes(new_qube, expand=True):
+            new_key = NodeKey(unique_cube)
             for key in in_new_dims:
                 unique_cube.pop(key, None)
             unique_nodeqube = self.select(unique_cube)
             nodes[new_key] = unique_nodeqube.node()
         return nodes
 
-    def select(self, criteria: dict[str, str]) -> NodeQube:
-        selection = self.qube.select(criteria)
+    def select(self, criteria: dict[str, str], mode: str = "prune") -> NodeQube:
+        dims_not_in_qube = [k for k in criteria.keys() if k not in self.qube.dimensions()]
+        if dims_not_in_qube:
+            raise ValueError(f"Selection criteria contains dimensions not in qube: {dims_not_in_qube}")
+        selection = self.qube.select(criteria, mode=mode)
         if selection.is_empty():
             raise ValueError(f"No nodes found matching selection criteria: {criteria}")
         return NodeQube(selection, self.get_nodes(selection))
@@ -221,46 +237,62 @@ class NodeQube:
         raise NotImplementedError()
 
     def add_scalar_dimension(self, name: str, value: Any) -> NodeQube:
-        new_qube = self.qube.expand({name: [value]})
+        if name in self.qube.dimensions():
+            raise ValueError(f"Dimension {name} already exists in qube")
+        new_qube = self.qube.clone_qube()
+        new_qube.expand({name: [value]})
         return NodeQube(new_qube, self._reindex_nodes(new_qube))
 
     def drop_scalar_dimension(self, name: str) -> NodeQube:
-        values = self.qube.all_unique_dim_coords()[name]
+        unique_dims = self.qube.all_unique_dim_coords()
+        if name not in unique_dims:
+            return self
+        values = unique_dims[name]
         if len(values) != 1:
             raise ValueError(f"Cannot drop dimension {name} with multiple values: {values}")
         new_qube = self.qube.drop([name])
         return NodeQube(new_qube, self._reindex_nodes(new_qube))
 
-    def append(self, other: NodeQube) -> NodeQube:
-        new_qube = self.qube.append(other.qube)
-        return NodeQube(new_qube, {**self.nodes, **other.nodes})
+    def append(self, other: NodeQube) -> None:
+        self.qube = self.qube | other.qube
+        for key, node in other.nodes.items():
+            if key in self.nodes and self.nodes[key] != node:
+                raise ValueError(f"Node key conflict for key {key}")
+            self.nodes[key] = node
+        return None
 
     def flatten(self, new_dim: str, keep_dims: Optional[set[str]] = None) -> NodeQube:
         keep_dims = keep_dims or set()
+        dims_not_in_qube = [dim for dim in keep_dims if dim not in self.qube.dimensions()]
+        if any(dims_not_in_qube):
+            raise ValueError(f"Keep dimensions contain dimensions not in qube: {dims_not_in_qube}")
+
         new_qube = Qube.empty()
         new_nodes = {}
         for datacube in self.datacubes():
             dimensions = set(datacube.keys())
-            diff = dimensions - keep_dims
-            for index, unique_qube in enumerate(utils.expand(datacube, dims=list(diff))):
-                old_key = self.key(unique_qube)
-                new_key = self.key(dict({k: v for k, v in unique_qube.items() if k not in diff}, new_dim=index))
-                new_nodes[new_key] = self.nodes[old_key]
-                datacube.setdefault(new_dim, []).append(index)
-            new_qube = new_qube.append(Qube.from_datacube(datacube))
+            flatten_dims = dimensions - keep_dims
+            for index, partial_expansion in enumerate(utils.expand_datacube(datacube, dims=list(flatten_dims))):
+                for unique_qube in utils.expand_datacube(partial_expansion):
+                    old_key = NodeKey(unique_qube)
+                    new_unique_qube = dict({k: v for k, v in unique_qube.items() if k not in flatten_dims}, **{new_dim: index})
+                    new_key = NodeKey(new_unique_qube)
+                    new_nodes[new_key] = self.nodes[old_key]
+                    new_qube.append(Qube.from_datacube(new_unique_qube))
         return NodeQube(new_qube, new_nodes)
 
-    def expand_outputs(self, yields: Optional[Coord] = None) -> NodeQube:
+    def expand_outputs(self, yields: Optional[Coord] = None) -> None:
         if yields is None:
-            return self
+            return None
         ydim, ycoords = yields
         new_nodes = {}
-        new_qube = self.qube.expand({ydim: ycoords})
+        self.qube.expand({ydim: ycoords})
         for key, node in self.nodes.items():
             for i, out in enumerate(node.outputs):
-                new_key = self.key(dict({ydim: ycoords[i]}, **self.datacube(key)))
+                new_key = NodeKey(dict({ydim: ycoords[i]}, **key.to_datacube()))
                 new_nodes[new_key] = node.get_output(out)
-        return NodeQube(new_qube, new_nodes)
+        self.nodes = new_nodes
+        return None
 
     def node(self) -> Node:
         if len(self.nodes) != 1:

@@ -1,6 +1,5 @@
 import threading
 import types
-from typing import Any
 
 from earthkit.workflows.metadata import Artifacts, BuilderMetadata, NodeMetadata, Requirements, update_node_metadata
 

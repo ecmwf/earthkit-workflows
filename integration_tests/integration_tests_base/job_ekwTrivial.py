@@ -21,9 +21,9 @@ def _task_id(ji: JobInstance, prefix: str) -> TaskId:
 
 
 def job() -> JobInstanceRich:
-    source = from_source(source_42)
+    source = from_source(source_42, datacubes={"dim_0": 0})
     trans = source.map(transform_increment)
-    prod = trans.join(source, dim="inputs").reduce(product_add)
+    prod = trans.add(product_add)
     sink = prod.map(create_task_instance(sink_file, static_input_kw={"fname": "/tmp/ekwTrivial.txt"}))
 
     graph = sink.graph()

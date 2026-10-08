@@ -9,23 +9,44 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, Hashable, Optional, Union
+from operator import add
+from typing import Any, Callable, Hashable, Optional, Union, cast
+
 import numpy as np
+from qubed import Qube  # type: ignore
 
-from qubed import Qube
+from earthkit.workflows import backends
+from earthkit.workflows._qubed import expand_as_qube
+from earthkit.workflows.graph import Graph, Output
+from earthkit.workflows.metadata import NodeMetadata
+from earthkit.workflows.nodeqube import (
+    Coord,
+    Datacube,
+    Node,
+    NodeKey,
+    NodeQube,
+    Payload,
+    create_task_instance,
+)
+from earthkit.workflows.utils import expand_datacube, qube_to_datacubes
 
-from . import backends
-from ._qubed import expand_as_qube
-from .graph import Graph, Output
-from .nodeqube import create_task_instance, Coord, Node, NodeQube, Payload
-from .metadata import NodeMetadata
-from .utils import expand
 
 class Action:
     REGISTRY: dict[str, type[Action]] = {}
 
     def __init__(self, nodeqube: NodeQube, yields: Optional[Coord] = None):
-        self.nodeqube = nodeqube.expand_outputs(yields)
+        self.nodeqube = nodeqube
+        self.nodeqube.expand_outputs(yields)
+        if len(self.nodeqube) == 0:
+            raise ValueError("Action must contain at least one node.")
+
+    @property
+    def nodes(self) -> dict[NodeKey, Node]:
+        return self.nodeqube.nodes
+
+    @property
+    def qube(self) -> Qube:
+        return self.nodeqube.qube
 
     def graph(self) -> Graph:
         """Creates graph from the nodes of the action.
@@ -86,7 +107,8 @@ class Action:
         self,
         other_action: Action,
     ) -> Action:
-        return type(self)(self.nodeqube.append(other_action.nodeqube))
+        self.nodeqube.append(other_action.nodeqube)
+        return type(self)(self.nodeqube)
 
     def transform(
         self,
@@ -124,7 +146,7 @@ class Action:
         for index, param in enumerate(params):
             new_res = func(self, *param)
             if dim_name not in new_res.nodeqube.dimensions():
-                new_res.add_scalar_dimension(dim_name, dim_values[index], override=True)
+                new_res = new_res.add_scalar_dimension(dim_name, dim_values[index], override=True)
             nodeqube.append(new_res.nodeqube)
 
         if nodeqube.is_empty():
@@ -142,21 +164,25 @@ class Action:
         ----------
         other_action: Action containing nodes to broadcast against
         exclude: List of str, dimension names to exclude from broadcasting
-        path: Optional[str], path to select subset of nodes to operate on, if provided
 
         Return
         ------
         Action
         """
         exclude = exclude or []
-        existing_dimensions = self.nodeqube.dimensions()
+        existing_dimensions = self.nodeqube.axes()
+        other_dimensions = other_action.nodeqube.axes()
+        # Existing dimensions must match
+        if not all(other_dimensions.get(dim, None) == values for dim, values in existing_dimensions.items()):
+            raise ValueError("Existing dimensions do not match between actions")
         nodeqube = NodeQube.empty()
         for key in other_action.nodeqube.nodes.keys():
-            datacube = NodeQube.datacube(key)
+            datacube = key.to_datacube()
             select_criteria = {k: v for k, v in datacube.items() if k in existing_dimensions}
             unique_nodeqube = self.nodeqube.select(select_criteria)
+            assert not unique_nodeqube.is_empty(), f"No matching nodes found for datacube: {datacube}"
             new_datacube = {k: v for k, v in datacube.items() if k not in exclude}
-            new_key = NodeQube.key(new_datacube)
+            new_key = NodeKey(new_datacube)
             new_node = Node(
                 create_task_instance(
                     backends.method,
@@ -209,7 +235,7 @@ class Action:
 
     def map(
         self,
-        payload: Payload | dict[str, Payload],
+        payload: Payload | dict[NodeKey, Payload],
         yields: Coord | None = None,
         node_metadata: Optional[NodeMetadata] = None,
     ) -> Action:
@@ -236,9 +262,7 @@ class Action:
         """
         new_nodes = {}
         if isinstance(payload, dict) and len(payload) != len(self.nodeqube.nodes):
-            raise ValueError(
-                f"Length of payload dict {len(payload)} does not match number of nodes {len(self.nodeqube.nodes)}"
-            )
+            raise ValueError(f"Length of payload dict {len(payload)} does not match number of nodes {len(self.nodeqube.nodes)}")
         for key, node in self.nodeqube.nodes.items():
             new_nodes[key] = Node(
                 payload[key] if isinstance(payload, dict) else payload,
@@ -284,23 +308,26 @@ class Action:
         payload = create_task_instance(payload)
         if yields and batch_size != 0:
             raise ValueError("Can not batch the execution of a generator")
-        payload_func = payload.definition.func
-        if payload_func is not None and not getattr(payload_func, "batchable", False):
-            raise ValueError(
-                f"Function {payload_func} is not batchable, but batch_size {batch_size} is specified"  # type: ignore[union-attr]
-            )
-        
+
         nodeqube = NodeQube.empty()
         for datacube in self.nodeqube.datacubes():
+            print("DATACUBE", datacube)
             if dim not in datacube:
                 nodeqube.append(self.nodeqube.select(datacube))
                 continue
             if np.ndim(datacube[dim]) == 0:
                 selection = self.nodeqube.select(datacube)
-                if not keep_dim:
+                # If the reduced dimension should not be kept and there are other dimensions,
+                # drop the scalar dimension from the selection. If the reduction dimension is only
+                # one remaining dimension, it should always be kept to avoid empty datacube after
+                # reduction
+                if not keep_dim and len(datacube) > 1:
                     selection = selection.drop_scalar_dimension(dim)
                 nodeqube.append(selection)
                 continue
+
+            coords = sorted(datacube[dim])
+            reduced_coord_value = f"{coords[0]}-{coords[-1]}"
             if batch_size > 1 and batch_size < np.ndim(datacube[dim]):
                 level = 0
                 batched = self.select(datacube)
@@ -320,21 +347,29 @@ class Action:
             else:
                 batched_nodeqube = self.select(datacube).nodeqube
 
+            seen = set()
+            batched_coords = batched_nodeqube.axes()[dim]
             for unique_datacube in batched_nodeqube.datacubes(expand=True):
+                unique_datacube[dim] = batched_coords
+                datacube_str = str(unique_datacube)
+                if datacube_str in seen:
+                    continue
+                seen.add(datacube_str)
                 input_qube = Qube.from_datacube(unique_datacube)
                 unique_datacube.pop(dim)
-                new_key = NodeQube.key(unique_datacube)
+                if len(unique_datacube) == 0:
+                    unique_datacube[dim] = reduced_coord_value
+                new_key = NodeKey(unique_datacube)
                 new_node = Node(
-                    payload, 
+                    payload,
                     list(batched_nodeqube.get_nodes(input_qube).values()),
-                    num_outputs=len(yields[1]) if yields else 1, 
+                    num_outputs=len(yields[1]) if yields else 1,
                     metadata=node_metadata,
                 )
                 nodeqube.append(NodeQube(Qube.from_datacube(unique_datacube), {new_key: new_node}))
 
             if keep_dim:
-                coords = sorted(nodeqube.axes()[dim])
-                nodeqube = nodeqube.add_scalar_dimension(dim, f"{coords[0]}-{coords[-1]}")
+                nodeqube = nodeqube.add_scalar_dimension(dim, reduced_coord_value)
         return type(self)(nodeqube, yields)
 
     def flatten(
@@ -357,7 +392,8 @@ class Action:
 
     def select(
         self,
-        criteria: dict | None = None,
+        criteria: dict[str, Any] | None = None,
+        mode: str = "prune",
         **kwargs,
     ) -> Action:
         """Create action contaning nodes match selection criteria
@@ -372,7 +408,11 @@ class Action:
         """
         criteria = criteria or {}
         criteria.update(kwargs)
-        return type(self)(self.nodeqube.select(criteria))
+        nodeqube = NodeQube.empty()
+        for crit in expand_datacube(criteria):
+            nodeqube.append(self.nodeqube.select(crit, mode=mode))
+
+        return type(self)(nodeqube)
 
     sel = select
 
@@ -513,9 +553,7 @@ class Action:
                 .sum(dim=dim, batch_size=batch_size, keep_dim=keep_dim, backend_kwargs=backend_kwargs, node_metadata=node_metadata)
                 .divide(size, node_metadata=node_metadata)
             )
-            action = norm.subtract(mean_sq, node_metadata=node_metadata).power(
-                0.5, node_metadata=node_metadata
-            )
+            action = norm.subtract(mean_sq, node_metadata=node_metadata).power(0.5, node_metadata=node_metadata)
         return action
 
     def max(
@@ -677,7 +715,7 @@ class RegisteredAction:
             raise AttributeError(f"{self.action.__name__} has no attribute {func!r}")
 
         def cast(origin_action: Action, new_action: type[Action]):
-            return new_action(origin_action.nodes)
+            return new_action(origin_action.nodeqube)
 
         @functools.wraps(getattr(self.action, func))
         def return_cast(*args, **kwargs):
@@ -732,28 +770,36 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads: Payload | dict[str, Payload],
-    yields: Coord | None = None,
-    datacubes: Optional[list[dict]] = None,
+    payloads: Payload | dict[NodeKey, Payload],
+    datacubes: Optional[Datacube | list[Datacube]] = None,
     node_metadata: NodeMetadata | None = None,
+    yields: Coord | None = None,
     action=Action,
 ) -> Action:
     qube = Qube.empty()
     if datacubes is None:
         if not isinstance(payloads, dict):
-            raise ValueError("If datacubes is None, payloads must be a dict of payloads.")
+            raise ValueError("If datacubes is None, payloads must be a dict of payloads")
         for key in payloads.keys():
-            datacube = NodeQube.datacube(str(key))
-            qube.append_datacube(datacube)
+            qube.append_datacube(cast(NodeKey, key).to_datacube())
     else:
+        datacubes = [datacubes] if isinstance(datacubes, dict) else datacubes
+        if isinstance(payloads, dict) and len(payloads) != len(datacubes):
+            raise ValueError("Length of payloads dict must match length of unique datacubes")
         for datacube in datacubes:
-            print(f"Appending datacube: {datacube}")
+            if isinstance(payloads, dict) and NodeKey(datacube) not in payloads:
+                raise ValueError(f"Missing payload for datacube: {datacube}")
             qube.append_datacube(datacube)
 
     nodes = {}
-    for index, unique_datacube in enumerate(functools.reduce(sum, [expand(x) for x in qube.to_datacubes()])):
-        key = NodeQube.key(unique_datacube)
-        nodes[key] = Node(payloads[key] if isinstance(payloads, dict) else payloads, num_outputs=len(yields[1]) if yields else 1, name=str(index), metadata=node_metadata)
+    for index, unique_datacube in enumerate(functools.reduce(add, [expand_datacube(x) for x in qube_to_datacubes(qube)])):
+        key = NodeKey(unique_datacube)
+        nodes[key] = Node(
+            payloads[key] if isinstance(payloads, dict) else payloads,
+            num_outputs=len(yields[1]) if yields else 1,
+            name=str(index),
+            metadata=node_metadata,
+        )
 
     return action(
         NodeQube(qube, nodes),
@@ -774,12 +820,5 @@ def merge(*actions) -> Action:
         final_action = final_action.join(action)
     return final_action
 
-Action.register("default", Action)
 
-__all__ = [
-    "Action",
-    "Payload",
-    "Node",
-    "from_source",
-    "merge",
-]
+Action.register("default", Action)

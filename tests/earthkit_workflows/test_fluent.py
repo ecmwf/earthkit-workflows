@@ -8,485 +8,349 @@
 
 import functools
 from datetime import datetime
+from typing import Any, Tuple
 
 import numpy as np
 import pytest
+from qubed import Qube  # type: ignore
 
-from earthkit.workflows.fluent import Action, from_source, merge
-from earthkit.workflows.graph import serialise
+from earthkit.workflows.fluent import Action, Payload, from_source, merge
+from earthkit.workflows.graph import deduplicate_nodes, serialise
+from earthkit.workflows.nodeqube import Datacube, NodeKey
 
-from .helpers import mock_action
+
+def action_from_shape(shape: Tuple[int, ...]) -> Action:
+    datacubes = {f"dim_{i}": list(range(dim)) for i, dim in enumerate(shape)}
+    return from_source("test", datacubes=datacubes)
 
 
-@pytest.mark.parametrize(
-    "payloads, dims, coords, shape",
-    [
-        [functools.partial(np.random.rand, 2, 3), None, None, ()],
+class TestFromSource:
+    @pytest.mark.parametrize(
+        "payloads, datacubes, num_nodes",
         [
+            [{NodeKey({"x": 1}): functools.partial(np.random.rand, 2, 3)}, None, 1],
             [
                 [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
+                    [
+                        functools.partial(np.random.rand, 2, 3),
+                        functools.partial(np.random.rand, 2, 3),
+                    ],
+                    [
+                        functools.partial(np.random.rand, 2, 3),
+                        functools.partial(np.random.rand, 2, 3),
+                    ],
                 ],
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
+                [{"x": [0, 1], "y": [1, 2]}],
+                4,
             ],
-            ["x", "y"],
-            {"x": [0, 1], "y": [1, 2]},
-            (2, 2),
         ],
-    ],
-)
-def test_source(payloads, dims, coords, shape):
-    action = from_source(payloads, dims=dims, coords=coords)
-    narrays = list(nodetree_arrays(action.nodes))
-    assert len(narrays) == 1
-    assert narrays[0][1].shape == shape
+    )
+    def test_action_creation(self, payloads, datacubes, num_nodes):
+        action = from_source(payloads, datacubes=datacubes)
+        assert len(action.nodes) == num_nodes
 
-
-@pytest.mark.parametrize(
-    "payloads, dims, coords",
-    [
+    @pytest.mark.parametrize(
+        "payloads, datacubes, match",
         [
             [
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
+                "func",
+                None,
+                "If datacubes is None, payloads must be a dict of payloads",
             ],
-            ["x"],
-            None,
-        ],
-        [
             [
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
-                [
-                    functools.partial(np.random.rand, 2, 3),
-                    functools.partial(np.random.rand, 2, 3),
-                ],
+                {
+                    NodeKey({"x": 0, "y": 1}): "func1",
+                    NodeKey({"x": 1, "y": 1}): "func2",
+                    NodeKey({"x": 0, "y": 2}): "func3",
+                },
+                [{"x": [0, 1], "y": [1, 2]}],
+                "Length of payloads dict must match length of unique datacubes",
             ],
-            None,
-            {"x": [1, 2], "y": [3, 4]},
-        ],
-    ],
-    ids=["invalid_dims", "invalid_coords"],
-)
-def test_source_invalid(payloads, dims, coords):
-    with pytest.raises(ValueError):
-        from_source(payloads, dims=dims, coords=coords)
-
-
-def test_broadcast():
-    input_action = mock_action((2, 3))
-
-    with pytest.raises(Exception):
-        input_action.broadcast(mock_action((3, 3)))
-
-    output_action = input_action.broadcast(mock_action((2, 3, 3)))
-    out_array = nodetree_array(output_action.nodes)
-    assert out_array.shape == (2, 3, 3)
-    assert len(out_array.data.item(0).inputs) == 1
-    it = np.nditer(out_array, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
-    for _ in it:
-        print(it.multi_index)
-        assert out_array[it.multi_index].item(0).inputs["1"].parent == nodetree_array(input_action.nodes)[it.multi_index[:2]].item(0)
-
-
-def test_flatten_expand():
-    input_action = mock_action((2, 3))
-
-    with pytest.raises(ValueError):
-        input_action.flatten(new_dim="temp", keep_dims=["dim_2"])
-    action1 = input_action.flatten(new_dim="temp", keep_dims=["dim_0"]).concatenate(dim="temp")
-    action1_array = nodetree_array(action1.nodes)
-    assert action1_array.shape == (2,)
-    assert len(action1_array.data.item(0).inputs) == 3
-
-    action2 = action1.flatten(new_dim="temp").stack(dim="temp")
-    assert len(nodetree_array(action2.nodes).data.item(0).inputs) == 2
-
-    flatten_all = input_action.flatten(new_dim="temp").concatenate(dim="temp")
-    assert flatten_all.nodes == action2.nodes
-
-    action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
-    action3_array = nodetree_array(action3.nodes)
-    assert action3_array.shape == (2,)
-    assert len(action3_array.data.item(0).inputs) == 1
-
-    action4 = action3.expand("dim_1", internal_dim=0, dim_size=3, axis=1)
-    action4_array = nodetree_array(action4.nodes)
-    assert action4_array.shape == (2, 3)
-    assert len(action4_array.data.item(0).inputs) == 1
-
-
-@pytest.mark.parametrize(
-    "input_nodes_shape, func, inputs, output_nodes_shape, node_inputs",
-    [
-        [(3, 4), "map", ["test"], (3, 4), 1],  # type: ignore
-        [(3, 4, 5), "reduce", ["func"], (4, 5), 3],  # type: ignore
-        [
-            (3, 4, 5),
-            "reduce",
-            ["func", None, "dim_1"],  # type: ignore
-            (3, 5),
-            4,
-        ],
-        [(3,), "reduce", ["func"], (), 3],  # type: ignore
-        [
-            (3,),
-            "join",
             [
-                mock_action((1,)),
-                "dim_0",
+                {NodeKey({"x": 2}): "func"},
+                [{"x": 1}],
+                "Missing payload for datacube",
             ],
-            (4,),
-            0,
         ],
-        [
-            (3,),
-            "join",
-            [
-                mock_action((3,)),
-                "data_type",
-            ],
-            (2, 3),
-            0,
+        ids=[
+            "payloads-not-dict",
+            "payloads-length-mismatch",
+            "missing-payload-for-datacube",
         ],
-        [
-            (3,),
-            "transform",
-            [
-                lambda action, x: action.expand("dim_1", internal_dim=0, dim_size=x),
-                [(4,), (4,), (4,)],
-                "index",
-            ],
-            (3, 4, 3),
-            1,
-        ],
-        [(3, 4), "select", [{"dim_0": 1}], (4,), 0],
-        [(3,), "select", [{"dim_0": 1}], (), 0],
-    ],
-)
-def test_multi_action(
-    input_nodes_shape,
-    func,
-    inputs,
-    output_nodes_shape,
-    node_inputs,
-):
-    input_action = mock_action(input_nodes_shape)
-
-    output_action = getattr(input_action, func)(*inputs)
-    assert nodetree_array(output_action.nodes).shape == output_nodes_shape
-    assert len(nodetree_array(output_action.nodes).data.item(0).inputs) == node_inputs
+    )
+    def test_invalid(self, payloads: Payload | dict[NodeKey, Payload], datacubes: list[Datacube] | None, match: str):
+        with pytest.raises(ValueError, match=match):
+            from_source(payloads, datacubes=datacubes)
 
 
-def test_join_fail():
-    input_action = mock_action((3, 4))
-    second_action = mock_action((3, 5))
-    with pytest.raises(Exception):
-        input_action.join(second_action, "new_dim")
+class TestRegistration:
+    def test_invalid_registration(self):
+        with pytest.raises(TypeError):
+            Action.register("test", None)  # type: ignore[arg-type]
 
-    input_action.join(second_action, "dim_1")
+    def test_registration(self):
+        action = from_source(lambda x: x, datacubes=[{"dim_0": [0]}])
 
+        class TestingAction(Action):
+            def test_function(self):
+                return self
 
-def test_invalid_registration():
-    with pytest.raises(TypeError):
-        Action.register("test", None)  # type: ignore[arg-type]
-
-
-def test_registration():
-    action = from_source(lambda x: x)
-
-    class TestingAction(Action):
-        def test_function(self):
-            return self
-
-    Action.register("test", TestingAction)
-    assert hasattr(action, "test")
-    assert hasattr(action.test, "test_function")
-
-
-def test_dual_registration():
-    Action.flush_registry()
-
-    class TestingAction(Action):
-        def test_function(self):
-            return self
-
-    Action.register("test", TestingAction)
-    with pytest.raises(ValueError):
         Action.register("test", TestingAction)
+        assert hasattr(action, "test")
+        assert hasattr(action.test, "test_function")
+
+    def test_dual_registration(self):
+        Action.flush_registry()
+
+        class TestingAction(Action):
+            def test_function(self):
+                return self
+
+        Action.register("test", TestingAction)
+        with pytest.raises(ValueError):
+            Action.register("test", TestingAction)
 
 
-def test_generators():
-    def test_func(length: int, *multipliers):
-        for val in range(length):
-            yield val * sum([1, *multipliers])
+class TestFluentMethods:
+    def test_broadcast(self):
+        input_action = action_from_shape((2, 3))
+        assert len(input_action.nodeqube) == 6
 
-    action = from_source(functools.partial(test_func, 10), ("val", list(range(0, 100, 10))))
-    narray = nodetree_array(action.nodes)
-    assert narray.shape == (10,)
-    assert narray.dims == ("val",)
-    cas = action.map(functools.partial(test_func, length=5), ("map", list(range(5)))).reduce(
-        functools.partial(test_func, length=2), ("reduce", ["a", "b"])
+        with pytest.raises(Exception):
+            input_action.broadcast(action_from_shape((3, 3)))
+
+        output_action = input_action.broadcast(action_from_shape((2, 3, 3)))
+
+        assert len(output_action.nodeqube) == 18
+        for key, node in output_action.nodes.items():
+            assert len(node.inputs) == 1
+            cube = key.to_datacube()
+            cube.pop("dim_2")
+            inputs = input_action.select(cube)
+            assert len(inputs.nodes) == 1
+            assert node.inputs["1"].parent == list(inputs.nodes.values())[0]
+
+    def test_flatten_expand(self):
+        input_action = action_from_shape((2, 3))
+
+        # Non-existent dimension in keep_dims should raise ValueError
+        with pytest.raises(ValueError, match="Keep dimensions contain dimensions not in qube"):
+            input_action.flatten(new_dim="temp", keep_dims=["dim_2"])
+
+        action1 = input_action.flatten(new_dim="temp", keep_dims=["dim_0"]).concatenate(dim="temp")
+        assert len(action1.nodes) == 2
+        for node in action1.nodes.values():
+            assert len(node.inputs) == 3
+
+        action2 = action1.flatten(new_dim="temp").stack(dim="temp")
+        for node in action2.nodes.values():
+            assert len(node.inputs) == 2
+
+        flatten_all = input_action.flatten(new_dim="temp").concatenate(dim="temp")
+        for node in flatten_all.nodes.values():
+            assert len(node.inputs) == 6
+
+        action3 = action2.expand("dim_0", internal_dim=0, dim_size=2)
+        assert len(action3.nodes) == 2
+        for node in action3.nodes.values():
+            assert len(node.inputs) == 1
+
+        action4 = action3.expand("dim_1", internal_dim=0, dim_size=3)
+        assert len(action4.nodes) == 6
+        for node in action4.nodes.values():
+            assert len(node.inputs) == 1
+
+    @pytest.mark.parametrize(
+        "input_nodes_shape, func, inputs, output_nodes_shape, node_inputs",
+        [
+            [(3, 4), "map", ["test"], {"dim_0": 3, "dim_1": 4}, 1],  # type: ignore
+            [(3, 4, 5), "reduce", ["func", "dim_0"], {"dim_1": 4, "dim_2": 5}, 3],  # type: ignore
+            [
+                (3, 4, 5),
+                "reduce",
+                ["func", "dim_1"],  # type: ignore
+                {"dim_0": 3, "dim_2": 5},
+                4,
+            ],
+            [(3,), "reduce", ["func", "dim_0"], {"dim_0": 1}, 3],  # type: ignore
+            [
+                (3,),
+                "join",
+                [
+                    from_source("test", datacubes=[{"dim_0": 3}]),
+                ],
+                {"dim_0": 4},
+                0,
+            ],
+            [
+                (3,),
+                "transform",
+                [
+                    lambda action, x: action.expand("dim_1", internal_dim=0, dim_size=x),
+                    [(4,), (4,), (4,)],
+                    "index",
+                ],
+                {"dim_0": 3, "dim_1": 4, "index": 3},
+                1,
+            ],
+            [(3, 4), "select", [{"dim_0": 1}], {"dim_0": 1, "dim_1": 4}, 0],
+            [(3,), "select", [{"dim_0": 1}], {"dim_0": 1}, 0],
+        ],
     )
-    new_narray = nodetree_array(cas.nodes)
-    assert new_narray.dims == ("map", "reduce")
-    expected_coords = {"map": list(range(5)), "reduce": ["a", "b"]}
-    for dim, vals in expected_coords.items():
-        assert np.all(new_narray.coords[dim] == vals)
-    assert new_narray.shape == (5, 2)
-    graph = cas.graph()
-    assert len(graph.sinks) == 5
-    serialise(graph)
+    def test_multi_action(
+        self,
+        input_nodes_shape: Tuple[int, ...],
+        func: str,
+        inputs: list[Any],
+        output_nodes_shape: dict[str, int],
+        node_inputs: int,
+    ):
+        input_action = action_from_shape(input_nodes_shape)
 
+        output_action = getattr(input_action, func)(*inputs)
+        datacubes = list(output_action.nodeqube.datacubes())
+        assert len(datacubes) == 1
+        assert tuple(
+            1 if not isinstance(datacubes[0][dim], list) else len(datacubes[0][dim]) for dim in output_nodes_shape.keys()
+        ) == tuple(output_nodes_shape.values())
+        for node in output_action.nodes.values():
+            assert len(node.inputs) == node_inputs
 
-@pytest.mark.parametrize(
-    "branch_config",
-    [
-        {
-            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
-            "/branch2": lambda data: np.where(data > 0, data, np.nan),
-        },
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-            "/branch2": lambda data: np.where(data == 0, data, np.nan),
-        },
-    ],
-    ids=["branches", "subranches"],
-)
-@pytest.mark.parametrize(
-    "combine_dim",
-    [
-        "dim_0",
-        "dim_new",
-    ],
-    ids=["existing-dim", "new-dim"],
-)
-def test_branches(branch_config, combine_dim):
-    input_action = mock_action((3, 4))
-    branches = input_action.create_branches(branch_config)
-    assert set(x[0] for x in nodetree_arrays(branches.nodes)) == set(branch_config.keys())
-    for npath, narray in nodetree_arrays(branches.nodes):
-        assert narray.shape == (3, 4)
-        assert "branch" in npath
-    recombined = branches.combine_branches(dim=combine_dim)
-    for path, array in nodetree_arrays(recombined.nodes):
-        assert path == "/"
-        if combine_dim == "dim_new":
-            assert array.shape == ((len(branch_config)), 3, 4)
-        else:
-            assert array.shape == ((len(branch_config)) * 3, 4)
+    def test_join_fail(self):
+        input_action = action_from_shape((3, 4))
+        second_action = action_from_shape((3, 5))
+        with pytest.raises(ValueError, match="Node key conflict for key"):
+            input_action.join(second_action)
 
+    def test_generators(self):
+        def test_func(length: int, *multipliers):
+            for val in range(length):
+                yield val * sum([1, *multipliers])
 
-def test_invalid_branches():
-    input_action = mock_action((3, 4))
-    branches = input_action.create_branches(
-        {
-            "/branch1": lambda data: np.where(data <= 0, data, np.nan),
-            "/branch2": lambda data: np.where(data > 0, data, np.nan),
-        }
-    )
-    with pytest.raises(NotImplementedError):
-        branches.set_path("/new_root")
-
-    with_root = input_action.set_path("/root")
-    with pytest.raises(ValueError):
-        with_root.create_branches(
-            {
-                "/branch1": lambda data: np.where(data <= 0, data, np.nan),
-                "/branch2": lambda data: np.where(data > 0, data, np.nan),
-            }
+        action = from_source({NodeKey({"dim_0": 0}): functools.partial(test_func, 10)}, yields=("val", list(range(0, 100, 10))))
+        datacubes = list(action.nodeqube.datacubes())
+        assert len(datacubes) == 1
+        assert datacubes[0] == {"dim_0": 0, "val": list(range(0, 100, 10))}
+        cas = action.map(functools.partial(test_func, length=5), yields=("map", list(range(5)))).reduce(
+            functools.partial(test_func, length=2), dim="val", yields=("reduce", ["a", "b"])
         )
+        new_datacubes = list(cas.nodeqube.datacubes())
+        assert new_datacubes[0] == {"dim_0": 0, "map": list(range(5)), "reduce": ["a", "b"]}
+        graph = cas.graph()
+        assert len(graph.sinks) == 5
+        serialise(graph)
 
-
-def test_combine_branches():
-    branches = merge(
-        mock_action((3, 4))
-        .set_path("/branch1")
-        .create_branches(
-            {
-                "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-                "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-            },
-        ),
-        mock_action((5, 4, 6)).set_path("/branch2"),
-    )
-    assert len([x for x in nodetree_arrays(branches.combine_branches(dim="dim_0", path="/branch1").nodes)]) == 2
-    reduced = branches.sum(path="/branch1/subbranch1")
-    reduced.nodes["/branch2"].coords["scalar_dim"] = 1
-    reduced.nodes["/branch1/subbranch1"].coords["scalar_dim"] = 2
-    reduced.nodes["/branch1/subbranch2"].coords["scalar_dim"] = 2
-    with pytest.raises(Exception, match="cannot align objects with join='exact"):
-        reduced.combine_branches("dim_1")
-    force = reduced.combine_branches(dim="dim_1", force=True)
-    for _, array in nodetree_arrays(force.nodes):
-        assert array.shape == (12,)
-
-
-def test_flatten_branches():
-    input_action = mock_action((3, 4))
-    branches = input_action.create_branches(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-            "/branch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
-    reduced = branches.flatten(new_dim="temp", path="/branch1/subbranch1").concatenate(dim="temp")
-    flattened = reduced.flatten(new_dim="temp").concatenate(dim="temp")
-    assert reduced.sel(path="/branch1/subbranch1").nodes == flattened.sel(path="/branch1/subbranch1").nodes
-
-
-@pytest.mark.parametrize(
-    "selection, num_arrays, shapes_or_error",
-    [
-        ({"dim_0": 1}, 3, [(5,), (4,), (4,)]),
-        ({"dim_1": 4}, 1, [(2,)]),
-        ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]),
-        ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]),
-        ({"date": [datetime(2024, 1, 1)]}, 1, [(2, 5)]),
-        ({"dim_1": 10}, 0, IndexError),
-        ({"dim_0": [2], "dim_1": [0, 4]}, 0, IndexError),
-        ({"dim_0": [2], "dim_1": [0, 4], "expand": True}, 2, [(1, 1), (1, 1)]),
-    ],
-    ids=["in-all", "in-one", "by-path", "by-path-and-dim", "by-coord", "nonexistent", "no-expand", "expand"],
-)
-def test_select(selection, num_arrays, shapes_or_error):
-    branches = merge(
-        branch1=mock_action((3, 4)),
-        branch2=mock_action((2, 5)),
-    )
-    subbranches = branches.create_branches(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
-    subbranches.nodes["/branch2"].coords["date"] = datetime(2024, 1, 1)
-    if num_arrays > 0:
-        select_dim = subbranches.sel(**selection)
-        assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
-        for index, (_, narray) in enumerate(nodetree_arrays(select_dim.nodes)):
-            assert narray.shape == shapes_or_error[index]
-    else:
-        with pytest.raises(shapes_or_error):
-            subbranches.sel(**selection)
-
-
-@pytest.mark.parametrize(
-    "selection, num_arrays, shapes_or_error",
-    [
-        ({"dim_0": 1}, 3, [(5,), (4,), (4,)]),
-        ({"dim_1": 4}, 1, [(3,)]),
-        ({"path": "/branch1"}, 2, [(3, 4), (3, 4)]),
-        ({"path": "/branch1", "dim_0": 1}, 2, [(4,), (4,)]),
-        ({"dim_1": 10}, 0, IndexError),
-    ],
-    ids=["in-all", "in-one", "by-path", "by-path-and-dim", "nonexistent"],
-)
-def test_iselect(selection, num_arrays, shapes_or_error):
-    branches = merge(
-        branch1=mock_action((3, 4)),
-        branch2=mock_action((3, 5)),
-    )
-    subbranches = branches.create_branches(
-        {
-            "/branch1/subbranch1": lambda data: np.where(data < 0, data, np.nan),
-            "/branch1/subbranch2": lambda data: np.where(data == 0, data, np.nan),
-        }
-    )
-    if num_arrays > 0:
-        select_dim = subbranches.isel(**selection)
-        assert len(list(nodetree_arrays(select_dim.nodes))) == num_arrays
-        for index, (_, narray) in enumerate(nodetree_arrays(select_dim.nodes)):
-            assert narray.shape == shapes_or_error[index]
-    else:
-        with pytest.raises(shapes_or_error):
-            subbranches.isel(**selection)
-
-
-@pytest.mark.parametrize(
-    "args, kwargs, dims",
-    [
+    @pytest.mark.parametrize(
+        "args, expected_qube_or_error",
         [
-            [],
-            {"branch1": mock_action((3, 4)), "branch2": mock_action((3, 4))},
-            {"/branch1": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}, "/branch2": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}},
+            [["new_dim", "x"], {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": ["x"]}],
+            [["dim_0", 2], ValueError],
+            [["dim_0", 2, True], {"dim_0": [2], "dim_1": [0, 1, 2, 3]}],
         ],
-        [
-            [mock_action((3, 4)).set_path("/branch1"), mock_action((3, 4)).set_path("/branch2")],
-            {},
-            {"/branch1": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}, "/branch2": {"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}},
-        ],
-        [[mock_action((1,), coords={"dim": [0]}), mock_action((1,), coords={"dim": [1]})], {}, {"/": {"dim": [0, 1]}}],
+        ids=["new-coord", "existing-coord", "override-existing-coord"],
+    )
+    def test_set_coords(self, args, expected_qube_or_error):
+        action = action_from_shape((1, 4))
+        if isinstance(expected_qube_or_error, dict):
+            new_action = action.add_scalar_dimension(*args)
+            for dim, values in expected_qube_or_error.items():
+                assert new_action.qube.axes()[dim] == values
+        else:
+            with pytest.raises(expected_qube_or_error):
+                action.add_scalar_dimension(*args)
+
+
+class TestMultipleDatacubes:
+    @pytest.mark.parametrize(
+        "actions, datacubes",
         [
             [
-                mock_action((1, 1), coords={"dim": [0], "dim1": [0]}),
-                mock_action((1, 1), coords={"dim": [1], "dim1": [0]}),
-                mock_action((1, 1), coords={"dim": [0], "dim1": [1]}),
-                mock_action((1, 1), coords={"dim": [1], "dim1": [1]}),
+                [action_from_shape((3, 4)).add_scalar_dimension("branch", 1), action_from_shape((3, 4)).add_scalar_dimension("branch", 2)],
+                Qube.from_datacube({"branch": [1, 2], "dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}),
             ],
-            {},
-            {"/": {"dim": [0, 1], "dim1": [0, 1]}},
-        ],
-        [
             [
-                mock_action((1, 1), coords={"dim": [0], "dim1": [0]}, path="/path1"),
-                mock_action((1, 1), coords={"dim": [1], "dim1": [0]}, path="/path1"),
-                mock_action((1,), coords={"dim1": [1]}, path="/path2"),
-                mock_action((1,), coords={"dim1": [2]}, path="/path2"),
+                [from_source("test", datacubes={"dim": [0]}), from_source("test", datacubes={"dim": [1]})],
+                Qube.from_datacube({"dim": [0, 1]}),
             ],
-            {},
-            {"/path1": {"dim": [0, 1], "dim1": [0]}, "/path2": {"dim1": [1, 2]}},
+            [
+                [
+                    from_source("test", datacubes={"dim": [0], "dim1": [0]}),
+                    from_source("test", datacubes={"dim": [1], "dim1": [0]}),
+                    from_source("test", datacubes={"dim": [0], "dim1": [1]}),
+                    from_source("test", datacubes={"dim": [1], "dim1": [1]}),
+                ],
+                Qube.from_datacube({"dim": [0, 1], "dim1": [0, 1]}),
+            ],
+            [
+                [
+                    from_source("test", datacubes={"branch": 1, "dim": [0], "dim1": [0]}),
+                    from_source("test", datacubes={"branch": 1, "dim": [1], "dim1": [0]}),
+                    from_source("test", datacubes={"branch": 2, "dim1": [1]}),
+                    from_source("test", datacubes={"branch": 2, "dim1": [2]}),
+                ],
+                Qube.from_datacube({"branch": 1, "dim": [0, 1], "dim1": [0]}) | Qube.from_datacube({"branch": 2, "dim1": [1, 2]}),
+            ],
         ],
-    ],
-    ids=["branches-with-args", "branches-with-kwargs", "single-coord", "multi-coords", "branches-and-coords"],
-)
-def test_merge(args, kwargs, dims):
-    output = merge(*args, **kwargs)
-    for npath, narray in nodetree_arrays(output.nodes):
-        for dim, values in dims[npath].items():
-            assert dim in narray.coords
-            assert np.all(values == narray.coords[dim])
+    )
+    def test_merge(self, actions: list[Action], datacubes: Qube):
+        output = merge(*actions)
+        assert output.qube.to_ascii() == datacubes.to_ascii()
 
+    def test_operation_order(self):
+        merged = merge(
+            from_source(
+                {
+                    NodeKey({"branch": 1, "subbranch": branch, "dim_0": x, "dim_1": y}): "func1"
+                    for branch in [1, 2]
+                    for x in range(3)
+                    for y in range(4)
+                }
+            ),
+            from_source(
+                {NodeKey({"branch": 2, "dim_0": x, "dim_1": y, "dim_2": z}): "func2" for x in range(5) for y in range(4) for z in range(6)}
+            ),
+        )
+        assert len(merged.qube) == 2
 
-@pytest.mark.parametrize(
-    "args, shape_or_error, coords",
-    [
-        [[{"new_dim": "x"}], (1, 4), {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": "x"}],
-        [[{"new_dim": "x"}, False, True], (1, 1, 4), {"dim_0": [0], "dim_1": [0, 1, 2, 3], "new_dim": ["x"]}],
-        [[{"dim_0": 2}], ValueError, {}],
-        [[{"dim_0": 2}, True, True], (1, 4), {"dim_0": [2], "dim_1": [0, 1, 2, 3]}],
-    ],
-    ids=["new-coord", "new-coord-expand", "existing-coord", "override-existing-coord"],
-)
-def test_set_coords(args, shape_or_error, coords):
-    action = mock_action((1, 4))
-    if isinstance(shape_or_error, type) and issubclass(shape_or_error, Exception):
-        with pytest.raises(shape_or_error):
-            action.set_scalar_coords(*args)
-    else:
-        action.set_scalar_coords(*args)
-        for _, narray in nodetree_arrays(action.nodes):
-            assert narray.shape == shape_or_error
-            assert {dim: val.data.tolist() for dim, val in narray.coords.items()} == coords
+        reduced = merged.select(subbranch=1).flatten(new_dim="temp").concatenate(dim="temp")
+        flattened = merged.flatten(new_dim="temp", keep_dims=["branch", "subbranch"]).concatenate(dim="temp").sel(subbranch=1)
+        assert len(reduced.nodes) == len(flattened.nodes)
+        graph = deduplicate_nodes(reduced.graph() + flattened.graph())
+        assert len(graph.sinks) == 1
+
+    @pytest.mark.parametrize(
+        "selection, expected_qube_or_error",
+        [
+            (
+                {"dim_0": 1},
+                Qube.from_datacube({"dim_0": 1, "dim_1": [0, 1, 2, 3]})
+                | Qube.from_datacube({"date": datetime(2024, 1, 1), "dim_0": 1, "dim_1": [0, 1, 2, 3, 4]}),
+            ),
+            ({"dim_1": 4}, Qube.from_datacube({"date": datetime(2024, 1, 1), "dim_0": [0, 1], "dim_1": 4})),
+            (
+                {"date": [datetime(2024, 1, 1)]},
+                Qube.from_datacube({"date": datetime(2024, 1, 1), "dim_0": [0, 1], "dim_1": [0, 1, 2, 3, 4]}),
+            ),
+            ({"dim_1": 10}, ValueError),
+            (
+                {"dim_0": [1], "dim_1": [0, 4]},
+                Qube.from_datacube({"dim_0": 1, "dim_1": 0})
+                | Qube.from_datacube({"date": datetime(2024, 1, 1), "dim_0": 1, "dim_1": [0, 4]}),
+            ),
+            (
+                {"dim_0": [2], "dim_1": [0, 4]},
+                ValueError,
+            ),
+        ],
+    )
+    def test_select(self, selection: dict[str, Any], expected_qube_or_error):
+        action = merge(
+            from_source("test", datacubes={"dim_0": [0, 1, 2], "dim_1": [0, 1, 2, 3]}),
+            from_source("test", datacubes={"date": datetime(2024, 1, 1), "dim_0": [0, 1], "dim_1": [0, 1, 2, 3, 4]}),
+        )
+        if isinstance(expected_qube_or_error, Qube):
+            select_dim = action.sel(selection)
+            assert select_dim.qube.to_ascii() == expected_qube_or_error.to_ascii()
+        else:
+            with pytest.raises(expected_qube_or_error, match="No nodes found matching selection criteria:"):
+                action.sel(selection).qube

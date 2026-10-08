@@ -135,9 +135,9 @@ def expand_as_qube(action: Action, qube: Qube, dims: Optional[list[str]] = None)
     tree: dict[str, Any] = json.loads(qube.to_tree_json())["tree"]
     expand_dims: list[str] = dims or list(qube.axes().keys())
 
-    leaves: dict[str, Action] = {}
+    leaves: list[Action] = []
 
-    def _walk(action: Action, node: dict[str, Any], path: str) -> None:
+    def _walk(action: Action, node: dict[str, Any]) -> None:
         """Recursively expand *action* by walking the tree-JSON *node*."""
         key: str = node["key"]
         values: list[Any] = node["values"]["values"]
@@ -152,16 +152,15 @@ def expand_as_qube(action: Action, qube: Qube, dims: Optional[list[str]] = None)
 
         match len(children):
             case 0:
-                assert path not in leaves, f"Duplicate path detected: {path}"
-                leaves[path] = action
+                leaves.append(action)
             case 1:
-                _walk(action, children[0], path)
+                _walk(action, children[0])
             case _:
                 for i, child in enumerate(children):
-                    _walk(action, child, f"{path}/{_get_name(child, i)}")
+                    _walk(action, child)
 
     if not tree.get("children"):
         return action
 
-    _walk(action, tree, "")
-    return fluent.merge(**leaves)
+    _walk(action, tree)
+    return fluent.merge(*leaves)

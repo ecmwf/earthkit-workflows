@@ -31,7 +31,7 @@ dependencies = [
     "pyzmq",
     "fire",
     "orjson",
-    "qubed>0.4.4",
+    "qubed>=0.4.13",
 ]
 # NOTE optional dependencies are not needed for runtime and would only slow down new worker spin ups etc
 optional-dependencies.vizualize = [
