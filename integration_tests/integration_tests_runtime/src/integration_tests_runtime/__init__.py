@@ -68,3 +68,19 @@ def write_grib(a: ekdType, i: int) -> ekdType:  # ty: ignore
 
 def transform_numpy(a: "numpy.ndarray") -> "numpy.ndarray":  # ty: ignore
     return a + 1
+
+
+_GLOBAL_MARKER: list[str] = []
+
+
+def set_global() -> int:
+    """Modifies the process-global state"""
+    _GLOBAL_MARKER.append("set")
+    return 1
+
+
+def check_global_empty(a: int) -> bool:
+    """Fails if the process-global state has been modified in this process. The input only enforces ordering"""
+    if _GLOBAL_MARKER:
+        raise ValueError(f"global state not clean: {_GLOBAL_MARKER=}")
+    return True

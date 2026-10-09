@@ -429,6 +429,7 @@ class Executor:
                             raise CascadeInfrastructureError(f"worker process {m.worker} is not alive")
                         if m.requires_new_worker:
                             # TODO do not restart if the worker is new
+                            # TODO check the worker is ready and idle
                             # TODO how to notify the controller this has actually happened?
                             self._restart_worker(m.worker, m)
                         elif m.worker in self.worker_awaits:
