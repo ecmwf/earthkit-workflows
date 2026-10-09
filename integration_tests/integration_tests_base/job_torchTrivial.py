@@ -10,7 +10,7 @@ from integration_tests_runtime import sink_file, source_tensor, transform_tensor
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, JobInstanceRich, TaskId
 from earthkit.workflows.compilers import graph2job
 from earthkit.workflows.fluent import create_task_instance, from_source
-from integration_tests_base.base import JobSpec
+from integration_tests_base.base import JobSpec, TestCase, expect_success
 
 
 def _task_id(ji: JobInstance, prefix: str) -> TaskId:
@@ -51,3 +51,7 @@ def outputOk(outputs: Mapping[object, object]) -> None:
         content = file_path.read_text()
         if content != "6":
             raise AssertionError(f"unexpected file content: {content!r}")
+
+
+def cases() -> list[TestCase]:
+    return [TestCase(job=job(), spec=spc(), outputOk=expect_success(outputOk))]

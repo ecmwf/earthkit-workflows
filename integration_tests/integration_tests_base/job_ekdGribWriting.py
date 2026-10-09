@@ -10,7 +10,7 @@ import numpy
 
 from cascade.low.builders import JobBuilder, TaskBuilder
 from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstanceRich, TaskId
-from integration_tests_base.base import JobSpec
+from integration_tests_base.base import JobSpec, TestCase, expect_success
 
 
 def job() -> JobInstanceRich:
@@ -36,3 +36,7 @@ def spc() -> JobSpec:
 def outputOk(outputs: Mapping[object, object]) -> None:
     pass
     # TODO check that the files exist
+
+
+def cases() -> list[TestCase]:
+    return [TestCase(job=job(), spec=spc(), outputOk=expect_success(outputOk))]

@@ -112,6 +112,7 @@ def _enrich(
     edge_i: dict[TaskId, set[TaskId]],
     edge_o: dict[TaskId, set[TaskId]],
     needs_gpu: set[TaskId],
+    new_worker: set[TaskId],
     gangs: set[TaskId],
 ) -> ComponentCore:
     nodes, sources = plain_component
@@ -181,7 +182,8 @@ def _enrich(
                     gpu_distance += 1
                 gpu_fused_distance[head] = gpu_distance
                 found = False
-                for edge in edge_i[head]:
+                # a task requiring new worker cannot be fused into a predecessor
+                for edge in [] if head in new_worker else edge_i[head]:
                     if edge not in fused and edge not in gangs:
                         chain.insert(0, head)
                         head = edge
@@ -217,11 +219,14 @@ def precompute(job_instance: JobInstance) -> Preschedule:
         edge_i_proj[vert] = {dataset.task for dataset in inps}
 
     needs_gpu = {task_id for task_id, task in job_instance.tasks.items() if task.definition.needs_gpu}
+    new_worker = {task_id for task_id, task in job_instance.tasks.items() if task.definition.requires_new_worker}
     gangs = {task_id for constraint in job_instance.constraints for task_id in constraint.gang}
 
     with ThreadPoolExecutor(max_workers=4) as tp:
         # TODO if coptrs is not used, then this doesnt make sense
-        f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(plain_component, edge_i_proj, edge_o_proj, needs_gpu, gangs)
+        f = lambda plain_component: timer(_enrich, Microtrace.presched_enrich)(
+            plain_component, edge_i_proj, edge_o_proj, needs_gpu, new_worker, gangs
+        )
         plain_components = (
             plain_component
             for plain_component in timer(_decompose, Microtrace.presched_decompose)(

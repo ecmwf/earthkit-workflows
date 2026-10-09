@@ -51,6 +51,7 @@ class TaskDefinition(CascadeBaseModel):
         description="kv of outputs and their types (fqn of class). Assumes listing in func output order"
     )
     needs_gpu: bool = Field(False)  # NOTE unstable contract, will change. Note we support at most one GPU per task
+    requires_new_worker: bool = Field(False)  # NOTE unstable contract, will change. Task must start on a clean worker
 
     @staticmethod
     def func_dec(f: str) -> Callable:

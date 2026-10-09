@@ -74,6 +74,7 @@ def task_sequence_remainder(taskSequence: TaskSequence, cut: TaskId) -> TaskSequ
         tasks=remainder,
         publish={ds for ds in taskSequence.publish if ds.task in remainder_set},
         extra_env=taskSequence.extra_env,
+        requires_new_worker=False,  # the remainder is run in the worker that was just restarted
     )
 
 

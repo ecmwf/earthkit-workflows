@@ -87,3 +87,4 @@ class Assignment:
     prep: list[tuple[DatasetId, HostId]]
     outputs: set[DatasetId]
     extra_env: list[tuple[str, str]]
+    requires_new_worker: bool = False

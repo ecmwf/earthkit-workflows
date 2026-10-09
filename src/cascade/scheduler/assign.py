@@ -45,6 +45,9 @@ def build_assignment(worker: WorkerId, task: TaskId, context: JobExecutionContex
     worker_has_gpu = context.environment.workers[worker].gpu > 0
     while tasks and not exhausted:
         task = tasks[0]
+        if assigned and context.job_instance.tasks[task].definition.requires_new_worker:
+            # NOTE fusing opportunities are constructed so that only the head may require a new worker
+            raise CascadeInternalError(description=f"{task=} requires new worker but is not first in the fused sequence")
         if context.job_instance.tasks[task].definition.needs_gpu and not worker_has_gpu:
             if not assigned:
                 raise CascadeInternalError(description=f"tried to assign gpu {task=} to non-gpu {worker=}")
@@ -91,6 +94,7 @@ def build_assignment(worker: WorkerId, task: TaskId, context: JobExecutionContex
         prep=prep,
         outputs=trimmed_outputs,
         extra_env=[],
+        requires_new_worker=bool(assigned) and context.job_instance.tasks[assigned[0]].definition.requires_new_worker,
     )
 
 

@@ -6,15 +6,16 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from multiprocessing import Process
 from pathlib import Path
 from shlex import quote
 from types import ModuleType
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from integration_tests_base.base import JobSpec
+from integration_tests_base.base import OutputOk, TestCase
 
 import cascade.gateway.api as api
 import cascade.gateway.client as client
@@ -188,9 +189,9 @@ def wait_for_gateway(url: str, retries: int = 20) -> None:
     raise RuntimeError("Gateway did not become ready in time")
 
 
-def build_job_spec(job_mod: ModuleType, deployment_kind: DeploymentKind) -> api.JobSpec:
-    job = job_mod.job()
-    spc = job_mod.spc()
+def build_job_spec(case: TestCase, deployment_kind: DeploymentKind) -> api.JobSpec:
+    job = case.job
+    spc = case.spec
     envvars = {}
     if deployment_kind == "plain_cluster":
         job = job.model_copy(update={"custom_pip_indices": (REMOTE_WHEELS_DIR,)})
@@ -225,30 +226,23 @@ def collect_outputs(job_id: JobId, datasets: list[DatasetId], job: JobInstanceRi
     return outputs
 
 
-def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
-    ensure_clean_zmq_state()
-    gw: Process | subprocess.Popen[bytes]
+def _run_cluster_case(case: TestCase, no_runtime: bool, deployment_kind: DeploymentKind, idx: int) -> None:
+    """Submits a single case to the already running gateway, waits for it and validates"""
+    logger.info("Submitting job to gateway...")
+    spec = build_job_spec(case, deployment_kind)
+    if not no_runtime:
+        add_environment(spec, "integration_tests_runtime")
+    submit_req = api.SubmitJobRequest(job=spec)
+    submit_res = client.request_response(submit_req, GATEWAY_URL, timeout_ms=5000)
+    assert isinstance(submit_res, api.SubmitJobResponse), f"unexpected response: {submit_res}"
+    assert submit_res.error is None, f"submit error: {submit_res.error}"
+    job_id = submit_res.job_id
+    if job_id is None:
+        raise RuntimeError("gateway returned no job id")
+    logger.info("Job submitted: %s", job_id)
 
-    # Slurm requires shared_path for srun scripts; SSH tests the per-node scp path
-    gateway_shared_path = "/shared" if deployment_kind == "slurm_cluster" else None
-    gw = spawn_remote_gateway(deployment_kind, gateway_shared_path)
-
+    result: Mapping[Any, Any] | Exception
     try:
-        wait_for_gateway(GATEWAY_URL)
-
-        logger.info("Submitting job to gateway...")
-        spec = build_job_spec(job_mod, deployment_kind)
-        if "noRuntime" not in job_mod.__name__:
-            add_environment(spec, "integration_tests_runtime")
-        submit_req = api.SubmitJobRequest(job=spec)
-        submit_res = client.request_response(submit_req, GATEWAY_URL, timeout_ms=5000)
-        assert isinstance(submit_res, api.SubmitJobResponse), f"unexpected response: {submit_res}"
-        assert submit_res.error is None, f"submit error: {submit_res.error}"
-        job_id = submit_res.job_id
-        if job_id is None:
-            raise RuntimeError("gateway returned no job id")
-        logger.info("Job submitted: %s", job_id)
-
         last_progress: api.JobProgressResponse | None = None
         for attempt in range(TRIES_LIMIT):
             prog_req = api.JobProgressRequest(job_ids=[job_id])
@@ -268,8 +262,27 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
             raise RuntimeError(f"Job did not complete within {TRIES_LIMIT * POLL_INTERVAL:.0f}s")
 
         assert last_progress is not None
-        outputs = collect_outputs(job_id, last_progress.datasets.get(job_id, []), spec.job_instance, GATEWAY_URL)
-        job_mod.outputOk(outputs)
+        result = collect_outputs(job_id, last_progress.datasets.get(job_id, []), spec.job_instance, GATEWAY_URL)
+    except Exception as e:
+        logger.info("Job execution failed with %s", repr(e))
+        result = e
+    case.outputOk(result)
+    logger.info(f"Case #{idx} completed OK, what a marvel!")
+
+
+def run_cluster(cases: list[TestCase], no_runtime: bool, deployment_kind: DeploymentKind) -> None:
+    ensure_clean_zmq_state()
+    gw: Process | subprocess.Popen[bytes]
+
+    # Slurm requires shared_path for srun scripts; SSH tests the per-node scp path
+    gateway_shared_path = "/shared" if deployment_kind == "slurm_cluster" else None
+    gw = spawn_remote_gateway(deployment_kind, gateway_shared_path)
+
+    try:
+        wait_for_gateway(GATEWAY_URL)
+
+        for idx, case in enumerate(cases):
+            _run_cluster_case(case, no_runtime, deployment_kind, idx)
 
         shutdown_req = api.ShutdownRequest()
         shutdown_res = client.request_response(shutdown_req, GATEWAY_URL, timeout_ms=5000)
@@ -298,15 +311,25 @@ def run_cluster(job_mod: ModuleType, deployment_kind: DeploymentKind) -> None:
         raise
 
 
-def run_local(job_mod: ModuleType) -> None:
-    spec = build_job_spec(job_mod, "local")
-    for k, v in spec.envvars.items():
-        os.environ[k] = v
-    if not isinstance(spec.infra_spec, api.LocalProcesses):
-        raise TypeError
-    outputs = run_locally(job=spec.job_instance, hosts=spec.infra_spec.hosts, workers=spec.infra_spec.workers_per_host)
-    job_mod.outputOk(outputs)
-    logger.info("Local integration test passed with outputs: %s", list(outputs.keys()))
+def run_local(cases: list[TestCase]) -> None:
+    for idx, case in enumerate(cases):
+        spec = build_job_spec(case, "local")
+        for k, v in spec.envvars.items():
+            os.environ[k] = v
+        if not isinstance(spec.infra_spec, api.LocalProcesses):
+            raise TypeError
+        result: Mapping[Any, Any] | Exception
+        try:
+            result = run_locally(
+                job=spec.job_instance, hosts=spec.infra_spec.hosts, workers=spec.infra_spec.workers_per_host, portBase=12345 + 100 * idx
+            )
+        except Exception as e:
+            logger.info("Local execution failed with %s", repr(e))
+            result = e
+        case.outputOk(result)
+        logger.info("Local integration test case passed")
+        # NOTE distinct portBase per case, to prevent port collisions with leftovers of the previous case
+        # TODO handle teardown / env check more reliably in the local case
 
 
 def main() -> None:
@@ -320,10 +343,11 @@ def main() -> None:
 
     job_mod = load_job_case(args.test_case)
     deployment_kind = args.deployment_kind
+    cases = job_mod.cases()
     if deployment_kind == "local":
-        run_local(job_mod)
+        run_local(cases)
     else:
-        run_cluster(job_mod, deployment_kind)
+        run_cluster(cases, "noRuntime" in job_mod.__name__, deployment_kind)
 
 
 if __name__ == "__main__":
