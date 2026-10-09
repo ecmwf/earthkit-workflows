@@ -9,265 +9,44 @@
 from __future__ import annotations
 
 import functools
-import hashlib
-import itertools
-import os
-import threading
-import types
-from dataclasses import dataclass
-from typing import Any, Callable, Hashable, Literal, Optional, ParamSpec, Sequence, TypeVar, Union, cast
+from operator import add
+from typing import Any, Callable, Hashable, Optional, Union, cast
 
 import numpy as np
-import xarray as xr
+from qubed import Qube  # type: ignore
 
-from cascade.low.core import DefaultTaskOutput, TaskDefinition, TaskInstance
-
-from . import backends
-from ._qubed import expand_as_qube
-from .graph import Graph, Output
-from .graph import Node as BaseNode
-from .metadata import Artifacts, BuilderMetadata, NodeMetadata, Requirements, update_node_metadata, update_requirements
-from .nodetree import (
-    combine_by_coords,
-    coords_to_list,
-    nodetree_array,
-    nodetree_arrays,
-    nodetree_dimensions,
-    nodetree_from_dict,
-    nodetree_new_dimension,
+from earthkit.workflows import backends
+from earthkit.workflows._qubed import expand_as_qube
+from earthkit.workflows.graph import Graph, Output
+from earthkit.workflows.metadata import NodeMetadata
+from earthkit.workflows.nodeqube import (
+    Coord,
+    Datacube,
+    Node,
+    NodeKey,
+    NodeQube,
+    Payload,
+    create_task_instance,
 )
-
-Payload = Callable | str | TaskInstance
-
-_node_context = threading.local()
-
-
-def _get_context_stack() -> list[NodeMetadata]:
-    if not hasattr(_node_context, "earthkit_workflow_node_metadata_stack"):
-        _node_context.earthkit_workflow_node_metadata_stack = []
-    return _node_context.earthkit_workflow_node_metadata_stack  # type: ignore[return-value]
-
-
-def _invalidate_context_cache() -> None:
-    if hasattr(_node_context, "earthkit_workflow_node_metadata_resolved"):
-        del _node_context.earthkit_workflow_node_metadata_resolved
-
-
-def _get_context_metadata() -> NodeMetadata:
-    if hasattr(_node_context, "earthkit_workflow_node_metadata_resolved"):
-        return _node_context.earthkit_workflow_node_metadata_resolved
-    result: NodeMetadata = NodeMetadata()
-    for frame in _get_context_stack():
-        update_node_metadata(result, frame)
-    _node_context.earthkit_workflow_node_metadata_resolved = result
-    return result
-
-
-def _pop_context_stack() -> None:
-    _invalidate_context_cache()
-    _get_context_stack().pop()
-
-
-class NodeMetadataContext:
-    """Context manager that injects metadata into every Node created within it.
-
-    Contexts can be nested; inner values override outer ones on key collision.
-    Metadata passed directly to Node overrides any context-provided metadata.
-    But for 'environment' types, instead of override we append, as that makes more sense.
-
-    Example
-    -------
-    with NodeMetadataContext(requirements={"environment": ["my_env"]}, artifacts={}, builder={}):
-        action1 = from_source(...)
-        action2 = action1.map(some_func)
-    """
-
-    def __init__(
-        self, requirements: Requirements | None = None, artifacts: Artifacts | None = None, builder: BuilderMetadata | None = None
-    ) -> None:
-        self._metadata: NodeMetadata = NodeMetadata(
-            requirements=requirements or Requirements(),
-            artifacts=artifacts or Artifacts(),
-            builder=builder or BuilderMetadata(),
-        )
-
-    def __enter__(self) -> "NodeMetadataContext":
-        _get_context_stack().append(self._metadata)
-        _invalidate_context_cache()
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: types.TracebackType | None,
-    ) -> None:
-        _pop_context_stack()
-
-
-def custom_hash(string: str) -> str:
-    ret = hashlib.sha256()
-    ret.update(string.encode())
-    return ret.hexdigest()
-
-
-Coord = tuple[str, list[Any]]
-Input = BaseNode | Output
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
-def _resolve_node_metadata(payload: Payload, node_metadata: Optional[NodeMetadata] = None) -> NodeMetadata:
-    metadata: NodeMetadata = NodeMetadata()
-    # From mark decorators on functions
-    update_requirements(metadata.requirements, Requirements(**getattr(payload, "_cascade", {})))
-    update_node_metadata(metadata, _get_context_metadata())
-    update_node_metadata(metadata, node_metadata or NodeMetadata())
-    if isinstance(payload, TaskInstance):
-        update_node_metadata(
-            metadata,
-            NodeMetadata(
-                requirements=Requirements(environment=payload.definition.environment, needs_gpu=payload.definition.needs_gpu),
-            ),
-        )
-    return metadata
-
-
-def create_task_instance(
-    payload: Payload,
-    static_input_ps: Optional[list[Any]] = None,
-    static_input_kw: Optional[dict[str, Any]] = None,
-    requirements: Optional[Requirements] = None,
-) -> TaskInstance:
-    """
-    Create a TaskInstance from a payload.
-
-    Parameters
-    ----------
-    payload : Payload
-        The payload to create the task instance with
-    static_input_ps : Optional[list[Any]], optional
-        Positional static inputs, by default None. To refer to a node at a particular
-        position in the list of inputs, use `Node.Index(index)` where `index` is the
-        position of the input node in the list of inputs.
-    static_input_kw : Optional[dict[str, Any]], optional
-        Keyword static inputs, by default None
-
-    Returns
-    -------
-    TaskInstance
-    """
-
-    requirements = requirements or Requirements()
-
-    if isinstance(payload, TaskInstance):
-        update_requirements(requirements, Requirements(environment=payload.definition.environment, needs_gpu=payload.definition.needs_gpu))
-        task = payload.model_copy(deep=True)
-        task.definition = task.definition.model_copy(update=requirements.model_dump(exclude_none=True))
-    elif isinstance(payload, str):
-        task = TaskInstance(
-            definition=TaskDefinition(
-                entrypoint=payload, func=None, input_schema={}, output_schema=[], **requirements.model_dump(exclude_none=True)
-            ),
-            static_input_ps={str(i): v for i, v in enumerate(static_input_ps or [])},
-            static_input_kw=static_input_kw or {},
-        )
-    else:
-        task = TaskInstance(
-            definition=TaskDefinition(
-                entrypoint="",
-                func=TaskDefinition.func_enc(cast(Callable, payload)),
-                input_schema={},
-                output_schema=[],
-                **requirements.model_dump(exclude_none=True),
-            ),
-            static_input_ps={str(i): v for i, v in enumerate(static_input_ps or [])},
-            static_input_kw=static_input_kw or {},
-        )
-    return task
-
-
-class Node(BaseNode):
-    @dataclass
-    class Index:
-        value: int
-
-    def __init__(
-        self,
-        payload: Payload,
-        inputs: Input | Sequence[Input] = [],
-        num_outputs: int = 1,
-        name: Optional[str] = None,
-        metadata: Optional[NodeMetadata] = None,
-    ):
-        self._for_copy = (payload, inputs, num_outputs)
-        if isinstance(inputs, Input):
-            inputs = [inputs]
-        metadata = _resolve_node_metadata(payload, node_metadata=metadata)
-        task = create_task_instance(payload, requirements=metadata.requirements)
-        task = task.model_copy(deep=True)
-        node_outputs = None if num_outputs == 1 else [f"{x:0{len(str(num_outputs - 1))}d}" for x in range(num_outputs)]
-        if len(task.definition.input_schema) == 0:
-            task.definition.input_schema = {k: "Any" for k in task.static_input_kw.keys()}
-        if len(task.definition.output_schema) == 0:
-            task.definition.output_schema = [(e, "Any") for e in node_outputs or [DefaultTaskOutput]]
-
-        # Insert in input nodes not already present in task.static_input_ps
-        insert_index = 0
-        for i in range(len(inputs)):
-            node_index = Node.Index(i)
-            if node_index in task.static_input_ps.values():
-                continue
-            while str(insert_index) in task.static_input_ps:
-                insert_index += 1
-            task.static_input_ps[str(insert_index)] = node_index
-
-        node_inputs = {}
-        for pos, index in task.static_input_ps.items():
-            if isinstance(index, Node.Index):
-                if index.value >= len(inputs):
-                    raise ValueError(f"Node static_input_ps index {index.value} exceeds number of input nodes {len(inputs)}")
-                node_inputs[pos] = inputs[index.value]
-                task.static_input_ps[pos] = None
-
-        name = name or task.definition.func or task.definition.entrypoint
-        name += custom_hash(f"{task}{[x.name if isinstance(x, BaseNode) else f'{x.parent.name}.{x.name}' for x in inputs]}")
-
-        super().__init__(
-            name,
-            outputs=node_outputs,
-            payload=task,
-            metadata=metadata,
-            **node_inputs,
-        )
-
-    def __str__(self) -> str:
-        return f"Node {self.name}, inputs: {[x.parent.name for x in self.inputs.values()]}, payload: {self.payload}"
-
-    def copy(self) -> "Node":
-        return self.__class__(*self._for_copy)  # type: ignore[arg-type]
+from earthkit.workflows.utils import expand_datacube, qube_to_datacubes
 
 
 class Action:
     REGISTRY: dict[str, type[Action]] = {}
 
-    def __init__(self, nodetree: xr.DataTree, yields: Optional[Coord] = None):
-        if yields:
-            ydim, ycoords = yields
-            new_nodes = {}
-            for npath, narray in nodetree_arrays(nodetree):
-                new_array = xr.apply_ufunc(
-                    lambda x: np.asarray([x.get_output(out) for out in x.outputs]),
-                    narray,
-                    output_core_dims=[[ydim]],
-                    vectorize=True,
-                )
-                new_array.coords[ydim] = ycoords
-                new_nodes[npath] = new_array
-            self.nodes = nodetree_from_dict(new_nodes)
-        else:
-            self.nodes = nodetree
+    def __init__(self, nodeqube: NodeQube, yields: Optional[Coord] = None):
+        self.nodeqube = nodeqube
+        self.nodeqube.expand_outputs(yields)
+        if len(self.nodeqube) == 0:
+            raise ValueError("Action must contain at least one node.")
+
+    @property
+    def nodes(self) -> dict[NodeKey, Node]:
+        return self.nodeqube.nodes
+
+    @property
+    def qube(self) -> Qube:
+        return self.nodeqube.qube
 
     def graph(self) -> Graph:
         """Creates graph from the nodes of the action.
@@ -278,12 +57,11 @@ class Action:
 
         """
         sinks = set()
-        for _, array in nodetree_arrays(self.nodes):
-            for node in array.data.flatten():
-                if isinstance(node, Output):
-                    sinks.add(node.parent)
-                else:
-                    sinks.add(node)
+        for node in self.nodeqube.nodes.values():
+            if isinstance(node, Output):
+                sinks.add(node.parent)
+            else:
+                sinks.add(node)
         return Graph(list(sinks))
 
     @classmethod
@@ -323,37 +101,20 @@ class Action:
 
     def as_action(self, other) -> Action:
         """Parse action into another action class"""
-        return other(self.nodes)
+        return other(self.nodeqube)
 
     def join(
         self,
         other_action: Action,
-        dim: str | Coord,
-        match_coord_values: bool = False,
     ) -> Action:
-        node_arrays = {}
-        for npath, narray in nodetree_arrays(self.nodes):
-            oarray = nodetree_array(other_action.nodes, npath)
-            if match_coord_values:
-                for coord, values in narray.coords.items():
-                    if coord in oarray.coords:
-                        oarray = oarray.assign_coords(**{str(coord): values})
-            node_arrays[npath] = xr.concat(
-                [narray, oarray],
-                dim=(dim if isinstance(dim, str) else xr.DataArray(dim[1], name=dim[0])),
-                join="exact",
-                combine_attrs="no_conflicts",
-                coords="minimal",
-            )
-        return type(self)(nodetree_from_dict(node_arrays))
+        self.nodeqube.append(other_action.nodeqube)
+        return type(self)(self.nodeqube)
 
     def transform(
         self,
         func: Callable[..., Action],
         params: list,
         dim: str | Coord,
-        axis: int = 0,
-        path: Optional[str] = None,
     ) -> Action:
         """Create new nodes by applying function on action with different
         parameters. The result actions from applying function are joined
@@ -373,8 +134,8 @@ class Action:
         ------
         Action
         """
-        res = None
-        dim_values: list[int] | np.ndarray[Any, Any]
+        nodeqube = NodeQube.empty()
+        dim_values: list[int]
         if isinstance(dim, str):
             dim_name = dim
             dim_values = list(range(len(params)))
@@ -383,28 +144,19 @@ class Action:
             dim_values = dim[1]
 
         for index, param in enumerate(params):
-            new_res = func(self.select(path=path), *param)
-            if dim_name not in nodetree_dimensions(new_res.nodes):
-                new_res._add_dimension(dim_name, dim_values[index], axis, path=path, override=True)
-            if res is None:
-                res = new_res
-            else:
-                res = res.join(new_res, dim_name)
+            new_res = func(self, *param)
+            if dim_name not in new_res.nodeqube.dimensions():
+                new_res = new_res.add_scalar_dimension(dim_name, dim_values[index], override=True)
+            nodeqube.append(new_res.nodeqube)
 
-        if not res:
+        if nodeqube.is_empty():
             raise ValueError("No new actions generated from transform")
-        # Remove expanded dimension if only a single element
-        res._squeeze_dimension(dim_name, path=path)
-        # Modify node array path to contain new nodes
-        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        new_nodes.update({npath: narray for npath, narray in nodetree_arrays(res.nodes)})
-        return type(self)(nodetree_from_dict(new_nodes))
+        return type(self)(nodeqube)
 
     def broadcast(
         self,
         other_action: Action,
         exclude: list[str] | None = None,
-        path: Optional[str] = None,
     ) -> Action:
         """Broadcast nodes against nodes in other_action
 
@@ -412,54 +164,40 @@ class Action:
         ----------
         other_action: Action containing nodes to broadcast against
         exclude: List of str, dimension names to exclude from broadcasting
-        path: Optional[str], path to select subset of nodes to operate on, if provided
 
         Return
         ------
         Action
         """
-        node_arrays = {}
-        for npath, narray in nodetree_arrays(other_action.select(path=path).nodes):
-            array = nodetree_array(self.nodes, npath)
-            # Ensure coordinates in existing dimensions match, otherwise obtain NaNs
-            for key, values in narray.coords.items():
-                if key in array.coords and (exclude is None or key not in exclude):
-                    assert np.all(values.data == array.coords[key].data), (
-                        f"Existing coordinates must match for broadcast. Found mismatch in {key}!"
-                    )
-            broadcasted_nodes = array.broadcast_like(narray, exclude=exclude)
-            new_nodes = np.empty(broadcasted_nodes.shape, dtype=object)
-            it = np.nditer(  # type: ignore[call-overload]
-                array.transpose(*broadcasted_nodes.dims, missing_dims="ignore"),
-                flags=["multi_index", "refs_ok"],
+        exclude = exclude or []
+        existing_dimensions = self.nodeqube.axes()
+        other_dimensions = other_action.nodeqube.axes()
+        # Existing dimensions must match
+        if not all(other_dimensions.get(dim, None) == values for dim, values in existing_dimensions.items()):
+            raise ValueError("Existing dimensions do not match between actions")
+        nodeqube = NodeQube.empty()
+        for key in other_action.nodeqube.nodes.keys():
+            datacube = key.to_datacube()
+            select_criteria = {k: v for k, v in datacube.items() if k in existing_dimensions}
+            unique_nodeqube = self.nodeqube.select(select_criteria)
+            assert not unique_nodeqube.is_empty(), f"No matching nodes found for datacube: {datacube}"
+            new_datacube = {k: v for k, v in datacube.items() if k not in exclude}
+            new_key = NodeKey(new_datacube)
+            new_node = Node(
+                create_task_instance(
+                    backends.method,
+                    static_input_ps=["trivial"],
+                ),
+                unique_nodeqube.node(),
             )
-            for node in it:
-                new_nodes[it.multi_index] = Node(
-                    create_task_instance(
-                        backends.method,
-                        static_input_ps=["trivial"],
-                    ),
-                    node[()],  # type: ignore
-                )
-
-            node_arrays[npath] = xr.DataArray(
-                new_nodes,
-                coords=broadcasted_nodes.coords,
-                dims=broadcasted_nodes.dims,
-                attrs=array.attrs,
-            )
-
-        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        new_nodes.update(node_arrays)
-        return type(self)(nodetree_from_dict(new_nodes))
+            nodeqube.append(NodeQube(Qube.from_datacube(new_datacube), {new_key: new_node}))
+        return type(self)(nodeqube)
 
     def expand(
         self,
         dim: str | Coord,
         internal_dim: int | str | Coord,
         dim_size: int | None = None,
-        axis: int = 0,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
     ) -> Action:
         """Create new dimension in array of nodes of specified size by
@@ -474,8 +212,6 @@ class Action:
         internal_dim: int, str or DataArray, index or name of internal dimension to expand, or
         `Coord` specifying dimension name and list of selection criteria.
         dim_size: int | None, size of new dimension. If not given `internal_dim` must be `Coord`
-        axis: int, position to insert new dimension
-        path: Optional[str], path to select subset of nodes to operate on, if provided
         backend_kwargs: dict, kwargs for the underlying backend take method
 
         Return
@@ -493,80 +229,56 @@ class Action:
 
         if not isinstance(dim, str) and len(params) != len(dim[1]):
             raise ValueError("Length of values in `dim` must match `dim_size` or length of values in `internal_dim`")
-        return self.transform(_expand_transform, params, dim, axis=axis, path=path)
+        return self.transform(_expand_transform, params, dim)
 
     expand_as_qube = expand_as_qube
 
     def map(
         self,
-        payload: Payload | np.ndarray[Any, Any] | list,
+        payload: Payload | dict[NodeKey, Payload],
         yields: Coord | None = None,
-        path: Optional[str] = None,
         node_metadata: Optional[NodeMetadata] = None,
     ) -> Action:
-        """Apply specified payload on all nodes. If argument is an array of payloads,
+        """Apply specified payload on all nodes. If argument is an dictionary of payloads,
         this must be the same size as the array of nodes and each node gets a
         unique payload from the array
 
         Parameters
         ----------
-        payload: function or array of functions
+        payload: function or dictionary of functions
         yields: Coord | None, name and coords of dimension yielded by payload, if generator
-        path: str, path to select subset of nodes to operate on, if provided
+        node_metadata: Optional[NodeMetadata] = None
 
         Return
         ------
         Action where nodes are a result of applying the same
-        payload to all nodes, or in the case where payload is an array,
+        payload to all nodes, or in the case where payload is an dictionary,
         applying a different payload to each node
 
         Raises
         ------
-        AssertionError if the shape of the payload array does not match the shape of the
+        ValueError if the shape of the payload array does not match the shape of the
         array of nodes
         """
-        # NOTE this method is really not mypy friendly, just ignore everything
-        node_arrays = {}
-        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
-            if not isinstance(payload, Payload):  # type: ignore
-                payload = np.asarray(payload)
-                assert payload.shape == narray.shape, (
-                    f"For unique payloads for each node, payload shape {payload.shape}must match node array shape {narray.shape}"
-                )
-
-            # Applies operation to every node, keeping node array structure
-            new_nodes = np.empty(narray.shape, dtype=object)
-            it = np.nditer(narray, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
-            node_payload = payload
-            for node in it:
-                if not isinstance(payload, Payload):  # type: ignore
-                    node_payload = payload[it.multi_index]  # type: ignore
-                new_nodes[it.multi_index] = Node(
-                    node_payload,  # type: ignore
-                    node[()],  # type: ignore
-                    num_outputs=len(yields[1]) if yields else 1,
-                    metadata=node_metadata,
-                )
-
-            node_arrays[npath] = xr.DataArray(
-                new_nodes,
-                coords=narray.coords,
-                dims=narray.dims,
-                attrs=narray.attrs,
+        new_nodes = {}
+        if isinstance(payload, dict) and len(payload) != len(self.nodeqube.nodes):
+            raise ValueError(f"Length of payload dict {len(payload)} does not match number of nodes {len(self.nodeqube.nodes)}")
+        for key, node in self.nodeqube.nodes.items():
+            new_nodes[key] = Node(
+                payload[key] if isinstance(payload, dict) else payload,
+                node,
+                num_outputs=len(yields[1]) if yields else 1,
+                metadata=node_metadata,
             )
-
-        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        new_nodes.update(node_arrays)
-        return type(self)(nodetree_from_dict(new_nodes), yields)
+        return type(self)(NodeQube(self.nodeqube.qube, new_nodes), yields)
 
     def reduce(
         self,
         payload: Payload,
+        dim: str,
         yields: Coord | None = None,
-        dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         node_metadata: Optional[NodeMetadata] = None,
     ) -> Action:
         """Reduction operation across the named dimension using the provided
@@ -583,7 +295,6 @@ class Action:
         computation is not batched
         keep_dim: bool, whether to keep the reduced dimension in the result. Dimension
         is kept in the original axis position
-        path: str, path to select subset of nodes to operate on, if provided
         node_metadata: NodeMetadata, metadata to attach to the new nodes created by the reduction
 
         Return
@@ -594,31 +305,34 @@ class Action:
         ------
         ValueError if payload function is not batchable and batch_size is not 0
         """
-        node_arrays = {}
-        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
-            if len(dim) == 0:
-                dim = str(narray.dims[0])
-            if dim not in narray.sizes:
+        payload = create_task_instance(payload)
+        if yields and batch_size != 0:
+            raise ValueError("Can not batch the execution of a generator")
+
+        nodeqube = NodeQube.empty()
+        for datacube in self.nodeqube.datacubes():
+            print("DATACUBE", datacube)
+            if dim not in datacube:
+                nodeqube.append(self.nodeqube.select(datacube))
                 continue
-            if narray.sizes[dim] == 1:
-                if not keep_dim:
-                    node_arrays[npath] = narray.squeeze(dim)
+            if np.ndim(datacube[dim]) == 0:
+                selection = self.nodeqube.select(datacube)
+                # If the reduced dimension should not be kept and there are other dimensions,
+                # drop the scalar dimension from the selection. If the reduction dimension is only
+                # one remaining dimension, it should always be kept to avoid empty datacube after
+                # reduction
+                if not keep_dim and len(datacube) > 1:
+                    selection = selection.drop_scalar_dimension(dim)
+                nodeqube.append(selection)
                 continue
 
-            batched = self.select(path=npath)
-            level = 0
-            payload = create_task_instance(payload)
-            if yields and batch_size != 0:
-                raise ValueError("Can not batch the execution of a generator")
-            if batch_size > 1 and batch_size < nodetree_array(batched.nodes).sizes[dim]:
-                payload_func = payload.definition.func
-                if payload_func is not None and not getattr(payload_func, "batchable", False):
-                    raise ValueError(
-                        f"Function {payload_func} is not batchable, but batch_size {batch_size} is specified"  # type: ignore[union-attr]
-                    )
-
-                while batch_size < nodetree_array(batched.nodes).sizes[dim]:
-                    lst = nodetree_array(batched.nodes).coords[dim].data
+            coords = sorted(datacube[dim])
+            reduced_coord_value = f"{coords[0]}-{coords[-1]}"
+            if batch_size > 1 and batch_size < np.ndim(datacube[dim]):
+                level = 0
+                batched = self.select(datacube)
+                while batch_size < len(batched.nodeqube.axes()[dim]):
+                    lst = sorted(batched.nodeqube.axes()[dim])
                     batched = batched.transform(
                         _batch_transform,
                         [
@@ -626,222 +340,60 @@ class Action:
                             for i in range(0, len(lst), batch_size)
                         ],
                         f"batch.{level}.{dim}",
-                        path=npath,
                     )
                     dim = f"batch.{level}.{dim}"
                     level += 1
+                batched_nodeqube = batched.nodeqube
+            else:
+                batched_nodeqube = self.select(datacube).nodeqube
 
-            batched_narray = nodetree_array(batched.nodes)
-            new_dims = [x for x in batched_narray.dims if x != dim]
-            transposed_nodes = batched_narray.transpose(dim, *new_dims)
-            new_nodes = np.empty(transposed_nodes.shape[1:], dtype=object)
-            it = np.nditer(new_nodes, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
-            for _ in it:
-                inputs = transposed_nodes[(slice(None, None, 1), *it.multi_index)].data
-                new_nodes[it.multi_index] = Node(payload, inputs, num_outputs=len(yields[1]) if yields else 1, metadata=node_metadata)
-
-            new_coords = {key: batched_narray.coords[key] for key in new_dims}
-            # Propagate scalar coords
-            new_coords.update({k: v for k, v in batched_narray.coords.items() if k not in batched_narray.dims and dim not in v.indexes})
-            nodes = xr.DataArray(
-                new_nodes,
-                coords=new_coords,
-                dims=new_dims,
-                attrs=batched_narray.attrs,
-            )
-            if keep_dim:
-                nodes = nodes.expand_dims(
-                    {dim: [f"{nodes.coords[dim][0]}-{nodes.coords[dim][-1]}"]},
-                    nodes.dims.index(dim),
+            seen = set()
+            batched_coords = batched_nodeqube.axes()[dim]
+            for unique_datacube in batched_nodeqube.datacubes(expand=True):
+                unique_datacube[dim] = batched_coords
+                datacube_str = str(unique_datacube)
+                if datacube_str in seen:
+                    continue
+                seen.add(datacube_str)
+                input_qube = Qube.from_datacube(unique_datacube)
+                unique_datacube.pop(dim)
+                if len(unique_datacube) == 0:
+                    unique_datacube[dim] = reduced_coord_value
+                new_key = NodeKey(unique_datacube)
+                new_node = Node(
+                    payload,
+                    list(batched_nodeqube.get_nodes(input_qube).values()),
+                    num_outputs=len(yields[1]) if yields else 1,
+                    metadata=node_metadata,
                 )
-            node_arrays[npath] = nodes
+                nodeqube.append(NodeQube(Qube.from_datacube(unique_datacube), {new_key: new_node}))
 
-        new_nodes = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        new_nodes.update(node_arrays)
-        return type(self)(nodetree_from_dict(new_nodes), yields)
+            if keep_dim:
+                nodeqube = nodeqube.add_scalar_dimension(dim, reduced_coord_value)
+        return type(self)(nodeqube, yields)
 
     def flatten(
         self,
         new_dim: str,
         keep_dims: list[str] = [],
-        path: Optional[str] = None,
-        reset_coords: bool = False,
     ) -> Action:
-        """Restructures node arrays by flattening arrays along all dims, except keep_dims, for node arrays
-        along path.
+        """Restructures node arrays by flattening arrays along all dims, except keep_dims
 
         Parameters
         ----------
         keep_dims: str, name of dimensions not to flatten
         new_dim: str, name of new dimension containing flattened dims
-        path: str, path to select subset of nodes to operate on, if provided
 
         Return
         ------
         Action
         """
-        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
-            if narray.size == 1:
-                continue
-            diff = set(keep_dims).difference(narray.dims)
-            if len(diff) > 0:
-                raise ValueError(f"Dimensions {diff} not in array at {npath}")
-            stack_dims = [x for x in narray.dims if x not in keep_dims]
-            if len(stack_dims) > 0:
-                node_arrays[npath] = narray.stack(dim={new_dim: stack_dims}).reset_index(stack_dims, drop=True)
-
-            to_reset = [name for name, coord in node_arrays[npath].coords.items() if name not in keep_dims or new_dim in coord.dims]
-            if reset_coords and len(to_reset) > 0:
-                node_arrays[npath] = node_arrays[npath].reset_coords(to_reset, drop=True)
-        return type(self)(nodetree_from_dict(node_arrays))
-
-    def set_path(self, path: str) -> Action:
-        """Create path for current node array
-
-        Parameters
-        ----------
-        path: str, new path for node array
-
-        Raises
-        ------
-        NotImplementedError if multiple node arrays are present
-        """
-        if len(self.nodes.leaves) > 1:
-            raise NotImplementedError("Multiple node arrays present, can not set single path")
-        return type(self)(nodetree_from_dict({path: nodetree_array(self.nodes)}))
-
-    def create_branches(self, expansion: dict[str, Payload]) -> Action:
-        """Create action containing new node arrays by splitting an existing node array
-        by the specified functions in expansion
-
-        Parameters
-        ----------
-        expansion: dict[str, Payload], dictionary of paths and functions to create
-        new node arrays. All paths must be branches extending from an existing path, and the functions
-        will be applied to the node array at the existing path to create the new node arrays at the
-        branched paths
-
-        Return
-        ------
-        Action
-        """
-        node_arrays = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        parent = os.path.commonpath(expansion.keys())
-        if parent not in node_arrays:
-            raise ValueError(f"Parent path {parent} not found in node tree")
-        node_arrays.pop(parent)
-        action = self.select(path=parent)
-        for path, func in expansion.items():
-            node_arrays[path] = nodetree_array(action.map(func).nodes, parent)
-        return type(self)(nodetree_from_dict(node_arrays))
-
-    def combine_branches(self, dim: str, path: Optional[str] = None, force: bool = False) -> Action:
-        """Combine node arrays for leaves along path into a single node array
-
-        Parameters
-        ----------
-        dim: str, dimension to concatenate arrays along. Either existing or new dimension
-        path: str, path along which leaf nodes will be concatenated into single array
-        force: bool, if True, then incompatible dimensions in node arrays are concatenated to ensure
-        each node array has the same dimensions.
-
-        Return
-        ------
-        Action
-
-        Raises
-        ------
-        ValueError if arrays along leaves are not compatible and force=False
-        """
-        action = self.select(path=path)
-        temp_dim = nodetree_new_dimension(action.nodes)
-        if force:
-            narrays: dict[str, xr.DataArray] = {apath: array for apath, array in nodetree_arrays(action.nodes)}
-            common_dims = list(set.intersection(*[set(x.dims) for x in narrays.values()]))
-            for apath in narrays.keys():
-                action = action.flatten(new_dim=temp_dim, keep_dims=common_dims, path=apath).concatenate(dim=temp_dim, path=apath)
-        new_array = xr.concat([x[1] for x in nodetree_arrays(action.nodes)], dim=dim, coords="different", compat="equals", join="exact")
-        if path:
-            node_arrays = {apath: array for apath, array in nodetree_arrays(self.nodes) if path not in apath}
-            node_arrays[path] = new_array
-        else:
-            node_arrays = {"/": new_array}
-        return type(self)(nodetree_from_dict(node_arrays))
-
-    def _validate_criteria(self, array: xr.DataArray, criteria: dict) -> tuple[bool, dict]:
-        keys = list(criteria.keys())
-        new_criteria = criteria.copy()
-        for key in keys:
-            if np.ndim(criteria[key]) == 1 and len(criteria[key]) == 1:
-                new_criteria[key] = criteria[key][0]
-            if key not in array.dims:
-                coords = array.coords.get(key, None)
-                if coords is None:
-                    return False, {}
-                coords = coords_to_list(coords.data)
-                if new_criteria[key] not in coords:
-                    return False, {}
-                if len(coords) == 1:
-                    new_criteria.pop(key)
-
-        # Remove from criteria coords that are dependent on other coords in criteria
-        dependencies = {name: [x for x in val.indexes.keys() if x != name] for name, val in array.coords.items()}
-        for key, dep in dependencies.items():
-            if key in new_criteria and any(d in new_criteria for d in dep):
-                new_criteria.pop(key)
-        return True, new_criteria
-
-    def _select(
-        self,
-        criteria: dict | None = None,
-        drop: bool = False,
-        path: Optional[str] = None,
-        expand: bool = False,
-        backend_method: Union[Literal["sel"], Literal["isel"]] = "sel",
-        **kwargs,
-    ) -> Action:
-        if backend_method not in ["sel", "isel"]:
-            raise ValueError(f"backend_method must be 'sel' or 'isel', got {backend_method}")
-        crit: dict = criteria or {}
-        crit.update(kwargs)
-
-        nodes = self.nodes if path is None else self.nodes[path]
-        new_nodes = {}
-        for npath, narray in nodetree_arrays(nodes):  # type: ignore[arg-type]
-            if expand:
-                keys = list(crit.keys())
-                its = tuple([x] if np.ndim(x) == 0 else x for x in crit.values())
-                crits = [dict(zip(keys, vals)) for vals in itertools.product(*its)]
-            else:
-                crits = [crit]
-            selected_arrays = []
-            for icrit in crits:
-                valid, new_criteria = self._validate_criteria(narray, icrit)
-                if valid:
-                    try:
-                        if backend_method == "sel":
-                            selected_array = narray.sel(**new_criteria, drop=drop)
-                        else:
-                            selected_array = narray.isel(**new_criteria, drop=drop)
-                        if expand:
-                            selected_array = selected_array.expand_dims({k: [v] for k, v in new_criteria.items()})
-                        selected_arrays.append(selected_array)
-                    except (KeyError, IndexError):
-                        pass
-            if len(selected_arrays) > 0:
-                new_nodes[npath] = xr.combine_by_coords(selected_arrays, coords="different", compat="identical")
-
-        if len(new_nodes) == 0:
-            raise IndexError(f"No nodes match select criteria {crit}")
-        return type(self)(nodetree_from_dict(new_nodes))
+        return type(self)(self.nodeqube.flatten(new_dim, keep_dims=set(keep_dims)))
 
     def select(
         self,
-        criteria: dict | None = None,
-        drop: bool = False,
-        path: Optional[str] = None,
-        expand: bool = False,
+        criteria: dict[str, Any] | None = None,
+        mode: str = "prune",
         **kwargs,
     ) -> Action:
         """Create action contaning nodes match selection criteria
@@ -849,24 +401,24 @@ class Action:
         Parameters
         ----------
         criteria: dict, key-value pairs specifying selection criteria
-        drop: bool, drop coord variables in criteria if True
-        path: str, path to select subset of nodes to operate on, if provided
-        expand: bool, whether to expand the selection criteria into all possible combinations
 
         Return
         ------
         Action
         """
-        return self._select(criteria=criteria, drop=drop, path=path, expand=expand, backend_method="sel", **kwargs)
+        criteria = criteria or {}
+        criteria.update(kwargs)
+        nodeqube = NodeQube.empty()
+        for crit in expand_datacube(criteria):
+            nodeqube.append(self.nodeqube.select(crit, mode=mode))
+
+        return type(self)(nodeqube)
 
     sel = select
 
     def iselect(
         self,
         criteria: dict | None = None,
-        drop: bool = False,
-        path: Optional[str] = None,
-        expand: bool = False,
         **kwargs,
     ) -> Action:
         """Create action contaning nodes match index selection criteria
@@ -882,7 +434,9 @@ class Action:
         ------
         Action
         """
-        return self._select(criteria=criteria, drop=drop, path=path, expand=expand, backend_method="isel", **kwargs)
+        criteria = criteria or {}
+        criteria.update(kwargs)
+        return type(self)(self.nodeqube.iselect(criteria))
 
     isel = iselect
 
@@ -891,11 +445,10 @@ class Action:
         dim: str,
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        return _combine_nodes(self, "concat", dim, batch_size, keep_dim, path, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
+        return _combine_nodes(self, "concat", dim, batch_size, keep_dim, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
 
     def stack(
         self,
@@ -903,7 +456,6 @@ class Action:
         batch_size: int = 0,
         keep_dim: bool = False,
         axis: int = 0,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
@@ -913,7 +465,6 @@ class Action:
             dim,
             batch_size,
             keep_dim,
-            path,
             node_metadata=node_metadata,
             backend_kwargs={"axis": axis, **backend_kwargs},
         )
@@ -923,7 +474,6 @@ class Action:
         dim: str = "",
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
@@ -934,7 +484,6 @@ class Action:
                 static_input_kw={"backend_kwargs": backend_kwargs},
             ),
             dim=dim,
-            path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
             node_metadata=node_metadata,
@@ -942,92 +491,76 @@ class Action:
 
     def mean(
         self,
-        dim: str = "",
+        dim: str,
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        action = self
-        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
-            if len(dim) == 0:
-                dim = str(narray.dims[0])
-            size = narray.sizes[dim]
-
-            if batch_size <= 1 or batch_size >= size:
-                action = action.reduce(
-                    create_task_instance(
-                        backends.method,
-                        static_input_ps=["mean"],
-                        static_input_kw={"backend_kwargs": backend_kwargs},
-                    ),
-                    dim=dim,
-                    path=npath,
-                    keep_dim=keep_dim,
-                    node_metadata=node_metadata,
-                )
-            else:
-                action = action.sum(
-                    dim=dim,
-                    path=npath,
-                    batch_size=batch_size,
-                    keep_dim=keep_dim,
-                    **backend_kwargs,
-                    node_metadata=node_metadata,
-                ).divide(size, path=npath, node_metadata=node_metadata)
+        size = len(self.nodeqube.axes()[dim])
+        if batch_size <= 1 or batch_size >= size:
+            action = self.reduce(
+                create_task_instance(
+                    backends.method,
+                    static_input_ps=["mean"],
+                    static_input_kw={"backend_kwargs": backend_kwargs},
+                ),
+                dim=dim,
+                keep_dim=keep_dim,
+                node_metadata=node_metadata,
+            )
+        else:
+            action = self.sum(
+                dim=dim,
+                batch_size=batch_size,
+                keep_dim=keep_dim,
+                backend_kwargs=backend_kwargs,
+                node_metadata=node_metadata,
+            ).divide(size, node_metadata=node_metadata)
         return action
 
     def std(
         self,
-        dim: str = "",
+        dim: str,
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        action = self
-        for npath, narray in nodetree_arrays(self.select(path=path).nodes):
-            if len(dim) == 0:
-                dim = str(narray.dims[0])
-            size = narray.sizes[dim]
+        size = len(self.nodeqube.axes()[dim])
+        if batch_size <= 1 or batch_size >= size:
+            action = self.reduce(
+                create_task_instance(
+                    backends.method,
+                    static_input_ps=["std"],
+                    static_input_kw={"backend_kwargs": backend_kwargs},
+                ),
+                dim=dim,
+                keep_dim=keep_dim,
+                node_metadata=node_metadata,
+            )
 
-            if batch_size <= 1 or batch_size >= size:
-                action = action.reduce(
-                    create_task_instance(
-                        backends.method,
-                        static_input_ps=["std"],
-                        static_input_kw={"backend_kwargs": backend_kwargs},
-                    ),
-                    dim=dim,
-                    path=npath,
-                    node_metadata=node_metadata,
-                )
-
-            else:
-                mean_sq = action.mean(
-                    dim=dim,
-                    path=npath,
-                    batch_size=batch_size,
-                    keep_dim=keep_dim,
-                    **backend_kwargs,
-                    node_metadata=node_metadata,
-                ).power(2, node_metadata=node_metadata, path=npath)
-                norm = (
-                    action.power(2, node_metadata=node_metadata, path=npath)
-                    .sum(dim=dim, path=npath, batch_size=batch_size, keep_dim=keep_dim, **backend_kwargs, node_metadata=node_metadata)
-                    .divide(size, node_metadata=node_metadata, path=npath)
-                )
-                action = norm.subtract(mean_sq, node_metadata=node_metadata, path=npath).power(0.5, node_metadata=node_metadata, path=npath)
+        else:
+            mean_sq = self.mean(
+                dim=dim,
+                batch_size=batch_size,
+                keep_dim=keep_dim,
+                backend_kwargs=backend_kwargs,
+                node_metadata=node_metadata,
+            ).power(2, node_metadata=node_metadata)
+            norm = (
+                self.power(2, node_metadata=node_metadata)
+                .sum(dim=dim, batch_size=batch_size, keep_dim=keep_dim, backend_kwargs=backend_kwargs, node_metadata=node_metadata)
+                .divide(size, node_metadata=node_metadata)
+            )
+            action = norm.subtract(mean_sq, node_metadata=node_metadata).power(0.5, node_metadata=node_metadata)
         return action
 
     def max(
         self,
-        dim: str = "",
+        dim: str,
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
@@ -1038,7 +571,6 @@ class Action:
                 static_input_kw={"backend_kwargs": backend_kwargs},
             ),
             dim=dim,
-            path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
             node_metadata=node_metadata,
@@ -1046,10 +578,9 @@ class Action:
 
     def min(
         self,
-        dim: str = "",
+        dim: str,
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
@@ -1060,7 +591,6 @@ class Action:
                 static_input_kw={"backend_kwargs": backend_kwargs},
             ),
             dim=dim,
-            path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
             node_metadata=node_metadata,
@@ -1068,10 +598,9 @@ class Action:
 
     def prod(
         self,
-        dim: str = "",
+        dim: str,
         batch_size: int = 0,
         keep_dim: bool = False,
-        path: Optional[str] = None,
         backend_kwargs: dict = {},
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
@@ -1082,7 +611,6 @@ class Action:
                 static_input_kw={"backend_kwargs": backend_kwargs},
             ),
             dim=dim,
-            path=path,
             batch_size=batch_size,
             keep_dim=keep_dim,
             node_metadata=node_metadata,
@@ -1092,20 +620,23 @@ class Action:
         self,
         method: str,
         other: Union[Action, float],
-        path: Optional[str] = None,
         node_metadata: NodeMetadata | None = None,
         backend_kwargs: Optional[dict] = None,
     ) -> Action:
         if isinstance(other, Action):
-            return self.join(other, "**datatype**", match_coord_values=True).reduce(
-                create_task_instance(
-                    backends.method,
-                    static_input_ps=[method],
-                    static_input_kw={"backend_kwargs": backend_kwargs},
-                ),
-                dim="**datatype**",
-                path=path,
-                node_metadata=node_metadata,
+            other = other.add_scalar_dimension("**datatype**", 1)
+            return (
+                self.add_scalar_dimension("**datatype**", 0)
+                .join(other)
+                .reduce(
+                    create_task_instance(
+                        backends.method,
+                        static_input_ps=[method],
+                        static_input_kw={"backend_kwargs": backend_kwargs},
+                    ),
+                    dim="**datatype**",
+                    node_metadata=node_metadata,
+                )
             )
         return self.map(
             create_task_instance(
@@ -1113,98 +644,57 @@ class Action:
                 static_input_ps=[method, Node.Index(0), other],
                 static_input_kw={"backend_kwargs": backend_kwargs},
             ),
-            path=path,
             node_metadata=node_metadata,
         )
 
     def subtract(
         self,
         other: Union[Action, float],
-        path: Optional[str] = None,
         backend_kwargs: Optional[dict] = None,
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        return self.__two_arg_method("subtract", other, path=path, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
+        return self.__two_arg_method("subtract", other, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
 
     def divide(
         self,
         other: Union[Action, float],
-        path: Optional[str] = None,
         backend_kwargs: Optional[dict] = None,
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        return self.__two_arg_method("divide", other, path=path, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
+        return self.__two_arg_method("divide", other, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
 
     def add(
         self,
         other: Union[Action, float],
-        path: Optional[str] = None,
         backend_kwargs: Optional[dict] = None,
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        return self.__two_arg_method("add", other, path=path, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
+        return self.__two_arg_method("add", other, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
 
     def multiply(
         self,
         other: Union[Action, float],
-        path: Optional[str] = None,
         backend_kwargs: Optional[dict] = None,
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        return self.__two_arg_method("multiply", other, path=path, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
+        return self.__two_arg_method("multiply", other, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
 
     def power(
         self,
         other: Union[Action, float],
-        path: Optional[str] = None,
         backend_kwargs: Optional[dict] = None,
         node_metadata: NodeMetadata | None = None,
     ) -> Action:
-        return self.__two_arg_method("power", other, path=path, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
+        return self.__two_arg_method("pow", other, node_metadata=node_metadata, backend_kwargs=backend_kwargs)
 
-    def set_scalar_coords(
-        self,
-        coords: dict[str, Union[int, str]],
-        override: bool = False,
-        make_dim: bool = False,
-    ):
-        """
-        Set scalar coordinates for the nodes in the action.
+    def add_scalar_dimension(self, name: str, value: Any, override: bool = False):
+        nodeqube = self.nodeqube
+        if override:
+            nodeqube = self.drop_scalar_dimension(name).nodeqube
+        return type(self)(nodeqube.add_scalar_dimension(name, value))
 
-        Parameters
-        ----------
-        coords : dict[str, Union[int, str]], dictionary of coordinates to set.
-        override : bool, optional, whether to override existing coordinates, by default False
-        make_dim : bool, optional, whether to create a new dimension for the coordinate, by default False
-        """
-        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        for dim, value in coords.items():
-            for npath, narray in nodetree.items():
-                if override and dim in narray.dims and len(narray.coords[dim]) == 1:
-                    narray = narray.squeeze(dim, drop=True)
-                narray = narray.expand_dims({dim: [value]})
-
-                if not make_dim:
-                    narray = narray.squeeze(dim, drop=False)
-                nodetree[npath] = narray
-        self.nodes = nodetree_from_dict(nodetree)
-
-    def _add_dimension(self, name: str, value: Any, axis: Optional[int] = None, path: Optional[str] = None, override: bool = False):
-        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        selection = self.select(path=path)
-        for npath, narray in nodetree_arrays(selection.nodes):
-            if override and name in narray.dims and len(narray.coords[name]) == 1:
-                narray = narray.squeeze(name, drop=True)
-            nodetree[npath] = narray.expand_dims({name: [value]}, axis)
-        self.nodes = nodetree_from_dict(nodetree)
-
-    def _squeeze_dimension(self, dim_name: str, drop: bool = False, path: Optional[str] = None):
-        nodetree = {npath: narray for npath, narray in nodetree_arrays(self.nodes)}
-        selection = self.select(path=path)
-        for npath, narray in nodetree_arrays(selection.nodes):
-            if dim_name in narray.dims and len(narray.coords[dim_name]) == 1:
-                nodetree[npath] = narray.squeeze(dim_name, drop=drop)
-        self.nodes = nodetree_from_dict(nodetree)
+    def drop_scalar_dimension(self, dim: str) -> Action:
+        return type(self)(self.nodeqube.drop_scalar_dimension(dim))
 
     def __getattr__(self, attr):
         if attr in Action.REGISTRY:
@@ -1225,7 +715,7 @@ class RegisteredAction:
             raise AttributeError(f"{self.action.__name__} has no attribute {func!r}")
 
         def cast(origin_action: Action, new_action: type[Action]):
-            return new_action(origin_action.nodes)
+            return new_action(origin_action.nodeqube)
 
         @functools.wraps(getattr(self.action, func))
         def return_cast(*args, **kwargs):
@@ -1241,14 +731,7 @@ class RegisteredAction:
 def _batch_transform(action: Action, selection: dict, payload: Payload) -> Action:
     selected = action.select(selection, drop=True)
     dim = list(selection.keys())[0]
-    for npath, narray in nodetree_arrays(selected.nodes):
-        if dim not in narray.dims:
-            continue
-        if narray.sizes[dim] == 1:
-            selected._squeeze_dimension(dim, drop=True, path=npath)
-        else:
-            selected = selected.reduce(payload, dim=dim, path=npath)
-    return selected
+    return selected.reduce(payload, dim=dim)
 
 
 def _expand_transform(action: Action, index: int | Hashable, dim: int | str, backend_kwargs: dict = {}) -> Action:
@@ -1268,7 +751,6 @@ def _combine_nodes(
     dim: str,
     batch_size: int = 0,
     keep_dim: bool = False,
-    path: Optional[str] = None,
     backend_kwargs: Optional[dict] = None,
     node_metadata: NodeMetadata | None = None,
 ) -> Action:
@@ -1281,7 +763,6 @@ def _combine_nodes(
             static_input_kw=backend_kwargs,
         ),
         dim=dim,
-        path=path,
         batch_size=batch_size,
         keep_dim=keep_dim,
         node_metadata=node_metadata,
@@ -1289,66 +770,55 @@ def _combine_nodes(
 
 
 def from_source(
-    payloads_list: (np.ndarray[Any, Any] | dict[str, np.ndarray[Any, Any]] | list[Any] | Payload),  # values are Callables
-    yields: Coord | None = None,
-    dims: list | None = None,
-    coords: dict | None = None,
+    payloads: Payload | dict[NodeKey, Payload],
+    datacubes: Optional[Datacube | list[Datacube]] = None,
     node_metadata: NodeMetadata | None = None,
+    yields: Coord | None = None,
     action=Action,
 ) -> Action:
-    payloads_dict: dict[str, Any] = (  # type: ignore[assignment]
-        payloads_list if isinstance(payloads_list, dict) else {"/": payloads_list}
-    )
+    qube = Qube.empty()
+    if datacubes is None:
+        if not isinstance(payloads, dict):
+            raise ValueError("If datacubes is None, payloads must be a dict of payloads")
+        for key in payloads.keys():
+            qube.append_datacube(cast(NodeKey, key).to_datacube())
+    else:
+        datacubes = [datacubes] if isinstance(datacubes, dict) else datacubes
+        if isinstance(payloads, dict) and len(payloads) != len(datacubes):
+            raise ValueError("Length of payloads dict must match length of unique datacubes")
+        for datacube in datacubes:
+            if isinstance(payloads, dict) and NodeKey(datacube) not in payloads:
+                raise ValueError(f"Missing payload for datacube: {datacube}")
+            qube.append_datacube(datacube)
 
-    node_arrays = {}
-    for nindex, (path, parray) in enumerate(payloads_dict.items()):
-        payloads = xr.DataArray(parray, dims=dims, coords=coords)
-        nodes = xr.DataArray(np.empty(payloads.shape, dtype=object), dims=dims, coords=coords)
-        it = np.nditer(payloads, flags=["multi_index", "refs_ok"])  # type: ignore[call-overload]
-        # Ensure all source nodes have a unique name
-        node_names = set()
-        for item in it:
-            pit = item[()]  # type: ignore
-            payload = pit
-            name = str(payload)
-            if name in node_names:
-                name += str(it.multi_index)
-            node_names.add(name)
-            nodes[it.multi_index] = Node(payload, name=name, num_outputs=len(yields[1]) if yields else 1, metadata=node_metadata)
-        node_arrays[path] = nodes
+    nodes = {}
+    for index, unique_datacube in enumerate(functools.reduce(add, [expand_datacube(x) for x in qube_to_datacubes(qube)])):
+        key = NodeKey(unique_datacube)
+        nodes[key] = Node(
+            payloads[key] if isinstance(payloads, dict) else payloads,
+            num_outputs=len(yields[1]) if yields else 1,
+            name=str(index),
+            metadata=node_metadata,
+        )
 
     return action(
-        nodetree_from_dict(node_arrays),
+        NodeQube(qube, nodes),
         yields,
     )
 
 
-def merge(*args, **kwargs) -> Action:
-    """Merge node arrays in actions. If provided as keyword arguments, the key
-    is used as the root path for the action's node arrays. If multiple arrays exist along
-    the same path, they are combined by coordinates.
+def merge(*actions) -> Action:
+    """Merge nodequbes in actions.
 
 
     Return
     ------
     Action
     """
-    actions = list(args)
-    for path, action in kwargs.items():
-        action = action.set_path(path)
-        actions.append(action)
-    new_nodes = combine_by_coords([action.nodes for action in actions])
-    action_type = args[0].__class__ if len(args) > 0 else list(kwargs.values())[0].__class__
-    return action_type(new_nodes)
+    final_action = actions[0]
+    for action in actions[1:]:
+        final_action = final_action.join(action)
+    return final_action
 
 
 Action.register("default", Action)
-
-__all__ = [
-    "Action",
-    "Payload",
-    "NodeMetadataContext",
-    "Node",
-    "from_source",
-    "merge",
-]

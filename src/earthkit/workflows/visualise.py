@@ -10,7 +10,6 @@ from typing import Callable
 
 from .graph import Graph, Node
 from .graph.pyvis import PRESET_OPTIONS, edge_info, node_info, to_pyvis
-from .taskgraph import Task
 
 
 def node_info_ext(node):
@@ -33,9 +32,6 @@ def node_info_ext(node):
         if kwargs:
             t.append("Keyword arguments:")
             t.extend(f"- {k!r}: {v!r}" for k, v in kwargs.items())
-        if isinstance(node, Task):
-            t.append(f"Duration: {node.duration}")
-            t.append(f"Memory: {node.memory}")
         info["title"] = "\n".join(t)
 
     return info
