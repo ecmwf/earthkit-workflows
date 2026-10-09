@@ -72,6 +72,7 @@ class TaskSequence:
     tasks: list[TaskId]  # to be executed in the given order
     publish: set[DatasetId]  # set of outputs to be published
     extra_env: list[tuple[str, str]]  # extra env var to set
+    requires_new_worker: bool = False  # whether the first task needs a freshly started worker
 
 
 @dataclass(frozen=True)

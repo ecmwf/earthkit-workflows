@@ -52,6 +52,7 @@ def act(bridge: Bridge, assignment: Assignment, reporter: Reporter) -> None:
         tasks=assignment.tasks,
         publish=assignment.outputs,
         extra_env=assignment.extra_env,
+        requires_new_worker=assignment.requires_new_worker,
     )
 
     for task in assignment.tasks:

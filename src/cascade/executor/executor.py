@@ -397,6 +397,16 @@ class Executor:
             except Exception as e:
                 logger.warning(f"failed to cleanup old worker venv: {repr(e)}")
 
+    def _restart_worker(self, worker: WorkerId, task_sequence: TaskSequence) -> None:
+        """Shuts down the current worker process and starts a new one, which will receive the task sequence"""
+        handle = self.workers[worker]
+        if handle is None:
+            raise CascadeInternalError("unexpected restart of worker without handle")
+        callback(worker_address(worker, handle.attempt_cnt), WorkerShutdown())
+        self.old_workers.append((handle.process, handle.venv_dir))
+        logger.debug(f"will restart worker {worker} with attempt {handle.attempt_cnt + 1}")
+        self.workers[worker] = self._start_worker(worker, handle.attempt_cnt + 1, task_sequence)
+
     def recv_loop(self) -> None:
         logger.debug("entering recv loop")
         while not self.terminating:
@@ -417,7 +427,11 @@ class Executor:
                         if handle is None or handle.process.poll() is not None:
                             # unexpected exit -> InfrastructureError
                             raise CascadeInfrastructureError(f"worker process {m.worker} is not alive")
-                        if m.worker in self.worker_awaits:
+                        if m.requires_new_worker:
+                            # TODO do not restart if the worker is new
+                            # TODO how to notify the controller this has actually happened?
+                            self._restart_worker(m.worker, m)
+                        elif m.worker in self.worker_awaits:
                             if self.worker_awaits[m.worker] is not None:
                                 raise CascadeInternalError(f"double enqueue for {m.worker}")
                             else:
@@ -466,13 +480,7 @@ class Executor:
                             else:
                                 logger.debug(f"worker {m.worker} ready, no work enqueued")
                     elif isinstance(m, RunnerRestartRequest):
-                        handle = self.workers[m.worker]
-                        if handle is None:
-                            raise CascadeInternalError("unexpected restart from worker without handle")
-                        callback(worker_address(m.worker, handle.attempt_cnt), WorkerShutdown())
-                        self.old_workers.append((handle.process, handle.venv_dir))
-                        logger.debug(f"will restart worker {m.worker} with attempt {handle.attempt_cnt + 1}")
-                        self.workers[m.worker] = self._start_worker(m.worker, handle.attempt_cnt + 1, m.remainder)
+                        self._restart_worker(m.worker, m.remainder)
                         self.to_controller(m)
                     elif isinstance(m, TaskFailure):
                         logger.debug(f"Forwarding task failure {m}")
