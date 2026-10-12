@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Any, Callable
 
+from cascade.deployment.isolator import dump_isolation
 from cascade.executor.msg import BackboneAddress
 from cascade.executor.platform import get_fdcount
 from cascade.executor.runner.memory import Memory
@@ -83,6 +84,13 @@ def run(taskId: TaskId, executionContext: ExecutionContext, memory: Memory) -> N
         raise CascadeInternalError(f"no output key for task {taskId}")
     mark({"task": taskId, "action": TaskLifecycle.loaded})
     prep_end = perf_counter_ns()
+
+    # record for isolated reproduction -- must be the last step before the invocation
+    if task.definition.isolate:
+        try:
+            dump_isolation(func if task.definition.func is not None else task.definition.entrypoint, args, kwargs)
+        except Exception:
+            logger.exception(f"failed to record isolation for {taskId=}, continuing")
 
     # invoke
     try:
