@@ -5,32 +5,3 @@
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-
-import functools
-
-import numpy as np
-import pytest
-
-from earthkit.workflows.fluent import create_task_instance, from_source
-
-
-@pytest.fixture(scope="function")
-def task_graph(request):
-    func = getattr(request, "param", functools.partial(np.random.rand, 2, 3))
-    return (
-        from_source(
-            [
-                np.fromiter(
-                    [func for _ in range(6)],
-                    dtype=object,
-                )
-                for _ in range(7)
-            ],
-            dims=["x", "y"],
-        )
-        .mean("x")
-        .min("y")
-        .expand("z", internal_dim=1, dim_size=3, axis=0)
-        .map([create_task_instance(lambda x, a=a: x * a) for a in range(1, 4)])
-        .graph()
-    )

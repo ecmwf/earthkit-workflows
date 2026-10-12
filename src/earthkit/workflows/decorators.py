@@ -12,7 +12,7 @@ from typing import Any, Callable, Concatenate, ParamSpec, ParamSpecArgs, TypeVar
 from cascade.low.core import TaskInstance
 
 from .fluent import create_task_instance
-from .metadata import Artifacts, Requirements
+from .metadata import Requirements
 
 P = ParamSpec("P")
 R = TypeVar("R")
