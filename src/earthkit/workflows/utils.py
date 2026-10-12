@@ -24,7 +24,6 @@ def expand_datacube(datacube: dict[str, Any], dims: Optional[list[str]] = None) 
 
 def qube_to_datacubes(qube: Qube, expand: bool = False) -> Iterator[dict[str, Any]]:
     for cube in qube.to_datacubes():
-        cube.pop("root", None)
         if not expand:
             if len(cube) == 0:
                 continue
