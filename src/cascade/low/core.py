@@ -52,6 +52,10 @@ class TaskDefinition(CascadeBaseModel):
     )
     needs_gpu: bool = Field(False)  # NOTE unstable contract, will change. Note we support at most one GPU per task
     requires_new_worker: bool = Field(False)  # NOTE unstable contract, will change. Task must start on a clean worker
+    isolate: bool = Field(
+        False,
+        description="suspicious task: right before invoking the callable, record everything needed to re-run it in isolation (see cascade.deployment.isolator)",
+    )
 
     @staticmethod
     def func_dec(f: str) -> Callable:
