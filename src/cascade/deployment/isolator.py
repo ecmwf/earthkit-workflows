@@ -42,18 +42,9 @@ def _enc(value: Any) -> str:
 
 
 def _pip_freeze() -> str:
-    candidates = [
-        [sys.executable, "-m", "pip", "freeze"],
-        ["uv", "pip", "freeze", "--python", sys.executable],
-    ]
-    errors: list[str] = []
-    for cmd in candidates:
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return res.stdout
-        except (OSError, subprocess.CalledProcessError) as e:
-            errors.append(f"{cmd[0]}: {e!r}")
-    raise RuntimeError(f"unable to obtain pip freeze: {errors}")
+    freezer = ["uv", "pip", "freeze", "--python", sys.executable]
+    res = subprocess.run(freezer, capture_output=True, text=True, check=True)
+    return res.stdout
 
 
 def make_output_dir() -> Path:
@@ -83,13 +74,8 @@ PYTHON_VERSION={shlex.quote(version)}
 {exports}
 
 # ---- venv ----
-if command -v uv >/dev/null 2>&1; then
-    uv venv --python "$PYTHON_VERSION" {VENV_DIR}
-    INSTALL=(uv pip install --python {VENV_DIR}/bin/python)
-else
-    "python${{PYTHON_VERSION%.*}}" -m venv {VENV_DIR}
-    INSTALL=({VENV_DIR}/bin/python -m pip install)
-fi
+uv venv --python "$PYTHON_VERSION" {VENV_DIR}
+INSTALL=(uv pip install --python {VENV_DIR}/bin/python)
 
 # ---- pip requirements (pip freeze output) ----
 cat > requirements.txt <<'CASCADE_ISOLATOR_REQUIREMENTS_EOF'
@@ -163,5 +149,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     main()
