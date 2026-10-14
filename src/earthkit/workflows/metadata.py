@@ -18,6 +18,10 @@ class Artifacts(CascadeBaseModel):
 
 class BuilderMetadata(CascadeBaseModel):
     blockId: Optional[str] = Field(description="unique identifier for the block that generated this node", default=None)
+    display_name: Optional[str] = Field(description="textual description of the output produced by this node", default=None)
+    dimension_kvs: Optional[list[tuple[str, str]]] = Field(
+        description="key-value pairs describing the position of the output of this node, for filtering and sorting", default=None
+    )
 
 
 class NodeMetadata(CascadeBaseModel):
@@ -37,6 +41,8 @@ def update_artifacts(mInto: Artifacts, mFrom: Artifacts) -> None:
 
 def update_builder_metadata(mInto: BuilderMetadata, mFrom: BuilderMetadata) -> None:
     mInto.blockId = mFrom.blockId or mInto.blockId
+    mInto.display_name = mFrom.display_name or mInto.display_name
+    mInto.dimension_kvs = mFrom.dimension_kvs or mInto.dimension_kvs
 
 
 def update_node_metadata(mInto: NodeMetadata, mFrom: NodeMetadata) -> None:

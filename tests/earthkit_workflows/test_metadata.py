@@ -120,6 +120,18 @@ def test_node_building_context_basic():
     )
 
 
+def test_node_building_context_display_name_and_dimensions():
+    """display_name and dimension_kvs propagate from the context, inner values override outer ones."""
+    action = mock_action((1, 1))
+    with NodeMetadataContext(builder=BuilderMetadata(blockId="b", display_name="outer", dimension_kvs=[("a", "1")])):
+        with NodeMetadataContext(builder=BuilderMetadata(display_name="inner")):
+            mapped_action = action.map(lambda x: x)
+    nodes = np.atleast_1d(nodetree_array(mapped_action.nodes).values).flatten()
+    assert all(n.metadata.builder.blockId == "b" for n in nodes)
+    assert all(n.metadata.builder.display_name == "inner" for n in nodes)
+    assert all(n.metadata.builder.dimension_kvs == [("a", "1")] for n in nodes)
+
+
 def test_node_building_context_not_applied_outside():
     """Metadata is NOT injected into Payloads/Nodes created outside the context."""
     action = mock_action((1, 1))
