@@ -12,17 +12,18 @@ Interaction with shm
 
 import logging
 import sys
-from contextlib import AbstractContextManager
-from typing import Any, Iterable, Literal
+from contextlib import AbstractContextManager, contextmanager
+from typing import Any, Generator, Iterable, Literal
 
 import cascade.executor.serde as serde
 import cascade.shm.client as shm_client
 from cascade.executor.comms import callback
 from cascade.executor.msg import BackboneAddress, DatasetPublished
 from cascade.low.core import NO_OUTPUT_PLACEHOLDER, DatasetId, WorkerId
-from cascade.low.exceptions import CascadeInternalError
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError
 from cascade.low.func import md5hash24
 from cascade.low.tracing import Microtrace, timer
+from cascade.shm.func import ShmInfrastructureError, ShmInternalError
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,27 @@ logger = logging.getLogger(__name__)
 def ds2shmid(ds: DatasetId) -> str:
     # we cant use too long file names for shm, https://trac.macports.org/ticket/64806
     return md5hash24(ds.task + ds.output)
+
+
+@contextmanager
+def shm_guard(ds: DatasetId, op: str) -> Generator[None, None, None]:
+    """Converts shm failures into cascade exceptions, always recording which dataset and
+    operation was being addressed. Original exception is retained as parent.
+    ConflictError is deliberately not converted -- callers handle it explicitly."""
+    # TODO how would we make this application mandatory, or less easy to forget?
+    # We could put it into the shm.client or allocated buffer classes, but we dont
+    # want to pollute shm codebase with cascade reporting context...
+    try:
+        yield
+    except CascadeError:
+        raise
+    except ShmInfrastructureError as e:
+        raise CascadeInfrastructureError(f"shm failure during {op} of dataset {ds}", parent=e) from e
+    except ShmInternalError as e:
+        raise CascadeInternalError(f"shm failure during {op} of dataset {ds}", parent=e) from e
+    except OSError as e:
+        # server socket gone or refused, SharedMemory segment missing or out of space
+        raise CascadeInfrastructureError(f"shm unavailable during {op} of dataset {ds}", parent=e) from e
 
 
 class Memory(AbstractContextManager):
@@ -52,9 +74,10 @@ class Memory(AbstractContextManager):
         shmid = ds2shmid(outputId)
         result_ser, deser_fun = timer(serde.ser_output, Microtrace.wrk_ser)(outputValue, outputSchema)
         l = len(result_ser)
-        rbuf = shm_client.allocate(shmid, l, deser_fun)
-        rbuf.view()[:l] = result_ser
-        rbuf.close()
+        with shm_guard(outputId, "publish"):
+            rbuf = shm_client.allocate(shmid, l, deser_fun)
+            rbuf.view()[:l] = result_ser
+            rbuf.close()
         callback(self.callback, self._build_publish_message(outputId, isTaskCompletion))
 
     def additional_publish_local(self, outputIds: Iterable[tuple[DatasetId, str]]):
@@ -90,7 +113,8 @@ class Memory(AbstractContextManager):
                 raise CascadeInternalError(f"internal data corruption for {inputId}")
             shmid = ds2shmid(inputId)
             logger.debug(f"asking for {inputId} via {shmid}")
-            buf = shm_client.get(shmid)
+            with shm_guard(inputId, "get"):
+                buf = shm_client.get(shmid)
             self.bufs[inputId] = buf
             self.local[inputId] = timer(serde.des_output, Microtrace.wrk_deser)(buf.view(), annotation, buf.deser_fun)
 
@@ -104,7 +128,8 @@ class Memory(AbstractContextManager):
         if ds in self.bufs:
             logger.debug(f"popping buf {ds}")
             buf = self.bufs.pop(ds)
-            buf.close()
+            with shm_guard(ds, "close"):
+                buf.close()
 
     def flush(self, datasets: set[DatasetId] = set()) -> None:
         # NOTE poor man's memory management -- just drop those locals that didn't come from cashme. Called

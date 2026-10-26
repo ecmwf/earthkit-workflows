@@ -20,7 +20,7 @@ import subprocess
 import tempfile
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from multiprocessing.shared_memory import SharedMemory
 from typing import Iterable
 
@@ -60,7 +60,7 @@ from cascade.executor.msg import (
 )
 from cascade.executor.runner.setup import RunnerContext, WorkerProcessHandle
 from cascade.low.core import DatasetId, HostId, JobInstanceRich, TaskId, WorkerId, hostId2localIdx
-from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, ser
+from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, CascadeUserError, des, ser
 from cascade.low.func import md5hash24
 from cascade.low.tracing import TaskLifecycle, label, mark
 from cascade.low.views import param_source
@@ -363,6 +363,16 @@ class Executor:
         # including for-this-purpose introduced & guaranteed controller2worker heartbeat, arrived
         # for a long time, we shut down
 
+    def _shm_status(self) -> dict[str, str]:
+        """Cheap, io-free check of the shm server process. Empty if it is alive, otherwise
+        a context entry describing the state, to be attached to a failure being reported"""
+        proc = getattr(self, "shm_process", None)
+        if proc is None:
+            return {"shm": "not started"}
+        if proc.is_alive():
+            return {}
+        return {"shm": f"server {proc.pid} down, exitcode={proc.exitcode}"}
+
     def healthcheck(self) -> None:
         """Checks that no process died, and sends a heartbeat message in case the last message to controller
         was too long ago
@@ -374,7 +384,9 @@ class Executor:
                 raise CascadeInternalError(f"process on {k} is not alive")
             elif procFail(e.process.poll()):
                 # we assume low memory setting or callable issue -> UserError
-                raise CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.poll()}")
+                err = CascadeUserError(f"process on {k} failed to terminate correctly: {e.process.pid} -> {e.process.poll()}")
+                err.add_context(self._shm_status())  # a worker crash may be a consequence of shm failure
+                raise err
         if procFail(self.shm_process.exitcode):
             # possibly low memory setting but this is system config -> InfrastructureError
             raise CascadeInfrastructureError(f"shm server {self.shm_process.pid} failed with {self.shm_process.exitcode}")
@@ -485,6 +497,10 @@ class Executor:
                         self.to_controller(m)
                     elif isinstance(m, TaskFailure):
                         logger.debug(f"Forwarding task failure {m}")
+                        shm_status = self._shm_status()
+                        if shm_status:
+                            # NOTE worker guarantees detail is a serialized CascadeError
+                            m = replace(m, detail=ser(des(m.detail), shm_status))
                         self.to_controller(m)
                     elif isinstance(m, DatasetPublished):
                         for worker in self.workers:

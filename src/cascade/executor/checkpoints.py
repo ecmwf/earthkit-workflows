@@ -15,7 +15,7 @@ import pathlib
 
 from cascade.executor.msg import DatasetPersistCommand, DatasetRetrieveCommand
 from cascade.executor.platform import advise_seqread
-from cascade.executor.runner.memory import ds2shmid
+from cascade.executor.runner.memory import ds2shmid, shm_guard
 from cascade.executor.serde import DefaultSerde
 from cascade.low.core import CheckpointSpec, DatasetId, HostId
 from cascade.low.exceptions import CascadeInternalError
@@ -111,7 +111,8 @@ def retrieve_dataset(command: DatasetRetrieveCommand) -> AllocatedBuffer:
                 advise_seqread(fd)
                 size = os.fstat(fd).st_size
                 # TODO dont use default serde, get it via the command
-                buf = allocate(shm_key, size, DefaultSerde)
+                with shm_guard(command.ds, "allocate"):
+                    buf = allocate(shm_key, size, DefaultSerde)
                 # once on 3.14+, replace with this
                 # os.readinto(fd, buf.view())
                 with io.FileIO(fd, closefd=False) as raw_io:

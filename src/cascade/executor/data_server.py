@@ -42,7 +42,7 @@ from cascade.executor.msg import (
     DatasetTransmitPayloadHeader,
     Syn,
 )
-from cascade.executor.runner.memory import ds2shmid
+from cascade.executor.runner.memory import ds2shmid, shm_guard
 from cascade.low.core import DatasetId, HostId
 from cascade.low.exceptions import CascadeError, CascadeInfrastructureError, CascadeInternalError, ser
 from cascade.low.func import assert_never
@@ -106,11 +106,12 @@ class DataServer:
         try:
             l = len(payload.value)
             try:
-                buf = shm_client.allocate(
-                    key=ds2shmid(payload.header.ds),
-                    l=l,
-                    deser_fun=payload.header.deser_fun,
-                )
+                with shm_guard(payload.header.ds, "store"):
+                    buf = shm_client.allocate(
+                        key=ds2shmid(payload.header.ds),
+                        l=l,
+                        deser_fun=payload.header.deser_fun,
+                    )
             except shm_client.ConflictError as e:
                 # NOTE this branch is for situations where the controller issued redundantly two transmits
                 logger.warning(f"store of {payload.header.ds} failed with {e}, presumably already computed; continuing")
@@ -123,8 +124,9 @@ class DataServer:
                     }
                 )
                 return time_ns()
-            buf.view()[:l] = payload.value
-            buf.close()
+            with shm_guard(payload.header.ds, "store"):
+                buf.view()[:l] = payload.value
+                buf.close()
             callback(
                 self.maddress,
                 DatasetPublished(
@@ -179,7 +181,8 @@ class DataServer:
         try:
             if command.source != self.host:
                 raise CascadeInternalError(f"invalid host in {command=}")
-            buf = shm_client.get(key=ds2shmid(command.ds))
+            with shm_guard(command.ds, "get"):
+                buf = shm_client.get(key=ds2shmid(command.ds))
             persist_dataset(command, buf)
             logger.debug(f"dataset for {command} persisted")
             callback(self.maddress, DatasetPersistSuccess(host=self.host, ds=command.ds))
@@ -204,7 +207,8 @@ class DataServer:
         try:
             if command.target == self.host or command.source != self.host:
                 raise CascadeInternalError(f"invalid {command=}")
-            buf = shm_client.get(key=ds2shmid(command.ds))
+            with shm_guard(command.ds, "get"):
+                buf = shm_client.get(key=ds2shmid(command.ds))
             mark(
                 {
                     "dataset": repr(command.ds),
@@ -316,7 +320,8 @@ class DataServer:
                                 invalidated.append(idx)
                         for idx in invalidated:
                             self.awaiting_confirmation.pop(idx)
-                        shm_client.purge(ds2shmid(m.ds))
+                        with shm_guard(m.ds, "purge"):
+                            shm_client.purge(ds2shmid(m.ds))
                         self.invalid.add(m.ds)
                     else:
                         raise CascadeInternalError(f"unexpected message type in data_server recv_loop: {type(m)}")
