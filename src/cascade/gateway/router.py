@@ -80,6 +80,9 @@ class JobRouter:
         self.jobs_queue: OrderedDict[JobId, api.JobSpec] = OrderedDict()
         # NOTE may contain jobs already evicted from `jobs`, if their processes are still running
         self.procs: dict[JobId, SpawnedJob] = {}
+        # NOTE completed jobs whose processes we have not yet collected -- the completion report arrives
+        # before the controller actually exits, so we retry at later opportunities. Subset of `procs` keys
+        self.pending_reap: set[JobId] = set()
         self.job_submission_order: list[JobId] = []
         self.completed_jobs = 0
         self.loggingConfig = loggingConfig
@@ -121,7 +124,30 @@ class JobRouter:
         self.maybe_spawn()
         return job_id, None
 
-    def maybe_evict_old_jobs(self) -> None:
+    def _reap(self) -> None:
+        """Non-blocking collection of exited processes of completed jobs, so that they dont linger as zombies"""
+        for job_id in list(self.pending_reap):
+            spawned = self.procs.get(job_id)
+            if spawned is None:
+                self.pending_reap.discard(job_id)
+                continue
+            # NOTE deliberately not `all(generator)`, which would short-circuit and leave later procs unpolled
+            exited = [proc.poll() is not None for proc in spawned.procs]
+            if not all(exited):
+                continue
+            if spawned.pgid is not None:
+                # NOTE whatever lingers in the group, eg executors orphaned by a crashed controller. Empty group
+                # gives ProcessLookupError. Reuse of the pgid by an unrelated group is very unlikely
+                try:
+                    os.killpg(spawned.pgid, signal.SIGKILL)
+                    logger.info(f"{job_id=} had remaining processes in group {spawned.pgid}, killed")
+                except (ProcessLookupError, PermissionError):
+                    pass
+            self.procs.pop(job_id)
+            self.pending_reap.discard(job_id)
+
+    def reap_and_maybe_evict(self) -> None:
+        self._reap()
         index = 0
         while self.completed_jobs > self.max_jobs_history and index < len(self.job_submission_order):
             job_id = self.job_submission_order[index]
@@ -132,11 +158,8 @@ class JobRouter:
             if not job.progress.completed:
                 index += 1
                 continue
+            # NOTE procs of the evicted job, if not yet reaped, stay in `procs` and `pending_reap`
             del self.jobs[job_id]
-            spawned = self.procs.get(job_id)
-            if spawned is not None and all(proc.poll() is not None for proc in spawned.procs):
-                # NOTE otherwise we keep it, to be terminated at shutdown
-                self.procs.pop(job_id)
             self.job_submission_order.pop(index)
             self.completed_jobs -= 1
         if self.completed_jobs > self.max_jobs_history:
@@ -147,11 +170,12 @@ class JobRouter:
                 len(self.job_submission_order),
             )
 
-    def job_became_completed(self) -> None:
+    def job_became_completed(self, job_id: JobId) -> None:
+        self.pending_reap.add(job_id)
         self.active_jobs -= 1
         self.completed_jobs += 1
         self.maybe_spawn()
-        self.maybe_evict_old_jobs()
+        self.reap_and_maybe_evict()
 
     def progress_of(self, job_ids: Iterable[JobId], detailed_report: bool = False) -> api.JobProgressResponse:
         if not job_ids:
@@ -222,7 +246,7 @@ class JobRouter:
         if progress.completed and not was_completed:
             if progress.failure is None:
                 job.progress = JobProgress(job.progress.started, True, job.progress.pct, job.progress.failure)
-            self.job_became_completed()
+            self.job_became_completed(job_id)
 
     def put_result(self, job_id: JobId, dataset_id: DatasetId, result: bytes) -> None:
         if job_id not in self.jobs:
@@ -266,7 +290,7 @@ class JobRouter:
         if job is None or job.progress.completed:
             return
         job.progress = JobProgress.failed("terminated by gateway")
-        self.job_became_completed()
+        self.job_became_completed(job_id)
 
     def _kill_remaining(self, job_id: JobId, spawned: SpawnedJob) -> None:
         for proc in spawned.procs:
@@ -333,5 +357,5 @@ class JobRouter:
                 logger.exception(f"failed to kill remaining processes of {job_id=}, continuing")
             self.procs.pop(job_id, None)
             self._mark_terminated(job_id)
-        self.maybe_evict_old_jobs()
+        self.reap_and_maybe_evict()
         return errors

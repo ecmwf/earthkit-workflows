@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 def handle_fe(sock: zmq.Socket, jobs: JobRouter) -> bool:
     rr = sock.recv()
+    # NOTE collects stragglers whose completion was reported before their process exited
+    jobs.reap_and_maybe_evict()
     m = parse_request(rr)
     logger.debug(f"received frontend request {m}")
     rv: api.CascadeGatewayAPI
