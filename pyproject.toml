@@ -21,6 +21,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "earthkit-data<1",
+    "eccodeslib", # TODO for some reason the earthkit-data pulls in eccodes but not eccodeslib, thats wrong
     "cloudpickle",
     "numpy",
     "xarray",
@@ -50,7 +51,6 @@ dev = [
     "prek",
     "ty==0.0.2",
     "build",
-    "bokeh",
 ]
 
 [tool.setuptools]
@@ -82,3 +82,9 @@ markers = ["concurrency_filelock"]
 line-length = 140
 lint.ignore = [ "E722", "E731", "E741" ]
 lint.select = ["I"]
+
+[tool.ty.src]
+exclude = [
+    "integration_tests/old_benchmarks/plotting.py",
+    "integration_tests/old_benchmarks/image_processing.py",
+]

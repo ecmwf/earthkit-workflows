@@ -6,6 +6,9 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+# ty: ignore # NOTE doesnt seem to work, excluded in pyproject explicitly
+# TODO fix the whole file, in particular the PIL import should be declared dep, and the missing imports reworked
+
 import io
 
 import matplotlib.pyplot as plt  # ty: ignore[unresolved-import]

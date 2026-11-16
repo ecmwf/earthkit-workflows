@@ -24,7 +24,11 @@ val-examples:
             # script with inline pep723 dependencies -- check within an env providing them
             req="$(mktemp)"
             uv export --script "$f" --no-hashes > "$req"
-            uv run --with-requirements "$req" ty check "$f"
+            # ty does not follow the .pth indirection uv uses for --with packages, so pass the paths explicitly
+            uv run --with-requirements "$req" bash -c '
+                mapfile -t extra < <(python -c "import sys; print(*(f\"--extra-search-path={p}\" for p in sys.path if p.endswith(\"site-packages\")), sep=\"\n\")")
+                ty check "${extra[@]}" "$1"
+            ' _ "$f"
             rm -f "$req"
         else
             uv run ty check "$f"

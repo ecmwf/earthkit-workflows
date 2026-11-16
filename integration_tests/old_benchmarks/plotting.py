@@ -6,6 +6,9 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+# ty: ignore # NOTE doesnt seem to work, excluded in pyproject explicitly
+# TODO fix the whole file, in particular the bokeh should be declared standalone dep
+
 """Intended to be run inside a jupyter notebook
 
 Run `dirTaskLane(<path-to-your-logs-directory>)`
