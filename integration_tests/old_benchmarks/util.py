@@ -70,10 +70,6 @@ def get_job(benchmark: str | None, instance_path: str | None) -> JobInstanceRich
             import integration_tests.old_benchmarks.dist as dist  # ty:ignore[unresolved-import]
 
             instance = dist.get_job()
-        elif benchmark.startswith("dask"):
-            import integration_tests.old_benchmarks.dask as dask  # ty:ignore[unresolved-import]
-
-            instance = dask.get_job(benchmark[len("dask.") :])
         else:
             raise NotImplementedError(benchmark)
         return JobInstanceRich(jobInstance=instance, checkpointSpec=None)

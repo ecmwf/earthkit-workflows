@@ -1,3 +1,6 @@
+# /// script
+# dependencies = ["dask[distributed]>=2026.1.2"]
+# ///
 # (C) Copyright 2025- ECMWF.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
@@ -21,8 +24,9 @@ from typing import Any
 from dask._task_spec import Alias, DataNode, Task, TaskRef
 
 from cascade.low.builders import TaskBuilder
-from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, Task2TaskEdge, TaskId, TaskInstance
+from cascade.low.core import DatasetId, DefaultTaskOutput, JobInstance, JobInstanceRich, Task2TaskEdge, TaskId, TaskInstance
 from cascade.low.exceptions import CascadeUserError
+from cascade.main import run_locally
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +107,23 @@ def graph2job(dask: dict) -> JobInstance:
         edges=edges,
         ext_outputs=list(ext_outputs),
     )
+
+
+def add(x: int, y: int) -> int:
+    return x + y
+
+
+def example_graph_execution() -> None:
+    dask_graph = {"x": DataNode(None, 1), "y": DataNode(None, 2), "z": Task("z", add, TaskRef("x"), TaskRef("y"))}
+    cascade_job = graph2job(dask_graph)
+    outputs = run_locally(
+        JobInstanceRich(jobInstance=cascade_job, checkpointSpec=None),
+        workers=2,
+        hosts=1,
+        portBase=32345,
+    )
+    assert outputs == {DatasetId(TaskId("'z'"), DefaultTaskOutput): 3}
+
+
+if __name__ == "__main__":
+    example_graph_execution()
