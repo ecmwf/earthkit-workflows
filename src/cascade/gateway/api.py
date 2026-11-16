@@ -6,11 +6,11 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-import base64
 from dataclasses import dataclass, field
 from typing import Any, Union
 
 import cloudpickle
+import pybase64
 
 from cascade.controller.report import JobId, JobProgress
 from cascade.low.core import DatasetId, JobInstance, JobInstanceRich, TaskId
@@ -136,6 +136,6 @@ def decoded_result(result: ResultRetrievalResponse, job: JobInstance) -> Any:
     if not result.result:
         # we are in control of encoding -> InternalError
         raise CascadeInternalError(f"result retrieval failed: {result.error}")
-    as_bytes = base64.b64decode(result.result)
+    as_bytes = pybase64.b64decode(result.result)
     as_value = cloudpickle.loads(as_bytes)
     return as_value

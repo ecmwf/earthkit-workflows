@@ -30,13 +30,13 @@ gets propagated to all places that initiate logging. That is, any logging change
 can be implemented fully within this module
 """
 
-import base64
 import logging
 import logging.config
 from dataclasses import dataclass
 from typing import Literal
 
 import orjson
+import pybase64
 from typing_extensions import Self
 
 import cascade.deployment.logging.defaults as defaults
@@ -53,7 +53,7 @@ class LoggingConfig(CascadeBaseModel):
     ignore: bool = False
 
     def ser_cliparam(self) -> str:
-        return base64.b64encode(self.model_dump_json().encode("utf-8")).decode("utf-8")
+        return pybase64.b64encode(self.model_dump_json().encode("utf-8")).decode("utf-8")
 
     def withContext(self, context_kv: str) -> Self:
         if self.path_base is not None:
@@ -109,7 +109,7 @@ def init_from_obj(loggingConfig: LoggingConfig, hostAndRole: str) -> None:
 
 def init_from_cliparam(cliparam: str | None, hostAndRole: str) -> LoggingConfig:
     if cliparam is not None:
-        loggingConfig = LoggingConfig(**orjson.loads(base64.b64decode(cliparam.encode("utf-8"))))
+        loggingConfig = LoggingConfig(**orjson.loads(pybase64.b64decode(cliparam.encode("utf-8"))))
     else:
         loggingConfig = DefaultLoggingConfig
         logging.getLogger(__name__).warning(f"using default config for logging at {hostAndRole}")

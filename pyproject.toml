@@ -31,6 +31,7 @@ dependencies = [
     "pyzmq",
     "fire",
     "orjson",
+    "pybase64",
     "qubed>=0.3.0,<0.4.4",
 ]
 # NOTE optional dependencies are not needed for runtime and would only slow down new worker spin ups etc
