@@ -13,7 +13,23 @@ val:
     uv run ty check src
     uv run ty check tests
     uv run ty check integration_tests
+    just val-examples
     uv run pytest -n8 tests
+val-examples:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    for f in docs/examples/*.ipynb docs/examples/*.py; do
+        if grep -q '^# /// script' "$f"; then
+            # script with inline pep723 dependencies -- check within an env providing them
+            req="$(mktemp)"
+            uv export --script "$f" --no-hashes --no-emit-project > "$req"
+            uv run --with-requirements "$req" ty check "$f"
+            rm -f "$req"
+        else
+            uv run ty check "$f"
+        fi
+    done
 fmt:
     uv run prek --all-files
 integration testCase deploymentKind:
