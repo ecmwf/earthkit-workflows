@@ -23,7 +23,7 @@ val-examples:
         if grep -q '^# /// script' "$f"; then
             # script with inline pep723 dependencies -- check within an env providing them
             req="$(mktemp)"
-            uv export --script "$f" --no-hashes --no-emit-project > "$req"
+            uv export --script "$f" --no-hashes > "$req"
             uv run --with-requirements "$req" ty check "$f"
             rm -f "$req"
         else

@@ -1,3 +1,6 @@
+# /// script
+# dependencies = ["networkx"]
+# ///
 # (C) Copyright 2025- ECMWF.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
@@ -10,8 +13,7 @@ from collections.abc import Sequence
 
 import networkx as nx
 
-from .graph import Graph
-from .nodes import Node
+from earthkit.workflows.graph import Graph, Node
 
 
 def to_networkx(graph: Graph, serialise=False) -> nx.MultiDiGraph:
