@@ -10,12 +10,12 @@
 here we just match the right method of `gateway.router` based on what message we parsed
 """
 
-import base64
 import datetime as dt
 import logging
 import os
 import socket
 
+import pybase64
 import zmq
 
 import cascade.executor.platform as platform
@@ -58,7 +58,7 @@ def handle_fe(sock: zmq.Socket, jobs: JobRouter) -> bool:
             elif result is None:
                 rv = api.ResultRetrievalResponse(result=None, error="unexpected empty result")
             else:
-                encoded = base64.b64encode(result).decode("ascii")
+                encoded = pybase64.b64encode(result).decode("ascii")
                 rv = api.ResultRetrievalResponse(result=encoded, error=None)
         except Exception as e:
             logger.exception(f"failed to get result: {m}")

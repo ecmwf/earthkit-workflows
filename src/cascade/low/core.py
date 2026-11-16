@@ -9,12 +9,12 @@
 """Core graph data structures -- prescribes most of the API"""
 
 import re
-from base64 import b64decode, b64encode
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, NewType, Optional, Type, cast
 
 import cloudpickle
+from pybase64 import b64decode, b64encode
 from pydantic import Field
 from typing_extensions import Self
 
