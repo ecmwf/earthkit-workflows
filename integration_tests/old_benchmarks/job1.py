@@ -39,7 +39,7 @@ CLIM_DATE = "20241110"
 files = [f"{data_root}/data_{number}_{step}.grib" for number in range(1, NUM_ENSEMBLES + 1) for step in range(0, END_STEP + 1, 3)]
 payloads = [
     create_task_instance(
-        lambda f: earthkit.data.from_source("file", f),
+        lambda f: earthkit.data.from_source("file", f).to_fieldlist(),
         static_input_ps=[f],
     )
     for f in files
@@ -127,9 +127,8 @@ def download_inputs():
                 "step": step,
                 "grid": GRID,
             }
-            data = earthkit.data.from_source("mars", **ekp)
-            with open(f"{data_root}/data_{number}_{step}.grib", "wb") as f:
-                data.write(f)  # ty: ignore
+            data = earthkit.data.from_source("mars", request=ekp)
+            data.to_target("file", f"{data_root}/data_{number}_{step}.grib")
 
 
 def download_climatology():
@@ -147,9 +146,8 @@ def download_climatology():
             "step": f"{step}-{step + 24}",
             "grid": GRID,
         }
-        data = earthkit.data.from_source("mars", **ekp)
-        with open(f"{data_root}/data_clim_{step}.grib", "wb") as f:
-            data.write(f)  # ty: ignore
+        data = earthkit.data.from_source("mars", request=ekp)
+        data.to_target("file", f"{data_root}/data_clim_{step}.grib")
 
 
 if __name__ == "__main__":
