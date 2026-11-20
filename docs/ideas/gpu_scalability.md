@@ -38,3 +38,5 @@ Adding priority would require implementing a new signal which would then be inco
 This current design came with primarily Slurm in mind, which itself is batch oriented in its allocations.
 The question is then, should we orient future development of Cascade to be primarily Slurm-friendly, or would we re-orient to k8s?
 In principle, we can support both -- we would need to introduce a notion of "job group" which would be the scheduler/controller sharing primitive, and add something like `job_group_id` to the new job request for gateway, it would then know whether to spawn a new one (on Slurm) or attach to an existing one (on K8s).
+
+_Addendum_: turns out, after spending 30 seconds googling, that Slurm can dynamically resize jobs as well, hence the new Gateway-Controller would own all jobs at once, and have deployment-specific implementation of the "addComponent", "requestNode", "freeNode" API.
