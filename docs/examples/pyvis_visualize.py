@@ -16,7 +16,6 @@ from typing import Any, Callable, Literal, ParamSpec, cast
 from pyvis.network import Network
 
 from earthkit.workflows.graph import Graph, Node
-from earthkit.workflows.taskgraph import Task
 
 _P = ParamSpec("_P")
 
@@ -236,9 +235,6 @@ def node_info_ext(node):
         if kwargs:
             t.append("Keyword arguments:")
             t.extend(f"- {k!r}: {v!r}" for k, v in kwargs.items())
-        if isinstance(node, Task):
-            t.append(f"Duration: {node.duration}")
-            t.append(f"Memory: {node.memory}")
         info["title"] = "\n".join(t)
 
     return info
