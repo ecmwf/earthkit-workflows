@@ -50,13 +50,13 @@ def source_numpy() -> "numpy.ndarray":  # ty: ignore
     return numpy.array([1])
 
 
-ekdType = "earthkit.data.readers.grib.file.GRIBReader"
+ekdType = "earthkit.data.core.fieldlist.FieldList"
 
 
 def source_ekd() -> ekdType:  # ty: ignore
     import earthkit.data as ekd
 
-    return ekd.from_source("sample", "test.grib")
+    return ekd.from_source("sample", "test.grib").to_fieldlist()
 
 
 def write_grib(a: ekdType, i: int) -> ekdType:  # ty: ignore

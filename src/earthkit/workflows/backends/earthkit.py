@@ -6,15 +6,18 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
-from typing import TYPE_CHECKING, Callable, Optional, Sequence, TypeAlias
+import operator
+from typing import TYPE_CHECKING, Callable, Optional, Sequence, TypeAlias, cast
+
+import array_api_compat
 
 if TYPE_CHECKING:
     import numpy as np
-    from earthkit.data import FieldList
+    from earthkit.data import Field, FieldList
 
 from .base import Backend
 
-Indexer: TypeAlias = int | str | Sequence[int] | Sequence[str]
+Indexer: TypeAlias = int | str | slice | Sequence[int] | Sequence[str]
 Metadata: TypeAlias = dict | Callable | None
 
 
@@ -34,35 +37,30 @@ def resolve_metadata(metadata: Metadata, *args) -> dict:
     return metadata(*args)
 
 
-def new_fieldlist(data: "np.ndarray", metadata: list, overrides: dict) -> "FieldList":
+def new_fieldlist(data: "np.ndarray", templates: Sequence["Field"] | "FieldList", overrides: dict) -> "FieldList":
     from earthkit.data import FieldList
 
-    if len(overrides) > 0:
+    rows = standardise_output(data)
+    if len(rows) != len(templates):
+        raise ValueError(f"Got {len(rows)} rows of values but {len(templates)} template fields")
+    if isinstance(templates, FieldList):
+        templates = [field for field in templates]
+    fields = []
+    for template, row in zip(templates, rows):
         try:
-            new_metadata = [metadata[x].override(overrides) for x in range(len(metadata))]
-            return FieldList.from_array(
-                standardise_output(data),
-                new_metadata,
-            )
+            fields.append(template.set({**overrides, "values": row}))
         except Exception as e:
-            print(
-                "Error setting metadata",
-                overrides,
-                "On data with:",
-                list(map(lambda x: x.dump(), metadata)),
-            )
-            print(e)
-    return FieldList.from_array(standardise_output(data), metadata)
+            raise ValueError(f"Failed to apply metadata overrides with keys {sorted(overrides)}: {e!r}") from e
+    return FieldList.from_fields(fields)
 
 
 class FieldListBackend(Backend):
-    def _merge(*fieldlists: "FieldList") -> "FieldList":
+    @staticmethod
+    def _merge(*fieldlists: "FieldList") -> "np.ndarray":
         """Merge fieldlist elements into a single array. fieldlists with
         different number of fields must be concatenated, otherwise, the
         elements in each fieldlist are stacked along a new dimension
         """
-        import array_api_compat
-
         if len(fieldlists) == 1:
             return fieldlists[0].values
 
@@ -72,21 +70,18 @@ class FieldListBackend(Backend):
 
     @classmethod
     def multi_arg_function(cls, func: str, *arrays: "FieldList", metadata: Metadata = None) -> "FieldList":
-        import array_api_compat
-
         merged_array = FieldListBackend._merge(*arrays)
         xp = array_api_compat.array_namespace(*merged_array)
         is_nan = xp.isnan(merged_array).any(axis=0)
         res = xp.where(is_nan, xp.nan, standardise_output(getattr(xp, func)(merged_array, axis=0)))
         return new_fieldlist(
             res,
-            [arrays[0][x].metadata() for x in range(len(res))],
+            [arrays[0][x] for x in range(len(res))],
             resolve_metadata(metadata, *arrays),
         )
 
     @classmethod
     def two_arg_function(cls, func: str, arr1: "FieldList", arr2: "FieldList | np.ndarray", metadata: Metadata = None) -> "FieldList":
-        import array_api_compat
         from earthkit.data import FieldList
 
         assert isinstance(arr1, FieldList), f"Expected FieldList type, got {type(arr1)}"
@@ -100,7 +95,7 @@ class FieldListBackend(Backend):
             metadata = resolve_metadata(metadata, arr1)
             xp = array_api_compat.array_namespace(val1)
         res = getattr(xp, func)(val1, val2)
-        return new_fieldlist(res, [arr1[x].metadata() for x in range(len(res))], metadata)
+        return new_fieldlist(res, [arr1[x] for x in range(len(res))], metadata)
 
     @classmethod
     def mean(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
@@ -156,12 +151,12 @@ class FieldListBackend(Backend):
     def multiply(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("multiply", arr1, arr2, **(backend_kwargs or {}))
 
-    @staticmethod
-    def divide(arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
+    @classmethod
+    def divide(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("divide", arr1, arr2, **(backend_kwargs or {}))
 
     @classmethod
-    def divide(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
+    def pow(cls, arr1: "FieldList", arr2: "FieldList", *, backend_kwargs: Optional[dict] = None) -> "FieldList":
         return FieldListBackend.two_arg_function("pow", arr1, arr2, **(backend_kwargs or {}))
 
     @classmethod
@@ -179,8 +174,32 @@ class FieldListBackend(Backend):
         FieldList
             Contains all fields inside the input field lists
         """
-        ret = sum(arrays[1:], arrays[0])
-        return ret
+        from earthkit.data import concat
+
+        return concat(*arrays)
+
+    @staticmethod
+    def _isel_values(array: "FieldList", indices: Indexer, dim: str) -> list:
+        """Translates positional indices into the unique, sorted values of
+        the metadata key `dim`. The indices may be an int, a list of ints or a
+        slice."""
+        uniques = tuple(cast(dict, array.unique(dim, sort=True))[dim])
+        n = len(uniques)
+        if isinstance(indices, slice):
+            return list(uniques[indices])
+        if isinstance(indices, (str, bytes)):
+            raise ValueError(f"isel along {dim} expects int, list of ints or slice, got {indices!r}")
+        raw_indices = [indices] if not isinstance(indices, Sequence) else list(indices)
+        values = []
+        for raw in raw_indices:
+            try:
+                i = operator.index(raw)  # ty: ignore[invalid-argument-type]
+            except TypeError as e:
+                raise ValueError(f"isel along {dim} expects int, list of ints or slice, got {indices!r}") from e
+            if not -n <= i < n:
+                raise ValueError(f"isel index {i} out of range for dim {dim} with {n} unique values")
+            values.append(uniques[i])
+        return values
 
     @classmethod
     def take(
@@ -199,34 +218,35 @@ class FieldListBackend(Backend):
             if dim is not None and dim != 0:
                 raise ValueError("Can not slice from FieldList along dim != 0")
             if isinstance(indices, int):
-                indices = [indices]  # type: ignore[assignment]
+                indices = [indices]
             ret = array[indices]
         else:
             if not isinstance(dim, str):
                 raise ValueError("To perform isel/sel on FieldList, dim must be a string")
             if method == "isel":
-                ret = array.isel(**{dim: indices}, **backend_kwargs)
+                values = FieldListBackend._isel_values(array, indices, dim)
+                ret = array.sel(**{dim: values}, **backend_kwargs)
             elif method == "sel":
                 ret = array.sel(**{dim: indices}, **backend_kwargs)
             else:
                 raise ValueError(f"Invalid method {method}")
 
         if len(ret) == 0:
-            raise ValueError(f"Take along dim {dim} resulted in empty fieldlist: indices {indices}, method {method}")
-        return FieldList.from_array(ret.values, ret.metadata())
+            raise ValueError(
+                f"Take along dim {dim} resulted in empty fieldlist: indices {indices}, method {method}"
+            )
+        return FieldList.from_fields([field.set(values=field.values) for field in ret])
 
     @classmethod
     def norm(cls, *arrays: "FieldList", backend_kwargs: Optional[dict] = None) -> "FieldList":
         backend_kwargs = (backend_kwargs or {}).copy()
         metadata = backend_kwargs.pop("metadata", None)
-        import array_api_compat
-
         merged_array = FieldListBackend._merge(*arrays)
         xp = array_api_compat.array_namespace(merged_array)
         norm = standardise_output(xp.sqrt(xp.sum(xp.pow(merged_array, 2), axis=0)))
         return new_fieldlist(
             norm,
-            [arrays[0][x].metadata() for x in range(len(norm))],
+            [arrays[0][x] for x in range(len(norm))],
             resolve_metadata(metadata, *arrays),
         )
 
@@ -239,14 +259,12 @@ class FieldListBackend(Backend):
         *,
         backend_kwargs: Optional[dict] = None,
     ) -> "FieldList":
-        import array_api_compat
-
         backend_kwargs = (backend_kwargs or {}).copy()
         metadata = backend_kwargs.pop("metadata", None)
         xp = array_api_compat.array_namespace(arr1.values, mask.values)
         res = xp.where(mask.values, replacement, arr1.values)
-        return new_fieldlist(res, arr1.metadata(), resolve_metadata(metadata, arr1, mask))
+        return new_fieldlist(res, arr1, resolve_metadata(metadata, arr1, mask))
 
     @classmethod
     def set_metadata(cls, data: "FieldList", metadata: dict) -> "FieldList":
-        return new_fieldlist(data.values, data.metadata(), metadata)
+        return new_fieldlist(data.values, data, metadata)

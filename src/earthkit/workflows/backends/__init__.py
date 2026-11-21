@@ -59,23 +59,17 @@ def array_module(*arrays) -> BackendType:
     if array_api_compat.is_array_api_obj(arrays[0]):
         return ArrayAPIBackend
     array_type = type(arrays[0])
-    type_id = ".".join([array_type.__module__, array_type.__name__])
     # Sort keys in reverse so more recently added backends take precedence over older ones.
     # This allows for more specific backends to override more general ones.
     sorted_backends = sorted(ARRAY_BACKENDS.items(), key=lambda x: x[0], reverse=True)
-    # Checks all bases of the first array type for a registered backend.
-    # If no backend is found, after traversing the hierarchy of types
-    # a TypeError is raised
-    while True:
+    # Checks every class in the MRO of the first array type for a registered backend.
+    # If no backend is found, after traversing the whole MRO a TypeError is raised
+    for mro_type in array_type.__mro__:
+        type_id = ".".join([mro_type.__module__, mro_type.__name__])
         for name, backend in sorted_backends:
             if type_id in name:
                 logger.debug(f"Using backend {backend} for {type_id}")
                 return backend
-        bases = array_type.__bases__
-        if len(bases) == 0:
-            break
-        array_type = bases[0]
-        type_id = ".".join([array_type.__module__, array_type.__name__])
     raise TypeError(f"No backend registered for array type {type(arrays[0])}. Please register a backend using `register(name, backend)`.")
 
 

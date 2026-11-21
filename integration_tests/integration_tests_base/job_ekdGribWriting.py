@@ -15,7 +15,7 @@ from integration_tests_base.base import JobSpec, TestCase, expect_success
 
 def job() -> JobInstanceRich:
     b = JobBuilder()
-    ekdType = "earthkit.data.readers.grib.file.GRIBReader"
+    ekdType = "earthkit.data.core.fieldlist.FieldList"
     deps = []
     b = b.with_node("t0", TaskBuilder.from_entrypoint("integration_tests_runtime.source_ekd", {}, ekdType, deps))
     N = 100
