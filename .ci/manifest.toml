@@ -3,6 +3,7 @@ name = "earthkit-workflows"
 repo = "ecmwf/earthkit-workflows"
 visibility = "public"
 fork-pull-requests = false
+allow-stale-deps = true
 compiler-inputs = []
 ci-pre-commit = false
 ci-schedule = "from-dependencies+33"
